@@ -24,6 +24,7 @@ chsh -s $(which zsh)
 stow git
 stow vim
 stow zsh
+stow Applications
 
 # Set macOS preferences
 # We will run this last because this will reload the shell

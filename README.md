@@ -2,7 +2,13 @@
 
 I use primarily `homebrew-bundle` and `stow` to manage all of my dotfiles
 
-# For a new Mac setup
+## To generate a Brewfile for backup
+
+```
+brew bundle dump --force
+```
+
+## For a new Mac setup
 
 1. Update macOS to the latest version with the App Store
 2. Install Xcode from the App Store, open it and accept the license agreement
@@ -10,9 +16,5 @@ I use primarily `homebrew-bundle` and `stow` to manage all of my dotfiles
 4. Copy public and private SSH keys to `~/.ssh` and make sure they're set to `600`
 5. Execute `sudo vim /etc/shells`, append `/usr/local/bin/zsh` at the end of the file and save. `/usr/local/bin/zsh` is the symlink created by Homebrew and in order to be able to change default shell to this, it needs to be in the list of valid shells (`/etc/shells`)
 6. Clone this repo to `~/dotfiles`
-7. `cd ~/dotfiles` and `stow` packages:
-    - `stow git`
-    - `stow vim`
-    - `stow zsh`
-    - ...
+7. `cd ~/dotfiles` and execute `install.sh`
 8. Restart computer to finalize the process

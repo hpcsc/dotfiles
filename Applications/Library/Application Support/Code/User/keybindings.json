@@ -1,0 +1,64 @@
+// Place your key bindings in this file to overwrite the defaults
+[
+    { "key": "shift+cmd+r",           "command": "workbench.action.tasks.runTask" },
+    { "key": "ctrl+`", "command": "workbench.action.terminal.toggleTerminal" },
+    { "key": "ctrl+`", "command": "workbench.action.terminal.focus", "when": "!terminalFocus" },
+    { "key": "cmd+right", "command": "workbench.action.terminal.focusNext", "when": "terminalFocus" },
+    { "key": "cmd+left", "command": "workbench.action.terminal.focusPrevious", "when": "terminalFocus" },
+    { "key": "cmd+w", "command": "workbench.action.terminal.kill", "when": "terminalFocus" },
+    { "key": "shift+alt+l", "command": "editor.action.transformToLowercase" },
+    { "key": "shift+alt+u", "command": "editor.action.transformToUppercase" },
+    { "key": "ctrl+shift+/", "command": "workbench.files.action.showActiveFileInExplorer"},
+    {
+        "key": "cmd+k cmd+o",
+        "command": "workbench.action.closeEditorsInOtherGroups"
+    },
+    {
+        "key": "ctrl+shift+[",
+        "command": "workbench.action.navigateLeft"
+    },
+    {
+        "key": "ctrl+shift+]",
+        "command": "workbench.action.navigateRight"
+    },
+    {
+        "key": "ctrl+up",
+        "command": "metaGo.spaceBlockMoveUp",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "alt+home",
+        "command": "-metaGo.spaceBlockMoveUp",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "ctrl+down",
+        "command": "metaGo.spaceBlockMoveDown",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "alt+end",
+        "command": "-metaGo.spaceBlockMoveDown",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "ctrl+shift+down",
+        "command": "metaGo.spaceBlockSelectDown",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "shift+alt+end",
+        "command": "-metaGo.spaceBlockSelectDown",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "ctrl+shift+up",
+        "command": "metaGo.spaceBlockSelectUp",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "shift+alt+home",
+        "command": "-metaGo.spaceBlockSelectUp",
+        "when": "editorTextFocus"
+    }
+]

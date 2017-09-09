@@ -1,0 +1,45 @@
+// Place your settings in this file to overwrite the default settings
+{
+    "explorer.autoReveal": false,
+    "terminal.external.osxExec": "iTerm.app",
+    "terminal.integrated.shell.osx": "/usr/local/bin/zsh",
+    "terminal.integrated.shellArgs.osx": ["-l"],
+    "terminal.external.windowsExec": "ConEmu64.exe",
+    "terminal.integrated.shell.windows": "powershell.exe",
+    "extensions.autoUpdate": true,
+    "editor.renderIndentGuides": true,
+    "editor.renderWhitespace": "boundary",
+    "files.trimTrailingWhitespace": true,
+    "files.associations": {
+        "Vagrantfile": "ruby"
+    },
+    "ruby.lint": {
+        "rubocop": {
+            "lint": true,
+            "rails": true
+        }
+    },
+    "ruby.rctComplete.commandPath": "/Users/davidnguyen/.rvm/gems/ruby-2.3.0/bin/rct-complete",
+    "window.zoomLevel": 1,
+    "files.insertFinalNewline": true,
+    "vsicons.dontShowNewVersionMessage": true,
+    "files.hotExit": "off",
+    "zenMode.fullScreen": false,
+    "workbench.iconTheme": "vscode-icons",
+    "editor.dragAndDrop": true,
+    "vsicons.projectDetection.disableDetect": true,
+    "window.nativeTabs": true,
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true
+    },
+    "editor.showFoldingControls": "always",
+    "editor.minimap.enabled": false,
+    "window.restoreWindows": "none",
+    "explorer.openEditors.visible": 0,
+    "editor.snippetSuggestions": "top",
+    "terminal.integrated.scrollback": 2000
+}

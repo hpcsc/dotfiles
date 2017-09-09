@@ -1,0 +1,29 @@
+alias d='docker'
+alias dls='docker ps -a'
+alias dlsi='docker images'
+alias dsa='docker start'
+alias dso='docker stop'
+alias drm='docker rm'
+alias drmi='docker rmi'
+alias di='docker inspect'
+alias de='docker exec'
+alias dnls='docker network ls'
+alias dni='docker network inspect'
+
+alias dc='docker-compose'
+alias dcls='docker-compose ps'
+alias dcu='docker-compose up'
+alias dcub='docker-compose up build'
+alias dcso='docker-compose stop'
+alias dcsa='docker-compose start'
+alias dce='docker-compose exec'
+alias dcb='docker-compose build'
+alias dcrm='docker-compose rm -f'
+
+alias cssh="pbcopy < $HOME/.ssh/id_rsa.pub"
+alias rrc="source $HOME/.zshrc"
+
+alias c='clear'
+
+_git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"
+alias glc='git log --topo-order --pretty=format:"${_git_log_oneline_compact_format}"'

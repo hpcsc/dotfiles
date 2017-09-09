@@ -1,0 +1,9 @@
+function drmb() {
+    local command="docker rm -f \$(docker ps -a | grep '$1' | awk '{print \$1}')"
+    execute $command
+}
+
+function drmib() {
+    local command="docker rmi -f \$(docker images | grep '$1' | awk '{print \$3}')"
+    execute $command
+}

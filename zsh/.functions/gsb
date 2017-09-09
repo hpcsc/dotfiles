@@ -1,0 +1,43 @@
+function _checkout() {
+    local branch_name=$2
+    if [[ $branch_name == *"remotes"* ]]; then
+        echo "[$1]: Found a remote branch with no local branch, will checkout a tracking local branch"
+        echo $branch_name | cut -d/ -f3- | xargs git checkout
+    else
+        echo $branch_name | xargs git checkout
+    fi;
+}
+
+function gsb() {
+    local command='git branch'
+    while getopts ":ha" option; do
+        case $option in
+            h) echo "usage: $0 [-h] [-a] [pattern]\nexample: gsb master"; return ;;
+            a) command='git branch -a' ;;
+            ?) echo "error: option -$OPTARG is not implemented"; return ;;
+        esac
+    done
+    shift $((OPTIND-1))
+
+    local pattern=$@
+
+    if [[ -z "$pattern" ]]; then
+        echo "[$0]: no pattern provided"; return;
+    fi;
+
+    local b=$(eval $command | awk 'tolower($0) ~ /'$pattern'/')
+    local branch_count=$(echo $b | sed '/^\s*$/d' | wc -l)
+    if [ $branch_count -eq 0 ]; then
+        echo "[$0]: No branch matches the pattern: "$pattern
+    elif [ $branch_count -eq 1 ]; then
+        _checkout $0 $b
+    else
+        echo "[$0]: More than one branch match the pattern: "$pattern
+        eval $command | awk 'BEGIN{ i = 1} tolower($0) ~ /'$pattern'/{print i++ ": " $0}'
+        echo "[$0]: Enter INDEX of the branch that you want to switch to: "
+        read selected_branch_index
+        local selected_branch=$(eval $command | awk 'tolower($0) ~ /'$pattern'/{i++}i=='$selected_branch_index'{print; exit}')
+        echo $selected_branch
+        _checkout $0 $selected_branch
+    fi;
+}

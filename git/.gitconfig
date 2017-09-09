@@ -1,0 +1,16 @@
+[core]
+	excludesfile = /Users/davidnguyen/.gitignore_global
+	editor = code --wait
+[difftool "sourcetree"]
+	cmd = opendiff \"$LOCAL\" \"$REMOTE\"
+	path = 
+[mergetool "sourcetree"]
+	cmd = /Applications/SourceTree.app/Contents/Resources/opendiff-w.sh \"$LOCAL\" \"$REMOTE\" -ancestor \"$BASE\" -merge \"$MERGED\"
+	trustExitCode = true
+[user]
+	email = hungphuongjc@gmail.com
+	name = David Nguyen
+[pull]
+	rebase = true
+[diff]
+	mnemonicprefix = true

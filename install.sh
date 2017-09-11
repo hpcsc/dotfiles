@@ -23,13 +23,8 @@ brew bundle
 git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$HOME}/.zprezto"
 
 # create symlink at home directory for these packages
-source ./backup.sh
-
 ruby ./backup_and_stow.rb
 
 # Set macOS preferences
 # We will run this last because this will reload the shell
 source .macos
-
-# Make ZSH the default shell environment
-chsh -s $(which zsh)

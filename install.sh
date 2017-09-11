@@ -25,16 +25,7 @@ git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$H
 # create symlink at home directory for these packages
 source ./backup.sh
 
-backup_folder=~/dotfiles_backup
-mkdir -p "$backup_folder/git" "$backup_folder/vim" "$backup_folder/zsh" "$backup_folder/Applications"
-backup ./git ~/ "$backup_folder/git"
-backup ./vim ~/ "$backup_folder/vim"
-backup ./zsh ~/ "$backup_folder/zsh"
-backup ./Applications ~/ "$backup_folder/Applications"
-stow git
-stow vim
-stow zsh
-stow Applications
+ruby ./backup_and_stow.rb
 
 # Set macOS preferences
 # We will run this last because this will reload the shell

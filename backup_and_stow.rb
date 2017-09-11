@@ -7,12 +7,12 @@ require 'fileutils'
 def backup(source_folder, target_folder, backup_folder)
     FileUtils.mkdir_p backup_folder
 
-    Dir["#{source_folder}/*"].each do |f|
+    Dir.glob("#{source_folder}/.[!.]*").each do |f|
         base_name=File.basename(f)
         target=File.join(target_folder, base_name)
-        if File.directory?(f) and File.directory?(target)
+        if File.directory?(f) and File.directory?(target) and !File.symlink?(target)
             backup(f, target, File.join(backup_folder, base_name))
-        elsif File.file?(target)
+        elsif File.file?(target) or File.symlink?(target)
             puts "moving #{target} to #{backup_folder}"
             FileUtils.mv(target, backup_folder)
         end
@@ -23,7 +23,7 @@ def backup_packages(packages, source_folder, target_folder, backup_folder)
     FileUtils.mkdir_p packages.map { |f| File.join(backup_folder, f) }
 
     packages.each do |f|
-        backup(File.join(source_folder, f), File.join(target_folder, f), File.join(backup_folder, f))
+        backup(File.join(source_folder, f), target_folder, File.join(backup_folder, f))
     end
 end
 
@@ -34,5 +34,7 @@ def stow_packages(packages)
 end
 
 PACKAGES = ['git', 'vim', 'zsh', 'Applications']
-backup_packages(PACKAGES, './', '~', '~/dotfiles_backup')
+backup_folder = File.expand_path('~/dotfiles_backup')
+FileUtils.mkdir_p backup_folder
+backup_packages(PACKAGES, File.expand_path('./'), File.expand_path('~'), backup_folder)
 stow_packages(PACKAGES)

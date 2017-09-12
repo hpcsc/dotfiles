@@ -25,6 +25,12 @@ git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$H
 # create symlink at home directory for these packages
 ruby ./backup_and_stow.rb
 
+# install VimPlug plugins
+vim +PlugInstall +qall
+
+# Make ZSH the default shell environment
+chsh -s $(which zsh)
+
 # Set macOS preferences
 # We will run this last because this will reload the shell
 source .macos

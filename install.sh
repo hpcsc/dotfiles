@@ -12,6 +12,8 @@ if test ! $(which brew); then
   /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 fi
 
+echo "==============================  Brew Bundle =============================="
+
 # Update Homebrew recipes
 brew update
 
@@ -19,17 +21,22 @@ brew update
 brew tap homebrew/bundle
 brew bundle
 
+echo "==============================  Prezto Setup ============================="
+
 # Setup Prezto
 git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$HOME}/.zprezto"
+
+echo "================================  Stow ==================================="
 
 # create symlink at home directory for these packages
 ruby ./backup_and_stow.rb
 
+echo "=============================  VimPlug Update ============================"
+
 # install VimPlug plugins
 vim +PlugInstall +qall
 
-# Make ZSH the default shell environment
-chsh -s $(which zsh)
+echo "==========================  MacOS Preferences ============================"
 
 # Set macOS preferences
 # We will run this last because this will reload the shell

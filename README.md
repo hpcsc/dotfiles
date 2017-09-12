@@ -17,4 +17,5 @@ brew bundle dump --force
 5. Execute `sudo vim /etc/shells`, append `/usr/local/bin/zsh` at the end of the file and save. `/usr/local/bin/zsh` is the symlink created by Homebrew and in order to be able to change default shell to this, it needs to be in the list of valid shells (`/etc/shells`)
 6. Clone this repo to `~/dotfiles`
 7. `cd ~/dotfiles` and execute `install.sh`
-8. Restart computer to finalize the process
+8. Make ZSH the default shell environment: `chsh -s $(which zsh)`
+9. Restart computer to finalize the process

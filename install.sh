@@ -31,9 +31,6 @@ echo "================================  Stow ===================================
 # create symlink at home directory for these packages
 ruby ./backup_and_stow.rb
 
-# refresh iterm2 preferences
-defaults read com.googlecode.iterm2
-
 echo "=============================  VimPlug Update ============================"
 
 # install VimPlug plugins

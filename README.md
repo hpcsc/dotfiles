@@ -18,4 +18,6 @@ brew bundle dump --force
 6. Clone this repo to `~/dotfiles`
 7. `cd ~/dotfiles` and execute `install.sh`
 8. Make ZSH the default shell environment: `chsh -s $(which zsh)`
-9. Restart computer to finalize the process
+9. Open `iTerm2` preferences -> `General` -> `Load preferences from a custom folder`, points to `~/dotfiles/iterm`
+    - Refresh iTerm2 preferences cache if needed: `defaults read com.googlecode.iterm2`
+10. Restart computer to finalize the process

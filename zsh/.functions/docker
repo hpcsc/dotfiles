@@ -7,3 +7,19 @@ function drmib() {
     local command="docker rmi -f \$(docker images | grep '$1' | awk '{print \$3}')"
     execute $command
 }
+
+function dcsh() {
+    local container=$1
+    shift
+    local shell_command=$@
+    local command="docker-compose exec $container sh -c \"$shell_command\""
+    execute $command
+}
+
+function dsh() {
+    local container=$1
+    shift
+    local shell_command=$@
+    local command="docker exec $container sh -c \"$shell_command\""
+    execute $command
+}

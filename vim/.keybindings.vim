@@ -9,16 +9,21 @@ nnoremap <leader><space> :nohlsearch<CR> "stop highlighting search
 nnoremap <leader>z za " toggle folding
 inoremap jk <esc>
 
-"-----------------------------------------------------------------------------
-" NERDTree Settings
-"-----------------------------------------------------------------------------
+" NERDTree Mappings {{{
+
 nnoremap <leader>n :NERDTreeToggle<cr>
 
+" }}}
 
-"-----------------------------------------------------------------------------
-"" CtrlP Settings
-"-----------------------------------------------------------------------------
-"
+" CtrlP Mappings {{{
+
 nnoremap <c-b> :CtrlPBuffer<cr>
 nnoremap <c-p> :CtrlP .<cr>
 nnoremap <leader>fF :execute ":CtrlP " . expand('%:p:h')<cr>
+
+" }}}
+
+" Easymotion Mappings {{{
+" }}}
+
+" vim:foldmethod=marker:foldlevel=0

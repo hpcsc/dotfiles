@@ -26,4 +26,4 @@ alias rrc="source $HOME/.zshrc"
 alias c='clear'
 
 _git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"
-alias glc='git log --topo-order --pretty=format:"${_git_log_oneline_compact_format}"'
+alias glc='git log --topo-order --graph --decorate --pretty=format:"${_git_log_oneline_compact_format}"'

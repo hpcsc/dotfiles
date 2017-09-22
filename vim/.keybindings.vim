@@ -10,7 +10,9 @@ noremap <silent> <leader>h :wincmd h<CR>
 noremap <silent> <leader>j :wincmd j<CR>
 noremap <silent> <leader>k :wincmd k<CR>
 noremap <silent> <leader>l :wincmd l<CR>
-noremap <silent> <leader>sb :wincmd p<CR>
+noremap <silent> <leader>ws :wincmd s<CR>
+noremap <silent> <leader>wv :wincmd v<CR>
+noremap <silent> <leader>wc :wincmd c<CR>
 noremap <leader>s :update<CR>
 nnoremap <leader><space> :nohlsearch<CR> "stop highlighting search
 nnoremap <leader>z za " toggle folding

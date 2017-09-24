@@ -13,6 +13,12 @@ fi
 # Customize to your needs...
 eval "$(fasd --init auto)"
 
+# changes hex 0x15 to delete everything to the left of the cursor, rather than the whole line
+bindkey "^U" backward-kill-line
+
+# bind redo (hexcode 0x18 0x1f)
+bindkey "^X^_" redo
+
 # utility function, used by all functions under .functions
 function execute() {
     printf '%s' "Executing: $1"

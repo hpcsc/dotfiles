@@ -3,7 +3,6 @@
 " Vim Settings {{{
 
 set nocompatible " turn off vi compatibility
-set number " show line number
 set cursorline " highlight current line
 set tabstop=4 " number of visual spaces per TAB
 set softtabstop=4 " number of spaces in tab when editing
@@ -19,6 +18,13 @@ set foldnestmax=10 " 10 nested fold max
 set modelines=1 " enable modeline at the bottom of the file
 set hidden
 set backspace=indent,eol,start
+set number relativenumber " show relative line number by default
+augroup numbertoggle
+    " set absolute line number in insert mode, hybrid line number otherwise
+    autocmd!
+    autocmd BufEnter,FocusGained,InsertLeave * set relativenumber
+    autocmd BufLeave,FocusLost,InsertEnter * set norelativenumber
+augroup end
 filetype plugin indent on " load filetype-specific indent files at ~/.vim/indent/*.vim
 syntax on
 
@@ -34,7 +40,7 @@ Plug 'ctrlpvim/ctrlp.vim'
 Plug 'easymotion/vim-easymotion'
 Plug 'vim-syntastic/syntastic'
 
-call plug#end() 
+call plug#end()
 " }}}
 
 " Custom Keybindings {{{

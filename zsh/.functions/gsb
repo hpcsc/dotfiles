@@ -12,7 +12,7 @@ function gsb() {
     local command='git branch'
     while getopts ":ha" option; do
         case $option in
-            h) echo "usage: $0 [-h] [-a] [pattern]\nexample: gsb master"; return ;;
+            h) echo "usage: $0 [-h] [-a] [pattern]\nexample: $0 master"; return ;;
             a) command='git branch -a' ;;
             ?) echo "error: option -$OPTARG is not implemented"; return ;;
         esac

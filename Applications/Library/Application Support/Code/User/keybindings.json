@@ -60,5 +60,15 @@
         "key": "shift+alt+home",
         "command": "-metaGo.spaceBlockSelectUp",
         "when": "editorTextFocus"
+    },
+    {
+        "key": "ctrl+shift+w",
+        "command": "editor.emmet.action.wrapWithAbbreviation",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "ctrl+shift+l",
+        "command": "editor.emmet.action.wrapIndividualLinesWithAbbreviation",
+        "when": "editorTextFocus"
     }
 ]

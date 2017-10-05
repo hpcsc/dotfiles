@@ -437,9 +437,9 @@
 	<key>Hotkey</key>
 	<true/>
 	<key>HotkeyChar</key>
-	<integer>76</integer>
+	<integer>84</integer>
 	<key>HotkeyCode</key>
-	<integer>37</integer>
+	<integer>17</integer>
 	<key>HotkeyMigratedFromSingleToMulti</key>
 	<true/>
 	<key>HotkeyModifiers</key>
@@ -491,19 +491,28 @@
 	</data>
 	<key>NSTableView Supports v2 KeyBingingTable</key>
 	<true/>
+	<key>NSToolbar Configuration com.apple.NSColorPanel</key>
+	<dict>
+		<key>TB Is Shown</key>
+		<integer>1</integer>
+	</dict>
 	<key>NSWindow Frame SUUpdateAlert</key>
 	<string>267 220 620 392 0 0 1440 878 </string>
 	<key>NSWindow Frame SessionsPreferences</key>
 	<string>269 152 606 469 0 0 1440 878 </string>
 	<key>NSWindow Frame SharedPreferences</key>
-	<string>483 367 958 451 0 0 1440 878 </string>
+	<string>483 394 958 451 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 0</key>
-	<string>0 80 1440 798 0 0 1440 878 </string>
+	<string>0 301 825 577 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 1</key>
 	<string>176 301 825 577 0 0 1440 878 </string>
 	<key>NeverWarnAboutPossibleOverrides</key>
 	<true/>
 	<key>NeverWarnAboutPossibleOverrides_selection</key>
+	<integer>0</integer>
+	<key>NeverWarnAboutShortLivedSessions_0CF74499-74EC-4BED-A952-C05C8A48974C</key>
+	<true/>
+	<key>NeverWarnAboutShortLivedSessions_0CF74499-74EC-4BED-A952-C05C8A48974C_selection</key>
 	<integer>0</integer>
 	<key>New Bookmarks</key>
 	<array>
@@ -1972,12 +1981,14 @@
 			<string>/Users/davidnguyen/Documents/Workspace/Code</string>
 		</dict>
 	</array>
+	<key>NoSyncHaveUsedCopyMode</key>
+	<true/>
 	<key>NoSyncHaveWarnedAboutPasteConfirmationChange</key>
 	<true/>
 	<key>NoSyncInstallationId</key>
 	<string>D629A6D5-DAA9-4F6E-8FBC-A15D69580CD0</string>
 	<key>NoSyncLastTipTime</key>
-	<real>527924397.960666</real>
+	<real>528796421.66339397</real>
 	<key>NoSyncNeverRemindPrefsChangesLostForFile</key>
 	<true/>
 	<key>NoSyncNeverRemindPrefsChangesLostForFile_selection</key>
@@ -1986,6 +1997,8 @@
 	<true/>
 	<key>NoSyncTimeOfFirstLaunchOfVersionWithTip</key>
 	<real>527320382.01265103</real>
+	<key>NoSyncTipsDisabled</key>
+	<true/>
 	<key>NoSyncTipsToNotShow</key>
 	<array>
 		<string>000</string>
@@ -1993,6 +2006,14 @@
 		<string>0001</string>
 		<string>0002</string>
 		<string>0003</string>
+		<string>0004</string>
+		<string>0005</string>
+		<string>0006</string>
+		<string>0007</string>
+		<string>0008</string>
+		<string>0009</string>
+		<string>0010</string>
+		<string>0011</string>
 	</array>
 	<key>OnlyWhenMoreTabs</key>
 	<true/>
@@ -2068,6 +2089,8 @@
 	<key>SavePasteHistory</key>
 	<false/>
 	<key>ShowBookmarkName</key>
+	<false/>
+	<key>ShowFullScreenTabBar</key>
 	<false/>
 	<key>ShowPaneTitles</key>
 	<true/>

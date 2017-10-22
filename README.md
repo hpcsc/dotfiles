@@ -8,6 +8,12 @@ I use primarily `homebrew-bundle` and `stow` to manage all of my dotfiles
 brew bundle dump --force
 ```
 
+## To backup list of VSCode extensions
+
+```
+code --list-extensions >! vscode-extensions
+```
+
 ## For a new Mac setup
 
 1. Update macOS to the latest version with the App Store
@@ -21,3 +27,4 @@ brew bundle dump --force
 9. Open `iTerm2` preferences -> `General` -> `Load preferences from a custom folder`, points to `~/dotfiles/iterm`
     - Refresh iTerm2 preferences cache if needed: `defaults read com.googlecode.iterm2`
 10. Restart computer to finalize the process
+11. After installing VSCode and add `code` in `Path`, execute `./tools.sh` to install necessary VSCode extensions

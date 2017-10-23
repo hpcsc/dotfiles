@@ -26,8 +26,9 @@ code --list-extensions >! vscode-extensions
 8. Make ZSH the default shell environment: `chsh -s $(which zsh)`
 9. Open `iTerm2` preferences -> `General` -> `Load preferences from a custom folder`, points to `~/dotfiles/iterm`
     - Refresh iTerm2 preferences cache if needed: `defaults read com.googlecode.iterm2`
-10. Restart computer to finalize the process
-11. After installing VSCode and add `code` in `Path`, execute `./tools.sh` to install necessary VSCode extensions
+10. Execute `./install-gui-apps.sh` to install GUI applications
+11. Execute `./tools.sh` to install necessary VSCode extensions
+12. Restart computer to finalize the process
 
 **Note**
 ```

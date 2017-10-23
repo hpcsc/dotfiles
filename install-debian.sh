@@ -2,9 +2,14 @@
 
 echo "Setting up your Linux..."
 
+command -v sudo >/dev/null 2>&1 || {
+    echo "No sudo available, installing sudo"
+    apt-get update && apt-get install -y sudo
+}
+
 # in case add-apt-repository is missing
 sudo apt-get update
-sudo apt-get install -y software-properties-common python-software-properties
+sudo apt-get install -y software-properties-common python-software-properties apt-transport-https lsb-release curl
 
 # install additional tools
 sudo add-apt-repository ppa:aacebedo/fasd
@@ -12,6 +17,12 @@ sudo apt-get update
 
 # Install essential tools
 sudo apt-get install -y zsh fasd stow vim
+
+echo "=========================== .NET Core    ================================="
+code_name=$(lsb_release -c | cut -f2)
+sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-'$code_name'-prod '$code_name' main" > /etc/apt/sources.list.d/dotnetdev.list'
+sudo apt-get update
+sudo apt-get install -y dotnet-sdk-2.0.0
 
 echo "=========================== Prezto Setup ================================="
 

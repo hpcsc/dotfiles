@@ -28,3 +28,8 @@ code --list-extensions >! vscode-extensions
     - Refresh iTerm2 preferences cache if needed: `defaults read com.googlecode.iterm2`
 10. Restart computer to finalize the process
 11. After installing VSCode and add `code` in `Path`, execute `./tools.sh` to install necessary VSCode extensions
+
+**Note**
+```
+It's not possible to automate installation of .NET Core on MacOS yet (unless using Brew Cask which is unstable). Ubuntu script (install-debian.sh) already has .NET Core installed automatically
+```

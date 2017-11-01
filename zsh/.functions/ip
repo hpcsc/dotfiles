@@ -17,3 +17,5 @@ function ip() {
     fi
     execute $command
 }
+
+alias ipb='ip -c bridge0'

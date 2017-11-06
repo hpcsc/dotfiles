@@ -16,6 +16,10 @@ noremap <silent> <leader>wc :wincmd c<CR>
 noremap <leader>s :update<CR>
 nnoremap <leader><space> :nohlsearch<CR> "stop highlighting search
 nnoremap <leader>z za " toggle folding
+nnoremap <leader>ew :e <C-R>=expand("%:p:h") . "/" <CR>
+nnoremap <leader>es :sp <C-R>=expand("%:p:h") . "/" <CR>
+nnoremap <leader>ev :vsp <C-R>=expand("%:p:h") . "/" <CR>
+nnoremap <leader>et :tabe <C-R>=expand("%:p:h") . "/" <CR>
 inoremap jk <esc>
 
 " NERDTree Mappings {{{

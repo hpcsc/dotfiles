@@ -45,5 +45,7 @@
     "workbench.colorCustomizations": {
         "editor.selectionBackground": "#135564",
         "editor.selectionHighlightBackground": "#135564"
-    }
+    },
+    "workbench.panel.location": "bottom",
+    "window.title": "${activeEditorMedium}${separator}${rootName}"
 }

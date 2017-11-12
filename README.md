@@ -34,3 +34,7 @@ code --list-extensions >! vscode-extensions
 ```
 It's not possible to automate installation of .NET Core on MacOS yet (unless using Brew Cask which is unstable). Ubuntu script (install-debian.sh) already has .NET Core installed automatically
 ```
+
+## Checklist after setting up
+
+- Remap Capslock to Ctrl

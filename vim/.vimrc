@@ -37,7 +37,8 @@ call plug#begin('~/.vim/plugged')
 Plug 'scrooloose/nerdtree', { 'on':  'NERDTreeToggle' }
 Plug 'vim-airline/vim-airline'
 Plug 'ctrlpvim/ctrlp.vim'
-Plug 'easymotion/vim-easymotion'
+Plug 'tpope/vim-repeat'
+Plug 'tpope/vim-surround'
 Plug 'vim-syntastic/syntastic'
 
 call plug#end()

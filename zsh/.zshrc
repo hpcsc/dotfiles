@@ -34,5 +34,6 @@ done
 export GOPATH=$HOME/Documents/Workspace/Code/Go
 export CLICOLOR=1
 export TERM=xterm-256color
+export EDITOR=vim
 export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH:$HOME/.local/bin"
 export MANPATH="/usr/local/opt/coreutils/libexec/gnuman:$MANPATH"

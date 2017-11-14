@@ -19,6 +19,7 @@ set modelines=1 " enable modeline at the bottom of the file
 set hidden
 set backspace=indent,eol,start
 set number relativenumber " show relative line number by default
+set clipboard=unnamed " yank to clipboard
 augroup numbertoggle
     " set absolute line number in insert mode, hybrid line number otherwise
     autocmd!

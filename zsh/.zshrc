@@ -29,7 +29,7 @@ done
 if [ "$(uname 2> /dev/null)" = "Darwin" ]; then
     source /usr/local/share/antigen/antigen.zsh
 else
-    source /usr/share/zsh-antigen/antigen.zsh
+    source /usr/share/antigen/antigen.zsh
 fi
 antigen init ~/.antigenrc
 

@@ -16,7 +16,7 @@ sudo add-apt-repository ppa:aacebedo/fasd
 sudo apt-get update
 
 # Install essential tools
-sudo apt-get install -y zsh fasd stow vim zsh-antigen
+sudo apt-get install -y zsh fasd stow vim
 
 echo "=========================== .NET Core    ================================="
 code_name=$(lsb_release -c | cut -f2)
@@ -46,5 +46,8 @@ bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js re
 # ruby plugin for asdf
 asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
 
+echo "=============================  Antigen=====  ============================="
+mkdir /usr/share/antigen && curl -L git.io/antigen > /usr/share/antigen/antigen.zsh
+
 echo "=============================  Change Shell  ============================="
-chsh -s /bin/zsh
+chsh -s $(which zsh)

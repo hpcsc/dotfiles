@@ -26,15 +26,21 @@ for func_def in ~/.functions/*; do
     source "$func_def"
 done
 
-source /usr/local/share/antigen/antigen.zsh
+if [ "$(uname 2> /dev/null)" = "Darwin" ]; then
+    source /usr/local/share/antigen/antigen.zsh
+else
+    source /usr/share/zsh-antigen/antigen.zsh
+fi
 antigen init ~/.antigenrc
 
 source ~/.asdf/asdf.sh
 source ~/.asdf/completions/asdf.bash
 
-export GOPATH=$HOME/Documents/Workspace/Code/Go
 export CLICOLOR=1
 export TERM=xterm-256color
 export EDITOR=vim
 export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH:$HOME/.local/bin"
 export MANPATH="/usr/local/opt/coreutils/libexec/gnuman:$MANPATH"
+
+# machine-specific customization
+[[ -f ~/.local-zshrc ]] && source ~/.local-zshrc

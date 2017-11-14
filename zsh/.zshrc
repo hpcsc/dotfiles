@@ -26,7 +26,8 @@ for func_def in ~/.functions/*; do
     source "$func_def"
 done
 
-if [ "$(uname 2> /dev/null)" = "Darwin" ]; then
+OS=$(uname 2> /dev/null)
+if [ "$OS" = "Darwin" ]; then
     source /usr/local/share/antigen/antigen.zsh
 else
     source /usr/share/antigen/antigen.zsh
@@ -39,8 +40,9 @@ source ~/.asdf/completions/asdf.bash
 export CLICOLOR=1
 export TERM=xterm-256color
 export EDITOR=vim
-export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH:$HOME/.local/bin"
-export MANPATH="/usr/local/opt/coreutils/libexec/gnuman:$MANPATH"
+
+# OS-specific customization
+[[ -f ~/.zshrc-$OS ]] && source ~/.zshrc-$OS
 
 # machine-specific customization
 [[ -f ~/.local-zshrc ]] && source ~/.local-zshrc

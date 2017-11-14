@@ -21,11 +21,6 @@ brew update
 brew tap homebrew/bundle
 brew bundle
 
-echo "==============================  Prezto Setup ============================="
-
-# Setup Prezto
-git clone --recursive https://github.com/sorin-ionescu/prezto.git "${ZDOTDIR:-$HOME}/.zprezto"
-
 echo "================================  Stow ==================================="
 
 # create symlink at home directory for these packages
@@ -40,6 +35,19 @@ echo "=============================  VimPlug Update ============================
 
 # install VimPlug plugins
 vim +PlugInstall +qall
+
+echo "=============================  ASDF ======================================="
+
+git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.4.0
+source ~/.asdf/asdf.sh
+source ~/.asdf/completions/asdf.bash
+
+# nodejs plugin for asdf
+asdf plugin-add nodejs https://github.com/asdf-vm/asdf-nodejs.git
+bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js release team's OpenPGP keys to main keyring
+
+# ruby plugin for asdf
+asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
 
 echo "==========================  MacOS Preferences ============================"
 

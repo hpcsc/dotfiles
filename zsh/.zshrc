@@ -5,11 +5,6 @@
 #   Sorin Ionescu <sorin.ionescu@gmail.com>
 #
 
-# Source Prezto.
-if [[ -s "${ZDOTDIR:-$HOME}/.zprezto/init.zsh" ]]; then
-  source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
-fi
-
 # Customize to your needs...
 eval "$(fasd --init auto)"
 
@@ -30,6 +25,12 @@ source ~/.aliases
 for func_def in ~/.functions/*; do
     source "$func_def"
 done
+
+source /usr/local/share/antigen/antigen.zsh
+antigen init ~/.antigenrc
+
+source ~/.asdf/asdf.sh
+source ~/.asdf/completions/asdf.bash
 
 export GOPATH=$HOME/Documents/Workspace/Code/Go
 export CLICOLOR=1

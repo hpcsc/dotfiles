@@ -1,0 +1,2 @@
+antigen use prezto
+antigen apply

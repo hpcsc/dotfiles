@@ -33,3 +33,7 @@ function distro_name() {
     echo $(uname -s)
   fi
 }
+
+function brew_deps_tree() {
+  brew list | while read cask; do echo -n "\e[1;34m$cask ->\e[0m"; brew deps $cask | awk '{printf(" %s ", $0)}'; echo ""; done
+}

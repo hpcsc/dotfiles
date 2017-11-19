@@ -10,3 +10,5 @@
 	autoStash = true
 [diff]
 	mnemonicprefix = true
+[includeIf "gitdir:~/Workspace/Code/"]
+  	path = .gitconfig-work

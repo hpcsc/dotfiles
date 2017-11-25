@@ -49,6 +49,10 @@ bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js re
 # ruby plugin for asdf
 asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
 
+echo "=============================  Create working folders ============================="
+mkdir -p ~/Workspace/Code
+mkdir -p ~/Personal/Code
+
 echo "==========================  MacOS Preferences ============================"
 
 # Set macOS preferences

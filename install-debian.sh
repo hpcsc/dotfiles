@@ -27,6 +27,7 @@ sudo apt-get install -y dotnet-sdk-2.0.0
 echo "================================= Stow  =================================="
 stow zsh
 stow vim
+stow git
 
 echo "=============================  VimPlug Update ============================"
 
@@ -46,8 +47,12 @@ bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js re
 # ruby plugin for asdf
 asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
 
-echo "=============================  Antigen=====  ============================="
-mkdir /usr/share/antigen && curl -L git.io/antigen > /usr/share/antigen/antigen.zsh
+echo "=============================  Antigen=================================="
+sudo sh -c 'mkdir -p /usr/share/antigen && curl -L git.io/antigen > /usr/share/antigen/antigen.zsh'
+
+echo "=============================  Create working folders ============================="
+mkdir -p ~/Workspace/Code
+mkdir -p ~/Personal/Code
 
 echo "=============================  Change Shell  ============================="
 chsh -s $(which zsh)

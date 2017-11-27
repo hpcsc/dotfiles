@@ -39,7 +39,6 @@ source ~/.asdf/completions/asdf.bash
 
 export CLICOLOR=1
 export TERM=xterm-256color
-export EDITOR=vim
 
 # OS-specific customization
 [[ -f ~/.zshrc-$OS ]] && source ~/.zshrc-$OS

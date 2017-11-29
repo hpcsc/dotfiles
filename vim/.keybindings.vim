@@ -1,4 +1,4 @@
-let mapleader = ","
+let mapleader = "\<space>"
 
 " disable arrow navigation keys :(
 noremap <Up> <NOP>
@@ -14,7 +14,8 @@ noremap <silent> <leader>ws :wincmd s<CR>
 noremap <silent> <leader>wv :wincmd v<CR>
 noremap <silent> <leader>wc :wincmd c<CR>
 noremap <leader>s :update<CR>
-nnoremap <leader><space> :nohlsearch<CR> "stop highlighting search
+"stop highlighting search
+nnoremap <leader><space> :nohlsearch<CR> 
 nnoremap <leader>z za " toggle folding
 nnoremap <leader>ew :e <C-R>=expand("%:p:h") . "/" <CR>
 nnoremap <leader>es :sp <C-R>=expand("%:p:h") . "/" <CR>

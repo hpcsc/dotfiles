@@ -19,10 +19,22 @@ sudo apt-get update
 sudo apt-get install -y zsh fasd stow vim
 
 echo "=========================== .NET Core    ================================="
-code_name=$(lsb_release -c | cut -f2)
+code_name=$(lsb_release -cs)
 sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-'$code_name'-prod '$code_name' main" > /etc/apt/sources.list.d/dotnetdev.list'
 sudo apt-get update
-sudo apt-get install -y dotnet-sdk-2.0.0
+sudo apt-get install dotnet-sdk-2.0.3
+
+echo "=========================== Docker CE    ================================="
+sudo apt-get install ca-certificates
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository \
+   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) \
+   stable"
+sudo apt-get update
+sudo apt-get install docker-ce
+# add current user to docker group, to solve permission issue in ubuntu
+sudo usermod -a -G docker $USER
 
 echo "================================= Stow  =================================="
 stow zsh

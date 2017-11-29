@@ -45,7 +45,8 @@
     "workbench.colorCustomizations": {
         "editor.selectionBackground": "#135564",
         "editor.selectionHighlightBackground": "#135564",
-        "editor.lineHighlightBackground": "#383e4a"
+        "editor.lineHighlightBackground": "#383e4a",
+        "gitDecoration.ignoredResourceForeground": "#56585a"
     },
     "workbench.panel.location": "bottom",
     "window.title": "${activeEditorMedium}${separator}${rootName}"

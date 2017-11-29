@@ -70,5 +70,9 @@
         "key": "ctrl+shift+l",
         "command": "editor.emmet.action.wrapIndividualLinesWithAbbreviation",
         "when": "editorTextFocus"
+    },
+    {
+        "key": "ctrl+shift+n",
+        "command": "explorer.newFile"
     }
 ]

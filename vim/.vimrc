@@ -4,9 +4,9 @@
 
 set nocompatible " turn off vi compatibility
 set cursorline " highlight current line
-set tabstop=4 " number of visual spaces per TAB
-set softtabstop=4 " number of spaces in tab when editing
-set shiftwidth=4 " number of spaces when indenting with '>'
+set tabstop=2 " number of visual spaces per TAB
+set softtabstop=2 " number of spaces in tab when editing
+set shiftwidth=2 " number of spaces when indenting with '>'
 set expandtab " tabs are spaces
 set wildmenu " visual autocomplete for command menu
 set lazyredraw " redraw only when we need
@@ -22,7 +22,10 @@ set backspace=indent,eol,start
 set number relativenumber " show relative line number by default
 set clipboard=unnamed " yank to clipboard
 set showcmd " show incomplete command
-set ai " copy indent from current line when starting a new line
+set autoindent " copy indent from current line when starting a new line
+set smartindent " indent based on code syntax
+set nowrap " not wrap lines
+set linebreak " wrap lines at convenient points
 color slate
 
 augroup numbertoggle
@@ -46,6 +49,7 @@ Plug 'ctrlpvim/ctrlp.vim'
 Plug 'tpope/vim-repeat'
 Plug 'tpope/vim-surround'
 Plug 'vim-syntastic/syntastic'
+Plug 'tpope/vim-commentary'
 
 call plug#end()
 " }}}

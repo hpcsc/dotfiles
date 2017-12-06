@@ -36,7 +36,7 @@ sudo add-apt-repository \
 sudo apt-get update
 sudo apt-get install docker-ce
 # add current user to docker group, to solve permission issue in ubuntu
-sudo usermod -a -G docker $USER
+sudo usermod -a -G docker $(id -un)
 
 echo "================================= Stow  =================================="
 stow zsh

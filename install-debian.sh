@@ -61,10 +61,13 @@ bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js re
 # ruby plugin for asdf
 asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
 
-echo "=============================  Antigen=================================="
+# golang plugin for asdf
+asdf plugin-add golang https://github.com/kennyp/asdf-golang.git
+
+echo "=============================  Antigen ==================================="
 sudo sh -c 'mkdir -p /usr/share/antigen && curl -L git.io/antigen > /usr/share/antigen/antigen.zsh'
 
-echo "=============================  Create working folders ============================="
+echo "=============================  Create working folders ===================="
 mkdir -p ~/Workspace/Code
 mkdir -p ~/Personal/Code
 

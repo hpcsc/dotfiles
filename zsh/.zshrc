@@ -5,9 +5,6 @@
 #   Sorin Ionescu <sorin.ionescu@gmail.com>
 #
 
-# Customize to your needs...
-eval "$(fasd --init auto)"
-
 # changes hex 0x15 to delete everything to the left of the cursor, rather than the whole line
 bindkey "^U" backward-kill-line
 
@@ -26,6 +23,10 @@ for func_def in ~/.functions/*; do
     source "$func_def"
 done
 
+# =================== fasd  ===================
+eval "$(fasd --init auto)"
+
+# =================== antigen  ===================
 OS=$(uname 2> /dev/null)
 if [ "$OS" = "Darwin" ]; then
     source /usr/local/share/antigen/antigen.zsh
@@ -34,8 +35,14 @@ else
 fi
 antigen init ~/.antigenrc
 
+# =================== asdf =======================
 source ~/.asdf/asdf.sh
 source ~/.asdf/completions/asdf.bash
+
+# =================== fzf ========================
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+export FZF_DEFAULT_COMMAND='rg --files --hidden --follow --glob "!.git/*"'
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 
 export CLICOLOR=1
 export TERM=xterm-256color

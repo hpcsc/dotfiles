@@ -45,11 +45,14 @@ call plug#begin('~/.vim/plugged')
 
 Plug 'scrooloose/nerdtree', { 'on':  'NERDTreeToggle' }
 Plug 'vim-airline/vim-airline'
-Plug 'ctrlpvim/ctrlp.vim'
+Plug '/usr/local/opt/fzf'
+Plug 'junegunn/fzf.vim'
 Plug 'tpope/vim-repeat'
 Plug 'tpope/vim-surround'
 Plug 'vim-syntastic/syntastic'
 Plug 'tpope/vim-commentary'
+Plug 'mileszs/ack.vim'
+Plug 'tpope/vim-fugitive'
 
 call plug#end()
 " }}}
@@ -60,22 +63,19 @@ source ~/.keybindings.vim
 
 " }}}
 
-" CtrlP Settings {{{
-let g:ctrlp_match_window = 'bottom,order:ttb' " order matching files from top to bottom
-let g:ctrlp_switch_buffer = 0 " always open files in new buffers
-let g:ctrlp_working_path_mode = 0 " let us change working directory during Vim session
+" fzf Settings {{{
 
-" Use The Silver Searcher https://github.com/ggreer/the_silver_searcher
-if executable('ag')
-  " Use Ag over Grep
-  set grepprg=ag\ --nogroup\ --nocolor
-
-  " Use ag in CtrlP for listing files. Lightning fast and respects .gitignore
-  let g:ctrlp_user_command = 'ag %s -l --nocolor --hidden -g ""'
-
-  " ag is fast enough that CtrlP doesn't need to cache
-  let g:ctrlp_use_caching = 0
+if executable('rg')
+  " Use rg over Grep
+  set grepprg=rg\ --vimgrep
 endif
+
+" }}}
+
+" Ack.Vim Settings {{{
+
+let g:ackprg = 'rg --vimgrep --no-heading'
+
 " }}}
 
 " Syntastic Settings {{{
@@ -94,6 +94,7 @@ let g:syntastic_check_on_wq = 0
 
 " NERDTree Settings {{{
 
+let NERDTreeShowHidden=1
 autocmd StdinReadPre * let s:std_in=1
 autocmd VimEnter * if argc() == 1 && isdirectory(argv()[0]) && !exists("s:std_in") | exe 'NERDTree' argv()[0] | wincmd p | ene | endif
 

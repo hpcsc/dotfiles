@@ -35,6 +35,14 @@ code --list-extensions >! vscode-extensions
 It's not possible to automate installation of .NET Core on MacOS yet (unless using Brew Cask which is unstable). Ubuntu script (install-debian.sh) already has .NET Core installed automatically
 ```
 
+## Ubuntu setup
+1. Make sure `git` is installed
+2. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./install-debian.sh | tee install-log`
+3. Setup `ripgrep`
+4. Setup `fzf`
+    - Use `asdf` to install latest Go SDK
+    - `sudo git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf && ~/.fzf/install`
+
 ## Checklist after setting up
 
 - Remap Capslock to Ctrl

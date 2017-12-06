@@ -29,11 +29,10 @@ nnoremap <leader>n :NERDTreeToggle<cr>
 
 " }}}
 
-" CtrlP Mappings {{{
+" fzf  Mappings {{{
 
-nnoremap <c-b> :CtrlPBuffer<cr>
-nnoremap <c-p> :CtrlP .<cr>
-nnoremap <leader>fF :execute ":CtrlP " . expand('%:p:h')<cr>
+nnoremap <c-b> :Buffers<cr>
+nnoremap <c-t> :Files<cr>
 
 " }}}
 

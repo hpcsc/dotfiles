@@ -39,13 +39,32 @@ It's not possible to automate installation of .NET Core on MacOS yet (unless usi
 1. Make sure `git` is installed
 2. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./install-debian.sh | tee install-log`
 3. Setup `ripgrep`
-    - Download tar file: `curl -L https://github.com/BurntSushi/ripgrep/releases/download/0.7.1/ripgrep-0.7.1-x86_64-unknown-linux-musl.tar.gz -o ripgrep.tar.gz`
-    - Extract: `mkdir ripgrep && tar -xzf ripgrep.tar.gz -C ripgrep --strip-components 1`
-    - Move to `/usr/local/bin`: `mv ripgrep/rg /usr/local/bin && rm -rf ./ripgrep ripgrep.tar.gz`
+    - Download latest version from github (.e.g. for version 0.7.1)
+
+    ```
+    curl -L https://github.com/BurntSushi/ripgrep/releases/download/0.7.1/ripgrep-0.7.1-x86_64-unknown-linux-musl.tar.gz -o ripgrep.tar.gz
+    ```
+
+    - Extract
+
+    ```
+    mkdir ripgrep && tar -xzf ripgrep.tar.gz -C ripgrep --strip-components 1
+    ```
+
+    - Move to `/usr/local/bin`
+
+    ```
+    sudo mv ripgrep/rg /usr/local/bin && rm -rf ./ripgrep ripgrep.tar.gz
+    ```
 
 4. Setup `fzf`
     - Use `asdf` to install latest Go SDK, .e.g. `asdf install golang 1.9.2`
-    - `sudo git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf && ~/.fzf/install`
+    - Set asdf global Go version, .e.g. `asdf global golang 1.9.2`
+    - Install
+
+    ```
+    sudo git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf && ~/.fzf/install
+    ```
 
 ## Checklist after setting up
 

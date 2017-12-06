@@ -15,6 +15,7 @@ brew "ripgrep"
 brew "stow"
 brew "tig"
 brew "tmux"
+brew "tree"
 brew "vim", args: ["without-python"]
 brew "zsh"
 cask "minikube"

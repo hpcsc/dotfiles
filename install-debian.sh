@@ -16,7 +16,7 @@ sudo add-apt-repository ppa:aacebedo/fasd
 sudo apt-get update
 
 # Install essential tools
-sudo apt-get install -y zsh fasd stow vim
+sudo apt-get install -y zsh fasd stow vim tree
 
 echo "=========================== .NET Core    ================================="
 code_name=$(lsb_release -cs)

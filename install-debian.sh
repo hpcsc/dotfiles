@@ -45,11 +45,6 @@ stow zsh
 stow vim
 stow git
 
-echo "=============================  VimPlug Update ============================"
-
-# install VimPlug plugins
-vim +PlugInstall +qall
-
 echo "=============================  ASDF ======================================="
 
 ./scripts/common/install-asdf-plugins.sh
@@ -64,6 +59,11 @@ echo "=== Downloading ripgrep at $ripgrep_url"
 curl -L $ripgrep_url -o ripgrep.tar.gz
 mkdir ripgrep && tar -xzf ripgrep.tar.gz -C ripgrep --strip-components 1
 sudo mv ripgrep/rg /usr/local/bin && rm -rf ./ripgrep ripgrep.tar.gz
+
+echo "=============================  VimPlug Update ============================"
+
+# install VimPlug plugins, this must be after asdf setup since fzf plugin is dependent on Go SDK
+vim +PlugInstall +qall
 
 echo "=============================  Create working folders ===================="
 mkdir -p ~/Workspace/Code

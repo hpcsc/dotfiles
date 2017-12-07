@@ -23,8 +23,7 @@ code_name=$(lsb_release -cs)
 curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
 sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
 sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-'$code_name'-prod '$code_name' main" > /etc/apt/sources.list.d/dotnetdev.list'
-sudo apt-get update
-sudo apt-get install dotnet-sdk-2.0.3
+sudo apt-get update && apt-get install -y dotnet-sdk-2.0.3
 
 echo "=========================== Docker CE    ================================="
 sudo apt-get install ca-certificates
@@ -33,8 +32,7 @@ sudo add-apt-repository \
    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
    $(lsb_release -cs) \
    stable"
-sudo apt-get update
-sudo apt-get install docker-ce
+sudo apt-get update && apt-get install -y docker-ce
 # add current user to docker group, to solve permission issue in ubuntu
 sudo usermod -a -G docker $(id -un)
 

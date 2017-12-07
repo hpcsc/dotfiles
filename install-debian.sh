@@ -9,7 +9,7 @@ command -v sudo >/dev/null 2>&1 || {
 
 # in case add-apt-repository is missing
 sudo apt-get update
-sudo apt-get install -y software-properties-common python-software-properties apt-transport-https lsb-release curl
+sudo apt-get install -y software-properties-common python-software-properties apt-transport-https lsb-release curl build-essential
 
 # install additional tools
 sudo add-apt-repository ppa:aacebedo/fasd

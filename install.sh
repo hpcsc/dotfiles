@@ -39,8 +39,6 @@ vim +PlugInstall +qall
 echo "=============================  ASDF ======================================="
 
 git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.4.0
-source ~/.asdf/asdf.sh
-source ~/.asdf/completions/asdf.bash
 
 ./install-asdf-plugins.sh
 

@@ -42,15 +42,7 @@ git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.4.0
 source ~/.asdf/asdf.sh
 source ~/.asdf/completions/asdf.bash
 
-# nodejs plugin for asdf
-asdf plugin-add nodejs https://github.com/asdf-vm/asdf-nodejs.git
-bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js release team's OpenPGP keys to main keyring
-
-# ruby plugin for asdf
-asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
-
-# golang plugin for asdf
-asdf plugin-add golang https://github.com/kennyp/asdf-golang.git
+./install-asdf-plugins.sh
 
 echo "=============================  Create working folders ============================="
 mkdir -p ~/Workspace/Code

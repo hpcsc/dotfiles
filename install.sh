@@ -40,7 +40,7 @@ echo "=============================  ASDF ======================================
 
 git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.4.0
 
-./install-asdf-plugins.sh
+./scripts/common/install-asdf-plugins.sh
 
 echo "=============================  Create working folders ============================="
 mkdir -p ~/Workspace/Code
@@ -50,4 +50,4 @@ echo "==========================  MacOS Preferences ============================
 
 # Set macOS preferences
 # We will run this last because this will reload the shell
-source .macos
+source ./scripts/macos/.macos

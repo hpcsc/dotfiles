@@ -44,11 +44,9 @@ root: <%= @args[0] %>
 
 windows:
   - editor:
-      layout: e74e,141x33,0,0[141x23,0,0,0,141x9,0,24,1]
+      # layout: e74e,141x33,0,0[141x23,0,0,0,141x9,0,24,1]
       # Synchronize all panes of this window, can be enabled before or after the pane commands run.
       # 'before' represents legacy functionality and will be deprecated in a future release, in favour of 'after'
       # synchronize: after
       panes:
-        - vim
-        - term:
-          -
+        - tmux split-window -p 30; vim +NERDTree

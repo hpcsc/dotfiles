@@ -31,3 +31,6 @@ _git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"
 alias gloc='git log --topo-order --graph --decorate --pretty=format:"${_git_log_oneline_compact_format}"'
 
 alias itree='tree -a -L 2 -I "$(git check-ignore {.,}* | tr "\\n" "|").git"'
+
+alias muxe='mux start editor'
+alias muxwd='muxe $(pwd)'

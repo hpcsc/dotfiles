@@ -33,7 +33,7 @@ def stow_packages(packages)
     end
 end
 
-PACKAGES = ['git', 'vim', 'zsh', 'Applications']
+PACKAGES = ['git', 'vim', 'zsh', 'Applications', 'tmux']
 backup_folder = File.expand_path('~/dotfiles_backup')
 FileUtils.mkdir_p backup_folder
 backup_packages(PACKAGES, File.expand_path('./'), File.expand_path('~'), backup_folder)

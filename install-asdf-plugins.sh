@@ -12,6 +12,9 @@ function install() {
     fi
 }
 
+source ~/.asdf/asdf.sh
+source ~/.asdf/completions/asdf.bash
+
 # nodejs plugin for asdf
 asdf plugin-add nodejs https://github.com/asdf-vm/asdf-nodejs.git
 bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js release team's OpenPGP keys to main keyring

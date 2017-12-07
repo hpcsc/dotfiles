@@ -26,19 +26,20 @@ echo "================================  Stow ===================================
 # create symlink at home directory for these packages
 ruby ./backup_and_stow.rb
 
+echo "================================  iterm ==================================="
 # Specify the preferences directory
 defaults write com.googlecode.iterm2.plist PrefsCustomFolder -string "~/dotfiles/iterm"
 # Tell iTerm2 to use the custom preferences in the directory
 defaults write com.googlecode.iterm2.plist LoadPrefsFromCustomFolder -bool true
 
-echo "=============================  VimPlug Update ============================"
-
-# install VimPlug plugins
-vim +PlugInstall +qall
-
 echo "=============================  ASDF ======================================="
 
 ./scripts/common/install-asdf-plugins.sh
+
+echo "=============================  VimPlug Update ============================"
+
+# install VimPlug plugins, this must be after asdf setup since fzf plugin is dependent on Go SDK
+vim +PlugInstall +qall
 
 echo "=============================  Create working folders ============================="
 mkdir -p ~/Workspace/Code

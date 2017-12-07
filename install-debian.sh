@@ -55,6 +55,14 @@ git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.4.0
 echo "=============================  Antigen ==================================="
 sudo sh -c 'mkdir -p /usr/share/antigen && curl -L git.io/antigen > /usr/share/antigen/antigen.zsh'
 
+echo "=============================  RipGrep ==================================="
+curl -L https://github.com/BurntSushi/ripgrep/releases/download/0.7.1/ripgrep-0.7.1-x86_64-unknown-linux-musl.tar.gz -o ripgrep.tar.gz
+mkdir ripgrep && tar -xzf ripgrep.tar.gz -C ripgrep --strip-components 1
+sudo mv ripgrep/rg /usr/local/bin && rm -rf ./ripgrep ripgrep.tar.gz
+
+echo "=============================  fzf ==================================="
+sudo git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf && ~/.fzf/install
+
 echo "=============================  Create working folders ===================="
 mkdir -p ~/Workspace/Code
 mkdir -p ~/Personal/Code

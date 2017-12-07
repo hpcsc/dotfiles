@@ -50,7 +50,7 @@ echo "=============================  ASDF ======================================
 
 git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.4.0
 
-./install-asdf-plugins.sh
+./scripts/common/install-asdf-plugins.sh
 
 echo "=============================  Antigen ==================================="
 sudo sh -c 'mkdir -p /usr/share/antigen && curl -L git.io/antigen > /usr/share/antigen/antigen.zsh'

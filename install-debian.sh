@@ -16,7 +16,7 @@ sudo add-apt-repository ppa:aacebedo/fasd
 sudo apt-get update
 
 # Install essential tools
-sudo apt-get install -y zsh fasd stow vim tree
+sudo apt-get install -y zsh fasd stow vim tree jq
 
 echo "=========================== .NET Core    ================================="
 code_name=$(lsb_release -cs)
@@ -56,7 +56,10 @@ echo "=============================  Antigen ===================================
 sudo sh -c 'mkdir -p /usr/share/antigen && curl -L git.io/antigen > /usr/share/antigen/antigen.zsh'
 
 echo "=============================  RipGrep ==================================="
-curl -L https://github.com/BurntSushi/ripgrep/releases/download/0.7.1/ripgrep-0.7.1-x86_64-unknown-linux-musl.tar.gz -o ripgrep.tar.gz
+ripgrep_version=$(curl https://api.github.com/repos/BurntSushi/ripgrep/releases/latest | jq -r '.tag_name')
+ripgrep_url="https://github.com/BurntSushi/ripgrep/releases/download/$ripgrep_version/ripgrep-$ripgrep_version-x86_64-unknown-linux-musl.tar.gz"
+echo "=== Downloading ripgrep at $ripgrep_url"
+curl -L $ripgrep_url -o ripgrep.tar.gz
 mkdir ripgrep && tar -xzf ripgrep.tar.gz -C ripgrep --strip-components 1
 sudo mv ripgrep/rg /usr/local/bin && rm -rf ./ripgrep ripgrep.tar.gz
 

@@ -38,8 +38,6 @@ vim +PlugInstall +qall
 
 echo "=============================  ASDF ======================================="
 
-git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.4.0
-
 ./scripts/common/install-asdf-plugins.sh
 
 echo "=============================  Create working folders ============================="

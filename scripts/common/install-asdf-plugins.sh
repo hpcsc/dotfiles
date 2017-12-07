@@ -12,6 +12,10 @@ function install() {
     fi
 }
 
+asdf_version=$(curl https://api.github.com/repos/asdf-vm/asdf/tags | jq -r '.[0].name')
+echo "=== Checking out asdf at tag $asdf_version"
+git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch $asdf_version
+
 source ~/.asdf/asdf.sh
 source ~/.asdf/completions/asdf.bash
 

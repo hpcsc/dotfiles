@@ -51,9 +51,6 @@ echo "=============================  VimPlug Update ============================
 vim +PlugInstall +qall
 
 echo "=============================  ASDF ======================================="
-asdf_version=$(curl https://api.github.com/repos/asdf-vm/asdf/tags | jq -r '.[0].name')
-echo "=== Checking out asdf at tag $asdf_version"
-git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch $asdf_version
 
 ./scripts/common/install-asdf-plugins.sh
 
@@ -67,9 +64,6 @@ echo "=== Downloading ripgrep at $ripgrep_url"
 curl -L $ripgrep_url -o ripgrep.tar.gz
 mkdir ripgrep && tar -xzf ripgrep.tar.gz -C ripgrep --strip-components 1
 sudo mv ripgrep/rg /usr/local/bin && rm -rf ./ripgrep ripgrep.tar.gz
-
-echo "=============================  fzf ==================================="
-sudo git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf && ~/.fzf/install
 
 echo "=============================  Create working folders ===================="
 mkdir -p ~/Workspace/Code

@@ -12,7 +12,7 @@ sudo apt-get update
 sudo apt-get install -y software-properties-common python-software-properties apt-transport-https lsb-release curl build-essential
 
 # install additional tools
-sudo add-apt-repository ppa:aacebedo/fasd
+sudo add-apt-repository ppa:aacebedo/fasd -y
 sudo apt-get update
 
 # Install essential tools

@@ -22,6 +22,11 @@ export VISUAL='vim'
 export PAGER='less'
 
 #
+# Shell
+#
+export SHELL=$(which zsh)
+
+#
 # Language
 #
 

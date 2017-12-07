@@ -41,6 +41,9 @@ echo "=============================  VimPlug Update ============================
 # install VimPlug plugins, this must be after asdf setup since fzf plugin is dependent on Go SDK
 vim +PlugInstall +qall
 
+echo "=============================  tmux ======================================"
+./scripts/common/setup-tmux.sh
+
 echo "=============================  Create working folders ============================="
 mkdir -p ~/Workspace/Code
 mkdir -p ~/Personal/Code

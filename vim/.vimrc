@@ -53,6 +53,7 @@ Plug 'vim-syntastic/syntastic'
 Plug 'tpope/vim-commentary'
 Plug 'mileszs/ack.vim'
 Plug 'tpope/vim-fugitive'
+Plug 'christoomey/vim-tmux-navigator'
 
 call plug#end()
 " }}}

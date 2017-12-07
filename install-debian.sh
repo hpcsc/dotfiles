@@ -9,14 +9,14 @@ command -v sudo >/dev/null 2>&1 || {
 
 # in case add-apt-repository is missing
 sudo apt-get update
-sudo apt-get install -y software-properties-common python-software-properties apt-transport-https lsb-release curl build-essential
+sudo apt-get install -y software-properties-common python-software-properties apt-transport-https lsb-release curl build-essential zlib1g-dev libssl-dev
 
 # install additional tools
 sudo add-apt-repository ppa:aacebedo/fasd -y
 sudo apt-get update
 
 # Install essential tools
-sudo apt-get install -y zsh fasd stow vim tree jq
+sudo apt-get install -y zsh fasd stow vim tree jq tmux
 
 echo "=========================== .NET Core    ================================="
 code_name=$(lsb_release -cs)
@@ -44,6 +44,7 @@ echo "================================= Stow  ==================================
 stow zsh
 stow vim
 stow git
+stow tmux
 
 echo "=============================  ASDF ======================================="
 
@@ -64,6 +65,9 @@ echo "=============================  VimPlug Update ============================
 
 # install VimPlug plugins, this must be after asdf setup since fzf plugin is dependent on Go SDK
 vim +PlugInstall +qall
+
+echo "=============================  tmux ======================================"
+./scripts/common/setup-tmux.sh
 
 echo "=============================  Create working folders ===================="
 mkdir -p ~/Workspace/Code

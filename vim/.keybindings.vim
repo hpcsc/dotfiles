@@ -28,6 +28,9 @@ nnoremap <silent> <leader>> :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
 nnoremap <silent> <leader>= :winc =<CR>
 inoremap jk <esc>
 
+" Allow saving of files as sudo when I forgot to start vim using sudo.
+cnoremap w!! w !sudo tee > /dev/null %
+
 " NERDTree Mappings {{{
 
 nnoremap <leader>n :NERDTreeToggle<cr>

@@ -27,6 +27,7 @@ set smartindent " indent based on code syntax
 set nowrap " not wrap lines
 set linebreak " wrap lines at convenient points
 set foldmethod=syntax " fold based on filetype syntax
+set encoding=utf-8 " to fix NERDTree rendering issue in ubuntu
 color slate
 
 augroup numbertoggle

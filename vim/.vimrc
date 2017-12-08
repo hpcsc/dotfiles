@@ -26,6 +26,7 @@ set autoindent " copy indent from current line when starting a new line
 set smartindent " indent based on code syntax
 set nowrap " not wrap lines
 set linebreak " wrap lines at convenient points
+set foldmethod=syntax " fold based on filetype syntax
 color slate
 
 augroup numbertoggle

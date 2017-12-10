@@ -42,3 +42,4 @@ It's not possible to automate installation of .NET Core on MacOS yet (unless usi
 ## Checklist after setting up
 
 - Remap Capslock to Ctrl
+- Import Jetbrains IDEs (Rider, Intellij) settings from github: https://www.jetbrains.com/help/idea/sharing-your-ide-settings.html#settings-repository

@@ -36,7 +36,10 @@ augroup numbertoggle
     autocmd BufEnter,FocusGained,InsertLeave * set relativenumber
     autocmd BufLeave,FocusLost,InsertEnter * set norelativenumber
 augroup end
+
 filetype plugin indent on " load filetype-specific indent files at ~/.vim/indent/*.vim
+autocmd FileType cs setlocal tabstop=4 shiftwidth=4 softtabstop=4 expandtab " use 4 spaces indentation for C# files
+
 syntax on
 
 

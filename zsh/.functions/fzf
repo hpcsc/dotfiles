@@ -1,0 +1,4 @@
+zf() {
+  local dir
+  dir="$(fasd -Rdl "$1" | fzf -1 -0 --reverse --height 30% --no-sort +m)" && cd "${dir}" || return 1
+}

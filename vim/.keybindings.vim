@@ -26,7 +26,7 @@ nnoremap <silent> <leader>] :exe "resize " . (winheight(0) * 2/3)<CR>
 nnoremap <silent> <leader>< :exe "vertical resize " . (winwidth(0) * 2/3)<CR>
 nnoremap <silent> <leader>> :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
 nnoremap <silent> <leader>= :winc =<CR>
-nnoremap <silent> <C-o> o<Esc>
+nnoremap <silent> <C-y> o<Esc>
 inoremap jk <esc>
 
 " Allow saving of files as sudo when I forgot to start vim using sudo.

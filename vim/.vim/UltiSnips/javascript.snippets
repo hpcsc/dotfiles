@@ -1,0 +1,39 @@
+snippet mdes "mocha describe block"
+describe('${1:describe}', () => {
+	$2
+});
+endsnippet
+
+snippet mcon "mocha context block"
+context('when ${1:description}', () => {
+	$2
+});
+endsnippet
+
+snippet mit "mocha it block"
+it('should ${1:description}', () => {
+	$2
+});
+endsnippet
+
+snippet mbe "mocha before each"
+beforeEach(() => {
+	$1
+});
+endsnippet
+
+snippet mae "mocha after each"
+afterEach(() => {
+	$1
+});
+endsnippet
+
+snippet lambda "ES6 lambda"
+(${1:parameters}) => {
+	$2
+});
+endsnippet
+
+snippet clog "console log"
+console.log('$1', $2);
+endsnippet

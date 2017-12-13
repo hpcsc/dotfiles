@@ -16,7 +16,7 @@ brew "stow"
 brew "tig"
 brew "tmux"
 brew "tree"
-brew "vim", args: ["without-python"]
+brew "vim", args: ["with-custom-python"]
 brew "zsh"
 cask "minikube"
 cask "spectacle"

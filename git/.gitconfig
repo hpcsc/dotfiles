@@ -12,3 +12,5 @@
 	mnemonicprefix = true
 [includeIf "gitdir:~/Workspace/Code/"]
   	path = .gitconfig-work
+[merge]
+	conflictstyle = diff3

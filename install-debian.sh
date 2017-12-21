@@ -36,7 +36,7 @@ sudo add-apt-repository \
    "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
    $(lsb_release -cs) \
    stable"
-sudo apt-get update && apt-get install -y docker-ce
+sudo sh -c 'apt-get update && apt-get install -y docker-ce'
 # add current user to docker group, to solve permission issue in ubuntu
 sudo usermod -a -G docker $(id -un)
 

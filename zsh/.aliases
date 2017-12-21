@@ -22,6 +22,9 @@ alias dce='docker-compose exec'
 alias dcb='docker-compose build'
 alias dcrm='docker-compose rm -f'
 
+alias k='kubectl'
+alias mk='minikube'
+
 alias cssh="pbcopy < $HOME/.ssh/id_rsa.pub"
 alias rrc="source $HOME/.zshrc"
 

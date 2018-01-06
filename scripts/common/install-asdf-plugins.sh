@@ -12,22 +12,30 @@ function install() {
     fi
 }
 
-asdf_version=$(curl https://api.github.com/repos/asdf-vm/asdf/tags | jq -r '.[0].name')
-echo "=== Checking out asdf at tag $asdf_version"
-git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch $asdf_version
+command -v asdf >/dev/null 2>&1 || {
+  asdf_version=$(curl https://api.github.com/repos/asdf-vm/asdf/tags | jq -r '.[0].name')
+  echo "=== Checking out asdf at tag $asdf_version"
+  git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch $asdf_version
+}
 
 source ~/.asdf/asdf.sh
 source ~/.asdf/completions/asdf.bash
 
 # nodejs plugin for asdf
-asdf plugin-add nodejs https://github.com/asdf-vm/asdf-nodejs.git
-bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js release team's OpenPGP keys to main keyring
-install 'nodejs'
+asdf plugin-list | grep nodejs >/dev/null 2>&1 || {
+  asdf plugin-add nodejs https://github.com/asdf-vm/asdf-nodejs.git
+  bash ~/.asdf/plugins/nodejs/bin/import-release-team-keyring # Imports Node.js release team's OpenPGP keys to main keyring
+  install 'nodejs'
+}
 
 # ruby plugin for asdf
-asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
-install 'ruby'
+asdf plugin-list | grep ruby >/dev/null 2>&1 || {
+  asdf plugin-add ruby https://github.com/asdf-vm/asdf-ruby.git
+  install 'ruby'
+}
 
 # golang plugin for asdf
-asdf plugin-add golang https://github.com/kennyp/asdf-golang.git
-install 'golang'
+asdf plugin-list | grep golang >/dev/null 2>&1 || {
+  asdf plugin-add golang https://github.com/kennyp/asdf-golang.git
+  install 'golang'
+}

@@ -1,0 +1,78 @@
+{
+/*
+	// Place your snippets for TypeScript here. Each snippet is defined under a snippet name and has a prefix, body and
+	// description. The prefix is what is used to trigger the snippet and the body will be expanded and inserted. Possible variables are:
+	// $1, $2 for tab stops, $0 for the final cursor position, and ${1:label}, ${2:another} for placeholders. Placeholders with the
+	// same ids are connected.
+	// Example:
+	"Print to console": {
+		"prefix": "log",
+		"body": [
+			"console.log('$1');",
+			"$2"
+		],
+		"description": "Log output to console"
+	}
+*/
+	"Jest Describe": {
+		"prefix": "jdescribe",
+		"body": [
+				"describe(\"${1:describe}\", () => {",
+				"\t$2",
+				"});"
+		],
+		"description": "Jest Describe"
+	},
+	"Jest Context": {
+		"prefix": "jcontext",
+		"body": [
+				"context(\"when ${1:description}\", () => {",
+				"\t$2",
+				"});"
+		],
+		"description": "Jest Context"
+	},
+	"Jest It": {
+		"prefix": "jit",
+		"body": [
+				"it(\"should ${1:description}\", () => {",
+				"\t$2",
+				"});"
+		],
+		"description": "Jest It"
+	},
+	"Jest Before Each": {
+		"prefix": "jbe",
+		"body": [
+			"beforeEach(() => {",
+			"\t$1",
+			"});"
+		],
+		"description": "Jest Before Each"
+	},
+	"Jest After Each": {
+		"prefix": "jae",
+		"body": [
+			"afterEach(() => {",
+			"\t$1",
+			"});"
+		],
+		"description": "Jest After Each"
+	},
+	"ES6 Lambda": {
+		"prefix": "lambda",
+		"body": [
+				"(${1:parameters}) => {",
+				"\t$2",
+				"}"
+		],
+		"description": "ES6 Lambda"
+	},
+	"Console Log": {
+		"prefix": "clog",
+		"body": [
+				"console.log(\"$1\", $2);"
+		],
+		"description": "Console Log"
+	}
+}

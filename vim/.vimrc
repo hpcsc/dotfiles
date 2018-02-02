@@ -45,6 +45,11 @@ autocmd FileType cs setlocal tabstop=4 shiftwidth=4 softtabstop=4 expandtab " us
 
 syntax on
 
+" change highlight background color when using vimdiff as git difftool
+highlight DiffChange   cterm=bold   gui=none    ctermfg=NONE          ctermbg=60
+highlight DiffText   cterm=bold   gui=none    ctermfg=NONE          ctermbg=52
+highlight DiffDelete   cterm=bold   gui=none    ctermfg=NONE          ctermbg=89
+highlight DiffAdd   cterm=bold    gui=none    ctermfg=NONE          ctermbg=49
 
 " }}}
 

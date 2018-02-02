@@ -27,6 +27,8 @@ alias dcrm='docker-compose rm -f'
 alias k='kubectl'
 alias mk='minikube'
 
+alias gdt='git difftool'
+
 alias cssh="pbcopy < $HOME/.ssh/id_rsa.pub"
 alias rrc="source $HOME/.zshrc"
 

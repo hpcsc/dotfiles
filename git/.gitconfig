@@ -11,7 +11,10 @@
 	autoStash = true
 [diff]
 	mnemonicprefix = true
+	tool = vimdiff
 [includeIf "gitdir:~/Workspace/Code/"]
   	path = .gitconfig-work
 [merge]
 	conflictstyle = diff3
+[difftool]
+	prompt = false

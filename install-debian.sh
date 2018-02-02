@@ -9,7 +9,9 @@ command -v sudo >/dev/null 2>&1 || {
 
 # in case add-apt-repository is missing
 sudo apt-get update
-sudo apt-get install -y software-properties-common python-software-properties apt-transport-https lsb-release curl build-essential zlib1g-dev libssl-dev
+for i in software-properties-common python-software-properties apt-transport-https lsb-release curl build-essential zlib1g-dev libssl-dev; do
+  sudo apt-get install -y $i
+done
 
 # install additional tools
 command -v fasd >/dev/null 2>&1 || {
@@ -19,7 +21,9 @@ command -v fasd >/dev/null 2>&1 || {
 }
 
 # Install essential tools
-sudo apt-get install -y zsh fasd stow vim tree jq tmux
+for i in zsh fasd st w vim tree jq tmux; do
+  sudo apt-get install -y $i
+done
 
 echo "=========================== .NET Core    ================================="
 command -v dotnet >/dev/null 2>&1 || {

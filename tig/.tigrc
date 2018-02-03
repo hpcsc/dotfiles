@@ -1,0 +1,3 @@
+set vertical-split = false
+bind generic D !git difftool --tool=vimdiff --no-prompt --trust-exit-code %(commit)^!
+

@@ -37,3 +37,25 @@ function distro_name() {
 function brew_deps_tree() {
   brew list | while read cask; do echo -n "\e[1;34m$cask ->\e[0m"; brew deps $cask | awk '{printf(" %s ", $0)}'; echo ""; done
 }
+
+function echo_red() {
+  local RED='\033[0;31m'
+  echo_with_color "${RED}" $@
+}
+
+function echo_green() {
+  local GREEN='\033[0;32m'
+  echo_with_color "${GREEN}" $@
+}
+
+function echo_yellow() {
+  local YELLOW='\033[1;33m'
+  echo_with_color "${YELLOW}" $@
+}
+
+function echo_with_color() {
+  local COLOR=$1
+  shift
+  local NC='\033[0m'
+  echo -e "${COLOR}$@${NC}"
+}

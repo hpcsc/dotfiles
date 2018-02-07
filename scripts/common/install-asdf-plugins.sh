@@ -1,11 +1,13 @@
 #!/bin/bash
 
+source ../../zsh/.functions/misc
+
 function install() {
     plugin=$1
 
-    echo "=== Availble $plugin version for asdf:"
+    echo_green "=== Availble $plugin version for asdf:"
     asdf list-all $plugin
-    read -p "=== Choose version to install:" install_version
+    read -p "=== Choose version to install (leave empty to skip):" install_version
     if [ "$install_version" != "" ]; then
         asdf install $plugin $install_version
         asdf global $plugin $install_version
@@ -14,8 +16,12 @@ function install() {
 
 command -v asdf >/dev/null 2>&1 || {
   asdf_version=$(curl https://api.github.com/repos/asdf-vm/asdf/tags | jq -r '.[0].name')
-  echo "=== Checking out asdf at tag $asdf_version"
+  echo_yellow "=== Checking out asdf at tag $asdf_version"
   git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch $asdf_version
+  command -v asdf >/dev/null 2>&1 || {
+    echo_red "=== Failed to install asdf"
+    exit 1
+  }
 }
 
 source ~/.asdf/asdf.sh

@@ -21,7 +21,7 @@ command -v fasd >/dev/null 2>&1 || {
 }
 
 # Install essential tools
-for i in zsh fasd st w vim tree jq tmux; do
+for i in zsh fasd stow vim tree jq tmux; do
   sudo apt-get install -y $i
 done
 

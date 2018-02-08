@@ -52,4 +52,4 @@ echo "==========================  MacOS Preferences ============================
 
 # Set macOS preferences
 # We will run this last because this will reload the shell
-source ./scripts/macos/.macos
+source ./scripts/macos/macos-settings.sh

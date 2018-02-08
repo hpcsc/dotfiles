@@ -10,16 +10,6 @@
     "editor.renderIndentGuides": true,
     "editor.renderWhitespace": "boundary",
     "files.trimTrailingWhitespace": true,
-    "files.associations": {
-        "Vagrantfile": "ruby"
-    },
-    "ruby.lint": {
-        "rubocop": {
-            "lint": true,
-            "rails": true
-        }
-    },
-    "ruby.rctComplete.commandPath": "/Users/davidnguyen/.rvm/gems/ruby-2.3.0/bin/rct-complete",
     "window.zoomLevel": 1,
     "files.insertFinalNewline": true,
     "vsicons.dontShowNewVersionMessage": true,
@@ -29,13 +19,6 @@
     "editor.dragAndDrop": true,
     "vsicons.projectDetection.disableDetect": true,
     "window.nativeTabs": true,
-    "files.exclude": {
-        "**/.git": true,
-        "**/.svn": true,
-        "**/.hg": true,
-        "**/CVS": true,
-        "**/.DS_Store": true
-    },
     "editor.showFoldingControls": "always",
     "editor.minimap.enabled": false,
     "window.restoreWindows": "none",
@@ -48,6 +31,6 @@
         "editor.lineHighlightBackground": "#383e4a",
         "gitDecoration.ignoredResourceForeground": "#56585a"
     },
-    "workbench.panel.location": "bottom",
-    "window.title": "${activeEditorMedium}${separator}${rootName}"
+    "window.title": "${activeEditorMedium}${separator}${rootName}",
+    "workbench.list.openMode": "doubleClick"
 }

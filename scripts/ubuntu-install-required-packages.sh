@@ -2,7 +2,7 @@
 
 set -e
 
-is_ubuntu || exit
+is_ubuntu || exit 0
 
 # in case add-apt-repository is missing
 sudo apt-get update

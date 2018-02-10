@@ -2,7 +2,7 @@
 
 set -e
 
-is_ubuntu || exit
+is_ubuntu || exit 0
 
 # Install essential tools
 for i in zsh stow vim tree jq tmux; do

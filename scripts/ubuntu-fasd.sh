@@ -2,7 +2,7 @@
 
 set -e
 
-is_ubuntu || exit
+is_ubuntu || exit 0
 
 # install additional tools
 command -v fasd >/dev/null 2>&1 || {

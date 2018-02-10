@@ -2,7 +2,7 @@
 
 set -e
 
-is_macos || exit
+is_macos || exit 0
 
 command -v brew >/dev/null 2>&1 || {
   echo_yellow "=== Installing homebrew"

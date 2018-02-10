@@ -2,7 +2,7 @@
 
 set -e
 
-is_ubuntu || exit
+is_ubuntu || exit 0
 
 command -v docker >/dev/null 2>&1 || {
   echo_yellow "=========================== Docker CE    ================================="

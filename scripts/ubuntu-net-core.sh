@@ -2,7 +2,7 @@
 
 set -e
 
-is_ubuntu || exit
+is_ubuntu || exit 0
 
 command -v dotnet >/dev/null 2>&1 || {
   echo_yellow "=========================== .NET Core    ================================="

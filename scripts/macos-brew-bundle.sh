@@ -1,8 +1,8 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
-is_macos || exit
+is_macos || exit 0
 
 echo_yellow "==============================  Brew Bundle =============================="
 

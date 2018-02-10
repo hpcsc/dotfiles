@@ -1,6 +1,8 @@
 #!/bin/bash
 
-source ../../zsh/.functions/misc
+set -e
+
+echo_yellow "=============================  ASDF ======================================="
 
 function install() {
     plugin=$1
@@ -17,8 +19,7 @@ function install() {
 command -v asdf >/dev/null 2>&1 || {
   asdf_version=$(curl https://api.github.com/repos/asdf-vm/asdf/tags | jq -r '.[0].name')
   echo_yellow "=== Checking out asdf at tag $asdf_version"
-  git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch $asdf_version
-  command -v asdf >/dev/null 2>&1 || {
+  git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch $asdf_version || {
     echo_red "=== Failed to install asdf"
     exit 1
   }

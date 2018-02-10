@@ -19,12 +19,9 @@ def backup(source_folder, target_folder, backup_folder)
     end
 end
 
-def backup_packages(packages, source_folder, target_folder, backup_folder)
-    FileUtils.mkdir_p packages.map { |f| File.join(backup_folder, f) }
-
-    packages.each do |f|
-        backup(File.join(source_folder, f), target_folder, File.join(backup_folder, f))
-    end
+def backup_packages(package_name, source_folder, target_folder, backup_folder)
+    FileUtils.mkdir_p File.join(backup_folder, package_name)
+    backup(File.join(source_folder, package_name), target_folder, File.join(backup_folder, package_name))
 end
 
 def stow_packages(packages)
@@ -33,8 +30,6 @@ def stow_packages(packages)
     end
 end
 
-PACKAGES = ['git', 'vim', 'zsh', 'Applications', 'tmux']
-backup_folder = File.expand_path('~/dotfiles_backup')
-FileUtils.mkdir_p backup_folder
-backup_packages(PACKAGES, File.expand_path('./'), File.expand_path('~'), backup_folder)
-stow_packages(PACKAGES)
+package_name = ARGV[0]
+backup_folder = ARGV[1]
+backup_packages(package_name, File.expand_path('./'), File.expand_path('~'), File.expand_path(backup_folder))

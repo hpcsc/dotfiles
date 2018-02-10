@@ -6,6 +6,14 @@ function mcd() {
   mkdir -p "$1" && cd "$1";
 }
 
+function is_macos() {
+  [[ "$(distro_name)" = "Darwin" ]] || return 1
+}
+
+function is_ubuntu() {
+  [[ "$(distro_name)" = "Ubuntu" ]] || return 1
+}
+
 function distro_name() {
   # Taken from https://unix.stackexchange.com/a/6348
   if [ -f /etc/os-release ]; then

@@ -1,6 +1,8 @@
 #!/bin/bash
 
-echo "=== Setup tmuxinator"
+set -e
+
+echo_yellow "=== Setup tmuxinator"
 
 source ~/.asdf/asdf.sh
 

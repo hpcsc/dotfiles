@@ -1,4 +1,10 @@
-#!/usr/bin/env bash
+#!/bin/bash
+
+set -e
+
+is_macos || exit
+
+echo_yellow "==========================  MacOS Preferences ============================"
 
 # Thanks to Mathias Bynens! https://mths.be/macos
 

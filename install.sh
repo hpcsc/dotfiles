@@ -33,8 +33,6 @@ scripts=(
   ./scripts/common-vim.sh
   ./scripts/common-tmux.sh
   ./scripts/common-working-folders.sh
-
-  ./scripts/macos-settings.sh
 )
 
 for i in "${scripts[@]}"; do
@@ -43,3 +41,6 @@ for i in "${scripts[@]}"; do
     echo "FAILED $i" >> ./install.log
   }
 done
+
+# This should be run last because this will reload the shell
+source ./scripts/macos-settings.sh

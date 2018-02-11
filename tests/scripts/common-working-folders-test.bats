@@ -3,6 +3,12 @@
 load '../../libs/bats-support/load'
 load '../../libs/bats-assert/load'
 
-@test "Should add numbers together" {
-    assert_equal $(echo 1+1 | bc) 2
+function setup() {
+  source link/common/zsh/.functions/misc
+  export -f echo_with_color echo_yellow
+}
+
+@test "common-working-folders.sh: Should print script header" {
+  run scripts/common-working-folders.sh
+  assert_output --partial 'Create working folders'
 }

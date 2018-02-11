@@ -457,7 +457,7 @@
 	<key>MaxVertically</key>
 	<false/>
 	<key>NSNavLastRootDirectory</key>
-	<string>~/dotfiles/iterm</string>
+	<string>~</string>
 	<key>NSNavPanelExpandedSizeForOpenMode</key>
 	<string>{712, 448}</string>
 	<key>NSQuotedKeystrokeBinding</key>
@@ -501,11 +501,11 @@
 	<key>NSWindow Frame SessionsPreferences</key>
 	<string>269 152 606 469 0 0 1440 878 </string>
 	<key>NSWindow Frame SharedPreferences</key>
-	<string>259 245 770 429 0 0 1440 878 </string>
+	<string>259 211 796 473 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 0</key>
-	<string>0 97 1440 781 0 0 1440 878 </string>
+	<string>0 426 585 452 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 1</key>
-	<string>176 301 825 577 0 0 1440 878 </string>
+	<string>0 95 1440 783 0 0 1440 878 </string>
 	<key>NeverWarnAboutPossibleOverrides</key>
 	<true/>
 	<key>NeverWarnAboutPossibleOverrides_selection</key>
@@ -2063,7 +2063,7 @@
 		</dict>
 	</dict>
 	<key>PrefsCustomFolder</key>
-	<string>/Users/davidnguyen/dotfiles/iterm</string>
+	<string>/Users/davidnguyen/dotfiles/others/macos/iterm</string>
 	<key>Print In Black And White</key>
 	<true/>
 	<key>PromptOnQuit</key>

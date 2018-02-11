@@ -15,16 +15,26 @@ source ~/.asdf/completions/asdf.bash
 backup_folder_name=~/dotfiles_backup
 mkdir -p $backup_folder_name
 
-packages=(
+common_packages=(
   git
   vim
   zsh
-  Applications
   tmux
   tig
 )
-for i in "${packages[@]}"; do
+for i in "${common_packages[@]}"; do
   echo_yellow "=== Backing up folder $i"
-  ruby ./scripts/common-backup.rb "$i" "~/dotfiles_backup"
-  stow -vv $i
+  ruby ./scripts/common-backup.rb "./link/common/$i" "~/dotfiles_backup"
+  stow -vv --dir=./link/common --target="$HOME" --stow $i
 done
+
+is_macos && {
+  macos_packages=(
+    Applications
+  )
+  for i in "${macos_packages[@]}"; do
+    echo_yellow "=== Backing up folder $i"
+    ruby ./scripts/common-backup.rb "./link/macos/$i" "~/dotfiles_backup"
+    stow -vv --dir=./link/macos --target="$HOME" --stow $i
+  done
+}

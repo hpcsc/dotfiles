@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # source and export helper functions to be used by the rest of this script
-source ./zsh/.functions/misc
+source ./link/common/zsh/.functions/misc
 export -f distro_name
 export -f is_macos
 export -f is_ubuntu

@@ -38,3 +38,5 @@ is_macos && {
     stow -vv --dir=./link/macos --target="$HOME" --stow $i || echo_red "Failed to stow $i"
   done
 }
+
+exit 0

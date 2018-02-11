@@ -25,7 +25,7 @@ common_packages=(
 for i in "${common_packages[@]}"; do
   echo_yellow "=== Backing up folder $i"
   ruby ./scripts/common-backup.rb "./link/common/$i" "~/dotfiles_backup"
-  stow -vv --dir=./link/common --target="$HOME" --stow $i
+  stow -vv --dir=./link/common --target="$HOME" --stow $i || echo_red "Failed to stow $i"
 done
 
 is_macos && {
@@ -35,6 +35,6 @@ is_macos && {
   for i in "${macos_packages[@]}"; do
     echo_yellow "=== Backing up folder $i"
     ruby ./scripts/common-backup.rb "./link/macos/$i" "~/dotfiles_backup"
-    stow -vv --dir=./link/macos --target="$HOME" --stow $i
+    stow -vv --dir=./link/macos --target="$HOME" --stow $i || echo_red "Failed to stow $i"
   done
 }

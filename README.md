@@ -16,7 +16,7 @@ brew bundle dump --force
 ### To backup list of VSCode extensions
 
 ```
-code --list-extensions >! ./scripts/macos/vscode-extensions
+code --list-extensions >! ./others/macos/vscode-extensions
 ```
 
 ### Setup a new machine
@@ -28,10 +28,10 @@ code --list-extensions >! ./scripts/macos/vscode-extensions
 5. Execute `sudo vim /etc/shells`, append `/usr/local/bin/zsh` at the end of the file and save. `/usr/local/bin/zsh` is the symlink created by Homebrew and in order to be able to change default shell to this, it needs to be in the list of valid shells (`/etc/shells`)
 6. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./install.sh | tee install-full.log`
 7. Make ZSH the default shell environment: `chsh -s $(which zsh)`
-8. Open `iTerm2` preferences -> `General` -> `Load preferences from a custom folder`, points to `~/dotfiles/iterm`
+8. Open `iTerm2` preferences -> `General` -> `Load preferences from a custom folder`, points to `~/dotfiles/others/macos/iterm`
     - Refresh iTerm2 preferences cache if needed: `defaults read com.googlecode.iterm2`
-9. Execute `./scripts/macos/install-gui-apps.sh` to install GUI applications
-10. Execute `./scripts/macos/tools.sh` to install necessary VSCode extensions
+9. Execute `./others/macos/install-gui-apps.sh` to install GUI applications
+10. Execute `./others/macos/tools.sh` to install necessary VSCode extensions
 11. Restart computer to finalize the process
 
 ### Checklist after setup

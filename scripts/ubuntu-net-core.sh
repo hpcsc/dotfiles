@@ -13,6 +13,8 @@ command -v dotnet >/dev/null 2>&1 || {
   sudo apt-get update
   echo_green "==== Available .NET Core SDK:"
   apt search dotnet-sdk
-  read -p "=== Choose version number to install (.e.g. 2.0.3):" dotnet_sdk_version
-  sudo apt-get install -y dotnet-sdk-$dotnet_sdk_version || echo_red "Failed to install .NET Core version $dotnet_sdk_version"
+  read -p "=== Choose version number to install (.e.g. 2.0.3), leave empty to ignore:" dotnet_sdk_version
+  if [ "$dotnet_sdk_version" != "" ]; then
+    sudo apt-get install -y dotnet-sdk-$dotnet_sdk_version || echo_red "Failed to install .NET Core version $dotnet_sdk_version"
+  fi
 }

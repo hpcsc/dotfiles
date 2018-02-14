@@ -1,4 +1,4 @@
-alias d='docker'
+alias dk='docker'
 alias dls='docker container ls -a'
 alias dsa='docker container start'
 alias dso='docker container stop'
@@ -7,8 +7,8 @@ alias di='docker container inspect'
 alias de='docker container exec'
 alias dit='docker container run -it'
 
-alias dlsi='docker image ls'
-alias drmi='docker image rm'
+alias dils='docker image ls'
+alias dirm='docker image rm'
 
 alias dnls='docker network ls'
 alias dni='docker network inspect'

@@ -68,6 +68,7 @@ Plug 'mileszs/ack.vim'
 Plug 'tpope/vim-fugitive'
 Plug 'christoomey/vim-tmux-navigator'
 Plug 'SirVer/ultisnips'
+Plug 'will133/vim-dirdiff'
 
 call plug#end()
 " }}}
@@ -122,6 +123,13 @@ let g:UltiSnipsJumpForwardTrigger="<c-n>"
 let g:UltiSnipsJumpBackwardTrigger="<c-p>"
 let g:UltiSnipsSnippetDir="~/.vim/UltiSnips"
 let g:UltiSnipsSnippetDirectories=["~/.vim/UltiSnips", "UltiSnips"]
+
+" }}}
+
+" DirDiff Settings {{{
+
+" Sets the diff window (bottom window) height (rows)
+let g:DirDiffWindowSize = 5
 
 " }}}
 

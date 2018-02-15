@@ -13,9 +13,6 @@ set lazyredraw " redraw only when we need
 set showmatch " highlight matching [{()}]
 set incsearch " search as characters are entered
 set hlsearch " highlight matches
-set foldenable " enable folding
-set foldlevelstart=10 " open most folds by default
-set foldnestmax=10 " 10 nested fold max
 set modelines=1 " enable modeline at the bottom of the file
 set hidden " hide current unsaved buffer when opening a new file instead of closing it
 set backspace=indent,eol,start
@@ -26,12 +23,23 @@ set autoindent " copy indent from current line when starting a new line
 set smartindent " indent based on code syntax
 set nowrap " not wrap lines
 set linebreak " wrap lines at convenient points
-set foldmethod=syntax " fold based on filetype syntax
 set encoding=utf-8 " to fix NERDTree rendering issue in ubuntu
 set backupdir=~/.vim/tmp/backup// " set custom location for backup files
 set directory=~/.vim/tmp/swap// " set custom location for swap files
 set undodir=~/.vim/tmp/undo// " set custom location for undo files
 color slate
+
+
+" Folding Settings  {{{
+
+set foldenable " enable folding
+set foldlevelstart=10 " open most folds by default
+set foldnestmax=10 " 10 nested fold max
+set foldmethod=syntax " fold based on filetype syntax
+let javaScript_fold=1
+let xml_syntax_folding=1 
+
+" }}}
 
 augroup numbertoggle
     " set absolute line number in insert mode, hybrid line number otherwise
@@ -45,11 +53,15 @@ autocmd FileType cs setlocal tabstop=4 shiftwidth=4 softtabstop=4 expandtab " us
 
 syntax on
 
+" Diff Settings  {{{
+
 " change highlight background color when using vimdiff as git difftool
 highlight DiffChange   cterm=bold   gui=none    ctermfg=NONE          ctermbg=60
 highlight DiffText   cterm=bold   gui=none    ctermfg=NONE          ctermbg=52
 highlight DiffDelete   cterm=bold   gui=none    ctermfg=NONE          ctermbg=89
 highlight DiffAdd   cterm=bold    gui=none    ctermfg=NONE          ctermbg=49
+
+" }}}
 
 " }}}
 

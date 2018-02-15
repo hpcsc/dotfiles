@@ -69,6 +69,7 @@ Plug 'tpope/vim-fugitive'
 Plug 'christoomey/vim-tmux-navigator'
 Plug 'SirVer/ultisnips'
 Plug 'will133/vim-dirdiff'
+Plug 'junegunn/vim-peekaboo'
 
 call plug#end()
 " }}}

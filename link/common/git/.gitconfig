@@ -18,3 +18,8 @@
 	conflictstyle = diff3
 [difftool]
 	prompt = false
+[difftool "code"]
+  cmd = code \"$LOCAL\" \"$REMOTE\" --diff --wait
+  trustExitCode = false
+[difftool "dirdiff"]
+  cmd = vim -f '+next' '+execute \"DirDiff\" argv(0) argv(1)' $LOCAL $REMOTE '+syntax off'

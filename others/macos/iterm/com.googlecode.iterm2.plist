@@ -317,6 +317,13 @@
 			<key>Text</key>
 			<string></string>
 		</dict>
+		<key>0xf702-0x280000</key>
+		<dict>
+			<key>Action</key>
+			<integer>10</integer>
+			<key>Text</key>
+			<string>b</string>
+		</dict>
 		<key>0xf702-0x2c0000</key>
 		<dict>
 			<key>Action</key>
@@ -327,9 +334,9 @@
 		<key>0xf702-0x300000</key>
 		<dict>
 			<key>Action</key>
-			<integer>2</integer>
+			<integer>11</integer>
 			<key>Text</key>
-			<string></string>
+			<string>0x01</string>
 		</dict>
 		<key>0xf702-0x320000</key>
 		<dict>
@@ -337,6 +344,13 @@
 			<integer>33</integer>
 			<key>Text</key>
 			<string></string>
+		</dict>
+		<key>0xf703-0x280000</key>
+		<dict>
+			<key>Action</key>
+			<integer>10</integer>
+			<key>Text</key>
+			<string>f</string>
 		</dict>
 		<key>0xf703-0x2c0000</key>
 		<dict>
@@ -348,9 +362,9 @@
 		<key>0xf703-0x300000</key>
 		<dict>
 			<key>Action</key>
-			<integer>0</integer>
+			<integer>11</integer>
 			<key>Text</key>
-			<string></string>
+			<string>0x05</string>
 		</dict>
 		<key>0xf703-0x320000</key>
 		<dict>
@@ -501,9 +515,9 @@
 	<key>NSWindow Frame SessionsPreferences</key>
 	<string>269 152 606 469 0 0 1440 878 </string>
 	<key>NSWindow Frame SharedPreferences</key>
-	<string>259 211 796 473 0 0 1440 878 </string>
+	<string>259 233 796 473 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 0</key>
-	<string>0 426 585 452 0 0 1440 878 </string>
+	<string>0 77 1440 801 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 1</key>
 	<string>0 95 1440 783 0 0 1440 878 </string>
 	<key>NeverWarnAboutPossibleOverrides</key>
@@ -906,20 +920,6 @@
 					<key>Text</key>
 					<string>[1;6D</string>
 				</dict>
-				<key>0xf702-0x280000</key>
-				<dict>
-					<key>Action</key>
-					<integer>10</integer>
-					<key>Text</key>
-					<string>b</string>
-				</dict>
-				<key>0xf702-0x300000</key>
-				<dict>
-					<key>Action</key>
-					<integer>11</integer>
-					<key>Text</key>
-					<string>0x01</string>
-				</dict>
 				<key>0xf703-0x220000</key>
 				<dict>
 					<key>Action</key>
@@ -940,20 +940,6 @@
 					<integer>10</integer>
 					<key>Text</key>
 					<string>[1;6C</string>
-				</dict>
-				<key>0xf703-0x280000</key>
-				<dict>
-					<key>Action</key>
-					<integer>10</integer>
-					<key>Text</key>
-					<string>f</string>
-				</dict>
-				<key>0xf703-0x300000</key>
-				<dict>
-					<key>Action</key>
-					<integer>11</integer>
-					<key>Text</key>
-					<string>0x05</string>
 				</dict>
 				<key>0xf704-0x20000</key>
 				<dict>

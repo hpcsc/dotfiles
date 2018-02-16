@@ -55,9 +55,10 @@ code --list-extensions >! ./others/macos/vscode-extensions
 
 1. Make sure `git` is installed
 2. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./install.sh | tee install-full.log`
+3. Execute `./others/ubuntu/install-gui-apps.sh` to install additional GUI applications
 
 ## Common checklist after setup (both MacOS and Ubuntu)
 
 - Copy public and private SSH keys to `~/.ssh` and make sure they're set to `600`
-- Remap Capslock to Ctrl (Keyboard settings -> Modifier Keys)
+- Remap Capslock to Ctrl (Keyboard settings -> Modifier Keys in Macs or use Gnome Tweak Tool -> Typing -> Caps Lock key behavior'
 - Import Jetbrains IDEs (Rider, Intellij) settings from github: https://www.jetbrains.com/help/idea/sharing-your-ide-settings.html#settings-repository

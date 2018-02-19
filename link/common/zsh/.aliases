@@ -26,6 +26,14 @@ alias dcrm='docker-compose rm -f'
 
 alias k='kubectl'
 alias mk='minikube'
+alias kc='kubectl config'
+alias krm='kubectl delete'
+alias kl='kubectl logs'
+alias ke='kubectl exec'
+alias kd='kubectl describe'
+alias kg='kubectl get'
+alias kr='kubectl rollout'
+alias ka='kubectl apply --record -f'
 
 alias gdt='git difftool'
 

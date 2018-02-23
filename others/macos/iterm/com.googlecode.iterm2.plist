@@ -688,19 +688,19 @@
 			<key>Text</key>
 			<string></string>
 		</dict>
+		<key>0x4c-0x120000</key>
+		<dict>
+			<key>Action</key>
+			<integer>11</integer>
+			<key>Text</key>
+			<string>0x10 0x0d</string>
+		</dict>
 		<key>0x5a-0x120000</key>
 		<dict>
 			<key>Action</key>
 			<integer>11</integer>
 			<key>Text</key>
 			<string>0x18 0x1f</string>
-		</dict>
-		<key>0x6c-0x100000</key>
-		<dict>
-			<key>Action</key>
-			<integer>11</integer>
-			<key>Text</key>
-			<string>0x10 0x0d</string>
 		</dict>
 		<key>0x7a-0x100000</key>
 		<dict>
@@ -942,9 +942,9 @@
 	<key>NSWindow Frame SessionsPreferences</key>
 	<string>269 152 606 469 0 0 1440 878 </string>
 	<key>NSWindow Frame SharedPreferences</key>
-	<string>259 307 796 473 0 0 1440 878 </string>
+	<string>259 399 796 473 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 0</key>
-	<string>0 77 1440 801 0 0 1440 878 </string>
+	<string>0 123 1440 731 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 1</key>
 	<string>0 95 1440 783 0 0 1440 878 </string>
 	<key>NeverWarnAboutPossibleOverrides</key>

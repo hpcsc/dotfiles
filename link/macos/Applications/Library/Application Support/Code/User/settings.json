@@ -32,5 +32,6 @@
         "gitDecoration.ignoredResourceForeground": "#56585a"
     },
     "window.title": "${activeEditorMedium}${separator}${rootName}",
-    "workbench.list.openMode": "doubleClick"
+    "workbench.list.openMode": "doubleClick",
+    "search.location": "panel"
 }

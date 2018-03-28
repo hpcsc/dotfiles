@@ -695,6 +695,13 @@
 			<key>Text</key>
 			<string>0x10 0x0d</string>
 		</dict>
+		<key>0x56-0x120000</key>
+		<dict>
+			<key>Action</key>
+			<integer>12</integer>
+			<key>Text</key>
+			<string>bindkey -v\n</string>
+		</dict>
 		<key>0x5a-0x120000</key>
 		<dict>
 			<key>Action</key>
@@ -942,11 +949,11 @@
 	<key>NSWindow Frame SessionsPreferences</key>
 	<string>269 152 606 469 0 0 1440 878 </string>
 	<key>NSWindow Frame SharedPreferences</key>
-	<string>259 399 796 473 0 0 1440 878 </string>
+	<string>259 230 796 473 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 0</key>
-	<string>0 123 1440 731 0 0 1440 878 </string>
+	<string>0 74 1440 804 0 0 1440 878 </string>
 	<key>NSWindow Frame iTerm Window 1</key>
-	<string>0 95 1440 783 0 0 1440 878 </string>
+	<string>0 188 1025 687 0 0 1440 878 </string>
 	<key>NeverWarnAboutPossibleOverrides</key>
 	<true/>
 	<key>NeverWarnAboutPossibleOverrides_selection</key>
@@ -3226,6 +3233,10 @@
 	<integer>0</integer>
 	<key>NoSyncPermissionToShowTip</key>
 	<true/>
+	<key>NoSyncSuppressBroadcastInputWarning</key>
+	<true/>
+	<key>NoSyncSuppressBroadcastInputWarning_selection</key>
+	<integer>0</integer>
 	<key>NoSyncTimeOfFirstLaunchOfVersionWithTip</key>
 	<real>527320382.01265103</real>
 	<key>NoSyncTipsDisabled</key>

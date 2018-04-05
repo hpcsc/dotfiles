@@ -18,6 +18,7 @@ mkdir -p $backup_folder_name
 common_packages=(
   git
   vim
+  neovim
   zsh
   tmux
   tig

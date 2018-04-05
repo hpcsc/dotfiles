@@ -45,7 +45,12 @@ nnoremap <c-t> :Files<cr>
 
 " }}}
 
-" Easymotion Mappings {{{
+" LanguageClient Mappings {{{
+
+nnoremap <silent> K :call LanguageClient#textDocument_hover()<CR>
+nnoremap <silent> <F12> :call LanguageClient#textDocument_definition()<CR>
+nnoremap <silent> <F2> :call LanguageClient#textDocument_rename()<CR>
+
 " }}}
 
 " vim:foldmethod=marker:foldlevel=0

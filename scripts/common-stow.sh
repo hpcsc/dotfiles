@@ -18,7 +18,6 @@ mkdir -p $backup_folder_name
 common_packages=(
   git
   vim
-  neovim
   zsh
   tmux
   tig
@@ -28,6 +27,10 @@ for i in "${common_packages[@]}"; do
   ruby ./scripts/common-backup.rb "./link/common/$i" "~/dotfiles_backup"
   stow -vv --dir=./link/common --target="$HOME" --stow $i || echo_red "Failed to stow $i"
 done
+
+echo_yellow "=== Stowing .config folder"
+mkdir -p ~/.config
+stow -vv --dir=./link/common/dot-config --target="$HOME/.config" --stow .config || echo_red "Failed to stow .config folder"
 
 is_macos && {
   macos_packages=(

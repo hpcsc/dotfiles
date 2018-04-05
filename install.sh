@@ -31,6 +31,7 @@ scripts=(
   ./scripts/common-asdf-plugins.sh
   ./scripts/common-stow.sh
   ./scripts/common-vim.sh
+  ./scripts/common-neovim.sh
   ./scripts/common-tmux.sh
   ./scripts/common-working-folders.sh
 )

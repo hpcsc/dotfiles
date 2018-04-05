@@ -46,3 +46,9 @@ asdf plugin-list | grep golang >/dev/null 2>&1 || {
   asdf plugin-add golang https://github.com/kennyp/asdf-golang.git
   install 'golang'
 }
+
+# golang plugin for asdf
+asdf plugin-list | grep python >/dev/null 2>&1 || {
+  asdf plugin-add python https://github.com/tuvistavie/asdf-python.git
+  install 'python'
+}

@@ -37,7 +37,7 @@ scripts=(
 )
 
 for i in "${scripts[@]}"; do
-  echo_green "||| EXECUTING $i"
+  echo_yellow "++++++ EXECUTING $i ++++++"
 
   $i && echo "OK $i" >> ./install.log || {
     echo_red "FAILED $i"

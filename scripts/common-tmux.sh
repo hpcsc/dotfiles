@@ -2,7 +2,7 @@
 
 set -e
 
-echo_yellow "=== Setup tmuxinator"
+echo_yellow "================================  Tmuxinator ==================================="
 
 source ~/.asdf/asdf.sh
 

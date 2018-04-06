@@ -4,9 +4,8 @@ set -e
 
 is_ubuntu || exit 0
 
-command -v docker >/dev/null 2>&1 || {
-  echo_yellow "=========================== Docker CE    ================================="
-  echo_yellow "=== Installing docker CE"
+(command -v docker >/dev/null 2>&1 && echo_green "=== Docker is already installed, skipped") || {
+  echo_yellow "=== Installing Docker CE"
   sudo apt-get install ca-certificates
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
   sudo add-apt-repository \

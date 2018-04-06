@@ -2,6 +2,6 @@
 
 set -e
 
-echo_yellow "=============================  Create working folders ============================="
+echo_yellow "=== Creating working folders"
 mkdir -p ~/Workspace/Code
 mkdir -p ~/Personal/Code

@@ -4,8 +4,8 @@ set -e
 
 is_ubuntu || exit 0
 
-echo_yellow "=============================  RipGrep ==================================="
-command -v rg >/dev/null 2>&1 || {
+(command -v rg >/dev/null 2>&1 && echo_green "=== RipGrep is already installed, skipped") || {
+  echo_yellow "=== Installing RipGrep"
   ripgrep_version=$(curl https://api.github.com/repos/BurntSushi/ripgrep/releases/latest | jq -r '.tag_name')
   ripgrep_url="https://github.com/BurntSushi/ripgrep/releases/download/$ripgrep_version/ripgrep-$ripgrep_version-x86_64-unknown-linux-musl.tar.gz"
   echo_yellow "=== Downloading ripgrep at $ripgrep_url"

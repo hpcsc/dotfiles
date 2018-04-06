@@ -61,6 +61,21 @@ function echo_yellow() {
   echo_with_color "${YELLOW}" $@
 }
 
+function echo_blue() {
+  local BLUE='\033[1;34m'
+  echo_with_color "${BLUE}" $@
+}
+
+function echo_purple() {
+  local PURPLE='\033[1;35m'
+  echo_with_color "${PURPLE}" $@
+}
+
+function echo_cyan() {
+  local CYAN='\033[1;36m'
+  echo_with_color "${CYAN}" $@
+}
+
 function echo_with_color() {
   local COLOR=$1
   shift

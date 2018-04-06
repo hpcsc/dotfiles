@@ -2,10 +2,8 @@
 
 set -e
 
-echo_yellow "================================  Stow ==================================="
-
 [ -f ~/.asdf/asdf.sh ] >/dev/null 2>&1 || {
-  echo_red "ASDF (ruby plugin) must be installed before executing this script"
+  echo_red "=== ASDF (ruby plugin) must be installed before executing this script"
   exit 1
 }
 

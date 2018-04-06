@@ -4,8 +4,8 @@ set -e
 
 is_ubuntu || exit 0
 
-command -v dotnet >/dev/null 2>&1 || {
-  echo_yellow "=========================== .NET Core    ================================="
+(command -v dotnet >/dev/null 2>&1 && echo_green "=== .NET Core is already installed, skipped") || {
+  echo_yellow "=== Installing .NET Core"
   code_name=$(lsb_release -cs)
   curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
   sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
@@ -13,8 +13,8 @@ command -v dotnet >/dev/null 2>&1 || {
   sudo apt-get update
   echo_green "==== Available .NET Core SDK:"
   apt search dotnet-sdk
-  read -p "=== Choose version number to install (.e.g. 2.0.3), leave empty to ignore:" dotnet_sdk_version
+  read -p "=== Choose .NET Core SDK version number to install (.e.g. 2.0.3), leave empty to ignore:" dotnet_sdk_version
   if [ "$dotnet_sdk_version" != "" ]; then
-    sudo apt-get install -y dotnet-sdk-$dotnet_sdk_version || echo_red "Failed to install .NET Core version $dotnet_sdk_version"
+    sudo apt-get install -y dotnet-sdk-$dotnet_sdk_version || echo_red "=== Failed to install .NET Core version $dotnet_sdk_version"
   fi
 }

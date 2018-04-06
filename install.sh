@@ -9,10 +9,13 @@ export -f echo_with_color
 export -f echo_yellow
 export -f echo_red
 export -f echo_green
+export -f echo_blue
+export -f echo_purple
+export -f echo_cyan
 
 rm -f ./install.log
 
-echo_green "=====  Setting up your machine..."
+echo_purple "SETTING UP YOUR MACHINE..."
 
 scripts=(
   ./scripts/macos-keep-sudo.sh
@@ -37,7 +40,7 @@ scripts=(
 )
 
 for i in "${scripts[@]}"; do
-  echo_yellow "++++++ EXECUTING $i ++++++"
+  echo_purple "=============================  $i ======================================="
 
   $i && echo "OK $i" >> ./install.log || {
     echo_red "FAILED $i"

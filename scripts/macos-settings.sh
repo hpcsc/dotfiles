@@ -4,7 +4,7 @@ set -e
 
 is_macos || exit 0
 
-echo_yellow "==========================  MacOS Preferences ============================"
+echo_yellow "=== Updating MacOS Preferences"
 
 # Thanks to Mathias Bynens! https://mths.be/macos
 

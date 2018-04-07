@@ -47,14 +47,9 @@ common_scripts=(
   ./scripts/common-working-folders.sh
 )
 
-macos_after_scripts=(
-  ./scripts/macos-stow.sh
-)
-
 is_macos && (execute_scripts macos_scripts)
 is_ubuntu && (execute_scripts ubuntu_scripts)
 execute_scripts common_scripts
-is_macos && (execute_scripts macos_after_scripts)
 
 # This should be run last because this will reload the shell
 is_macos && source ./scripts/macos-settings.sh

@@ -2,7 +2,7 @@
 
 set -e
 
-is_macos || exit 0
+source ~/.functions/misc
 
 [ -f ~/.asdf/asdf.sh ] >/dev/null 2>&1 || {
   echo_red "=== ASDF (ruby plugin) must be installed before executing this script"
@@ -34,5 +34,21 @@ function stow_packages() {
   done
 }
 
+function install_extensions() {
+  command -v code >/dev/null 2>&1 || {
+      echo_yellow "VSCode executable is not in Path, creating symlink from /usr/local/bin/code -> /Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+      sudo ln -s "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" /usr/local/bin/code
+  }
+
+  echo_green "=== Installing VSCode extensions"
+
+  while read extension; do
+      echo_yellow "=== Installing $extension"
+      code --install-extension $extension
+  done <./others/macos/vscode/extensions
+}
+
+mkdir -p /Library
 backup
 stow_packages
+install_extensions

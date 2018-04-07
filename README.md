@@ -26,7 +26,7 @@ brew bundle dump --force
 ### To backup list of VSCode extensions
 
 ```
-code --list-extensions >! ./others/macos/vscode-extensions
+code --list-extensions >! ./others/macos/vscode/extensions
 ```
 
 ### Setup a new machine
@@ -41,7 +41,7 @@ code --list-extensions >! ./others/macos/vscode-extensions
 8. Open `iTerm2` preferences -> `General` -> `Load preferences from a custom folder`, points to `~/dotfiles/others/macos/iterm`
     - Refresh iTerm2 preferences cache if needed: `defaults read com.googlecode.iterm2`
 9. Execute `./others/macos/install-gui-apps.sh` to install GUI applications
-10. Execute `./others/macos/tools.sh` to install necessary VSCode extensions
+10. Execute `./others/macos/vscode/setup.sh` to configure VSCode
 11. Restart computer to finalize the process
 
 ### Checklist after setup

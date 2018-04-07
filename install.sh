@@ -1,22 +1,14 @@
 #!/bin/bash
 
 # source and export helper functions to be used by the rest of this script
+set -a
 source ./link/common/zsh/.functions/misc
-export -f distro_name
-export -f is_macos
-export -f is_ubuntu
-export -f echo_with_color
-export -f echo_yellow
-export -f echo_red
-export -f echo_green
-export -f echo_blue
-export -f echo_purple
-export -f echo_cyan
+set +a
 
 function execute_scripts() {
   local scripts_array_name=$1[@]
-  local scripts=("${!scripts_array_name}")
-  for i in "${scripts[@]}"; do
+  local scripts=${!scripts_array_name}
+  for i in $scripts; do
     echo_purple "=============================  $i ======================================="
 
     $i && echo "OK $i" >> ./install.log || {

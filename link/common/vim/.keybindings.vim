@@ -15,7 +15,7 @@ noremap <silent> <leader>wv :wincmd v<CR>
 noremap <silent> <leader>wc :wincmd c<CR>
 noremap <leader>s :update<CR>
 "stop highlighting search
-nnoremap <leader><space> :nohlsearch<CR> 
+nnoremap <CR> :nohlsearch<CR> 
 nnoremap <leader>z za " toggle folding
 nnoremap <leader>ew :e <C-R>=expand("%:p:h") . "/" <CR>
 nnoremap <leader>es :sp <C-R>=expand("%:p:h") . "/" <CR>
@@ -34,7 +34,7 @@ cnoremap w!! w !sudo tee > /dev/null %
 
 " NERDTree Mappings {{{
 
-nnoremap <leader>n :NERDTreeToggle<cr>
+nnoremap <leader>t :NERDTreeToggle<cr>
 
 " }}}
 

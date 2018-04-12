@@ -25,6 +25,7 @@ macos_scripts=(
   ./scripts/macos-keep-sudo.sh
   ./scripts/macos-install-homebrew.sh
   ./scripts/macos-brew-bundle.sh
+  ./scripts/macos-haskell.sh
 )
 
 ubuntu_scripts=(
@@ -36,6 +37,7 @@ ubuntu_scripts=(
   ./scripts/ubuntu-docker.sh
   ./scripts/ubuntu-antigen.sh
   ./scripts/ubuntu-ripgrep.sh
+  ./scripts/ubuntu-haskell.sh
 )
 
 common_scripts=(

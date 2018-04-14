@@ -83,5 +83,9 @@
         "key": "cmd+]",
         "command": "workbench.action.terminal.focusNextPane",
         "when": "terminalFocus"
+    },
+    {
+        "key": "ctrl+cmd+m",
+        "command": "workbench.action.toggleMaximizedPanel"
     }
 ]

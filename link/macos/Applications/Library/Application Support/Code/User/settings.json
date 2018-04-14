@@ -49,5 +49,8 @@
         "pickerGroup.foreground": "#64FFDA",
         "tab.activeBorder": "#64FFDA"
     },
-    "gitlens.keymap": "alternate"
+    "gitlens.keymap": "alternate",
+    "diffEditor.renderSideBySide": false,
+    "telemetry.enableTelemetry": false,
+    "window.openWithoutArgumentsInNewWindow": "on"
 }

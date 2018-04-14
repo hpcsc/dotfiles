@@ -1,5 +1,15 @@
 let mapleader = "\<space>"
 
+" Allow saving of files as sudo when I forgot to start vim using sudo.
+cnoremap w!! w !sudo tee > /dev/null % 
+
+cnoremap %% <C-R>=expand("%:p:h") . "/" <CR>
+
+map <leader>ew :e %%
+map <leader>es :sp %%
+map <leader>ev :vsp %%
+map <leader>et :tabe %%
+
 " disable arrow navigation keys :(
 noremap <Up> <NOP>
 noremap <Down> <NOP>
@@ -17,20 +27,15 @@ noremap <leader>s :update<CR>
 "stop highlighting search
 nnoremap <CR> :nohlsearch<CR> 
 nnoremap <leader>z za " toggle folding
-nnoremap <leader>ew :e <C-R>=expand("%:p:h") . "/" <CR>
-nnoremap <leader>es :sp <C-R>=expand("%:p:h") . "/" <CR>
-nnoremap <leader>ev :vsp <C-R>=expand("%:p:h") . "/" <CR>
-nnoremap <leader>et :tabe <C-R>=expand("%:p:h") . "/" <CR>
 nnoremap <silent> <leader>[ :exe "resize " . (winheight(0) * 3/2)<CR>
 nnoremap <silent> <leader>] :exe "resize " . (winheight(0) * 2/3)<CR>
 nnoremap <silent> <leader>< :exe "vertical resize " . (winwidth(0) * 2/3)<CR>
 nnoremap <silent> <leader>> :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
 nnoremap <silent> <leader>= :winc =<CR>
 nnoremap <silent> <leader>y o<Esc>
+
 inoremap jk <esc>
 
-" Allow saving of files as sudo when I forgot to start vim using sudo.
-cnoremap w!! w !sudo tee > /dev/null %
 
 " NERDTree Mappings {{{
 

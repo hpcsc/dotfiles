@@ -49,4 +49,4 @@ windows:
       # 'before' represents legacy functionality and will be deprecated in a future release, in favour of 'after'
       # synchronize: after
       panes:
-        - tmux split-window -p 30; nvim +NERDTree
+        - tmux split-window -p 30; nvim

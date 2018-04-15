@@ -27,7 +27,7 @@ set encoding=utf-8 " to fix NERDTree rendering issue in ubuntu
 set backupdir=~/.vim/tmp/backup// " set custom location for backup files
 set directory=~/.vim/tmp/swap// " set custom location for swap files
 set undodir=~/.vim/tmp/undo// " set custom location for undo files
-set ignorecase " case insensitive search
+set smartcase " smart case insensitive search
 color slate
 
 

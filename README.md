@@ -20,7 +20,7 @@
 ### To generate a Brewfile for backup
 
 ```
-brew bundle dump --force
+./bundle-dump.sh
 ```
 
 ### To backup list of VSCode extensions

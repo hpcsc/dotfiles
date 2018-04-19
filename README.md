@@ -26,7 +26,7 @@
 ### To backup list of VSCode extensions
 
 ```
-code --list-extensions >! ./others/macos/vscode/extensions
+./others/common/vscode-backup-extensions.sh
 ```
 
 ### Setup a new machine

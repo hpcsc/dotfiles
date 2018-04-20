@@ -5,6 +5,7 @@ alias dso='docker container stop'
 alias drm='docker container rm'
 alias di='docker container inspect'
 alias de='docker container exec'
+alias dl='docker container logs'
 alias dit='docker container run -it'
 
 alias dils='docker image ls'
@@ -27,6 +28,7 @@ alias dcsa='docker-compose start'
 alias dcra='docker-compose restart'
 alias dce='docker-compose exec'
 alias dcb='docker-compose build'
+alias dcl='docker-compose logs'
 alias dcrm='docker-compose rm -f'
 
 alias k='kubectl'
@@ -54,6 +56,9 @@ alias kgs='kubectl get service'
 alias kga='kubectl get ingress,service,deployment,pod'
 alias kr='kubectl rollout'
 alias ka='kubectl apply --record -f'
+
+alias i=itermocil
+alias ils='itermocil --list'
 
 alias gdt='git difftool'
 

@@ -9,8 +9,11 @@ export CLICOLOR=1
 export TERM=xterm-256color
 export KEYTIMEOUT=1  # set zsh vi mode timeout to 0.1s when switching mode
 
+# show current directory in terminal title bar
+precmd () { print -Pn "\e]2;%~\a" }
+
 # ====== source custom aliases, functions  ==========
-#
+
 # utility function, used by all functions under .functions
 function execute() {
     printf '%s' "Executing: $1"

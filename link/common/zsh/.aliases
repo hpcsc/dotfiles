@@ -60,6 +60,10 @@ alias ka='kubectl apply --record -f'
 alias i=itermocil
 alias ils='itermocil --list'
 
+alias an='ansible'
+alias anp='ansible-playbook'
+alias ang='ansible-galaxy'
+
 alias gdt='git difftool'
 
 alias cssh="pbcopy < $HOME/.ssh/id_rsa.pub"

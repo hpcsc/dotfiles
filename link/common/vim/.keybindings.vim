@@ -23,7 +23,8 @@ noremap <silent> <leader>l :wincmd l<CR>
 noremap <silent> <leader>ws :wincmd s<CR>
 noremap <silent> <leader>wv :wincmd v<CR>
 noremap <silent> <leader>wc :wincmd c<CR>
-noremap <leader>s :update<CR>
+noremap <leader>w :update<CR>
+noremap <leader>s :OverCommandLine<CR>%s/
 "stop highlighting search
 nnoremap <CR> :nohlsearch<CR> 
 nnoremap <leader>z za " toggle folding

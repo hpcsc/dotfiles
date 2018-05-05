@@ -82,6 +82,8 @@ Plug 'christoomey/vim-tmux-navigator'
 Plug 'SirVer/ultisnips'
 Plug 'will133/vim-dirdiff'
 Plug 'junegunn/vim-peekaboo'
+Plug 'airblade/vim-gitgutter'
+Plug 'osyo-manga/vim-over'
 
 if has('nvim')
   Plug 'autozimu/LanguageClient-neovim', { 'branch': 'next', 'do': 'bash install.sh' }
@@ -132,8 +134,6 @@ let g:ackprg = 'rg --vimgrep --no-heading'
 
 let g:deoplete#enable_at_startup = 1
 let g:LanguageClient_serverCommands = {
-    \ 'javascript': ['javascript-typescript-stdio'],
-    \ 'javascript.jsx': ['javascript-typescript-stdio'],
     \ 'haskell': ['hie', '--lsp'],
     \ }
 

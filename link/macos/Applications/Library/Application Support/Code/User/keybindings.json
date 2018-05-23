@@ -87,5 +87,15 @@
     {
         "key": "ctrl+cmd+m",
         "command": "workbench.action.toggleMaximizedPanel"
+    },
+    {
+        "key": "shift+cmd+k",
+        "command": "workbench.action.terminal.clear",
+        "when": "terminalFocus"
+    },
+    {
+        "key": "cmd+k",
+        "command": "-workbench.action.terminal.clear",
+        "when": "terminalFocus"
     }
 ]

@@ -31,26 +31,32 @@
     "editor.fontFamily": "Fira Code, Menlo, Monaco, 'Courier New', monospace",
     "editor.fontLigatures": true,
     "editor.fontSize": 14,
-    "workbench.colorTheme": "Material Theme",
-    "materialTheme.cache.workbench.settings": {
-        "themeColours": "Palenight High Contrast",
-        "accent": "Bright Teal"
-    },
+    "workbench.colorTheme": "NaturalContrast-HC",
     "workbench.colorCustomizations": {
-        "gitDecoration.ignoredResourceForeground": "#56585a",
-        "activityBarBadge.background": "#64FFDA",
-        "list.activeSelectionForeground": "#64FFDA",
-        "list.inactiveSelectionForeground": "#64FFDA",
-        "list.highlightForeground": "#64FFDA",
-        "scrollbarSlider.activeBackground": "#64FFDA50",
-        "editorSuggestWidget.highlightForeground": "#64FFDA",
-        "textLink.foreground": "#64FFDA",
-        "progressBar.background": "#64FFDA",
-        "pickerGroup.foreground": "#64FFDA",
-        "tab.activeBorder": "#64FFDA"
+        "terminal.ansiBrightBlack": "#4D4D4D",
+        "terminal.ansiBrightBlue": "#BD93F9",
+        "terminal.ansiBrightCyan": "#8BE9FD",
+        "terminal.ansiBrightGreen": "#50FA7B",
+        "terminal.ansiBrightMagenta": "#FF79C6",
+        "terminal.ansiBrightRed": "#FF5555",
+        "terminal.ansiBrightWhite": "#BFBFBF",
+        "terminal.ansiBrightYellow": "#F1FA8C",
+        "terminal.ansiBlack": "#575757",
+        "terminal.ansiBlue": "#CAA9FA",
+        "terminal.ansiCyan": "#9AEDFE",
+        "terminal.ansiGreen": "#5AF78E",
+        "terminal.ansiMagenta": "#FF92D0",
+        "terminal.ansiRed": "#FF6E67",
+        "terminal.ansiWhite": "#F8F8F2",
+        "terminal.ansiYellow": "#F4F99D"
     },
     "gitlens.keymap": "alternate",
     "diffEditor.renderSideBySide": false,
     "telemetry.enableTelemetry": false,
-    "window.openWithoutArgumentsInNewWindow": "on"
+    "window.openWithoutArgumentsInNewWindow": "on",
+    "gitlens.advanced.messages": {
+        "suppressResultsExplorerNotice": true,
+        "suppressShowKeyBindingsNotice": true
+    },
+    "gitlens.historyExplorer.enabled": false,
 }

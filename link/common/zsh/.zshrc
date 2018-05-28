@@ -22,6 +22,7 @@ function execute() {
 }
 
 source ~/.aliases
+[[ -f ~/.aliases-local ]] && source ~/.aliases-local
 for func_def in ~/.functions/*; do
     source "$func_def"
 done

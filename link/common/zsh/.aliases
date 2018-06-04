@@ -22,6 +22,7 @@ alias dc='docker-compose'
 alias dcls='docker-compose ps'
 alias dcu='docker-compose up'
 alias dcd='docker-compose down'
+alias dcr='docker-compose run'
 alias dcub='docker-compose up --build'
 alias dcso='docker-compose stop'
 alias dcsa='docker-compose start'
@@ -63,6 +64,10 @@ alias ils='itermocil --list'
 alias an='ansible'
 alias anp='ansible-playbook'
 alias ang='ansible-galaxy'
+alias tf='terraform'
+
+alias v='vagrant'
+alias vgs='vagrant global-status'
 
 alias gdt='git difftool'
 

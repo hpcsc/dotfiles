@@ -25,7 +25,7 @@
     "explorer.openEditors.visible": 0,
     "editor.snippetSuggestions": "top",
     "terminal.integrated.scrollback": 2000,
-    "window.title": "${activeEditorMedium}${separator}${rootName}",
+    "window.title": "${rootName}${separator}${activeEditorMedium}",
     "workbench.list.openMode": "doubleClick",
     "search.location": "panel",
     "editor.fontFamily": "Fira Code, Menlo, Monaco, 'Courier New', monospace",

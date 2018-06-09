@@ -11,7 +11,6 @@
     { "key": "shift+alt+l", "command": "editor.action.transformToLowercase" },
     { "key": "shift+alt+u", "command": "editor.action.transformToUppercase" },
     { "key": "ctrl+shift+/", "command": "workbench.files.action.showActiveFileInExplorer"},
-
     {
         "key": "ctrl+shift+[",
         "command": "workbench.action.navigateLeft"
@@ -97,5 +96,19 @@
         "key": "cmd+k",
         "command": "-workbench.action.terminal.clear",
         "when": "terminalFocus"
+    },
+    {
+        "key": "ctrl+u",
+        "command": "workbench.action.quickSwitchWindow"
+    },
+    {
+        "key": "ctrl+k",
+        "command": "workbench.action.quickOpenSelectPrevious",
+        "when": "inQuickOpen"
+    },
+    {
+        "key": "ctrl+j",
+        "command": "workbench.action.quickOpenSelectNext",
+        "when": "inQuickOpen"
     }
 ]

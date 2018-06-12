@@ -74,6 +74,10 @@
         "command": "explorer.newFile"
     },
     {
+        "key": "ctrl+shift+cmd+n",
+        "command": "explorer.newFolder"
+    },
+    {
         "key": "cmd+[",
         "command": "workbench.action.terminal.focusPreviousPane",
         "when": "terminalFocus"

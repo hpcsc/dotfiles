@@ -110,5 +110,13 @@
         "key": "ctrl+j",
         "command": "workbench.action.quickOpenSelectNext",
         "when": "inQuickOpen"
+    },
+    {
+        "key": "ctrl+shift+cmd+[",
+        "command": "workbench.action.showPreviousWindowTab"
+    },
+    {
+        "key": "ctrl+shift+cmd+]",
+        "command": "workbench.action.showNextWindowTab"
     }
 ]

@@ -66,6 +66,8 @@ alias anp='ansible-playbook'
 alias ang='ansible-galaxy'
 alias tf='terraform'
 
+alias h='helm'
+
 alias v='vagrant'
 alias vgs='vagrant global-status'
 

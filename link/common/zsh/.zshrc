@@ -68,4 +68,4 @@ bindkey '^ ' autosuggest-accept
 [[ -f ~/.zshrc-$OS ]] && source ~/.zshrc-$OS
 
 # machine-specific customization
-[[ -f ~/.local-zshrc ]] && source ~/.local-zshrc
+[[ -f ~/.zshrc-local ]] && source ~/.zshrc-local

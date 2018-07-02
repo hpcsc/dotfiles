@@ -59,4 +59,5 @@
         "suppressShowKeyBindingsNotice": true
     },
     "gitlens.historyExplorer.enabled": false,
+    "window.openFoldersInNewWindow": "on",
 }

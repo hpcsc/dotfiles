@@ -1,126 +1,195 @@
 // Place your key bindings in this file to overwrite the defaults
 [
-    { "key": "shift+cmd+r",           "command": "workbench.action.tasks.runTask" },
-    { "key": "ctrl+`", "command": "workbench.action.terminal.toggleTerminal" },
-    { "key": "ctrl+`", "command": "workbench.action.terminal.focus", "when": "!terminalFocus" },
-    { "key": "cmd+shift+right", "command": "workbench.action.terminal.focusNext", "when": "terminalFocus" },
-    { "key": "cmd+shift+]", "command": "workbench.action.terminal.focusNext", "when": "terminalFocus" },
-    { "key": "cmd+shift+left", "command": "workbench.action.terminal.focusPrevious", "when": "terminalFocus" },
-    { "key": "cmd+shift+[", "command": "workbench.action.terminal.focusPrevious", "when": "terminalFocus" },
-    { "key": "cmd+w", "command": "workbench.action.terminal.kill", "when": "terminalFocus" },
-    { "key": "shift+alt+l", "command": "editor.action.transformToLowercase" },
-    { "key": "shift+alt+u", "command": "editor.action.transformToUppercase" },
-    { "key": "ctrl+shift+/", "command": "workbench.files.action.showActiveFileInExplorer"},
-    {
-        "key": "ctrl+shift+[",
-        "command": "workbench.action.navigateLeft"
-    },
-    {
-        "key": "ctrl+shift+]",
-        "command": "workbench.action.navigateRight"
-    },
-    {
-        "key": "ctrl+up",
-        "command": "metaGo.spaceBlockMoveUp",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "alt+home",
-        "command": "-metaGo.spaceBlockMoveUp",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "ctrl+down",
-        "command": "metaGo.spaceBlockMoveDown",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "alt+end",
-        "command": "-metaGo.spaceBlockMoveDown",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "ctrl+shift+down",
-        "command": "metaGo.spaceBlockSelectDown",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "shift+alt+end",
-        "command": "-metaGo.spaceBlockSelectDown",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "ctrl+shift+up",
-        "command": "metaGo.spaceBlockSelectUp",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "shift+alt+home",
-        "command": "-metaGo.spaceBlockSelectUp",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "ctrl+shift+w",
-        "command": "editor.emmet.action.wrapWithAbbreviation",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "ctrl+shift+l",
-        "command": "editor.emmet.action.wrapIndividualLinesWithAbbreviation",
-        "when": "editorTextFocus"
-    },
-    {
-        "key": "ctrl+shift+n",
-        "command": "explorer.newFile"
-    },
-    {
-        "key": "ctrl+shift+cmd+n",
-        "command": "explorer.newFolder"
-    },
-    {
-        "key": "cmd+[",
-        "command": "workbench.action.terminal.focusPreviousPane",
-        "when": "terminalFocus"
-    },
-    {
-        "key": "cmd+]",
-        "command": "workbench.action.terminal.focusNextPane",
-        "when": "terminalFocus"
-    },
-    {
-        "key": "ctrl+cmd+m",
-        "command": "workbench.action.toggleMaximizedPanel"
-    },
-    {
-        "key": "shift+cmd+k",
-        "command": "workbench.action.terminal.clear",
-        "when": "terminalFocus"
-    },
-    {
-        "key": "cmd+k",
-        "command": "-workbench.action.terminal.clear",
-        "when": "terminalFocus"
-    },
-    {
-        "key": "ctrl+u",
-        "command": "workbench.action.quickSwitchWindow"
-    },
-    {
-        "key": "ctrl+k",
-        "command": "workbench.action.quickOpenSelectPrevious",
-        "when": "inQuickOpen"
-    },
-    {
-        "key": "ctrl+j",
-        "command": "workbench.action.quickOpenSelectNext",
-        "when": "inQuickOpen"
-    },
-    {
-        "key": "ctrl+shift+cmd+[",
-        "command": "workbench.action.showPreviousWindowTab"
-    },
-    {
-        "key": "ctrl+shift+cmd+]",
-        "command": "workbench.action.showNextWindowTab"
-    }
+	{
+		"key": "shift+cmd+r",
+		"command": "workbench.action.tasks.runTask"
+	},
+	{
+		"key": "ctrl+`",
+		"command": "workbench.action.terminal.toggleTerminal"
+	},
+	{
+		"key": "ctrl+`",
+		"command": "workbench.action.terminal.focus",
+		"when": "!terminalFocus"
+	},
+	{
+		"key": "cmd+shift+right",
+		"command": "workbench.action.terminal.focusNext",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "cmd+shift+]",
+		"command": "workbench.action.terminal.focusNext",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "cmd+shift+left",
+		"command": "workbench.action.terminal.focusPrevious",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "cmd+shift+[",
+		"command": "workbench.action.terminal.focusPrevious",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "cmd+w",
+		"command": "workbench.action.terminal.kill",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "shift+alt+l",
+		"command": "editor.action.transformToLowercase"
+	},
+	{
+		"key": "shift+alt+u",
+		"command": "editor.action.transformToUppercase"
+	},
+	{
+		"key": "ctrl+shift+/",
+		"command": "workbench.files.action.showActiveFileInExplorer"
+	},
+	{
+		"key": "ctrl+right",
+		"command": "cursorWordPartRight",
+		"when": "textInputFocus"
+	},
+	{
+		"key": "ctrl+shift+right",
+		"command": "cursorWordPartRightSelect",
+		"when": "textInputFocus"
+	},
+	{
+		"key": "ctrl+left",
+		"command": "cursorWordPartStartLeft",
+		"when": "textInputFocus"
+	},
+	{
+		"key": "ctrl+shift+left",
+		"command": "cursorWordPartStartLeftSelect",
+		"when": "textInputFocus"
+	},
+	{
+		"key": "ctrl+backspace",
+		"command": "deleteWordPartLeft",
+		"when": "textInputFocus && !editorReadonly"
+	},
+	{
+		"key": "ctrl+delete",
+		"command": "deleteWordPartRight",
+		"when": "textInputFocus && !editorReadonly"
+	},
+	{
+		"key": "ctrl+shift+[",
+		"command": "workbench.action.navigateLeft"
+	},
+	{
+		"key": "ctrl+shift+]",
+		"command": "workbench.action.navigateRight"
+	},
+	{
+		"key": "ctrl+up",
+		"command": "metaGo.spaceBlockMoveUp",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "alt+home",
+		"command": "-metaGo.spaceBlockMoveUp",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "ctrl+down",
+		"command": "metaGo.spaceBlockMoveDown",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "alt+end",
+		"command": "-metaGo.spaceBlockMoveDown",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "ctrl+shift+down",
+		"command": "metaGo.spaceBlockSelectDown",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "shift+alt+end",
+		"command": "-metaGo.spaceBlockSelectDown",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "ctrl+shift+up",
+		"command": "metaGo.spaceBlockSelectUp",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "shift+alt+home",
+		"command": "-metaGo.spaceBlockSelectUp",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "ctrl+shift+w",
+		"command": "editor.emmet.action.wrapWithAbbreviation",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "ctrl+shift+l",
+		"command": "editor.emmet.action.wrapIndividualLinesWithAbbreviation",
+		"when": "editorTextFocus"
+	},
+	{
+		"key": "ctrl+shift+n",
+		"command": "explorer.newFile"
+	},
+	{
+		"key": "ctrl+shift+cmd+n",
+		"command": "explorer.newFolder"
+	},
+	{
+		"key": "cmd+[",
+		"command": "workbench.action.terminal.focusPreviousPane",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "cmd+]",
+		"command": "workbench.action.terminal.focusNextPane",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "ctrl+cmd+m",
+		"command": "workbench.action.toggleMaximizedPanel"
+	},
+	{
+		"key": "shift+cmd+k",
+		"command": "workbench.action.terminal.clear",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "cmd+k",
+		"command": "-workbench.action.terminal.clear",
+		"when": "terminalFocus"
+	},
+	{
+		"key": "ctrl+u",
+		"command": "workbench.action.quickSwitchWindow"
+	},
+	{
+		"key": "ctrl+k",
+		"command": "workbench.action.quickOpenSelectPrevious",
+		"when": "inQuickOpen"
+	},
+	{
+		"key": "ctrl+j",
+		"command": "workbench.action.quickOpenSelectNext",
+		"when": "inQuickOpen"
+	},
+	{
+		"key": "ctrl+shift+cmd+[",
+		"command": "workbench.action.showPreviousWindowTab"
+	},
+	{
+		"key": "ctrl+shift+cmd+]",
+		"command": "workbench.action.showNextWindowTab"
+	}
 ]

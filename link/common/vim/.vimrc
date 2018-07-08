@@ -84,6 +84,7 @@ Plug 'will133/vim-dirdiff'
 Plug 'junegunn/vim-peekaboo'
 Plug 'airblade/vim-gitgutter'
 Plug 'osyo-manga/vim-over'
+Plug 'google/vim-searchindex'
 
 if has('nvim')
   Plug 'autozimu/LanguageClient-neovim', { 'branch': 'next', 'do': 'bash install.sh' }

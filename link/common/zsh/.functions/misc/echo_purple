@@ -1,0 +1,3 @@
+local PURPLE='\033[1;35m'
+echo_with_color "${PURPLE}" $@
+

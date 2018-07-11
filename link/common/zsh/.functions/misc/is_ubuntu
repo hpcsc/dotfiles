@@ -1,0 +1,2 @@
+[[ "$(distro_name)" = "Ubuntu" ]] || return 1
+

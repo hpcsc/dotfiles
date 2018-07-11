@@ -1,0 +1,3 @@
+local command="docker rmi -f \$(docker images | grep '$1' | awk '{print \$3}')"
+execute $command
+

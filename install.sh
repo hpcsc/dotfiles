@@ -2,7 +2,7 @@
 
 # source and export helper functions to be used by the rest of this script
 set -a
-source ./link/common/zsh/.functions/misc
+source ./load-zsh-autoload-as-functions.sh
 set +a
 
 function execute_scripts() {

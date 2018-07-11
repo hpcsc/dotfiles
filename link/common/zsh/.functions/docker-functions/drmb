@@ -1,0 +1,3 @@
+local command="docker rm -f \$(docker ps -a | grep '$1' | awk '{print \$1}')"
+execute $command
+

@@ -1,0 +1,4 @@
+printf '%s' "Executing: $1"
+echo '\n====================='
+eval $1
+

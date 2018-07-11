@@ -1,0 +1,4 @@
+local COLOR=$1
+shift
+local NC='\033[0m'
+echo -e "${COLOR}$@${NC}"

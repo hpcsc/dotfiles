@@ -1,0 +1,21 @@
+# delete multiple git branches by pattern
+
+local pattern=$@
+if [ "$pattern" = "" ]; then
+    echo "[$0]: no pattern provided"; return;
+fi;
+
+local b=$(git for-each-ref refs/heads/ --format="%(refname:short)" | awk 'tolower($0) ~ /'$pattern'/')
+local branch_count=$(echo $b | sed '/^\s*$/d' | wc -l)
+if [ $branch_count -eq 0 ]; then
+    echo "[$0]: No branch matches the pattern: "$pattern
+else
+    echo "[$0] Found $branch_count branches:"
+    echo $b
+    echo "==================="
+    echo "[$0]: Deleting above $branch_count branches? (y/N)"
+    read confirmation
+    if [ "$confirmation" = "y" ] || [ "$confirmation" = "Y" ]; then
+        echo $b | xargs git branch -D
+    fi;
+fi;

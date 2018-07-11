@@ -1,0 +1,7 @@
+# https://binkley.blogspot.sg/2017/03/frequent-commits.html
+case $1 in
+    test ) eval $2 && git commit -a --amend --no-edit ;;
+    integrate ) git pull --rebase --autostash && tdd test ;;
+    accept ) git commit --amend && git push && tdd new ;;
+    new ) git commit --allow-empty -m WIP ;;
+esac

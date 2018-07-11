@@ -1,0 +1,17 @@
+local copy=false
+while getopts ":hc" option; do
+    case $option in
+        h) echo "usage: $0 [-h] [-c] [interface]\ndefault interface is en0\nexample: ip -c bridge0"; return ;;
+        c) copy=true ;;
+        ?) echo "error: option -$OPTARG is not implemented"; return ;;
+    esac
+done
+shift $((OPTIND-1))
+local interface=${1-en0}
+local newline=$'\n'
+local command="ifconfig $interface | grep 'inet ' | cut -d ' ' -f2 | tr -d '\n'"
+if [ "$copy" = "true" ]
+then
+    command=$command" | tee >(pbcopy)"
+fi
+execute $command

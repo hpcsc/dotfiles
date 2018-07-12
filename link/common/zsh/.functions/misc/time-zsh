@@ -1,0 +1,2 @@
+number_of_times=${1:-10}
+for i in $(seq 1 $number_of_times); do /usr/bin/time zsh -i -c exit; done

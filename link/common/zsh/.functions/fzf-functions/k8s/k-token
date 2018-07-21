@@ -1,0 +1,11 @@
+local namespace=$(k-choose-namespace $@)
+local account=$(k-choose-account $namespace)
+if [ "$account" = "" ]; then
+  return;
+fi;
+
+kubectl -n $namespace describe secret \
+  $(kubectl -n $namespace get secret | grep $account | awk '{print $1}') | grep token: | awk '{print $2}' | pbcopy
+
+echo "=== Copied token for [$account] in namespace [$namespace] to clipboard"
+

@@ -4,5 +4,19 @@ if [ "$selected_profile" = "" ]; then
     return;
 fi;
 
-~/.misc-scripts/set-aws-profile.py $selected_profile
+local source_access_key_id=$(aws configure get ${selected_profile}.aws_access_key_id)
+if [ $? != 0 ] || [ "$source_access_key_id" = "" ]; then
+    echo "=== fail to get aws_access_key_id for profile [$selected_profile]"
+    return;
+fi;
+
+local source_secret_access_key=$(aws configure get ${selected_profile}.aws_secret_access_key)
+if [ $? != 0 ] || [ "$source_secret_access_key" = "" ]; then
+    echo "=== fail to get aws_secret_access_key for profile [$selected_profile]"
+    return;
+fi;
+
+aws configure set aws_access_key_id $source_access_key_id
+aws configure set aws_secret_access_key $source_secret_access_key
+
 echo "=== AWS default profile is set to [$selected_profile]"

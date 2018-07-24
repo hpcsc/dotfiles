@@ -47,7 +47,7 @@
 
 ### Checklist after setup
 
-- Install .NET Core, Authy, Boostnote, Caffeine, Jetbrains Toolbox
+- Install .NET Core, Authy, Boostnote, Caffeine, Jetbrains Toolbox, PathFinder
 - Enable "Use F1, F2, etc keys as standard function keys" in Keyboard settings
 
 ## Ubuntu

@@ -1,3 +1,8 @@
 local pattern=${1}
 local selected_profile=$(cat ~/.aws/credentials | awk '/\[.+\]/{ print substr($0, 2, length($0) - 2) }' | fzf-tmux --height 30% --reverse -1 -0 --header 'Select AWS profile' --query "$pattern")
-eval "export AWS_DEFAULT_PROFILE=$selected_profile"
+if [ "$selected_profile" = "" ]; then
+    return;
+fi;
+
+~/.misc-scripts/set-aws-profile.py $selected_profile
+echo "=== AWS default profile is set to [$selected_profile]"

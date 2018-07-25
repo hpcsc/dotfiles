@@ -1,19 +1,8 @@
 #!/usr/bin/env python
 
 import os
-import configparser
 import sys
-
-def ensure_file_exists(file_path):
-    if not os.path.exists(file_path):
-        print(f'=== {file_path} not found')
-        sys.exit(1)
-
-def read_config_file(file_path):
-    ensure_file_exists(file_path)
-    config_file = configparser.ConfigParser()
-    config_file.read(file_path)
-    return config_file
+from utilities import read_credentials_file, read_config_file, credentials_file_path, config_file_path
 
 def create_default_if_not_exists(config_file, config_file_name):
     if not 'default' in config_file:
@@ -31,13 +20,8 @@ def is_assumed_role_profile(profile, config):
     return config[profile]['role_arn'] and config[profile]['source_profile']
 
 def set_profile(profile):
-    credentials_file_path = f'{os.path.expanduser("~")}/.aws/credentials'
-    credentials_file = read_config_file(credentials_file_path)
-
-    config_file_path = f'{os.path.expanduser("~")}/.aws/config'
-    config_file = read_config_file(config_file_path)
-
-    # sys.exit(1)
+    credentials_file = read_credentials_file()
+    config_file = read_config_file()
 
     create_default_if_not_exists(credentials_file, 'credentials')
     create_default_if_not_exists(config_file, 'config')

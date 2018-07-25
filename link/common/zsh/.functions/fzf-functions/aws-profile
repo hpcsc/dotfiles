@@ -1,22 +1,10 @@
 local pattern=${1}
-local selected_profile=$(cat ~/.aws/credentials | awk '/\[.+\]/{ print substr($0, 2, length($0) - 2) }' | fzf-tmux --height 30% --reverse -1 -0 --header 'Select AWS profile' --query "$pattern")
+local credentials_sections=$(cat ~/.aws/credentials | awk '/\[.+\]/ && ($0 != "[default]") { print substr($0, 2, length($0) - 2) }')
+local config_section=$(cat ~/.aws/config | awk '/\[.+\]/ && ($0 != "[default]") { print substr($0, 2, length($0) - 2) }')
+local selected_profile=$(echo "${credentials_sections}\n${config_section}" | fzf-tmux --height 30% --reverse -1 -0 --header 'Select AWS profile' --query "$pattern")
 if [ "$selected_profile" = "" ]; then
     return;
 fi;
 
-local source_access_key_id=$(aws configure get ${selected_profile}.aws_access_key_id)
-if [ $? != 0 ] || [ "$source_access_key_id" = "" ]; then
-    echo "=== fail to get aws_access_key_id for profile [$selected_profile]"
-    return;
-fi;
-
-local source_secret_access_key=$(aws configure get ${selected_profile}.aws_secret_access_key)
-if [ $? != 0 ] || [ "$source_secret_access_key" = "" ]; then
-    echo "=== fail to get aws_secret_access_key for profile [$selected_profile]"
-    return;
-fi;
-
-aws configure set aws_access_key_id $source_access_key_id
-aws configure set aws_secret_access_key $source_secret_access_key
-
+~/.misc-scripts/set-aws-profile.py $selected_profile
 echo "=== AWS default profile is set to [$selected_profile]"

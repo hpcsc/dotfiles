@@ -1,10 +1,8 @@
 local pattern=${1}
-local credentials_sections=$(cat ~/.aws/credentials | awk '/\[.+\]/ && ($0 != "[default]") { print substr($0, 2, length($0) - 2) }')
-local config_section=$(cat ~/.aws/config | awk '/\[.+\]/ && ($0 != "[default]") { print substr($0, 2, length($0) - 2) }')
-local selected_profile=$(echo "${credentials_sections}\n${config_section}" | fzf-tmux --height 30% --reverse -1 -0 --header 'Select AWS profile' --query "$pattern")
+local selected_profile=$(~/.misc-scripts/aws-cli/list-aws-profiles.py | fzf-tmux --height 30% --reverse -1 -0 --header 'Select AWS profile' --query "$pattern")
 if [ "$selected_profile" = "" ]; then
     return;
 fi;
 
-~/.misc-scripts/set-aws-profile.py $selected_profile
+~/.misc-scripts/aws-cli/set-aws-profile.py $selected_profile
 echo "=== AWS default profile is set to [$selected_profile]"

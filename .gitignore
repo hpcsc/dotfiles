@@ -1,2 +1,3 @@
 .netrwhist
 *.log
+__pycache__

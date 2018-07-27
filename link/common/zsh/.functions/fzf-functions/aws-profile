@@ -1,8 +1,0 @@
-local pattern=${1}
-local selected_profile=$(~/.misc-scripts/aws-cli/list-aws-profiles.py | fzf-tmux --height 30% --reverse -1 -0 --header 'Select AWS profile' --query "$pattern")
-if [ "$selected_profile" = "" ]; then
-    return;
-fi;
-
-~/.misc-scripts/aws-cli/set-aws-profile.py $selected_profile
-echo "=== AWS default profile is set to [$selected_profile]"

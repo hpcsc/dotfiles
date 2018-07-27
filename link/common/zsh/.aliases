@@ -58,6 +58,9 @@ alias klss='kubectl get service --all-namespaces'
 alias kr='kubectl rollout'
 alias ka='kubectl apply --record -f'
 
+alias aws-profile='aws-profile-utils set'
+alias current-aws-profile='aws-profile-utils get'
+
 alias i=itermocil
 alias ils='itermocil --list'
 

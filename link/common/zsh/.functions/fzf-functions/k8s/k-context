@@ -1,0 +1,6 @@
+selected_context=$(kubectl config get-contexts | awk '{if(NR > 1) print ( match($1,/\*/) ? $2 : $1 ) }' | fzf-tmux --height 30% --reverse -1 -0 --header 'Select Kubernetes context')
+if [ "$selected_context" = "" ]; then
+  exit 0
+fi;
+
+kubectl config use $selected_context

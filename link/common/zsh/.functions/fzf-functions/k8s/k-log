@@ -1,0 +1,17 @@
+local namespace=$(k-choose-namespace)
+if [ "$namespace" = "" ]; then
+  return
+fi;
+
+local pod=$(kubectl get pod -n $namespace | awk '{ if(NR > 1) print $1 }' | fzf-tmux --height 30% --reverse -0 -1 --header "Select pod in namespace $namespace")
+if [ "$pod" = "" ]; then
+  return
+fi;
+
+local container=$(kubectl get pod -n $namespace $pod -o json | jq -r '.spec.containers[].name' | fzf-tmux --height 30% --reverse -0 -1 --header "Select container in pod $pod")
+if [ "$container" = "" ]; then
+  return
+fi;
+
+kubectl log -n $namespace $pod -c $container
+

@@ -40,6 +40,7 @@ inoremap jk <esc>
 
 " NERDTree Mappings {{{
 
+nnoremap <leader>m :NERDTreeFind<cr>
 nnoremap <leader>t :NERDTreeToggle<cr>
 
 " }}}

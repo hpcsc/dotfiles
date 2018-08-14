@@ -60,4 +60,5 @@
     },
     "gitlens.historyExplorer.enabled": false,
     "window.openFoldersInNewWindow": "on",
+    "breadcrumbs.enabled": true,
 }

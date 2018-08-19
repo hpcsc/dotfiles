@@ -9,7 +9,7 @@
 
 - `/up.sh`: entry point to setting up a new machine. This script just setup log output and delegates actual installation to install.sh
 - `/install.sh`: main installation script
-- `/scripts`: contains scripts used during setting up a new machine. Scripts in this folder follows convention of prepending platform in front of script names. 
+- `/scripts`: contains scripts used during setting up a new machine. Scripts in this folder follows convention of prepending platform in front of script names.
   E.g. `macos-brew-bundle.sh` is only applicable to MacOS, `ubuntu-fasd.sh` is only applicable to Ubuntu and `common-stow.sh` is applicable to both MacOS and Ubuntu
 - `/link`: contains settings to be stowed during stow step. These settings are also organized according to platforms.
 - `/tests`: contains tests written using `bats`
@@ -43,11 +43,12 @@
     - Refresh iTerm2 preferences cache if needed: `defaults read com.googlecode.iterm2`
 9. Execute `./others/macos/install-gui-apps.sh` to install GUI applications
 10. Execute `./others/macos/vscode/setup.sh` to configure VSCode
-11. Restart computer to finalize the process
+11. Install Path Finder and execute `./others/macos/PathFinder/setup.sh` to configure Path Finder
+12. Restart computer to finalize the process
 
 ### Checklist after setup
 
-- Install .NET Core, Authy, Boostnote, Caffeine, Jetbrains Toolbox, PathFinder
+- Install .NET Core, Authy, Boostnote, Caffeine, Jetbrains Toolbox, Path Finder
 - Enable "Use F1, F2, etc keys as standard function keys" in Keyboard settings
 
 ## Ubuntu

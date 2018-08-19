@@ -25,7 +25,9 @@ function backup() {
 
     for i in "${common_packages[@]}"; do
       echo_yellow "=== Backing up folder $i"
-      ruby ./scripts/common-backup.rb "./link/common/$i" "$backup_folder_name"
+      # --filter tells rsync to do a directory merge with .gitignore files and have them exclude per git's rules
+      rsync -v --times --delete --recursive --human-readable --filter=':- .gitignore' "./link/common/$i" "${backup_folder_name}/${i}"
+      echo_yellow "=== Folder $i is backed up to ${backup_folder_name}/${i}"
     done
   fi
 }

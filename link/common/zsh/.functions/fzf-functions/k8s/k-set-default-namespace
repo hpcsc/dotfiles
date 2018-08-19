@@ -1,4 +1,5 @@
-local selected_namespace=$(kubectl get ns --no-headers | awk '{print $1}' | fzf-tmux --height 30% --reverse -0 -1 --header 'Select k8s namespace')
+local namespace_pattern=$1
+local selected_namespace=$(kubectl get ns --no-headers | awk '{print $1}' | fzf-tmux --height 30% --reverse -0 -1 --header 'Select k8s namespace' --query=${namespace_pattern})
 if [ "$selected_namespace" = "" ]; then
   return
 fi;

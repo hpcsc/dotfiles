@@ -191,5 +191,35 @@
 	{
 		"key": "ctrl+shift+cmd+]",
 		"command": "workbench.action.showNextWindowTab"
+	},
+	{
+		"key": "ctrl+h",
+		"command": "breadcrumbs.focusPrevious",
+		"when": "breadcrumbsActive && breadcrumbsVisible"
+	},
+	{
+		"key": "ctrl+l",
+		"command": "breadcrumbs.focusNext",
+		"when": "breadcrumbsActive && breadcrumbsVisible"
+	},
+	{
+		"key": "ctrl+o",
+		"command": "breadcrumbs.selectFocused",
+		"when": "breadcrumbsActive && breadcrumbsVisible"
+	},
+	{
+		"key": "ctrl+j",
+		"command": "list.focusDown",
+		"when": "listFocus && !inputFocus"
+	},
+	{
+		"key": "ctrl+k",
+		"command": "list.focusUp",
+		"when": "listFocus && !inputFocus"
+	},
+	{
+		"key": "ctrl+o",
+		"command": "list.toggleExpand",
+		"when": "listFocus && !inputFocus"
 	}
 ]

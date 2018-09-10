@@ -5,3 +5,4 @@ bind generic D !git difftool --tool=dirdiff --dir-dif --no-prompt  %(commit)^!
 bind generic V !git difftool --tool=code --no-prompt  %(commit)^!
 bind generic 9 !@bash -c "echo -n %(commit) | pbcopy"
 bind status a !?git commit --amend
+bind diff F :/^\+\+\+

@@ -60,8 +60,7 @@ alias kns='k-set-default-namespace'
 alias kr='kubectl rollout'
 alias ka='kubectl apply --record -f'
 
-alias aws-profile='aws-profile-utils set'
-alias current-aws-profile='aws-profile-utils get'
+alias apu='aws-profile-utils'
 
 alias i=itermocil
 alias ils='itermocil --list'

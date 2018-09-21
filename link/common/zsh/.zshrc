@@ -38,8 +38,10 @@ source ~/.asdf/completions/asdf.bash
 
 # =================== fzf ========================
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-export FZF_DEFAULT_COMMAND='rg --files --hidden --sort-files --follow --glob "!.git/*"'
+export FZF_DEFAULT_COMMAND='rg --files --hidden --smart-case --sort-files --follow --glob "!.git/*"'
+export FZF_DEFAULT_OPTS="--reverse --height 30%"
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND="fd -t d"
 
 # =================== tmux  ======================
 [[ -f ~/.bin/tmuxinator.zsh ]] && source ~/.bin/tmuxinator.zsh

@@ -36,6 +36,7 @@ nnoremap <silent> <leader>= :winc =<CR>
 nnoremap <silent> <leader>y o<Esc>
 
 inoremap jk <esc>
+vnoremap <CR> <esc>
 
 
 " NERDTree Mappings {{{

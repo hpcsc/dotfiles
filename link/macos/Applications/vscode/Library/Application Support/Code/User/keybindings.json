@@ -89,46 +89,6 @@
 		"command": "workbench.action.navigateRight"
 	},
 	{
-		"key": "ctrl+up",
-		"command": "metaGo.spaceBlockMoveUp",
-		"when": "editorTextFocus"
-	},
-	{
-		"key": "alt+home",
-		"command": "-metaGo.spaceBlockMoveUp",
-		"when": "editorTextFocus"
-	},
-	{
-		"key": "ctrl+down",
-		"command": "metaGo.spaceBlockMoveDown",
-		"when": "editorTextFocus"
-	},
-	{
-		"key": "alt+end",
-		"command": "-metaGo.spaceBlockMoveDown",
-		"when": "editorTextFocus"
-	},
-	{
-		"key": "ctrl+shift+down",
-		"command": "metaGo.spaceBlockSelectDown",
-		"when": "editorTextFocus"
-	},
-	{
-		"key": "shift+alt+end",
-		"command": "-metaGo.spaceBlockSelectDown",
-		"when": "editorTextFocus"
-	},
-	{
-		"key": "ctrl+shift+up",
-		"command": "metaGo.spaceBlockSelectUp",
-		"when": "editorTextFocus"
-	},
-	{
-		"key": "shift+alt+home",
-		"command": "-metaGo.spaceBlockSelectUp",
-		"when": "editorTextFocus"
-	},
-	{
 		"key": "ctrl+shift+w",
 		"command": "editor.emmet.action.wrapWithAbbreviation",
 		"when": "editorTextFocus"

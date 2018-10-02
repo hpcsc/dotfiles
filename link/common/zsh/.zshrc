@@ -59,6 +59,8 @@ bindkey "^X^_" redo
 # bind Ctrl-Space to accept zsh auto suggestion
 bindkey '^ ' autosuggest-accept
 
+bindkey '^p' fzf-file-widget
+
 # ======== load additional rc files ==============
 #
 # OS-specific customization

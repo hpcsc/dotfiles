@@ -61,4 +61,21 @@
     "gitlens.historyExplorer.enabled": false,
     "window.openFoldersInNewWindow": "on",
     "breadcrumbs.enabled": true,
+    "vim.leader": "<space>",
+    "vim.useSystemClipboard": true,
+    "vim.insertModeKeyBindings": [
+        {
+            "before": ["j", "k"],
+            "after": ["<Esc>"]
+        }
+    ],
+    "vim.disableExtension": false,
+    "vim.normalModeKeyBindings": [
+        {
+            "before": ["<leader>", "y"],
+            "after": ["o", "<Esc>"]
+        }
+    ],
+    "vim.useCtrlKeys": false,
+    "vim.hlsearch": true,
 }

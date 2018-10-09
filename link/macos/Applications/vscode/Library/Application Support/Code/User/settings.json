@@ -61,6 +61,7 @@
     "gitlens.historyExplorer.enabled": false,
     "window.openFoldersInNewWindow": "on",
     "breadcrumbs.enabled": true,
+	"editor.tabCompletion": "on",
     "vim.leader": "<space>",
     "vim.useSystemClipboard": true,
     "vim.insertModeKeyBindings": [

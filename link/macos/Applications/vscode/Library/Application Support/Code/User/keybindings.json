@@ -5,15 +5,6 @@
 		"command": "workbench.action.tasks.runTask"
 	},
 	{
-		"key": "ctrl+`",
-		"command": "workbench.action.terminal.toggleTerminal"
-	},
-	{
-		"key": "ctrl+`",
-		"command": "workbench.action.terminal.focus",
-		"when": "!terminalFocus"
-	},
-	{
 		"key": "cmd+shift+right",
 		"command": "workbench.action.terminal.focusNext",
 		"when": "terminalFocus"
@@ -121,13 +112,8 @@
 		"command": "workbench.action.toggleMaximizedPanel"
 	},
 	{
-		"key": "shift+cmd+k",
-		"command": "workbench.action.terminal.clear",
-		"when": "terminalFocus"
-	},
-	{
 		"key": "cmd+k",
-		"command": "-workbench.action.terminal.clear",
+		"command": "workbench.action.terminal.clear",
 		"when": "terminalFocus"
 	},
 	{

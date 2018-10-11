@@ -1,0 +1,24 @@
+local command=$1
+
+if [ "$command" = "set" ]; then
+  local selected_namespace=$(kubectl get ns --no-headers | awk '{print $1}' | fzf-tmux --height 30% --reverse -0 -1 --header 'Select k8s namespace')
+  if [ "$selected_namespace" = "" ]; then
+    return
+  fi;
+
+  local current_context=$(kubectl config current-context)
+  kubectl config set-context $current_context --namespace=$selected_namespace
+else
+  if ! command -v rq >/dev/null 2>&1 ; then
+    echo "=== rq is required"
+    return
+  fi;
+
+  KUBE_CONFIG=$(cat ~/.kube/config)
+  CURRENT_CONTEXT=$(echo $KUBE_CONFIG | rq -yR 'at "current-context"')
+
+  echo $KUBE_CONFIG | \
+    rq -yR 'flatMap "contexts" | find (c) => { c.name == "'$CURRENT_CONTEXT'" && c.context && c.context.namespace } | at "context.namespace"'
+fi;
+
+

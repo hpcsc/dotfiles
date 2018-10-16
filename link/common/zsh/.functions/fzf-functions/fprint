@@ -1,0 +1,22 @@
+selected_printer=$(lpstat -p | grep enabled | awk '{ print $2 }' | fzf --height 30% --reverse -1 -0 --header 'Select printer')
+if [ "${selected_printer}" = "" ]; then
+  return
+fi;
+
+sides=$(echo 'one-sided\ntwo-sided-long-edge\ntwo-sided-short-edge' | fzf --height 30% --reverse)
+if [ "${sides}" = "" ]; then
+  return
+fi;
+
+echo "====================================="
+echo "PRINTING OPTIONS:"
+echo "- PRINTER: ${selected_printer}"
+echo "- SIDES: ${sides}"
+echo "====================================="
+
+for f in "$@"; do
+  echo "=== sending ${f} to printer"
+  lpr -o sides=${sides} -P ${selected_printer} ${f}
+done
+
+echo "=== done sending jobs to $selected_printer"

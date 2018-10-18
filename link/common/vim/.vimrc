@@ -86,6 +86,8 @@ Plug 'airblade/vim-gitgutter'
 Plug 'osyo-manga/vim-over'
 Plug 'google/vim-searchindex'
 Plug 'jiangmiao/auto-pairs'
+Plug 'kana/vim-textobj-user'
+Plug 'rhysd/vim-textobj-anyblock'
 
 if has('nvim')
   Plug 'autozimu/LanguageClient-neovim', { 'branch': 'next', 'do': 'bash install.sh' }
@@ -116,7 +118,7 @@ endfunction
 map <leader>n :call RenameFile()<cr>
 
 " }}}
-"
+
 " fzf Settings {{{
 
 if executable('rg')

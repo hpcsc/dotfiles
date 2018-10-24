@@ -1,13 +1,13 @@
 local command=$1
 
 if [ "$command" = "set" ]; then
-  local selected=$(az account list | \
+  local selected=$(az account list -o json | \
                   jq -r '.[] | "\(.user.name) (\(.name)),\(.id)"' | \
                   fzf --height 30% --reverse -1 -0 -d ',' --with-nth=1 --header 'Select Azure subscription')
   local subscription_id=$(echo $selected | awk -F ',' '{print $2}')
   az account set -s $subscription_id
 
-  echo "Azure subscription set to $(az account show | jq -r '"\(.user.name) (\(.name))"')"
+  echo "Azure subscription set to $(az account show -o json | jq -r '"\(.user.name) (\(.name))"')"
 else
   az account show | jq -r '"\(.user.name) (\(.name))"'
 fi;

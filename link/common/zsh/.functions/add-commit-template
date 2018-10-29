@@ -1,0 +1,22 @@
+if [ ! -d .git ]; then
+  echo "${PWD} is not a valid git repository"
+  return
+fi;
+
+local commit_template_path=$(git config commit.template)
+local commit_template
+if [ "$commit_template_path" = "" ]; then
+  read "commit_template?Enter commit template: "
+else
+  commit_template=$(cat $commit_template_path)
+  read "commit_template?Enter commit template (${commit_template}): "
+fi;
+
+if [ "$commit_template" = "" ]; then
+  echo "Aborting since no commit template is provided"
+  return
+fi;
+
+echo $commit_template >! ${PWD}/.git/commit-message.tmpl
+git config commit.template "${PWD}/.git/commit-message.tmpl"
+echo "Commit template is written to ${PWD}/.git/commit-message.tmpl"

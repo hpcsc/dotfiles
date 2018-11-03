@@ -105,6 +105,7 @@ source ~/.keybindings.vim
 
 " Custom Functions {{{
 
+" custom function to rename current file
 function! RenameFile()
   let old_name = expand('%')
   let new_name = input('New file name: ', expand('%'), 'file')
@@ -116,6 +117,14 @@ function! RenameFile()
 endfunction
 
 map <leader>n :call RenameFile()<cr>
+
+" allow running a macro on a visual selection of a section
+function! ExecuteMacroOverVisualRange()
+  echo "@".getcmdline()
+  execute ":'<,'>normal @".nr2char(getchar())
+endfunction
+
+xnoremap @ :<C-u>call ExecuteMacroOverVisualRange()<CR>
 
 " }}}
 

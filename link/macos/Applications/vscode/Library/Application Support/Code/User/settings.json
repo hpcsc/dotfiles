@@ -62,6 +62,7 @@
     "window.openFoldersInNewWindow": "on",
     "breadcrumbs.enabled": true,
 	"editor.tabCompletion": "on",
+    "workbench.editor.highlightModifiedTabs": true,
     "vim.leader": "<space>",
     "vim.useSystemClipboard": true,
     "vim.insertModeKeyBindings": [
@@ -77,6 +78,5 @@
             "after": ["o", "<Esc>"]
         }
     ],
-    "vim.useCtrlKeys": false,
     "vim.hlsearch": true,
 }

@@ -167,5 +167,35 @@
 		"key": "ctrl+o",
 		"command": "list.toggleExpand",
 		"when": "listFocus && !inputFocus"
+	},
+	{
+		"key": "cmd+]",
+		"command": "workbench.action.nextEditor",
+		"when": "editorFocus"
+	},
+	{
+		"key": "cmd+[",
+		"command": "workbench.action.previousEditor",
+		"when": "editorFocus"
+	},
+	{
+		"key": "cmd+]",
+		"command": "workbench.action.nextSideBarView",
+		"when": "sideBarFocus"
+	},
+	{
+		"key": "cmd+[",
+		"command": "workbench.action.previousSideBarView",
+		"when": "sideBarFocus"
+	},
+	{
+		"key": "cmd+]",
+		"command": "workbench.action.nextPanelView",
+		"when": "panelFocus"
+	},
+	{
+		"key": "cmd+[",
+		"command": "workbench.action.previousPanelView",
+		"when": "panelFocus"
 	}
 ]

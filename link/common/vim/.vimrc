@@ -28,6 +28,11 @@ set backupdir=~/.vim/tmp/backup// " set custom location for backup files
 set directory=~/.vim/tmp/swap// " set custom location for swap files
 set undodir=~/.vim/tmp/undo// " set custom location for undo files
 set smartcase " smart case insensitive search
+
+" Open new split panes to right and bottom, which feels more natural
+set splitbelow
+set splitright
+
 color slate
 
 

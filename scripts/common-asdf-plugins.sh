@@ -7,6 +7,7 @@ function install() {
 
     echo_green "=== Availble $plugin version for asdf:"
     asdf list-all $plugin
+    wait
     read -p "=== [$plugin] Choose version to install (leave empty to skip):" install_version
     if [ "$install_version" != "" ]; then
         asdf install $plugin $install_version && \

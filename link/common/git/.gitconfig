@@ -2,6 +2,7 @@
 	excludesfile = ~/.gitignore_global
 	editor = vim
 	autocrlf = input
+  ignorecase = false
 [user]
 	name = David Nguyen
 	email = hpcsc@users.noreply.github.com

@@ -187,15 +187,5 @@
 		"key": "cmd+[",
 		"command": "workbench.action.previousSideBarView",
 		"when": "sideBarFocus"
-	},
-	{
-		"key": "cmd+]",
-		"command": "workbench.action.nextPanelView",
-		"when": "panelFocus"
-	},
-	{
-		"key": "cmd+[",
-		"command": "workbench.action.previousPanelView",
-		"when": "panelFocus"
 	}
 ]

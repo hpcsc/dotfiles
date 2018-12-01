@@ -13,7 +13,7 @@ else
   curl -sSL https://get.haskellstack.org/ | sh
 fi;
 
-confirm_no "=== Install haskell-ide-engine" || {
+confirm_no "=== Install haskell-ide-engine" && {
   echo_yellow "=== Skipping haskell-ide-engine"
   exit 0
 }

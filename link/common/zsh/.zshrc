@@ -23,14 +23,8 @@ autoload -Uz ~/.functions/**/*
 # =================== fasd  ===================
 eval "$(fasd --init auto)"
 
-# =================== antigen  ===================
-OS=$(uname 2> /dev/null)
-if [ "$OS" = "Darwin" ]; then
-    source /usr/local/share/antigen/antigen.zsh
-else
-    source /usr/share/antigen/antigen.zsh
-fi
-antigen init ~/.antigenrc
+# =================== prezto  ===================
+source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
 
 # =================== asdf =======================
 source ~/.asdf/asdf.sh

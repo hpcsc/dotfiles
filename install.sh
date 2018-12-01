@@ -47,7 +47,6 @@ common_scripts=(
   ./scripts/common-neovim.sh
   ./scripts/common-tmux.sh
   ./scripts/common-working-folders.sh
-  ./scripts/common-nix.sh
 )
 
 is_macos && (execute_scripts macos_scripts)

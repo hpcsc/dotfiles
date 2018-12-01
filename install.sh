@@ -35,12 +35,12 @@ ubuntu_scripts=(
   ./scripts/ubuntu-install-common-tools.sh
   ./scripts/ubuntu-net-core.sh
   ./scripts/ubuntu-docker.sh
-  ./scripts/ubuntu-antigen.sh
   ./scripts/ubuntu-ripgrep.sh
   ./scripts/ubuntu-haskell.sh
 )
 
 common_scripts=(
+  ./scripts/common-prezto.sh
   ./scripts/common-asdf-plugins.sh
   ./scripts/common-stow.sh
   ./scripts/common-vim.sh

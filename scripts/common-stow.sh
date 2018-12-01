@@ -18,8 +18,7 @@ common_packages=(
 )
 
 function backup() {
-  read -p "=== Backing up before stowing? (Yn)" confirm_backup
-  if [ "$confirm_backup" = "" ] || [ "$confirm_backup" = "y" ] || [ "$confirm_backup" = "Y" ]; then
+  confirm_yes "=== Backing up before stowing?" && {
     local backup_folder_name=~/dotfiles_backup
     mkdir -p $backup_folder_name
 
@@ -29,7 +28,7 @@ function backup() {
       rsync -v --times --delete --recursive --human-readable --filter=':- .gitignore' "./link/common/$i" "${backup_folder_name}/${i}"
       echo_yellow "=== Folder $i is backed up to ${backup_folder_name}/${i}"
     done
-  fi
+  }
 }
 
 function stow_packages() {

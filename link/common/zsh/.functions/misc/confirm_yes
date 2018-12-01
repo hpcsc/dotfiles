@@ -1,0 +1,11 @@
+local message=$@
+read -p "$message (Yn): " confirm_install
+if [ "$confirm_install" != "" ] && 
+   [ "$confirm_install" != "y" ] && 
+   [ "$confirm_install" != "Y" ]; then
+   return 1
+else
+   return 0
+fi;
+
+

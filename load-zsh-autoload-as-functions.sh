@@ -13,6 +13,8 @@ autoload_functions=(
   is_macos
   is_ubuntu
   distro_name
+  confirm_yes
+  confirm_no
 )
 
 for f in "${autoload_functions[@]}"

@@ -9,6 +9,6 @@ if [ "$command" = "set" ]; then
 
   echo "Azure subscription set to $(az account show -o json | jq -r '"\(.user.name) (\(.name))"')"
 else
-  az account show | jq -r '"\(.user.name) (\(.name))"'
+  az account show -o json | jq -r '"\(.user.name) (\(.name))"'
 fi;
 

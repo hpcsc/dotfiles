@@ -1,2 +1,15 @@
 antigen use prezto
+antigen bundle sorin-ionescu/prezto modules/environment 
+antigen bundle sorin-ionescu/prezto modules/terminal 
+antigen bundle sorin-ionescu/prezto modules/editor 
+antigen bundle sorin-ionescu/prezto modules/history 
+antigen bundle sorin-ionescu/prezto modules/directory 
+antigen bundle sorin-ionescu/prezto modules/spectrum 
+antigen bundle sorin-ionescu/prezto modules/utility 
+antigen bundle sorin-ionescu/prezto modules/completion 
+antigen bundle sorin-ionescu/prezto modules/git 
+antigen bundle sorin-ionescu/prezto modules/syntax-highlighting 
+antigen bundle sorin-ionescu/prezto modules/history-substring-search 
+antigen bundle sorin-ionescu/prezto modules/autosuggestions 
+antigen bundle sorin-ionescu/prezto modules/prompt
 antigen apply

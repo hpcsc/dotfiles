@@ -59,6 +59,10 @@
 2. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./install.sh | tee install-full.log`
 3. Execute `./others/ubuntu/install-gui-apps.sh` to install additional GUI applications
 
+### Checklist after setup
+
+- Execute `tilix-load` to load custom tilix settings
+
 ## Common checklist after setup (both MacOS and Ubuntu)
 
 - Copy public and private SSH keys to `~/.ssh` and make sure they're set to `600`

@@ -58,6 +58,7 @@ bindkey '^p' fzf-file-widget
 # ======== load additional rc files ==============
 #
 # OS-specific customization
+OS=$(distro_name)
 [[ -f ~/.zshrc-$OS ]] && source ~/.zshrc-$OS
 
 # machine-specific customization

@@ -1,0 +1,2 @@
+alias tilix-dump='dconf dump /com/gexperts/Tilix/ >! ~/dotfiles/others/ubuntu/tilix.dconf'
+alias tilix-load='dconf load /com/gexperts/Tilix/ < ~/dotfiles/others/ubuntu/tilix.dconf'

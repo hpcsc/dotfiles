@@ -9,8 +9,20 @@ export CLICOLOR=1
 export TERM=xterm-256color
 export KEYTIMEOUT=1  # set zsh vi mode timeout to 0.1s when switching mode
 
-# show current directory in terminal title bar
-precmd () { print -Pn "\e]2;%~\a" }
+# ====== set terminal title ======================
+
+function set_terminal_title() {
+  local mode=$1 ;
+  shift
+  print -Pn "\e]${mode};$@\a"
+}
+
+precmd () {
+  # mode: 0 - both, 1 - tab title, 2 - window title
+  # reference: https://superuser.com/a/344397
+  set_terminal_title 1 "%C" # %C is to display trailing component of current directory
+  set_terminal_title 2 "%~" # %~ is to display current working directory
+}
 
 # ====== source custom aliases ======================
 source ~/.aliases

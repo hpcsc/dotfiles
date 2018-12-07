@@ -1599,7 +1599,7 @@
 	<key>IRMemory</key>
 	<integer>4</integer>
 	<key>JobName</key>
-	<true/>
+	<false/>
 	<key>LeftCommand</key>
 	<integer>7</integer>
 	<key>LeftOption</key>
@@ -1653,9 +1653,9 @@
 	<key>NSWindow Frame SessionsPreferences</key>
 	<string>598 155 606 469 0 0 1440 878 </string>
 	<key>NSWindow Frame SharedPreferences</key>
-	<string>87 249 918 512 0 0 1440 878 </string>
+	<string>535 227 796 486 0 0 1440 877 </string>
 	<key>NSWindow Frame iTerm Window 0</key>
-	<string>0 88 1440 790 0 0 1440 878 </string>
+	<string>0 64 1440 813 0 0 1440 877 </string>
 	<key>NSWindow Frame iTerm Window 1</key>
 	<string>0 188 1025 687 0 0 1440 878 </string>
 	<key>NeverWarnAboutPossibleOverrides</key>
@@ -4922,7 +4922,7 @@
 	<key>WebKitStandardFont</key>
 	<string>.AppleSystemUIFont</string>
 	<key>WindowNumber</key>
-	<true/>
+	<false/>
 	<key>WindowStyle</key>
 	<integer>0</integer>
 	<key>WordCharacters</key>

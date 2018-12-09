@@ -38,7 +38,7 @@ ubuntu_scripts=(
 
 common_scripts=(
   ./scripts/common-prezto.sh
-  ./scripts/common-asdf-plugins.sh
+  ./scripts/common-asdf.sh
   ./scripts/common-stow.sh
   ./scripts/common-vim.sh
   ./scripts/common-neovim.sh

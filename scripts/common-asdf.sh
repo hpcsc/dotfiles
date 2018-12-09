@@ -16,7 +16,8 @@ source ~/.asdf/asdf.sh
 
 ((asdf plugin-list | grep python >/dev/null 2>&1) && echo_green "=== ASDF Python plugin is already installed, skipped") || {
   asdf plugin-add python https://github.com/tuvistavie/asdf-python.git
-  latest_python_version=$(asdf list-all python | grep -e '^3\.\d\.\d$' | sort | tail -n 1)
+  latest_python_version=$(asdf list-all python | grep -e '^3\.[0-9]\.[0-9]$' | sort | tail -n 1)
+  echo_yellow "=== Installing python version ${latest_python_version}"
   asdf install python ${latest_python_version} && \
   asdf global python ${latest_python_version} || {
     echo_red "=== Failed to install asdf python version ${latest_python_version}"

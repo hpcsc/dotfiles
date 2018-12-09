@@ -1,3 +1,3 @@
 #!/bin/bash
 
-./install.sh | tee install-full-log.log
+./install-core.sh | tee install-full-log.log

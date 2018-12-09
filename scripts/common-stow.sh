@@ -9,17 +9,15 @@ common_packages=(
 )
 
 function backup() {
-  confirm_yes "=== Backing up before stowing?" && {
-    local backup_folder_name=~/dotfiles_backup
-    mkdir -p $backup_folder_name
+  local backup_folder_name=~/dotfiles_backup
+  mkdir -p $backup_folder_name
 
-    for i in "${common_packages[@]}"; do
-      echo_yellow "=== Backing up folder $i"
-      # --filter tells rsync to do a directory merge with .gitignore files and have them exclude per git's rules
-      rsync -v --times --delete --recursive --human-readable --filter=':- .gitignore' "./link/common/$i" "${backup_folder_name}/${i}"
-      echo_yellow "=== Folder $i is backed up to ${backup_folder_name}/${i}"
-    done
-  }
+  for i in "${common_packages[@]}"; do
+    echo_yellow "=== Backing up folder $i"
+    # --filter tells rsync to do a directory merge with .gitignore files and have them exclude per git's rules
+    rsync -v --times --delete --recursive --human-readable --filter=':- .gitignore' "./link/common/$i" "${backup_folder_name}/${i}"
+    echo_yellow "=== Folder $i is backed up to ${backup_folder_name}/${i}"
+  done
 }
 
 function stow_packages() {

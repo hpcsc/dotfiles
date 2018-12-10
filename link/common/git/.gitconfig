@@ -3,6 +3,7 @@
 	editor = vim
 	autocrlf = input
   ignorecase = false
+	attributesfile = ~/.gitattributes
 [user]
 	name = David Nguyen
 	email = hpcsc@users.noreply.github.com
@@ -24,3 +25,5 @@
   trustExitCode = false
 [difftool "dirdiff"]
   cmd = vim -f '+next' '+execute \"DirDiff\" argv(0) argv(1)' $LOCAL $REMOTE '+syntax off'
+[diff "plist"]
+	textconv = plutil -convert xml1 -o -

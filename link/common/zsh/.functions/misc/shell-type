@@ -1,0 +1,7 @@
+if [[ -o login ]]; then 
+  echo 'login'
+fi
+
+if [[ -o interactive ]]; then 
+  echo 'interactive'
+fi

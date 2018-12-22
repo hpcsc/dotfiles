@@ -1,0 +1,1 @@
+nvim --startuptime /dev/stdout +qall

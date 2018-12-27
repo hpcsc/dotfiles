@@ -58,7 +58,6 @@
         "suppressResultsExplorerNotice": true,
         "suppressShowKeyBindingsNotice": true
     },
-    "gitlens.historyExplorer.enabled": false,
     "window.openFoldersInNewWindow": "on",
     "breadcrumbs.enabled": true,
 	"editor.tabCompletion": "on",
@@ -79,4 +78,9 @@
         }
     ],
     "vim.hlsearch": true,
+    "gitlens.views.lineHistory.enabled": false,
+    "gitlens.views.repositories.files.layout": "tree",
+    "gitlens.views.compare.enabled": false,
+    "gitlens.views.repositories.enabled": false,
+    "gitlens.views.search.enabled": false,
 }

@@ -77,6 +77,16 @@
             "after": ["o", "<Esc>"]
         }
     ],
+    "vim.visualModeKeyBindings": [
+        {
+            "before": ["<CR>"],
+            "after": ["<Esc>"]
+        },
+        {
+            "before": ["y"],
+            "after": ["ygv", "<Esc>"]
+        }
+    ],
     "vim.hlsearch": true,
     "gitlens.views.lineHistory.enabled": false,
     "gitlens.views.repositories.files.layout": "tree",

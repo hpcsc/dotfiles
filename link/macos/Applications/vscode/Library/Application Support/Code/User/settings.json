@@ -77,14 +77,14 @@
             "after": ["o", "<Esc>"]
         }
     ],
-    "vim.visualModeKeyBindings": [
+    "vim.visualModeKeyBindingsNonRecursive": [
         {
             "before": ["<CR>"],
             "after": ["<Esc>"]
         },
         {
             "before": ["y"],
-            "after": ["ygv", "<Esc>"]
+            "after": ["y", "g", "v", "<Esc>"]
         }
     ],
     "vim.hlsearch": true,

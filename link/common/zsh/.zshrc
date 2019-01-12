@@ -70,6 +70,9 @@ bindkey '^p' fzf-file-widget
 # bind Ctrl-z to fg command (.e.g. to switch from terminal back to suspended vim session)
 bindkey -s '^z' 'fg\n'
 
+# bind Ctrl-t to trigger tig in status mode
+bindkey -s '^t' 'tig status\n'
+
 # ======== load additional rc files ==============
 #
 # OS-specific customization

@@ -67,6 +67,9 @@ bindkey '^ ' autosuggest-accept
 
 bindkey '^p' fzf-file-widget
 
+# bind Ctrl-z to fg command (.e.g. to switch from terminal back to suspended vim session)
+bindkey -s '^z' 'fg\n'
+
 # ======== load additional rc files ==============
 #
 # OS-specific customization

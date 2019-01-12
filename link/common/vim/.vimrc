@@ -71,6 +71,15 @@ highlight DiffAdd   cterm=bold    gui=none    ctermfg=NONE          ctermbg=49
 
 " }}}
 
+" NeoVim Settings {{{
+
+if has('nvim')
+  " force neovim terminal to use zsh available in PATH instead of /bin/zsh
+  execute "set shell=". system('which zsh')
+endif
+
+" }}}
+
 " VimPlug {{{
 call plug#begin('~/.vim/plugged')
 

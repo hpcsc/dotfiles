@@ -187,5 +187,21 @@
 		"key": "cmd+[",
 		"command": "workbench.action.previousSideBarView",
 		"when": "sideBarFocus"
+	},
+	{
+		"key": "ctrl+cmd+h",
+		"command": "workbench.action.navigateLeft"
+	},
+	{
+		"key": "ctrl+cmd+l",
+		"command": "workbench.action.navigateRight"
+	},
+	{
+		"key": "ctrl+cmd+j",
+		"command": "workbench.action.navigateDown"
+	},
+	{
+		"key": "ctrl+cmd+k",
+		"command": "workbench.action.navigateUp"
 	}
 ]

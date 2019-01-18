@@ -73,6 +73,10 @@ bindkey -s '^z' 'fg\n'
 # bind Ctrl-t to trigger tig in status mode
 bindkey -s '^t' 'tig status\n'
 
+# bind Ctrl-j/k to do cycle through history substring search
+bindkey "^k" history-substring-search-up
+bindkey "^j" history-substring-search-down
+
 # ======== load additional rc files ==============
 #
 # OS-specific customization

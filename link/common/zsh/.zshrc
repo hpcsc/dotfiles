@@ -77,6 +77,15 @@ bindkey -s '^t' 'tig status\n'
 bindkey "^k" history-substring-search-up
 bindkey "^j" history-substring-search-down
 
+# custom function and zsh zle widget to get last commit message and output git commit command
+# bind Ctrl-g to this custom zle widget
+function _git_last_message() {
+  BUFFER=${LBUFFER}'git commit -m "'$(git log -1 --pretty=%s)'"'
+  zle end-of-line;
+}
+zle -N _git_last_message
+bindkey "^g" _git_last_message
+
 # ======== load additional rc files ==============
 #
 # OS-specific customization

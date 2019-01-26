@@ -23,21 +23,31 @@ noremap <silent> <leader>l :wincmd l<CR>
 noremap <silent> <leader>ws :wincmd s<CR>
 noremap <silent> <leader>wv :wincmd v<CR>
 noremap <silent> <leader>wc :wincmd c<CR>
-noremap <leader>w :update<CR>
-noremap <leader>s :OverCommandLine<CR>%s/
-"stop highlighting search
-nnoremap <CR> :nohlsearch<CR> 
-nnoremap <leader>z za " toggle folding
+
 nnoremap <silent> <leader>[ :exe "resize " . (winheight(0) * 3/2)<CR>
 nnoremap <silent> <leader>] :exe "resize " . (winheight(0) * 2/3)<CR>
 nnoremap <silent> <leader>< :exe "vertical resize " . (winwidth(0) * 2/3)<CR>
 nnoremap <silent> <leader>> :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
 nnoremap <silent> <leader>= :winc =<CR>
-nnoremap <silent> <leader>y o<Esc>
 
+noremap <leader>s :OverCommandLine<CR>%s/
+
+" jk to quit insert mode
 inoremap jk <esc>
 
+"stop highlighting search
+nnoremap <CR> :nohlsearch<CR> 
+nnoremap <leader>z za " toggle folding
+noremap <leader>w :update<CR>
+noremap <leader>q :qa<CR>
+
+" insert newline in normal mode
+nnoremap <silent> <leader>y o<Esc>
+
+" Enter to dismiss visual mode
 vnoremap <CR> <esc>
+
+" yanking in visual mode leaves cursor at the bottom position
 vnoremap y ygv<Esc>
 
 

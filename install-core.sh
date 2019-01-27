@@ -25,6 +25,7 @@ macos_scripts=(
   ./scripts/macos-keep-sudo.sh
   ./scripts/macos-install-homebrew.sh
   ./scripts/macos-brew-bundle.sh
+  ./scripts/macos-fonts.sh
 )
 
 ubuntu_scripts=(

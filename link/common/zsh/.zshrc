@@ -68,10 +68,10 @@ bindkey '^ ' autosuggest-accept
 bindkey '^p' fzf-file-widget
 
 # bind Ctrl-z to fg command (.e.g. to switch from terminal back to suspended vim session)
-bindkey -s '^z' 'fg\n'
+bindkey -s '^z' 'fg^M'
 
 # bind Ctrl-t to trigger tig in status mode
-bindkey -s '^t' 'tig status\n'
+bindkey -s '^t' 'tig status^M'
 
 # bind Ctrl-j/k to do cycle through history substring search
 bindkey "^k" history-substring-search-up

@@ -1,10 +1,5 @@
 let mapleader = "\<space>"
 
-" Allow saving of files as sudo when I forgot to start vim using sudo.
-cnoremap w!! w !sudo tee > /dev/null % 
-
-cnoremap %% <C-R>=expand("%:p:h") . "/" <CR>
-
 map <leader>ew :e %%
 map <leader>es :sp %%
 map <leader>ev :vsp %%
@@ -24,25 +19,46 @@ noremap <silent> <leader>ws :wincmd s<CR>
 noremap <silent> <leader>wv :wincmd v<CR>
 noremap <silent> <leader>wc :wincmd c<CR>
 
+noremap <leader>s :OverCommandLine<CR>%s/
+noremap <leader>w :update<CR>
+noremap <leader>q :qa<CR>
+
+" Command Mode Mappings {{{
+
+" Allow saving of files as sudo when I forgot to start vim using sudo.
+cnoremap w!! w !sudo tee > /dev/null % 
+
+cnoremap %% <C-R>=expand("%:p:h") . "/" <CR>
+
+" }}}
+
+" Normal Mode Mappings {{{
+
 nnoremap <silent> <leader>[ :exe "resize " . (winheight(0) * 3/2)<CR>
 nnoremap <silent> <leader>] :exe "resize " . (winheight(0) * 2/3)<CR>
 nnoremap <silent> <leader>< :exe "vertical resize " . (winwidth(0) * 2/3)<CR>
 nnoremap <silent> <leader>> :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
 nnoremap <silent> <leader>= :winc =<CR>
 
-noremap <leader>s :OverCommandLine<CR>%s/
+" insert newline in normal mode
+nnoremap <silent> <leader>y o<Esc>
+
+"stop highlighting search
+nnoremap <CR> :nohlsearch<CR> 
+
+" toggle folding
+nnoremap <leader>z za 
+
+" }}}
+
+" Insert Mode Mappings {{{
 
 " jk to quit insert mode
 inoremap jk <esc>
 
-"stop highlighting search
-nnoremap <CR> :nohlsearch<CR> 
-nnoremap <leader>z za " toggle folding
-noremap <leader>w :update<CR>
-noremap <leader>q :qa<CR>
+" }}}
 
-" insert newline in normal mode
-nnoremap <silent> <leader>y o<Esc>
+" Visual Mode Mappings {{{
 
 " Enter to dismiss visual mode
 vnoremap <CR> <esc>
@@ -50,6 +66,7 @@ vnoremap <CR> <esc>
 " yanking in visual mode leaves cursor at the bottom position
 vnoremap y ygv<Esc>
 
+" }}}
 
 " NERDTree Mappings {{{
 
@@ -58,7 +75,7 @@ nnoremap <leader>t :NERDTreeToggle<cr>
 
 " }}}
 
-" fzf  Mappings {{{
+" fzf Mappings {{{
 
 nnoremap <c-b> :Buffers<cr>
 nnoremap <c-p> :Files<cr>

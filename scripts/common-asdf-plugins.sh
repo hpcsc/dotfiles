@@ -77,20 +77,8 @@ source ~/.asdf/asdf.sh
 plugin_to_install=$1
 
 case ${plugin_to_install} in
-	"nodejs")
-	install_nodejs
-  ;;
-	"ruby")
-	install_ruby
-  ;;
-	"python")
-	install_python
-  ;;
-  "kubectl")
-	install_kubectl
-  ;;
-  "helm")
-	install_helm
+	"nodejs"|"ruby"|"python"|"kubectl"|"helm")
+	install_${plugin_to_install}
   ;;
 	*)
   echo "Not supported plugin ${plugin_to_install}"

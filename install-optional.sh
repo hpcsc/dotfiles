@@ -33,26 +33,26 @@ function prompt_and_execute() {
   done
 }
 
-macos_options=(
+macos_only_options=(
   './scripts/macos-haskell.sh' 
-  './scripts/common-asdf-plugins.sh nodejs'
-  './scripts/common-asdf-plugins.sh ruby'
-  './scripts/common-asdf-plugins.sh python'
-  'Quit'
 )
 
-ubuntu_options=(
+ubuntu_only_options=(
   './scripts/ubuntu-haskell.sh' 
   './scripts/ubuntu-net-core.sh'
   './scripts/ubuntu-tilix.sh'
+)
+
+common_options=(
   './scripts/common-asdf-plugins.sh nodejs'
   './scripts/common-asdf-plugins.sh ruby'
   './scripts/common-asdf-plugins.sh python'
   './scripts/common-asdf-plugins.sh kubectl'
   './scripts/common-asdf-plugins.sh helm'
+  './scripts/common-krew.sh'
   'Quit'
 )
 
-is_macos && (prompt_and_execute "${macos_options[@]}")
-is_ubuntu && (prompt_and_execute "${ubuntu_options[@]}")
+is_macos && (macos_options=("${macos_only_options[@]}" "${common_options[@]}") && prompt_and_execute "${macos_options[@]}")
+is_ubuntu && (ubuntu_options=("${ubuntu_only_options[@]}" "${common_options[@]}") && prompt_and_execute "${ubuntu_options[@]}")
 

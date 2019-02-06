@@ -55,6 +55,9 @@ export FZF_ALT_C_COMMAND="fd -t d"
 # =================== direnv  ======================
 eval "$(direnv hook zsh)"
 
+# =================== krew  ======================
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
+
 # ============ custom key bindings  ==============
 # changes hex 0x15 to delete everything to the left of the cursor, rather than the whole line
 bindkey "^U" backward-kill-line

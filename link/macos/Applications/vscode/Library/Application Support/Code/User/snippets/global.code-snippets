@@ -15,6 +15,21 @@
 	// 	],
 	// 	"description": "Log output to console"
 	// }
+	"VSCode Snippet Template": {
+		"scope": "json,jsonc",
+		"prefix": "vs-snip",
+		"body": [
+			"\"$1\": {",
+			"\t\"scope\": \"javascript,javascriptreact,typescript,typescriptreact\",",
+			"\t\"prefix\": \"$2\",",
+			"\t\"body\": [",
+			"\t\t\"$3\"",
+			"\t],",
+			"\t\"description\": \"$1\"",
+			"},"
+		],
+		"description": "VSCode Snippet Template"
+	},
 	"Jest/Mocha Describe": {
 		"scope": "javascript,javascriptreact,typescript,typescriptreact",
 		"prefix": "tdescribe",

@@ -1,0 +1,388 @@
+#
+# A simple theme that displays relevant, contextual information.
+#
+# Authors:
+#   Sorin Ionescu <sorin.ionescu@gmail.com>
+#
+# Screenshots:
+#   http://i.imgur.com/nrGV6pg.png
+#
+
+#
+# 16 Terminal Colors
+# -- ---------------
+#  0 black
+#  1 red
+#  2 green
+#  3 yellow
+#  4 blue
+#  5 magenta
+#  6 cyan
+#  7 white
+#  8 bright black
+#  9 bright red
+# 10 bright green
+# 11 bright yellow
+# 12 bright blue
+# 13 bright magenta
+# 14 bright cyan
+# 15 bright white
+#
+
+# Load dependencies.
+pmodload 'helper'
+
+# =================== kubernetes context/namespace =================
+# below functions in this section are from kube-ps1 project:
+# https://github.com/jonmosco/kube-ps1/blob/master/kube-ps1.sh
+
+KUBE_PS1_SHELL="zsh"
+
+# Default values for the prompt
+KUBE_PS1_BINARY="${KUBE_PS1_BINARY:-kubectl}"
+KUBE_PS1_SYMBOL_ENABLE="${KUBE_PS1_SYMBOL_ENABLE:-true}"
+KUBE_PS1_SYMBOL_DEFAULT=${KUBE_PS1_SYMBOL_DEFAULT:-$'\u2388 '}
+KUBE_PS1_SYMBOL_USE_IMG="${KUBE_PS1_SYMBOL_USE_IMG:-false}"
+KUBE_PS1_NS_ENABLE="${KUBE_PS1_NS_ENABLE:-true}"
+KUBE_PS1_PREFIX="${KUBE_PS1_PREFIX-(}"
+KUBE_PS1_SEPARATOR="${KUBE_PS1_SEPARATOR-|}"
+KUBE_PS1_DIVIDER="${KUBE_PS1_DIVIDER-:}"
+KUBE_PS1_SUFFIX="${KUBE_PS1_SUFFIX-)}"
+KUBE_PS1_SYMBOL_COLOR="${KUBE_PS1_SYMBOL_COLOR-blue}"
+KUBE_PS1_CTX_COLOR="${KUBE_PS1_CTX_COLOR-red}"
+KUBE_PS1_NS_COLOR="${KUBE_PS1_NS_COLOR-cyan}"
+KUBE_PS1_BG_COLOR="${KUBE_PS1_BG_COLOR}"
+KUBE_PS1_KUBECONFIG_CACHE="${KUBECONFIG}"
+KUBE_PS1_DISABLE_PATH="${HOME}/.kube/kube-ps1/disabled"
+KUBE_PS1_LAST_TIME=0
+
+function _kube_ps1_get_context_ns() {
+  # Set the command time
+  KUBE_PS1_LAST_TIME=$EPOCHSECONDS
+
+  KUBE_PS1_CONTEXT="$(${KUBE_PS1_BINARY} config current-context 2>/dev/null)"
+  if [[ -z "${KUBE_PS1_CONTEXT}" ]]; then
+    KUBE_PS1_CONTEXT="N/A"
+    KUBE_PS1_NAMESPACE="N/A"
+    return
+  elif [[ "${KUBE_PS1_NS_ENABLE}" == true ]]; then
+    KUBE_PS1_NAMESPACE="$(${KUBE_PS1_BINARY} config view --minify --output 'jsonpath={..namespace}' 2>/dev/null)"
+    # Set namespace to 'default' if it is not defined
+    KUBE_PS1_NAMESPACE="${KUBE_PS1_NAMESPACE:-default}"
+  fi
+}
+
+function _kube_ps1_split() {
+  type setopt >/dev/null 2>&1 && setopt SH_WORD_SPLIT
+  local IFS=$1
+  echo $2
+}
+
+function _kube_ps1_file_newer_than() {
+  local mtime
+  local file=$1
+  local check_time=$2
+
+  mtime=$(zstat -L +mtime "${file}")
+
+  [[ "${mtime}" -gt "${check_time}" ]]
+}
+
+function _kube_ps1_update_cache() {
+  if [[ "${KUBECONFIG}" != "${KUBE_PS1_KUBECONFIG_CACHE}" ]]; then
+    # User changed KUBECONFIG; unconditionally refetch.
+    KUBE_PS1_KUBECONFIG_CACHE=${KUBECONFIG}
+    _kube_ps1_get_context_ns
+    return
+  fi
+
+  # kubectl will read the environment variable $KUBECONFIG
+  # otherwise set it to ~/.kube/config
+  local conf
+  for conf in $(_kube_ps1_split : "${KUBECONFIG:-${HOME}/.kube/config}"); do
+    [[ -r "${conf}" ]] || continue
+    if _kube_ps1_file_newer_than "${conf}" "${KUBE_PS1_LAST_TIME}"; then
+      _kube_ps1_get_context_ns
+      return
+    fi
+  done
+}
+
+function _kube_ps1_init() {
+  _KUBE_PS1_OPEN_ESC="%{"
+  _KUBE_PS1_CLOSE_ESC="%}"
+  _KUBE_PS1_DEFAULT_BG="%k"
+  _KUBE_PS1_DEFAULT_FG="%f"
+  setopt PROMPT_SUBST
+  zmodload -F zsh/stat b:zstat
+  zmodload zsh/datetime
+}
+
+function _kube_ps1_color_fg() {
+  local KUBE_PS1_FG_CODE
+  case "${1}" in
+    black) KUBE_PS1_FG_CODE=0;;
+    red) KUBE_PS1_FG_CODE=1;;
+    green) KUBE_PS1_FG_CODE=2;;
+    yellow) KUBE_PS1_FG_CODE=3;;
+    blue) KUBE_PS1_FG_CODE=4;;
+    magenta) KUBE_PS1_FG_CODE=5;;
+    cyan) KUBE_PS1_FG_CODE=6;;
+    white) KUBE_PS1_FG_CODE=7;;
+    # 256
+    [0-9]|[1-9][0-9]|[1][0-9][0-9]|[2][0-4][0-9]|[2][5][0-6]) KUBE_PS1_FG_CODE="${1}";;
+    *) KUBE_PS1_FG_CODE=default
+  esac
+
+  if [[ "${KUBE_PS1_FG_CODE}" == "default" ]]; then
+    KUBE_PS1_FG_CODE="${_KUBE_PS1_DEFAULT_FG}"
+    return
+  elif [[ "${KUBE_PS1_SHELL}" == "zsh" ]]; then
+    KUBE_PS1_FG_CODE="%F{$KUBE_PS1_FG_CODE}"
+  elif [[ "${KUBE_PS1_SHELL}" == "bash" ]]; then
+    if tput setaf 1 &> /dev/null; then
+      KUBE_PS1_FG_CODE="$(tput setaf ${KUBE_PS1_FG_CODE})"
+    elif [[ $KUBE_PS1_FG_CODE -ge 0 ]] && [[ $KUBE_PS1_FG_CODE -le 256 ]]; then
+      KUBE_PS1_FG_CODE="\033[38;5;${KUBE_PS1_FG_CODE}m"
+    else
+      KUBE_PS1_FG_CODE="${_KUBE_PS1_DEFAULT_FG}"
+    fi
+  fi
+  echo ${_KUBE_PS1_OPEN_ESC}${KUBE_PS1_FG_CODE}${_KUBE_PS1_CLOSE_ESC}
+}
+
+function _kube_ps1_color_bg() {
+  local KUBE_PS1_BG_CODE
+  case "${1}" in
+    black) KUBE_PS1_BG_CODE=0;;
+    red) KUBE_PS1_BG_CODE=1;;
+    green) KUBE_PS1_BG_CODE=2;;
+    yellow) KUBE_PS1_BG_CODE=3;;
+    blue) KUBE_PS1_BG_CODE=4;;
+    magenta) KUBE_PS1_BG_CODE=5;;
+    cyan) KUBE_PS1_BG_CODE=6;;
+    white) KUBE_PS1_BG_CODE=7;;
+    # 256
+    [0-9]|[1-9][0-9]|[1][0-9][0-9]|[2][0-4][0-9]|[2][5][0-6]) KUBE_PS1_BG_CODE="${1}";;
+    *) KUBE_PS1_BG_CODE=$'\033[0m';;
+  esac
+
+  if [[ "${KUBE_PS1_BG_CODE}" == "default" ]]; then
+    KUBE_PS1_FG_CODE="${_KUBE_PS1_DEFAULT_BG}"
+    return
+  elif [[ "${KUBE_PS1_SHELL}" == "zsh" ]]; then
+    KUBE_PS1_BG_CODE="%K{$KUBE_PS1_BG_CODE}"
+  elif [[ "${KUBE_PS1_SHELL}" == "bash" ]]; then
+    if tput setaf 1 &> /dev/null; then
+      KUBE_PS1_BG_CODE="$(tput setab ${KUBE_PS1_BG_CODE})"
+    elif [[ $KUBE_PS1_BG_CODE -ge 0 ]] && [[ $KUBE_PS1_BG_CODE -le 256 ]]; then
+      KUBE_PS1_BG_CODE="\033[48;5;${KUBE_PS1_BG_CODE}m"
+    else
+      KUBE_PS1_BG_CODE="${DEFAULT_BG}"
+    fi
+  fi
+  echo ${OPEN_ESC}${KUBE_PS1_BG_CODE}${CLOSE_ESC}
+}
+
+function _kube_ps1_symbol() {
+  [[ "${KUBE_PS1_SYMBOL_ENABLE}" == false ]] && return
+
+  KUBE_PS1_SYMBOL="${KUBE_PS1_SYMBOL_DEFAULT}"
+  KUBE_PS1_SYMBOL_IMG="\u2638 "
+
+  if [[ "${KUBE_PS1_SYMBOL_USE_IMG}" == true ]]; then
+    KUBE_PS1_SYMBOL="${KUBE_PS1_SYMBOL_IMG}"
+  fi
+
+  echo "${KUBE_PS1_SYMBOL}"
+}
+
+function _kube_ps1() {
+  [[ -z "${KUBE_PS1_CONTEXT}" ]] && return
+
+  local KUBE_PS1
+  local KUBE_PS1_RESET_COLOR="${_KUBE_PS1_OPEN_ESC}${_KUBE_PS1_DEFAULT_FG}${_KUBE_PS1_CLOSE_ESC}"
+
+  # Background Color
+  [[ -n "${KUBE_PS1_BG_COLOR}" ]] && KUBE_PS1+="$(_kube_ps1_color_bg ${KUBE_PS1_BG_COLOR})"
+
+  # Prefix
+  [[ -n "${KUBE_PS1_PREFIX}" ]] && KUBE_PS1+="${KUBE_PS1_PREFIX}"
+
+  # Symbol
+  KUBE_PS1+="$(_kube_ps1_color_fg $KUBE_PS1_SYMBOL_COLOR)$(_kube_ps1_symbol)${KUBE_PS1_RESET_COLOR}"
+
+  if [[ -n "${KUBE_PS1_SEPARATOR}" ]] && [[ "${KUBE_PS1_SYMBOL_ENABLE}" == true ]]; then
+    KUBE_PS1+="${KUBE_PS1_SEPARATOR}"
+  fi
+
+  # Context
+  KUBE_PS1+="$(_kube_ps1_color_fg $KUBE_PS1_CTX_COLOR)${KUBE_PS1_CONTEXT}${KUBE_PS1_RESET_COLOR}"
+
+  # Namespace
+  if [[ "${KUBE_PS1_NS_ENABLE}" == true ]]; then
+    if [[ -n "${KUBE_PS1_DIVIDER}" ]]; then
+      KUBE_PS1+="${KUBE_PS1_DIVIDER}"
+    fi
+    KUBE_PS1+="$(_kube_ps1_color_fg ${KUBE_PS1_NS_COLOR})${KUBE_PS1_NAMESPACE}${KUBE_PS1_RESET_COLOR}"
+  fi
+
+  # Suffix
+  [[ -n "${KUBE_PS1_SUFFIX}" ]] && KUBE_PS1+="${KUBE_PS1_SUFFIX}"
+
+  # Close Background color if defined
+  [[ -n "${KUBE_PS1_BG_COLOR}" ]] && KUBE_PS1+="${_KUBE_PS1_OPEN_ESC}${_KUBE_PS1_DEFAULT_BG}${_KUBE_PS1_CLOSE_ESC}"
+
+  echo "${KUBE_PS1}"
+}
+
+# =====================================================================
+
+function prompt_sorin_k8s_async_callback {
+  case $1 in
+    prompt_sorin_async_git)
+      # We can safely split on ':' because it isn't allowed in ref names.
+      IFS=':' read _git_target _git_post_target <<<"$3"
+
+      # The target actually contains 3 space separated possibilities, so we need to
+      # make sure we grab the first one.
+      _git_target=$(coalesce ${(@)${(z)_git_target}})
+
+      if [[ -z "$_git_target" ]]; then
+        # No git target detected, flush the git fragment and redisplay the prompt.
+        if [[ -n "$_prompt_sorin_git" ]]; then
+          _prompt_sorin_git=''
+          zle && zle reset-prompt
+        fi
+      else
+        # Git target detected, update the git fragment and redisplay the prompt.
+        _prompt_sorin_git="${_git_target}${_git_post_target}"
+        zle && zle reset-prompt
+      fi
+      ;;
+  esac
+}
+
+function prompt_sorin_async_git {
+  cd -q "$1"
+  if (( $+functions[git-info] )); then
+    git-info
+    print ${git_info[status]}
+  fi
+}
+
+function prompt_sorin_k8s_async_tasks {
+  # Initialize async worker. This needs to be done here and not in
+  # prompt_sorin_setup so the git formatting can be overridden by other prompts.
+  if (( !${prompt_prezto_async_init:-0} )); then
+    async_start_worker prompt_sorin_k8s -n
+    async_register_callback prompt_sorin_k8s prompt_sorin_k8s_async_callback
+    typeset -g prompt_prezto_async_init=1
+  fi
+
+  # Kill the old process of slow commands if it is still running.
+  async_flush_jobs prompt_sorin_k8s
+
+  # Compute slow commands in the background.
+  async_job prompt_sorin_k8s prompt_sorin_async_git "$PWD"
+}
+
+function prompt_sorin_k8s_precmd {
+  setopt LOCAL_OPTIONS
+  unsetopt XTRACE KSH_ARRAYS
+
+  # Format PWD.
+  _prompt_sorin_pwd=$(prompt-pwd)
+
+  # Handle updating git data. We also clear the git prompt data if we're in a
+  # different git root now.
+  if (( $+functions[git-dir] )); then
+    local new_git_root="$(git-dir 2> /dev/null)"
+    if [[ $new_git_root != $_sorin_cur_git_root ]]; then
+      _prompt_sorin_git=''
+      _sorin_cur_git_root=$new_git_root
+    fi
+  fi
+
+  # Run python info (this should be fast and not require any async)
+  if (( $+functions[python-info] )); then
+    python-info
+  fi
+
+  _kube_ps1_update_cache
+  _prompt_sorin_k8s="$(_kube_ps1) "
+  prompt_sorin_k8s_async_tasks
+}
+
+function prompt_sorin_k8s_setup {
+  setopt LOCAL_OPTIONS
+  unsetopt XTRACE KSH_ARRAYS
+  prompt_opts=(cr percent sp subst)
+
+  # Load required functions.
+  autoload -Uz add-zsh-hook
+  autoload -Uz async && async
+
+  # Add hook for calling git-info before each command.
+  add-zsh-hook precmd prompt_sorin_k8s_precmd
+
+  _kube_ps1_init
+
+  # Set editor-info parameters.
+  zstyle ':prezto:module:editor:info:completing' format '%B%F{7}...%f%b'
+  zstyle ':prezto:module:editor:info:keymap:primary' format ' %B%F{1}❯%F{3}❯%F{2}❯%f%b'
+  zstyle ':prezto:module:editor:info:keymap:primary:overwrite' format ' %F{3}♺%f'
+  zstyle ':prezto:module:editor:info:keymap:alternate' format ' %B%F{2}❮%F{3}❮%F{1}❮%f%b'
+
+  # Set git-info parameters.
+  zstyle ':prezto:module:git:info' verbose 'yes'
+  zstyle ':prezto:module:git:info:action' format '%F{7}:%f%%B%F{9}%s%f%%b'
+  zstyle ':prezto:module:git:info:added' format ' %%B%F{2}✚%f%%b'
+  zstyle ':prezto:module:git:info:ahead' format ' %%B%F{13}⬆%f%%b'
+  zstyle ':prezto:module:git:info:behind' format ' %%B%F{13}⬇%f%%b'
+  zstyle ':prezto:module:git:info:branch' format ' %%B%F{2}%b%f%%b'
+  zstyle ':prezto:module:git:info:commit' format ' %%B%F{3}%.7c%f%%b'
+  zstyle ':prezto:module:git:info:deleted' format ' %%B%F{1}✖%f%%b'
+  zstyle ':prezto:module:git:info:modified' format ' %%B%F{4}✱%f%%b'
+  zstyle ':prezto:module:git:info:position' format ' %%B%F{13}%p%f%%b'
+  zstyle ':prezto:module:git:info:renamed' format ' %%B%F{5}➜%f%%b'
+  zstyle ':prezto:module:git:info:stashed' format ' %%B%F{6}✭%f%%b'
+  zstyle ':prezto:module:git:info:unmerged' format ' %%B%F{3}═%f%%b'
+  zstyle ':prezto:module:git:info:untracked' format ' %%B%F{7}◼%f%%b'
+  zstyle ':prezto:module:git:info:keys' format \
+    'status' '%b %p %c:%s%A%B%S%a%d%m%r%U%u'
+
+  # Set python-info parameters.
+  zstyle ':prezto:module:python:info:virtualenv' format '%f%F{3}(%v)%F{7} '
+
+  # Set up non-zero return value display
+  local show_return="✘ "
+  # Default is to show the return value
+  if zstyle -T ':prezto:module:prompt' show-return-val; then
+    show_return+='%? '
+  fi
+
+  # Get the async worker set up.
+  _sorin_cur_git_root=''
+
+  _prompt_sorin_git=''
+  _prompt_sorin_pwd=''
+
+  # Define prompts.
+  PROMPT='${SSH_TTY:+"%F{9}%n%f%F{7}@%f%F{3}%m%f "}%F{4}${_prompt_sorin_pwd}%(!. %B%F{1}#%f%b.)${editor_info[keymap]} '
+  RPROMPT='$python_info[virtualenv]${editor_info[overwrite]}%(?:: %F{1}'
+  RPROMPT+=${show_return}
+  RPROMPT+='%f)${VIM:+" %B%F{6}V%f%b"}${_prompt_sorin_k8s}${_prompt_sorin_git}'
+  SPROMPT='zsh: correct %F{1}%R%f to %F{2}%r%f [nyae]? '
+}
+
+function prompt_sorin_k8s_preview {
+  local +h PROMPT=''
+  local +h RPROMPT=''
+  local +h SPROMPT=''
+
+  editor-info 2> /dev/null
+  prompt_preview_theme 'sorin_k8s'
+}
+
+prompt_sorin_k8s_setup "$@"

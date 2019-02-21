@@ -2,4 +2,4 @@
 
 ./install-core.sh | tee install-core-full-log.log
 
-./install-optional.sh | tee install-core-full-log.log
+./install-optional.sh | tee install-optional-full-log.log

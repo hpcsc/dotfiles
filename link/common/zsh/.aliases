@@ -75,6 +75,8 @@ alias rrc="source $HOME/.zshrc"
 
 alias c='clear'
 
+alias pvim='rm -f ~/.nvim-startup.log && nvim --startuptime ~/.nvim-startup.log -c "q"'
+
 _git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"
 alias gloc='git log --topo-order --graph --decorate --pretty=format:"${_git_log_oneline_compact_format}"'
 

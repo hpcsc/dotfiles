@@ -93,4 +93,5 @@
     "gitlens.views.compare.enabled": false,
     "gitlens.views.repositories.enabled": false,
     "gitlens.views.search.enabled": false,
+    "workbench.list.keyboardNavigation": "filter",
 }

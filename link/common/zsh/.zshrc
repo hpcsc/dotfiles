@@ -60,9 +60,6 @@ eval "$(direnv hook zsh)"
 # krew
 export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
 
-# kubectl autocompletion
-[ $commands[kubectl] ] && source <(kubectl completion zsh)
-
 # ============ custom key bindings  ==============
 # changes hex 0x15 to delete everything to the left of the cursor, rather than the whole line
 bindkey "^U" backward-kill-line

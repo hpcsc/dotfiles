@@ -50,6 +50,7 @@ common_options=(
   './scripts/common-asdf-plugins.sh kubectl'
   './scripts/common-asdf-plugins.sh helm'
   './scripts/common-krew.sh'
+  './scripts/common-rust.sh'
   'Quit'
 )
 

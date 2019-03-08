@@ -164,7 +164,10 @@ let g:ackprg = 'rg --vimgrep --no-heading'
 let g:deoplete#enable_at_startup = 1
 let g:LanguageClient_serverCommands = {
     \ 'haskell': ['hie', '--lsp'],
+    \ 'rust': ['~/.cargo/bin/rustup', 'run', 'stable', 'rls'],
     \ }
+
+nnoremap <F5> :call LanguageClient_contextMenu()<CR>
 
 " }}}
 

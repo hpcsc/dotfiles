@@ -1,0 +1,4 @@
+local host=$(cat ~/.ssh/config | \
+sed -n -e 's/Host \(.*\)/\1/p' | \
+fzf --height 30% --reverse -0 -d ',' --with-nth=1 --header 'Select host to ssh to')
+ssh ${host}

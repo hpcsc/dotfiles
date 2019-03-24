@@ -35,6 +35,7 @@ ubuntu_scripts=(
   ./scripts/ubuntu-install-common-tools.sh
   ./scripts/ubuntu-docker.sh
   ./scripts/ubuntu-ripgrep.sh
+  ./scripts/ubuntu-universal-ctags.sh
 )
 
 common_scripts=(

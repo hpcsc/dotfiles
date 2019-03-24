@@ -6,6 +6,7 @@ common_packages=(
   zsh
   tmux
   tig
+  ctags
 )
 
 function backup() {

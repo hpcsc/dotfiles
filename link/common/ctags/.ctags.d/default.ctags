@@ -1,0 +1,12 @@
+--exclude=\*.min.\*
+--exclude=\*.map.\*
+--exclude=\*.swp.\*
+--exclude=\*.bak.\*
+--exclude=node_modules
+--exclude=public
+--exclude=vendor
+--exclude=coverage
+--exclude=build
+--exclude=dist
+--exclude=package\*.json
+--exclude=target

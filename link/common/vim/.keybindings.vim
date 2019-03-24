@@ -80,7 +80,7 @@ nnoremap <leader>t :NERDTreeToggle<cr>
 nnoremap <c-b> :Buffers<cr>
 nnoremap <c-p> :Files<cr>
 nnoremap <c-g> :Rg<cr>
-nnoremap <c-t> :BTags<cr>
+nnoremap <c-y> :BTags<cr>
 
 " }}}
 

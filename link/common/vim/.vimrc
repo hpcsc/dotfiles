@@ -104,6 +104,7 @@ Plug 'jiangmiao/auto-pairs'
 Plug 'kana/vim-textobj-user'
 Plug 'rhysd/vim-textobj-anyblock'
 Plug 'michaeljsmith/vim-indent-object'
+Plug 'ludovicchabant/vim-gutentags'
 
 if has('nvim')
   Plug 'autozimu/LanguageClient-neovim', { 'branch': 'next', 'do': 'bash install.sh' }
@@ -193,6 +194,13 @@ let g:UltiSnipsSnippetDirectories=["~/.vim/UltiSnips", "UltiSnips"]
 
 " Sets the diff window (bottom window) height (rows)
 let g:DirDiffWindowSize = 5
+
+" }}}
+
+" vim-gutentags Settings {{{
+
+" Cache directory to store all tags files created by vim-gutentags for universal-ctags
+let g:gutentags_cache_dir="~/.ctags_cache"
 
 " }}}
 

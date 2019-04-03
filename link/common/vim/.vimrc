@@ -199,6 +199,9 @@ let g:DirDiffWindowSize = 5
 
 " vim-gutentags Settings {{{
 
+" Enable displaying status of gutentags in vim-airline
+let g:airline#extensions#gutentags#enabled = 1
+
 " Cache directory to store all tags files created by vim-gutentags for universal-ctags
 let g:gutentags_cache_dir="~/.ctags_cache"
 

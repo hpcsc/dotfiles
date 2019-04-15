@@ -5,4 +5,4 @@ set -e
 stow -vv \
     --dir=./link/macos/Applications \
     --target="$HOME" \
-    --stow PathFinder || echo_red "Failed to stow PathFinder settings"
+    --stow Spectacle || echo_red "Failed to stow spectacle settings"

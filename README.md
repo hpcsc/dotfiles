@@ -44,7 +44,8 @@
 9. Execute `./others/macos/install-gui-apps.sh` to install GUI applications
 10. Execute `./others/macos/vscode/setup.sh` to configure VSCode
 11. Install Path Finder and execute `./others/macos/PathFinder/setup.sh` to configure Path Finder
-12. Restart computer to finalize the process
+12. Install Spectacle and execute `./others/macos/Spectacle/setup.sh` to configure Spectacle
+13. Restart computer to finalize the process
 
 ### Checklist after setup
 
@@ -56,7 +57,7 @@
 ### Setup a new machine
 
 1. Make sure `git` is installed
-2. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./install.sh | tee install-full.log`
+2. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./up.sh
 3. Execute `./others/ubuntu/install-gui-apps.sh` to install additional GUI applications
 
 ### Checklist after setup

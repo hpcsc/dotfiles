@@ -145,6 +145,12 @@ xnoremap @ :<C-u>call ExecuteMacroOverVisualRange()<CR>
 
 " }}}
 
+" airline Settings {{{
+
+let g:airline#extensions#tabline#enabled = 1
+
+" }}}
+"
 " fzf Settings {{{
 
 if executable('rg')

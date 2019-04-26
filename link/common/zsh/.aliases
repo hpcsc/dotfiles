@@ -53,17 +53,17 @@ alias fkd='k-describe'
 
 alias apu='aws-profile-utils'
 
-alias i=itermocil
-alias ils='itermocil --list'
-
 alias an='ansible'
 alias anp='ansible-playbook'
 alias ang='ansible-galaxy'
 alias tf='terraform'
 
 alias h='helm'
+alias hls='helm ls -a'
+alias hrm='helm delete --purge'
 
-alias ist='istioctl'
+alias i='istioctl'
+alias ipc='istioctl proxy-config -o json'
 
 alias v='vagrant'
 alias vgs='vagrant global-status'

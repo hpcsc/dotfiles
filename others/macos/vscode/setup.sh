@@ -2,7 +2,7 @@
 
 set -e
 
-source ~/.functions/misc
+source ./load-zsh-autoload-as-functions.sh
 
 function stow_packages() {
   stow -vv --dir=./link/macos/Applications --target="$HOME" --stow vscode || echo_red "Failed to stow vscode settings"

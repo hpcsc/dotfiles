@@ -36,10 +36,6 @@ defaults write NSGlobalDomain NSAutomaticDashSubstitutionEnabled -bool false
 # Show Battery Percentage
 defaults write com.apple.menuextra.battery ShowPercent YES
 
-# Increase Keyboard Key Repeat Rate
-defaults write -g InitialKeyRepeat -int 10 # normal minimum is 15 (225 ms)
-defaults write -g KeyRepeat -int 2 # normal minimum is 2 (30 ms)
-
 # Turn off character accent menu in OS X
 defaults write -g ApplePressAndHoldEnabled -bool false
 
@@ -52,6 +48,15 @@ defaults write com.apple.BluetoothAudioAgent "Apple Bitpool Min (editable)" -int
 
 # Disable auto-correct
 defaults write NSGlobalDomain NSAutomaticSpellingCorrectionEnabled -bool false
+
+# Increase Keyboard Key Repeat Rate
+defaults write -g InitialKeyRepeat -int 10 # normal minimum is 15 (225 ms)
+defaults write -g KeyRepeat -int 2 # normal minimum is 2 (30 ms)
+
+# Mouse Scrolling/Tracking Speed
+defaults write -g com.apple.mouse.scaling 2 # Mouse tracking speed (0-3 where 3 is fastest)
+defaults write -g com.apple.scrollwheel.scaling 0.5 # Mouse scrolling speed (0-5 where 5 is fastest)
+defaults write -g com.apple.swipescrolldirection 0 # Turn off natural scroll direction (use Windows style scrolling)
 
 ###############################################################################
 # Screen                                                                      #

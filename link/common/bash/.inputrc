@@ -1,0 +1,12 @@
+set completion-ignore-case on
+set show-all-if-ambiguous on
+set completion-prefix-display-length 2
+set completion-map-case on
+set visible-stats on
+set colored-stats on
+set bind-tty-special-chars off
+TAB:menu-complete
+
+control-k: history-search-backward
+control-j: history-search-forward
+control-w: backward-kill-word

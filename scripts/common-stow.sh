@@ -1,6 +1,7 @@
 #!/bin/bash
 
 common_packages=(
+  bash
   git
   vim
   zsh

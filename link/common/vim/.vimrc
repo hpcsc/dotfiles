@@ -1,6 +1,6 @@
 " David Nguyen's .vimrc
 
-" Vim Settings {{{
+" General Vim Settings {{{
 
 set nocompatible " turn off vi compatibility
 set cursorline " highlight current line
@@ -35,9 +35,6 @@ set mouse=a " enable mouse for scrolling and resizing
 set splitbelow
 set splitright
 
-color slate
-
-
 " Folding Settings  {{{
 
 set foldenable " enable folding
@@ -60,16 +57,6 @@ filetype plugin indent on " load filetype-specific indent files at ~/.vim/indent
 autocmd FileType cs setlocal tabstop=4 shiftwidth=4 softtabstop=4 expandtab " use 4 spaces indentation for C# files
 
 syntax on
-
-" Diff Settings  {{{
-
-" change highlight background color when using vimdiff as git difftool
-highlight DiffChange   cterm=bold   gui=none    ctermfg=NONE          ctermbg=60
-highlight DiffText   cterm=bold   gui=none    ctermfg=NONE          ctermbg=52
-highlight DiffDelete   cterm=bold   gui=none    ctermfg=NONE          ctermbg=89
-highlight DiffAdd   cterm=bold    gui=none    ctermfg=NONE          ctermbg=49
-
-" }}}
 
 " }}}
 
@@ -106,6 +93,7 @@ Plug 'kana/vim-textobj-user'
 Plug 'rhysd/vim-textobj-anyblock'
 Plug 'michaeljsmith/vim-indent-object'
 Plug 'ludovicchabant/vim-gutentags'
+Plug 'morhetz/gruvbox'
 
 if has('nvim')
   Plug 'autozimu/LanguageClient-neovim', { 'branch': 'next', 'do': 'bash install.sh' }
@@ -113,6 +101,23 @@ if has('nvim')
 endif
 
 call plug#end()
+" }}}
+
+" Theme Settings  {{{
+
+" gruvbox is provided by plugin so this line needs to be after VimPlug settings
+colorscheme gruvbox
+
+" Diff Settings  {{{
+
+" change highlight background color when using vimdiff as git difftool
+highlight DiffChange   cterm=bold   gui=none    ctermfg=NONE          ctermbg=60
+highlight DiffText   cterm=bold   gui=none    ctermfg=NONE          ctermbg=52
+highlight DiffDelete   cterm=bold   gui=none    ctermfg=NONE          ctermbg=89
+highlight DiffAdd   cterm=bold    gui=none    ctermfg=NONE          ctermbg=49
+
+" }}}
+
 " }}}
 
 " Custom Keybindings {{{

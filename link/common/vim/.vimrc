@@ -29,6 +29,7 @@ set directory=~/.vim/tmp/swap// " set custom location for swap files
 set undodir=~/.vim/tmp/undo// " set custom location for undo files
 set ignorecase
 set smartcase " smart case insensitive search
+set mouse=a " enable mouse for scrolling and resizing
 
 " Open new split panes to right and bottom, which feels more natural
 set splitbelow

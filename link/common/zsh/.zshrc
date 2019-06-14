@@ -9,6 +9,8 @@ export CLICOLOR=1
 export TERM=xterm-256color
 export KEYTIMEOUT=1  # set zsh vi mode timeout to 0.1s when switching mode
 
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$HOME/.cargo/bin:$PATH"
+
 # ====== set terminal title ======================
 
 function set_terminal_title() {
@@ -54,11 +56,6 @@ export FZF_ALT_C_COMMAND="fd -t d"
 
 # =================== direnv  ======================
 eval "$(direnv hook zsh)"
-
-# =================== kubernetes  ======================
-
-# krew
-export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$PATH"
 
 # ============ custom key bindings  ==============
 # changes hex 0x15 to delete everything to the left of the cursor, rather than the whole line

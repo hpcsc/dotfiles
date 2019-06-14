@@ -12,12 +12,9 @@
     "files.trimTrailingWhitespace": true,
     "window.zoomLevel": 1,
     "files.insertFinalNewline": true,
-    "vsicons.dontShowNewVersionMessage": true,
     "files.hotExit": "off",
     "zenMode.fullScreen": false,
-    "workbench.iconTheme": "vscode-icons",
     "editor.dragAndDrop": true,
-    "vsicons.projectDetection.disableDetect": true,
     "window.nativeTabs": true,
     "editor.showFoldingControls": "always",
     "editor.minimap.enabled": false,
@@ -94,4 +91,5 @@
     "gitlens.views.repositories.enabled": false,
     "gitlens.views.search.enabled": false,
     "workbench.list.keyboardNavigation": "filter",
+    "workbench.iconTheme": "vscode-icons"
 }

@@ -59,6 +59,9 @@ defaults write -g com.apple.scrollwheel.scaling 0.5 # Mouse scrolling speed (0-5
 defaults write -g com.apple.swipescrolldirection 0 # Turn off natural scroll direction (use Windows style scrolling)
 defaults write -g com.apple.trackpad.scaling 2 # Trackpad tracking speed (0-3 where 3 is fastest)
 
+# Dock "Prefer tabs when opening documents" setting, can be either manual, always or fullscreen
+defaults write -g AppleWindowTabbingMode always
+
 ###############################################################################
 # Screen                                                                      #
 ###############################################################################

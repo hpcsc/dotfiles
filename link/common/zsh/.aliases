@@ -66,6 +66,9 @@ alias i='istioctl'
 alias ipc='istioctl proxy-config -o json'
 
 alias v='vagrant'
+alias vu='vagrant up'
+alias vrm='vagrant destroy -f'
+alias vls='vagrant status'
 alias vgs='vagrant global-status'
 
 alias gdt='git difftool'

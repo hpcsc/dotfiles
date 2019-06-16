@@ -41,7 +41,10 @@ nnoremap <silent> <leader>> :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
 nnoremap <silent> <leader>= :winc =<CR>
 
 " insert newline in normal mode
-nnoremap <silent> <leader>y o<Esc>
+nnoremap <silent> <leader>o o<Esc>
+
+" yank current line without newline character
+nnoremap <silent> <leader>y ^y$
 
 "stop highlighting search
 nnoremap <CR> :nohlsearch<CR> 

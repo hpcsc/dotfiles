@@ -86,3 +86,5 @@ alias gloc='git log --topo-order --graph --decorate --pretty=format:"${_git_log_
 alias itree='tree -a -L 2 -I "$(git check-ignore {.,}* | tr "\\n" "|").git"'
 
 alias muxe='mux start editor'
+
+alias read-secret='IFS= read -rs '

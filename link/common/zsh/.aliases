@@ -1,3 +1,5 @@
+# Docker
+
 alias dk='docker'
 alias dls='docker container ls -a'
 alias dsa='docker container start'
@@ -32,6 +34,8 @@ alias dcb='docker-compose build'
 alias dcl='docker-compose logs'
 alias dcrm='docker-compose rm -f'
 
+# Kubernetes
+
 alias k='kubectl'
 alias mk='minikube'
 alias kc='kubectl config'
@@ -51,13 +55,6 @@ alias fkrm='k-rm'
 alias fkl='k-log'
 alias fkd='k-describe'
 
-alias apu='aws-profile-utils'
-
-alias an='ansible'
-alias anp='ansible-playbook'
-alias ang='ansible-galaxy'
-alias tf='terraform'
-
 alias h='helm'
 alias hls='helm ls -a'
 alias hrm='helm delete --purge'
@@ -65,26 +62,31 @@ alias hrm='helm delete --purge'
 alias i='istioctl'
 alias ipc='istioctl proxy-config -o json'
 
+# Tools
+alias apu='aws-profile-utils'
+
+alias an='ansible'
+alias anp='ansible-playbook'
+alias ang='ansible-galaxy'
+
+alias tf='terraform'
+
 alias v='vagrant'
 alias vu='vagrant up'
 alias vrm='vagrant destroy -f'
 alias vls='vagrant status'
 alias vgs='vagrant global-status'
 
+_git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"
+alias gloc='git log --topo-order --graph --decorate --pretty=format:"${_git_log_oneline_compact_format}"'
 alias gdt='git difftool'
+
+# Misc
 
 alias cssh="pbcopy < $HOME/.ssh/id_rsa.pub"
 alias rrc="source $HOME/.zshrc"
-
 alias c='clear'
-
 alias pvim='rm -f ~/.nvim-startup.log && nvim --startuptime ~/.nvim-startup.log -c "q"'
-
-_git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"
-alias gloc='git log --topo-order --graph --decorate --pretty=format:"${_git_log_oneline_compact_format}"'
-
 alias itree='tree -a -L 2 -I "$(git check-ignore {.,}* | tr "\\n" "|").git"'
-
-alias muxe='mux start editor'
-
+alias colors='for i in {0..255}; do printf "\x1b[38;5;${i}m${i} "; done'
 alias read-secret='IFS= read -rs '

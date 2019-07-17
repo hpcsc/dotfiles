@@ -51,6 +51,7 @@ common_options=(
   './scripts/common-asdf-plugins.sh helm'
   './scripts/common-krew.sh'
   './scripts/common-rust.sh'
+  './scripts/common-istio.sh'
   'Quit'
 )
 

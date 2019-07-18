@@ -77,9 +77,12 @@ alias vrm='vagrant destroy -f'
 alias vls='vagrant status'
 alias vgs='vagrant global-status'
 
+# Git
+
 _git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"
 alias gloc='git log --topo-order --graph --decorate --pretty=format:"${_git_log_oneline_compact_format}"'
 alias gdt='git difftool'
+alias git-prune-local='git fetch -p origin && git branch -vv | awk "/: gone]/{print $1}" | xargs git branch -D'
 
 # Misc
 

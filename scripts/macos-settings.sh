@@ -62,6 +62,13 @@ defaults write -g com.apple.trackpad.scaling 2 # Trackpad tracking speed (0-3 wh
 # Dock "Prefer tabs when opening documents" setting, can be either manual, always or fullscreen
 defaults write -g AppleWindowTabbingMode always
 
+# Keyboard "Touch Bar shows" settings
+# - App Controls: empty
+# - Expanded Control Strip: fullControlStrip
+# - F1, F2, etc Keys: functionKeys
+# - Quick Actions: workflowsWithControlStrip
+defaults write com.apple.touchbar.agent PresentationModeGlobal functionKeys
+
 ###############################################################################
 # Screen                                                                      #
 ###############################################################################

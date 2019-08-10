@@ -1,23 +1,4 @@
-function choose_file_from() {
-  # use jq to choose only directory or files with .gitignore extension
-  { read TYPE ; read NAME ; read URL ; read DOWNLOAD_URL } \
-    <<<$(echo $1 | jq -r 'sort_by(.type) | .[] | select(.type == "dir" or (.name | endswith(".gitignore"))) | "\(.type),(\(.type)) \(.name),\(.url),\(.download_url)"' | \
-            fzf --with-nth=2 --delimiter=, | \
-            tr "," "\n")
-
-  if [[ "${TYPE}" == "dir" ]]
-  then
-    SUB_DIR=$(curl -s ${URL})
-    choose_file_from $SUB_DIR
-  else
-    echo ${DOWNLOAD_URL}
-  fi
-}
-
-ROOT_DIR=$(curl -s https://api.github.com/repos/github/gitignore/contents)
-
-SELECTED_URL=$(choose_file_from $ROOT_DIR)
-if [[ ! -z "${SELECTED_URL}" ]]; then
-  curl -s ${SELECTED_URL} -o .gitignore
-  echo "Downloaded ${SELECTED_URL} as .gitignore"
-fi
+curl -s https://api.github.com/repos/github/gitignore/git/trees/master\?recursive=1 | \
+  jq -r '.tree | .[] | select(.type == "blob" and (.path | endswith(".gitignore"))) | .path' | \
+  fzf --height 30% --reverse --header 'Select .gitignore to download' | \
+  xargs -I{} bash -c 'curl -s https://raw.githubusercontent.com/github/gitignore/master/{} -o .gitignore && echo "Downloaded {} as .gitignore"'

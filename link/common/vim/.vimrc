@@ -30,6 +30,7 @@ set undodir=~/.vim/tmp/undo// " set custom location for undo files
 set ignorecase
 set smartcase " smart case insensitive search
 set mouse=a " enable mouse for scrolling and resizing
+set scrolloff=1 " always keep 1 line above and below the cursor for context
 
 " Open new split panes to right and bottom, which feels more natural
 set splitbelow

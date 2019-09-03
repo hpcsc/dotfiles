@@ -2,10 +2,14 @@ set vertical-split = false
 set main-view-id = yes
 set main-view-id-width = 15
 
+bind main B !git rebase -i %(commit)
+
 bind generic D !>git difftool --tool=dirdiff --dir-dif --no-prompt  %(commit)^!
 bind generic V !git difftool --tool=code --no-prompt  %(commit)^!
 bind generic 9 !@bash -c "echo -n %(commit) | pbcopy"
+
 bind status	C	!>git commit
 bind status a !?git commit --amend
 bind status P !git push
+
 bind diff F :/^\+\+\+

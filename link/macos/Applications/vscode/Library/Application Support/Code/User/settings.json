@@ -28,7 +28,7 @@
     "editor.fontFamily": "Fira Code, Menlo, Monaco, 'Courier New', monospace",
     "editor.fontLigatures": true,
     "editor.fontSize": 14,
-    "workbench.colorTheme": "NaturalContrast-HC",
+    "workbench.colorTheme": "Gruvbox Dark (Hard)",
     "workbench.colorCustomizations": {
         "terminal.ansiBrightBlack": "#4D4D4D",
         "terminal.ansiBrightBlue": "#BD93F9",
@@ -91,5 +91,6 @@
     "gitlens.views.repositories.enabled": false,
     "gitlens.views.search.enabled": false,
     "workbench.list.keyboardNavigation": "filter",
-    "workbench.iconTheme": "vscode-icons"
+    "workbench.iconTheme": "vscode-icons",
+    "omnisharp.autoStart": false
 }

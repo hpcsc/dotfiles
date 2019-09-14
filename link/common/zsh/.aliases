@@ -80,6 +80,8 @@ alias vrm='vagrant destroy -f'
 alias vls='vagrant status'
 alias vgs='vagrant global-status'
 
+alias dn='dotnet'
+
 # Git
 
 _git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"

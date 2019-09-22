@@ -78,6 +78,8 @@ bindkey -s '^t' 'tig status^M'
 # bind Ctrl-j/k to do cycle through history substring search
 bindkey "^k" history-substring-search-up
 bindkey "^j" history-substring-search-down
+bindkey "^H" backward-word
+bindkey "^L" forward-word
 
 # custom function and zsh zle widget to get last commit message and output git commit command
 # bind Ctrl-g to this custom zle widget

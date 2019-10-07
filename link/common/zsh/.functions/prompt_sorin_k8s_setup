@@ -326,6 +326,9 @@ function prompt_sorin_k8s_setup {
   # Add hook for calling git-info before each command.
   add-zsh-hook precmd prompt_sorin_k8s_precmd
 
+  # Tell prezto we can manage this prompt
+  zstyle ':prezto:module:prompt' managed 'yes'
+
   _kube_ps1_init
 
   # Set editor-info parameters.
@@ -386,3 +389,4 @@ function prompt_sorin_k8s_preview {
 }
 
 prompt_sorin_k8s_setup "$@"
+# vim: ft=zsh

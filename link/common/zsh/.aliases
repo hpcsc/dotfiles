@@ -32,7 +32,7 @@ alias dcra='docker-compose restart'
 alias dce='docker-compose exec'
 alias dcb='docker-compose build'
 alias dcl='docker-compose logs'
-alias dcrm='docker-compose rm -f'
+alias dcrm='docker-compose rm -fsv'
 
 # nsenter command to run sh in the namepsace of Docker for Mac xhyve VM: nsenter --target 1 --mount --uts --net --ipc sh
 alias enter-docker-vm='docker run -it --rm --privileged --pid=host justincormack/nsenter1'

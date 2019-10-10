@@ -92,5 +92,6 @@
     "gitlens.views.search.enabled": false,
     "workbench.list.keyboardNavigation": "filter",
     "workbench.iconTheme": "vscode-icons",
-    "omnisharp.autoStart": false
+    "omnisharp.autoStart": false,
+    "scm.defaultViewMode": "tree"
 }

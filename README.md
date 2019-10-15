@@ -39,8 +39,7 @@
 5. Execute `sudo vim /etc/shells`, append `/usr/local/bin/zsh` at the end of the file and save. `/usr/local/bin/zsh` is the symlink created by Homebrew and in order to be able to change default shell to this, it needs to be in the list of valid shells (`/etc/shells`)
 6. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./up.sh`
 7. Make ZSH the default shell environment: `chsh -s $(which zsh)`
-8. Open `iTerm2` preferences -> `General` -> `Load preferences from a custom folder`, points to `~/dotfiles/others/macos/iterm`
-    - Refresh iTerm2 preferences cache if needed: `defaults read com.googlecode.iterm2`
+8. Run `./others/macos/iterm/setup.sh` to let iterm load settings from dotfiles
 9. Execute `./others/macos/install-gui-apps.sh` to install GUI applications
 10. Execute `./others/macos/vscode/setup.sh` to configure VSCode
 11. Install Path Finder and execute `./others/macos/PathFinder/setup.sh` to configure Path Finder

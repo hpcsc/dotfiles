@@ -41,7 +41,7 @@ nnoremap <silent> <leader>> :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
 nnoremap <silent> <leader>= :winc =<CR>
 
 " insert newline in normal mode
-nnoremap <silent> <leader>o o<Esc>
+nnoremap <silent> <leader><space> o<Esc>
 
 " yank current line without newline character
 nnoremap <silent> <leader>y ^y$

@@ -70,7 +70,7 @@
     "vim.disableExtension": false,
     "vim.normalModeKeyBindings": [
         {
-            "before": ["<leader>", "y"],
+            "before": ["<leader>", "<space>"],
             "after": ["o", "<Esc>"]
         }
     ],

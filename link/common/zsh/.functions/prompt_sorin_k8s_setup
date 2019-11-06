@@ -240,6 +240,10 @@ function _kube_ps1() {
 
 function prompt_sorin_k8s_async_callback {
   case $1 in
+    prompt_sorin_async_aws)
+      _prompt_sorin_aws=$3
+      zle && zle reset-prompt
+      ;;
     prompt_sorin_async_git)
       # We can safely split on ':' because it isn't allowed in ref names.
       IFS=':' read _git_target _git_post_target <<<"$3"
@@ -271,20 +275,39 @@ function prompt_sorin_async_git {
   fi
 }
 
+function prompt_sorin_async_aws {
+  if ! command -v aws-profile-utils >/dev/null 2>&1 ; then
+    return
+  fi
+
+  if [ ! -f ~/.aws/credentials ] && [ ! -f ~/.aws/config ]; then
+    return
+  fi
+
+  print "(%{%F{5}%}aws%{%f%}|%{%F{3}%}$(aws-profile-utils get)%{%f%})"
+}
+
 function prompt_sorin_k8s_async_tasks {
   # Initialize async worker. This needs to be done here and not in
   # prompt_sorin_setup so the git formatting can be overridden by other prompts.
   if (( !${prompt_prezto_async_init:-0} )); then
-    async_start_worker prompt_sorin_k8s -n
-    async_register_callback prompt_sorin_k8s prompt_sorin_k8s_async_callback
+    async_start_worker prompt_sorin_git -n
+    async_register_callback prompt_sorin_git prompt_sorin_k8s_async_callback
+
+    async_start_worker prompt_sorin_aws -n
+    async_register_callback prompt_sorin_aws prompt_sorin_k8s_async_callback
+
     typeset -g prompt_prezto_async_init=1
   fi
 
   # Kill the old process of slow commands if it is still running.
-  async_flush_jobs prompt_sorin_k8s
+  async_flush_jobs prompt_sorin_git
+  async_flush_jobs prompt_sorin_aws
 
   # Compute slow commands in the background.
-  async_job prompt_sorin_k8s prompt_sorin_async_git "$PWD"
+  async_job prompt_sorin_git prompt_sorin_async_git "$PWD"
+  async_job prompt_sorin_aws prompt_sorin_async_aws
+  
 }
 
 function prompt_sorin_k8s_precmd {
@@ -368,6 +391,7 @@ function prompt_sorin_k8s_setup {
   # Get the async worker set up.
   _sorin_cur_git_root=''
 
+  _prompt_sorin_aws=''
   _prompt_sorin_git=''
   _prompt_sorin_pwd=''
 
@@ -375,7 +399,7 @@ function prompt_sorin_k8s_setup {
   PROMPT='${SSH_TTY:+"%F{9}%n%f%F{7}@%f%F{3}%m%f "}%F{4}${_prompt_sorin_pwd}%(!. %B%F{1}#%f%b.)${editor_info[keymap]} '
   RPROMPT='$python_info[virtualenv]${editor_info[overwrite]}%(?:: %F{1}'
   RPROMPT+=${show_return}
-  RPROMPT+='%f)${VIM:+" %B%F{6}V%f%b"}${_prompt_sorin_k8s}${_prompt_sorin_git}'
+  RPROMPT+='%f)${VIM:+" %B%F{6}V%f%b"}${_prompt_sorin_aws}${_prompt_sorin_k8s}${_prompt_sorin_git}'
   SPROMPT='zsh: correct %F{1}%R%f to %F{2}%r%f [nyae]? '
 }
 

@@ -36,37 +36,21 @@ pmodload 'helper'
 # below functions in this section are from kube-ps1 project:
 # https://github.com/jonmosco/kube-ps1/blob/master/kube-ps1.sh
 
-KUBE_PS1_SHELL="zsh"
-
 # Default values for the prompt
-KUBE_PS1_BINARY="${KUBE_PS1_BINARY:-kubectl}"
-KUBE_PS1_SYMBOL_ENABLE="${KUBE_PS1_SYMBOL_ENABLE:-true}"
-KUBE_PS1_SYMBOL_DEFAULT=${KUBE_PS1_SYMBOL_DEFAULT:-$'\u2388'}
-KUBE_PS1_SYMBOL_USE_IMG="${KUBE_PS1_SYMBOL_USE_IMG:-false}"
-KUBE_PS1_NS_ENABLE="${KUBE_PS1_NS_ENABLE:-true}"
-KUBE_PS1_PREFIX="${KUBE_PS1_PREFIX-(}"
-KUBE_PS1_SEPARATOR="${KUBE_PS1_SEPARATOR-|}"
-KUBE_PS1_DIVIDER="${KUBE_PS1_DIVIDER-:}"
-KUBE_PS1_SUFFIX="${KUBE_PS1_SUFFIX-)}"
-KUBE_PS1_SYMBOL_COLOR="${KUBE_PS1_SYMBOL_COLOR-blue}"
-KUBE_PS1_CTX_COLOR="${KUBE_PS1_CTX_COLOR-red}"
-KUBE_PS1_NS_COLOR="${KUBE_PS1_NS_COLOR-cyan}"
-KUBE_PS1_BG_COLOR="${KUBE_PS1_BG_COLOR}"
 KUBE_PS1_KUBECONFIG_CACHE="${KUBECONFIG}"
-KUBE_PS1_DISABLE_PATH="${HOME}/.kube/kube-ps1/disabled"
 KUBE_PS1_LAST_TIME=0
 
 function _kube_ps1_get_context_ns() {
   # Set the command time
   KUBE_PS1_LAST_TIME=$EPOCHSECONDS
 
-  KUBE_PS1_CONTEXT="$(${KUBE_PS1_BINARY} config current-context 2>/dev/null)"
+  KUBE_PS1_CONTEXT="$(kubectl config current-context 2>/dev/null)"
   if [[ -z "${KUBE_PS1_CONTEXT}" ]]; then
     KUBE_PS1_CONTEXT="N/A"
     KUBE_PS1_NAMESPACE="N/A"
     return
-  elif [[ "${KUBE_PS1_NS_ENABLE}" == true ]]; then
-    KUBE_PS1_NAMESPACE="$(${KUBE_PS1_BINARY} config view --minify --output 'jsonpath={..namespace}' 2>/dev/null)"
+  else
+    KUBE_PS1_NAMESPACE="$(kubectl config view --minify --output 'jsonpath={..namespace}' 2>/dev/null)"
     # Set namespace to 'default' if it is not defined
     KUBE_PS1_NAMESPACE="${KUBE_PS1_NAMESPACE:-default}"
   fi
@@ -109,142 +93,56 @@ function _kube_ps1_update_cache() {
 }
 
 function _kube_ps1_init() {
-  _KUBE_PS1_OPEN_ESC="%{"
-  _KUBE_PS1_CLOSE_ESC="%}"
-  _KUBE_PS1_DEFAULT_BG="%k"
-  _KUBE_PS1_DEFAULT_FG="%f"
   setopt PROMPT_SUBST
   zmodload -F zsh/stat b:zstat
   zmodload zsh/datetime
 }
 
-function _kube_ps1_color_fg() {
-  local KUBE_PS1_FG_CODE
-  case "${1}" in
-    black) KUBE_PS1_FG_CODE=0;;
-    red) KUBE_PS1_FG_CODE=1;;
-    green) KUBE_PS1_FG_CODE=2;;
-    yellow) KUBE_PS1_FG_CODE=3;;
-    blue) KUBE_PS1_FG_CODE=4;;
-    magenta) KUBE_PS1_FG_CODE=5;;
-    cyan) KUBE_PS1_FG_CODE=6;;
-    white) KUBE_PS1_FG_CODE=7;;
-    # 256
-    [0-9]|[1-9][0-9]|[1][0-9][0-9]|[2][0-4][0-9]|[2][5][0-6]) KUBE_PS1_FG_CODE="${1}";;
-    *) KUBE_PS1_FG_CODE=default
-  esac
+function print_text_with_color {
+  local color=$1
+  local text=$2
 
-  if [[ "${KUBE_PS1_FG_CODE}" == "default" ]]; then
-    KUBE_PS1_FG_CODE="${_KUBE_PS1_DEFAULT_FG}"
-    return
-  elif [[ "${KUBE_PS1_SHELL}" == "zsh" ]]; then
-    KUBE_PS1_FG_CODE="%F{$KUBE_PS1_FG_CODE}"
-  elif [[ "${KUBE_PS1_SHELL}" == "bash" ]]; then
-    if tput setaf 1 &> /dev/null; then
-      KUBE_PS1_FG_CODE="$(tput setaf ${KUBE_PS1_FG_CODE})"
-    elif [[ $KUBE_PS1_FG_CODE -ge 0 ]] && [[ $KUBE_PS1_FG_CODE -le 256 ]]; then
-      KUBE_PS1_FG_CODE="\033[38;5;${KUBE_PS1_FG_CODE}m"
-    else
-      KUBE_PS1_FG_CODE="${_KUBE_PS1_DEFAULT_FG}"
-    fi
-  fi
-  echo ${_KUBE_PS1_OPEN_ESC}${KUBE_PS1_FG_CODE}${_KUBE_PS1_CLOSE_ESC}
+  print "%{%F{$(color_text_to_code ${color})}%}${text}%{%f%}"
 }
 
-function _kube_ps1_color_bg() {
-  local KUBE_PS1_BG_CODE
+function color_text_to_code {
   case "${1}" in
-    black) KUBE_PS1_BG_CODE=0;;
-    red) KUBE_PS1_BG_CODE=1;;
-    green) KUBE_PS1_BG_CODE=2;;
-    yellow) KUBE_PS1_BG_CODE=3;;
-    blue) KUBE_PS1_BG_CODE=4;;
-    magenta) KUBE_PS1_BG_CODE=5;;
-    cyan) KUBE_PS1_BG_CODE=6;;
-    white) KUBE_PS1_BG_CODE=7;;
+    black) print 0;;
+    red) print 1;;
+    green) print 2;;
+    yellow) print 3;;
+    blue) print 4;;
+    magenta) print 5;;
+    cyan) print 6;;
+    white) print 7;;
     # 256
-    [0-9]|[1-9][0-9]|[1][0-9][0-9]|[2][0-4][0-9]|[2][5][0-6]) KUBE_PS1_BG_CODE="${1}";;
-    *) KUBE_PS1_BG_CODE=$'\033[0m';;
+    [0-9]|[1-9][0-9]|[1][0-9][0-9]|[2][0-4][0-9]|[2][5][0-6]) print "${1}";;
+    *) print 'default';;
   esac
-
-  if [[ "${KUBE_PS1_BG_CODE}" == "default" ]]; then
-    KUBE_PS1_FG_CODE="${_KUBE_PS1_DEFAULT_BG}"
-    return
-  elif [[ "${KUBE_PS1_SHELL}" == "zsh" ]]; then
-    KUBE_PS1_BG_CODE="%K{$KUBE_PS1_BG_CODE}"
-  elif [[ "${KUBE_PS1_SHELL}" == "bash" ]]; then
-    if tput setaf 1 &> /dev/null; then
-      KUBE_PS1_BG_CODE="$(tput setab ${KUBE_PS1_BG_CODE})"
-    elif [[ $KUBE_PS1_BG_CODE -ge 0 ]] && [[ $KUBE_PS1_BG_CODE -le 256 ]]; then
-      KUBE_PS1_BG_CODE="\033[48;5;${KUBE_PS1_BG_CODE}m"
-    else
-      KUBE_PS1_BG_CODE="${DEFAULT_BG}"
-    fi
-  fi
-  echo ${OPEN_ESC}${KUBE_PS1_BG_CODE}${CLOSE_ESC}
-}
-
-function _kube_ps1_symbol() {
-  [[ "${KUBE_PS1_SYMBOL_ENABLE}" == false ]] && return
-
-  KUBE_PS1_SYMBOL="${KUBE_PS1_SYMBOL_DEFAULT}"
-  KUBE_PS1_SYMBOL_IMG="\u2638 "
-
-  if [[ "${KUBE_PS1_SYMBOL_USE_IMG}" == true ]]; then
-    KUBE_PS1_SYMBOL="${KUBE_PS1_SYMBOL_IMG}"
-  fi
-
-  echo "${KUBE_PS1_SYMBOL}"
 }
 
 function _kube_ps1() {
   [[ -z "${KUBE_PS1_CONTEXT}" ]] && return
 
-  local KUBE_PS1
-  local KUBE_PS1_RESET_COLOR="${_KUBE_PS1_OPEN_ESC}${_KUBE_PS1_DEFAULT_FG}${_KUBE_PS1_CLOSE_ESC}"
+  local KUBE_PS1_SYMBOL="\u2638"
+  local KUBE_PS1_SYMBOL_WITH_COLOR="$(print_text_with_color blue ${KUBE_PS1_SYMBOL})"
+  local KUBE_PS1_CONTEXT_WITH_COLOR="$(print_text_with_color red ${KUBE_PS1_CONTEXT})"
+  local KUBE_PS1_NAMESPACE_WITH_COLOR="$(print_text_with_color cyan ${KUBE_PS1_NAMESPACE})"
 
-  # Background Color
-  [[ -n "${KUBE_PS1_BG_COLOR}" ]] && KUBE_PS1+="$(_kube_ps1_color_bg ${KUBE_PS1_BG_COLOR})"
-
-  # Prefix
-  [[ -n "${KUBE_PS1_PREFIX}" ]] && KUBE_PS1+="${KUBE_PS1_PREFIX}"
-
-  # Symbol
-  KUBE_PS1+="$(_kube_ps1_color_fg $KUBE_PS1_SYMBOL_COLOR)$(_kube_ps1_symbol)${KUBE_PS1_RESET_COLOR}"
-
-  if [[ -n "${KUBE_PS1_SEPARATOR}" ]] && [[ "${KUBE_PS1_SYMBOL_ENABLE}" == true ]]; then
-    KUBE_PS1+="${KUBE_PS1_SEPARATOR}"
-  fi
-
-  # Context
-  KUBE_PS1+="$(_kube_ps1_color_fg $KUBE_PS1_CTX_COLOR)${KUBE_PS1_CONTEXT}${KUBE_PS1_RESET_COLOR}"
-
-  # Namespace
-  if [[ "${KUBE_PS1_NS_ENABLE}" == true ]]; then
-    if [[ -n "${KUBE_PS1_DIVIDER}" ]]; then
-      KUBE_PS1+="${KUBE_PS1_DIVIDER}"
-    fi
-    KUBE_PS1+="$(_kube_ps1_color_fg ${KUBE_PS1_NS_COLOR})${KUBE_PS1_NAMESPACE}${KUBE_PS1_RESET_COLOR}"
-  fi
-
-  # Suffix
-  [[ -n "${KUBE_PS1_SUFFIX}" ]] && KUBE_PS1+="${KUBE_PS1_SUFFIX}"
-
-  # Close Background color if defined
-  [[ -n "${KUBE_PS1_BG_COLOR}" ]] && KUBE_PS1+="${_KUBE_PS1_OPEN_ESC}${_KUBE_PS1_DEFAULT_BG}${_KUBE_PS1_CLOSE_ESC}"
+  local KUBE_PS1="(${KUBE_PS1_SYMBOL_WITH_COLOR}|${KUBE_PS1_CONTEXT_WITH_COLOR}:${KUBE_PS1_NAMESPACE_WITH_COLOR})"
 
   echo "${KUBE_PS1}"
 }
 
 # =====================================================================
 
-function prompt_sorin_k8s_async_callback {
+function async_callback_handler {
   case $1 in
-    prompt_sorin_async_aws)
+    aws_async_worker)
       _prompt_sorin_aws=$3
       zle && zle reset-prompt
       ;;
-    prompt_sorin_async_git)
+    git_async_worker)
       # We can safely split on ':' because it isn't allowed in ref names.
       IFS=':' read _git_target _git_post_target <<<"$3"
 
@@ -267,7 +165,7 @@ function prompt_sorin_k8s_async_callback {
   esac
 }
 
-function prompt_sorin_async_git {
+function git_async_worker {
   cd -q "$1"
   if (( $+functions[git-info] )); then
     git-info
@@ -275,7 +173,7 @@ function prompt_sorin_async_git {
   fi
 }
 
-function prompt_sorin_async_aws {
+function aws_async_worker {
   if ! command -v aws-profile-utils >/dev/null 2>&1 ; then
     return
   fi
@@ -284,30 +182,30 @@ function prompt_sorin_async_aws {
     return
   fi
 
-  print "(%{%F{5}%}aws%{%f%}|%{%F{3}%}$(aws-profile-utils get)%{%f%})"
+  local current_aws_profile=$(aws-profile-utils get)
+  print "($(print_text_with_color magenta aws)|$(print_text_with_color yellow ${current_aws_profile}))"
 }
 
-function prompt_sorin_k8s_async_tasks {
+function start_async_jobs {
   # Initialize async worker. This needs to be done here and not in
   # prompt_sorin_setup so the git formatting can be overridden by other prompts.
   if (( !${prompt_prezto_async_init:-0} )); then
-    async_start_worker prompt_sorin_git -n
-    async_register_callback prompt_sorin_git prompt_sorin_k8s_async_callback
+    async_start_worker git_async_job -n
+    async_register_callback git_async_job async_callback_handler
 
-    async_start_worker prompt_sorin_aws -n
-    async_register_callback prompt_sorin_aws prompt_sorin_k8s_async_callback
+    async_start_worker aws_async_job -n
+    async_register_callback aws_async_job async_callback_handler
 
     typeset -g prompt_prezto_async_init=1
   fi
 
   # Kill the old process of slow commands if it is still running.
-  async_flush_jobs prompt_sorin_git
-  async_flush_jobs prompt_sorin_aws
+  async_flush_jobs git_async_job
+  async_flush_jobs aws_async_job
 
   # Compute slow commands in the background.
-  async_job prompt_sorin_git prompt_sorin_async_git "$PWD"
-  async_job prompt_sorin_aws prompt_sorin_async_aws
-  
+  async_job git_async_job git_async_worker "$PWD"
+  async_job aws_async_job aws_async_worker
 }
 
 function prompt_sorin_k8s_precmd {
@@ -334,7 +232,7 @@ function prompt_sorin_k8s_precmd {
 
   _kube_ps1_update_cache
   _prompt_sorin_k8s="$(_kube_ps1) "
-  prompt_sorin_k8s_async_tasks
+  start_async_jobs
 }
 
 function prompt_sorin_k8s_setup {

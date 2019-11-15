@@ -1,0 +1,4 @@
+  local selected_dir=$(fd --type d --hidden --follow --exclude ".git" . | 
+    fzf --height 30% --reverse -1 -0)
+
+  [ ! -z ${selected_dir} ] && cd ${selected_dir}

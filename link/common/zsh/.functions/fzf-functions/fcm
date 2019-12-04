@@ -1,0 +1,19 @@
+if [ -z "$@" ]; then
+  echo "=== please enter commit message"
+  return
+fi;
+
+MESSAGE="$@\n\n"
+
+CO_AUTHORS_LIST_FILE=$([ -f ./.git/.git-co-authors ] && echo ./.git/.git-co-authors || echo ~/.git-co-authors)
+[ ! -f ${CO_AUTHORS_LIST_FILE} ] && echo "=== no .git-co-authors file exists in .git or home directory" && return
+
+SELECTED_AUTHORS=$(cat ${CO_AUTHORS_LIST_FILE} | fzf -m)
+
+# convert newline-delimited string to array, zsh way: https://stackoverflow.com/a/2930519
+AUTHORS=("${(f)SELECTED_AUTHORS}")
+for AUTHOR in $AUTHORS[@]; do
+  MESSAGE="${MESSAGE}co-authored-by: ${AUTHOR}\n"
+done
+
+git commit -m "$(echo -e ${MESSAGE})"

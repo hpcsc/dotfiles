@@ -2,7 +2,10 @@
 
 set -e
 
-([ -d ~/.asdf ] && echo_green "=== ASDF is already installed, skipped") || {
+[ -d ~/.asdf ] && {
+  echo_green "=== ASDF is already installed, updating"
+  asdf update
+} || {
   asdf_version=$(curl https://api.github.com/repos/asdf-vm/asdf/tags | jq -r '.[0].name')
   echo_yellow "=== Checking out asdf at tag $asdf_version"
   git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch $asdf_version || {
@@ -10,20 +13,5 @@ set -e
     exit 1
   }
 }
-
-# python plugin for asdf
-source ~/.asdf/asdf.sh
-
-((asdf plugin-list | grep python >/dev/null 2>&1) && echo_green "=== ASDF Python plugin is already installed, skipped") || {
-  asdf plugin-add python https://github.com/tuvistavie/asdf-python.git
-  latest_python_version=$(asdf list-all python | grep -e '^3\.[0-9]\.[0-9]$' | sort | tail -n 1)
-  echo_yellow "=== Installing python version ${latest_python_version}"
-  asdf install python ${latest_python_version} && \
-  asdf global python ${latest_python_version} || {
-    echo_red "=== Failed to install asdf python version ${latest_python_version}"
-    exit 1
-  }
-}
-
 
 exit 0

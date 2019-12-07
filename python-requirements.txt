@@ -1,0 +1,3 @@
+awscli
+awsume
+neovim

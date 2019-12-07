@@ -17,7 +17,16 @@ function backup() {
   for i in "${common_packages[@]}"; do
     echo_yellow "=== Backing up folder $i"
     # --filter tells rsync to do a directory merge with .gitignore files and have them exclude per git's rules
-    rsync -v --times --delete --recursive --human-readable --filter=':- .gitignore' "./link/common/$i" "${backup_folder_name}/${i}"
+    rsync -v \
+          --times \
+          --remove-source-files \
+          --delete \
+          --recursive \
+          --human-readable \
+          --filter=':- .gitignore' \
+          --files-from=<(ls -A "./link/common/$i") \ # filter for all files in $HOME that match output of this ls command
+          $HOME \
+          "${backup_folder_name}/${i}"
     echo_yellow "=== Folder $i is backed up to ${backup_folder_name}/${i}"
   done
 }

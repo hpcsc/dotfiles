@@ -74,14 +74,18 @@ function install_helm() {
 
 source ~/.asdf/asdf.sh
 
-plugin_to_install=$1
+plugin_to_install=${1:-default}
 
 case ${plugin_to_install} in
 	"nodejs"|"ruby"|"python"|"kubectl"|"helm")
-	install_${plugin_to_install}
+    install_${plugin_to_install}
+  ;;
+  "default")
+    selected_plugin=$(echo -e "nodejs\nruby\npython\nkubectl\nhelm" | fzf)
+    install_${selected_plugin}
   ;;
 	*)
-  echo "Not supported plugin ${plugin_to_install}"
+    echo "Not supported plugin ${plugin_to_install}"
   ;;
 esac
 

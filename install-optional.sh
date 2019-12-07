@@ -44,11 +44,6 @@ ubuntu_only_options=(
 )
 
 common_options=(
-  './scripts/common-asdf-plugins.sh nodejs'
-  './scripts/common-asdf-plugins.sh ruby'
-  './scripts/common-asdf-plugins.sh python'
-  './scripts/common-asdf-plugins.sh kubectl'
-  './scripts/common-asdf-plugins.sh helm'
   './scripts/common-krew.sh'
   './scripts/common-rust.sh'
   './scripts/common-istio.sh'

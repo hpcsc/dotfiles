@@ -20,6 +20,7 @@
 [diff]
 	mnemonicprefix = true
 	tool = vimdiff
+	submodule = log
 [includeIf "gitdir:~/Workspace/Code/"]
   	path = .gitconfig-work
 [merge]
@@ -33,3 +34,5 @@
   cmd = vim -f '+next' '+execute \"DirDiff\" argv(0) argv(1)' $LOCAL $REMOTE '+syntax off'
 [diff "plist"]
 	textconv = plutil -convert xml1 -o -
+[status]
+	submoduleSummary = true

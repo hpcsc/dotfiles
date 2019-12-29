@@ -21,3 +21,7 @@ set -e
   ${KREW} install --manifest=krew.yaml --archive=krew.tar.gz
   ${KREW} update
 }
+
+KREW_PLUGINS_LIST=./others/common/kube/krew-plugins
+echo_yellow "=== Installing krew plugins from ${KREW_PLUGINS_LIST}"
+cat ${KREW_PLUGINS_LIST} | xargs ${HOME}/.krew/bin/kubectl-krew install

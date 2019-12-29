@@ -174,7 +174,7 @@ function git_async_worker {
 }
 
 function aws_async_worker {
-  if ! command -v aws-profile-utils >/dev/null 2>&1 ; then
+  if ! command -v aws-profile >/dev/null 2>&1 ; then
     return
   fi
 
@@ -182,7 +182,7 @@ function aws_async_worker {
     return
   fi
 
-  local current_aws_profile=$(aws-profile-utils get)
+  local current_aws_profile=$(aws-profile get)
   print "($(print_text_with_color magenta aws)|$(print_text_with_color yellow ${current_aws_profile}))"
 }
 

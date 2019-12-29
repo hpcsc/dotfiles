@@ -66,7 +66,7 @@ alias i='istioctl'
 alias ipc='istioctl proxy-config -o json'
 
 # Tools
-alias apu='aws-profile-utils'
+alias ap='aws-profile'
 
 alias an='ansible'
 alias anp='ansible-playbook'

@@ -9,6 +9,7 @@ alias di='docker container inspect'
 alias de='docker container exec'
 alias dl='docker container logs'
 alias dit='docker container run -it'
+alias ditr='docker container run -it --rm'
 
 alias dils='docker image ls'
 alias dirm='docker image rm'

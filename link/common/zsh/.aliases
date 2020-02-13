@@ -73,7 +73,10 @@ alias an='ansible'
 alias anp='ansible-playbook'
 alias ang='ansible-galaxy'
 
-alias tf='terraform'
+alias t='terraform'
+alias tw='terraform workspace'
+alias twls='terraform workspace list'
+alias twrm='terraform workspace delete'
 
 alias v='vagrant'
 alias vu='vagrant up'

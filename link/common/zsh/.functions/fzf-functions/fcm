@@ -1,8 +1,3 @@
-if [ -z "$@" ]; then
-  echo "=== please enter commit message"
-  return
-fi;
-
 MESSAGE="$@\n\n"
 
 CO_AUTHORS_LIST_FILE=$([ -f ./.git/.git-co-authors ] && echo ./.git/.git-co-authors || echo ~/.git-co-authors)
@@ -16,4 +11,9 @@ for AUTHOR in $AUTHORS[@]; do
   MESSAGE="${MESSAGE}co-authored-by: ${AUTHOR}\n"
 done
 
-git commit -m "$(echo -e ${MESSAGE})"
+if [[ -z "$@" ]]; then
+  git commit -t <(echo -e ${MESSAGE})
+else
+  git commit -m "$(echo -e ${MESSAGE})"
+fi;
+

@@ -31,6 +31,9 @@ precmd () {
 source ~/.aliases
 [[ -f ~/.aliases-local ]] && source ~/.aliases-local
 
+# ====== source custom shell functions ==============
+source ~/.common-shell-functions.sh
+
 # ====== autoload custom functions ==================
 fpath=($fpath ~/.functions)
 autoload -Uz ~/.functions/**/*

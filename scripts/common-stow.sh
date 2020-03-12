@@ -8,6 +8,7 @@ common_packages=(
   tmux
   tig
   ctags
+  shell
 )
 
 function backup() {

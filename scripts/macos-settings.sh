@@ -69,6 +69,13 @@ defaults write -g AppleWindowTabbingMode always
 # - Quick Actions: workflowsWithControlStrip
 defaults write com.apple.touchbar.agent PresentationModeGlobal functionKeys
 
+# Keyboard "Press Fn key to" settings
+# - Show App Controls: app
+# - Show Control Strip: fullControlStrip
+# - Show Quick Actions: workflows
+# - Show Spaces: spaces
+defaults write com.apple.touchbar.agent PresentationModeFnModes -dict-add functionKeys fullControlStrip
+
 ###############################################################################
 # Screen                                                                      #
 ###############################################################################
@@ -198,7 +205,7 @@ defaults -currentHost write com.apple.ImageCapture disableHotPlug -bool true
 
 for app in "Activity Monitor" "Address Book" "Calendar" "Contacts" "cfprefsd" \
     "Dock" "Finder" "Mail" "Messages" "Photos" "Safari" "SystemUIServer" \
-    "Terminal" "Tweetbot" "iCal"; do
+    "Terminal" "Tweetbot" "iCal" "ControlStrip"; do
     killall "${app}" &> /dev/null
 done
 

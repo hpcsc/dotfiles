@@ -32,5 +32,17 @@
 			"set -- \"\\${positional[@]}\" # restore positional parameters"
 		],
 		"description": "Get Command Line Arguments"
+	},
+	"Check required argument": {
+		"prefix": "validate",
+		"body": [
+			"${1}=\\$${2}",
+			"if [ -z \"${$1}\" ]; then",
+			"\techo \"=== ${3} is required\"",
+			"\techo \"Usage: \\$0 ${3}\"",
+			"\texit 1",
+			"fi;",
+		],
+		"description": "Validate that input argument is not empty"
 	}
 }

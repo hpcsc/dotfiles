@@ -69,6 +69,10 @@ vnoremap <CR> <esc>
 " yanking in visual mode leaves cursor at the bottom position
 vnoremap y ygv<Esc>
 
+" reselect last selection after shifting
+xnoremap < <gv
+xnoremap > >gv
+
 " }}}
 
 " NERDTree Mappings {{{

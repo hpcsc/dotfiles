@@ -32,6 +32,8 @@ set smartcase " smart case insensitive search
 set mouse=a " enable mouse for scrolling and resizing
 set scrolloff=1 " always keep 1 line above and below the cursor for context
 
+set complete-=i " disable scanning included files for keyword completion
+
 " Open new split panes to right and bottom, which feels more natural
 set splitbelow
 set splitright

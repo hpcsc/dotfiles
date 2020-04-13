@@ -1,0 +1,5 @@
+SELECTED_USER=$(cat ~/.kube/config | yq r - 'users.*.name' | fzf)
+
+if [ ! -z "${SELECTED_USER}" ]; then
+  kubectl config set-context --current=true --user=${SELECTED_USER}
+fi;

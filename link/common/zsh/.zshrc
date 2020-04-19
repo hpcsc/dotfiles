@@ -46,7 +46,6 @@ source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
 
 # =================== asdf =======================
 source ~/.asdf/asdf.sh
-source ~/.asdf/completions/asdf.bash
 
 # =================== fzf ========================
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh

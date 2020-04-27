@@ -184,6 +184,8 @@ function aws_async_worker {
 
   if [ ! -z "$1" ] && [ ! -z "$2" ] && [ ! -z "$3" ]; then
     export AWS_ACCESS_KEY_ID=$1 AWS_SECRET_ACCESS_KEY=$2 AWS_SESSION_TOKEN=$3
+  else
+    unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
   fi
 
   local current_aws_profile=$(aws-profile get)

@@ -1,0 +1,13 @@
+cat <<EOF > ./docker-compose.yml
+version: '3'
+
+services:
+  some-service:
+    image: some-image
+    environment:
+      SOME_VARIABLE: some-value
+    volumes:
+      - ./some-path:/app
+    ports:
+      - 8080:8080
+EOF

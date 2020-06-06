@@ -1,0 +1,12 @@
+if ! (tmux ls 2>&1 || true) | grep 'no server running'; then
+  selected_session_name=$(tmux ls -F "#{session_name}: #{session_windows} windows #{W:[#{window_name}]}" | \
+      fzf | \
+      cut -d: -f1)
+
+  if [ -z "${selected_session_name}" ]; then
+    return
+  fi;
+
+  tmux kill-session -t "${selected_session_name}"
+fi
+

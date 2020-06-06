@@ -9,6 +9,7 @@ common_packages=(
   tig
   ctags
   shell
+  alacritty
 )
 
 function backup() {

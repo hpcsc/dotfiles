@@ -36,3 +36,4 @@ brew "jesseduffield/lazygit/lazygit"
 brew "tomanthony/brews/itermocil"
 brew "universal-ctags/universal-ctags/universal-ctags", args: ["HEAD"]
 brew "wagoodman/dive/dive"
+cask "alacritty"

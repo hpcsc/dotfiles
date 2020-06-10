@@ -1,5 +1,5 @@
 if (tmux ls 2>&1 || true) | grep 'no server running'; then
-  tmux new
+  tmux new -c ${PWD}
 else
   current_sessions=$(tmux ls -F "#{session_name}: #{session_windows} windows #{W:[#{window_name}]}")
   selected_session_name=$(echo "${current_sessions}\nNew Session" | \
@@ -11,7 +11,7 @@ else
   fi;
 
   if [ "${selected_session_name}" = "New Session" ]; then
-    tmux new
+    tmux new -c ${PWD}
   else
     tmux attach -t "${selected_session_name}"
   fi;

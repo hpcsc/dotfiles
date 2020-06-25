@@ -1,0 +1,5 @@
+ docker images --format '{{.Repository}}:{{.Tag}}' | \
+  fzf --preview='docker images --format "Image ID: {{println .ID}}Size: {{println .Size}}" {}' \
+      --preview-window=right:70% -m | \
+  xargs docker image rm -f
+

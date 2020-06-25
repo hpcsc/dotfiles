@@ -1,0 +1,5 @@
+docker ps -a --format '{{.Names}}' | \
+  fzf --preview='docker inspect {} --format "ID: {{println .ID}}Image: {{println .Image}}Status: {{println .State.Status}}"' \
+      --preview-window=right:70% -m | \
+  xargs docker container rm -f
+

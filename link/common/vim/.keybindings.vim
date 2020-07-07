@@ -84,7 +84,7 @@ nnoremap <leader>t :NERDTreeToggle<cr>
 
 " fzf Mappings {{{
 
-nnoremap <c-b> :Buffers<cr>
+nnoremap <c-n> :Buffers<cr>
 nnoremap <c-p> :Files<cr>
 nnoremap <c-g> :Rg<cr>
 nnoremap <c-y> :BTags<cr>

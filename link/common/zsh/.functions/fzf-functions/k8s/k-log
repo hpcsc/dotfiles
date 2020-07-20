@@ -1,18 +1,11 @@
-local select_container=$1
+local arguments=$@
 
-local pod=$(kubectl get pod --no-headers | awk '{ print $1 }' | fzf-tmux --height 30% --reverse -0 -1 --header "Select pod")
+local pod=$(kubectl get pod --no-headers | awk '{ print $1 }' | fzf --height 30% --reverse -0 -1 --header "Select pod")
 if [ "$pod" = "" ]; then
   return
 fi;
 
-if [ "${select_container}" = "-c" ]; then
-  local container=$(kubectl get pod $pod -o json | jq -r '.spec.containers[].name' | fzf-tmux --height 30% --reverse -0 -1 --header "Select container in pod $pod")
-  if [ "$container" = "" ]; then
-    return
-  fi;
+cmd="kubectl logs ${pod} ${arguments}"
 
-  kubectl logs $pod -c $container
-else
-  kubectl logs $pod
-fi;
-
+echo "=== ${cmd}"
+eval "${cmd}"

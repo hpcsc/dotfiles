@@ -15,5 +15,7 @@ FASD_VERSION=1.0.1
 
   make install
 
+  mv ./fasd /usr/local/bin
+
   popd
 }

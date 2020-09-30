@@ -3,8 +3,8 @@
 # ugly workaround to load zsh autoload functions as normal shell functions, to be used in install.sh
 autoload_functions=(
   execute
-  echo_with_color 
-  echo_blue 
+  echo_with_color
+  echo_blue
   echo_red
   echo_cyan
   echo_green
@@ -12,6 +12,7 @@ autoload_functions=(
   echo_yellow
   is_macos
   is_ubuntu
+  is_fedora
   distro_name
   confirm_yes
   confirm_no

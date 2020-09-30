@@ -38,6 +38,14 @@ ubuntu_scripts=(
   ./scripts/ubuntu-universal-ctags.sh
 )
 
+fedora_scripts=(
+  ./scripts/fedora-install-required-packages.sh
+  ./scripts/fedora-fasd.sh
+  ./scripts/fedora-install-common-tools.sh
+  ./scripts/fedora-docker.sh
+  # ./scripts/fedora-universal-ctags.sh
+)
+
 common_scripts=(
   ./scripts/common-prezto.sh
   ./scripts/common-asdf.sh
@@ -51,6 +59,7 @@ common_scripts=(
 
 is_macos && (execute_scripts macos_scripts)
 is_ubuntu && (execute_scripts ubuntu_scripts)
+is_fedora && (execute_scripts fedora_scripts)
 execute_scripts common_scripts
 
 # This should be run last because this will reload the shell

@@ -3,18 +3,11 @@
 set -e
 
 function install() {
-    # TODO: replace by asdf install plugin latest
     plugin=$1
 
-    echo_green "=== Availble $plugin version for asdf:"
-    asdf list-all $plugin
-    wait
-
-    read -p "=== [$plugin] Choose version to install (leave empty to skip):" install_version
-    if [ "$install_version" != "" ]; then
-        asdf install $plugin $install_version && \
-        asdf global $plugin $install_version
-    fi
+    echo_green "=== Install latest version of ${plugin}"
+    asdf install ${plugin} latest && \
+    asdf global ${plugin} $(asdf latest ${plugin})
 }
 
 source ~/.asdf/asdf.sh

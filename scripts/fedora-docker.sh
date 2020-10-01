@@ -12,6 +12,9 @@ is_fedora || exit 0
     https://download.docker.com/linux/fedora/docker-ce.repo
   sudo dnf install -y docker-ce docker-ce-cli containerd.io
 
+  echo_yellow "=== Start docker"
+  sudo systemctl start docker
+
   echo_yellow "=== Enable backward compatibility for cgroups"
   sudo grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
 

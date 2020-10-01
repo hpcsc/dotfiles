@@ -63,8 +63,17 @@
 
 - Execute `tilix-load` to load custom tilix settings
 
-## Common checklist after setup (both MacOS and Ubuntu)
+## Fedora
+
+### Setup a new machine
+
+1. Make sure `git` is installed
+2. Execute `git clone https://github.com/hpcsc/dotfiles ~/dotfiles && cd ~/dotfiles && ./up.sh
+3. Set `zsh` as default shell: `sudo lchsh -i $(whoami)`
+
+### Checklist after setup
+
+## Common checklist after setup
 
 - Copy public and private SSH keys to `~/.ssh` and make sure they're set to `600`
 - Remap Capslock to Ctrl (Keyboard settings -> Modifier Keys in Macs or use Gnome Tweak Tool -> Typing -> Caps Lock key behavior'
-- Import Jetbrains IDEs (Rider, Intellij) settings from github: https://www.jetbrains.com/help/idea/sharing-your-ide-settings.html#settings-repository

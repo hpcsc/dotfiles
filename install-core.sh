@@ -43,7 +43,7 @@ fedora_scripts=(
   ./scripts/fedora-fasd.sh
   ./scripts/fedora-install-common-tools.sh
   ./scripts/fedora-docker.sh
-  # ./scripts/fedora-universal-ctags.sh
+  ./scripts/fedora-alacritty.sh
 )
 
 common_scripts=(

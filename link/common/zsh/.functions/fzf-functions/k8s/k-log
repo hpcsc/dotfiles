@@ -1,6 +1,7 @@
 local arguments=$@
-
-local pod=$(kubectl get pod --no-headers | awk '{ print $1 }' | fzf --height 30% --reverse -0 -1 --header "Select pod")
+local pods=$(kubectl get pod -o json | jq -c '[ .items[] | { name: .metadata.name, status: .status.phase, createdTime: .metadata.creationTimestamp } ]')
+local preview_command="echo '${pods}' | jq -r '.[] | select(.name == \"{}\") | \"Status: \(.status)\nCreated: \(.createdTime)\"'"
+local pod=$(echo ${pods} | jq -r '.[].name' | fzf --preview="${preview_command}" --height 30% --reverse -0 -1 --header "Select pod")
 if [ "$pod" = "" ]; then
   return
 fi;
@@ -9,3 +10,4 @@ cmd="kubectl logs ${pod} ${arguments}"
 
 echo "=== ${cmd}"
 eval "${cmd}"
+

@@ -1,14 +1,10 @@
-local resource_type=$1
-local resource_pattern=$2
+local resource_type=${1:-pod}
 
-if [ "$resource_type" = "" ]; then
-  echo "=== resource type (.e.g. pod, service) is required"
+local selected=$(kubectl get ${resource_type} --no-headers | awk '{print $1}' | fzf --height 30% --reverse -0 --header="Choose resource to delete")
+if [ "${selected}" = "" ]; then
   return
 fi;
 
-local selected=$(kubectl get $resource_type --no-headers | awk '{print $1}' | fzf-tmux --height 30% --reverse -0 --header="Choose resource to delete" --query="$resource_pattern")
-if [ "$selected" = "" ]; then
-  return
-fi;
-
-kubectl delete $resource_type $selected 
+cmd="kubectl delete ${resource_type} ${selected}"
+echo "=== ${cmd}"
+eval "${cmd}"

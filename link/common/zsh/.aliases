@@ -55,10 +55,6 @@ alias ka='kubectl apply --record -f'
 alias kns='kubens'
 alias kcc='kubectx'
 
-alias fkrm='k-rm'
-alias fkl='k-log'
-alias fkd='k-describe'
-
 alias h='helm'
 alias hls='helm ls -a'
 alias hrm='helm delete --purge'

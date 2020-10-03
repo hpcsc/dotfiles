@@ -10,4 +10,3 @@ cmd="kubectl logs ${pod} ${arguments}"
 
 echo "=== ${cmd}"
 eval "${cmd}"
-

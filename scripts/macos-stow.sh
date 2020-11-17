@@ -5,6 +5,7 @@ set -e
 is_macos || exit 0
 
 packages=(
+  gitui
   Rectangle
   PathFinder
   Spectacle

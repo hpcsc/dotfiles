@@ -26,6 +26,7 @@ macos_scripts=(
   ./scripts/macos-install-homebrew.sh
   ./scripts/macos-brew-bundle.sh
   ./scripts/macos-fonts.sh
+  ./scripts/macos-stow.sh
 )
 
 ubuntu_scripts=(

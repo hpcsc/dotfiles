@@ -4,10 +4,6 @@
 	autocrlf = input
   ignorecase = false
 	attributesfile = ~/.gitattributes
-[pager]
-  log = /usr/local/share/git-core/contrib/diff-highlight/diff-highlight | less -r
-  show = /usr/local/share/git-core/contrib/diff-highlight/diff-highlight | less -r
-  diff = /usr/local/share/git-core/contrib/diff-highlight/diff-highlight | less -r
 [user]
 	name = David Nguyen
 	email = hpcsc@users.noreply.github.com
@@ -19,12 +15,6 @@
   ignored = !git status -s --ignored | grep \"^!!\"
 [color "diff"]
   ui = always
-  commit = green
-  meta = yellow
-  frag = cyan
-  old = red
-  new = green
-  whitespace = red reverse
 [pull]
 	rebase = true
 [rebase]

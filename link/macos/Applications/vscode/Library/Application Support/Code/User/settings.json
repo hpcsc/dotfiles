@@ -24,7 +24,6 @@
     "terminal.integrated.scrollback": 2000,
     "window.title": "${rootName}${separator}${activeEditorMedium}",
     "workbench.list.openMode": "doubleClick",
-    "search.location": "panel",
     "editor.fontFamily": "Fira Code, Menlo, Monaco, 'Courier New', monospace",
     "editor.fontLigatures": true,
     "editor.fontSize": 14,
@@ -51,10 +50,6 @@
     "diffEditor.renderSideBySide": false,
     "telemetry.enableTelemetry": false,
     "window.openWithoutArgumentsInNewWindow": "on",
-    "gitlens.advanced.messages": {
-        "suppressResultsExplorerNotice": true,
-        "suppressShowKeyBindingsNotice": true
-    },
     "window.openFoldersInNewWindow": "on",
     "breadcrumbs.enabled": true,
 	"editor.tabCompletion": "on",
@@ -85,13 +80,18 @@
         }
     ],
     "vim.hlsearch": true,
-    "gitlens.views.lineHistory.enabled": false,
     "gitlens.views.repositories.files.layout": "tree",
     "gitlens.views.compare.enabled": false,
-    "gitlens.views.repositories.enabled": false,
     "gitlens.views.search.enabled": false,
     "workbench.list.keyboardNavigation": "filter",
     "workbench.iconTheme": "vscode-icons",
     "omnisharp.autoStart": false,
-    "scm.defaultViewMode": "tree"
+    "scm.defaultViewMode": "tree",
+    "extensions.ignoreRecommendations": true,
+    "[terraform]": {
+        "editor.formatOnSave": true
+    },
+    "workbench.editor.decorations.badges": true,
+    "workbench.editor.decorations.colors": true,
+    "search.mode": "newEditor"
 }

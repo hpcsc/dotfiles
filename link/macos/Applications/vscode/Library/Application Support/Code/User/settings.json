@@ -93,5 +93,5 @@
     },
     "workbench.editor.decorations.badges": true,
     "workbench.editor.decorations.colors": true,
-    "search.mode": "newEditor"
+    "search.mode": "reuseEditor"
 }

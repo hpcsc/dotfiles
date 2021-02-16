@@ -1,5 +1,12 @@
- docker images --format '{{.Repository}}:{{.Tag}}' | \
-  fzf --preview='docker images --format "Image ID: {{println .ID}}Size: {{println .Size}}" {}' \
-      --preview-window=right:70% -m | \
-  xargs docker image rm -f
+DANGLING_IMAGES=( $(docker images -f "dangling=true" -q) )
+if [ -n "${DANGLING_IMAGES}" ]; then
+    for IMAGE in "${DANGLING_IMAGES[@]}"; do
+        docker image rm ${IMAGE}
+    done
+fi
 
+docker images --format '{{.Repository}}:{{.Tag}}' | \
+  fzf --preview="docker images --filter 'reference={}'" \
+      --preview-window=down:30% \
+      -m | \
+  xargs docker image rm -f

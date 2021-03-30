@@ -40,3 +40,5 @@
 	submoduleSummary = true
 [push]
 	recurseSubmodules = check
+[init]
+	defaultBranch = main

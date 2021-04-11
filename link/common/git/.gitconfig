@@ -7,6 +7,7 @@
 [user]
 	name = David Nguyen
 	email = hpcsc@users.noreply.github.com
+	signingkey = E6725619F09FB12A
 [alias]
   hide = update-index --assume-unchanged
   unhide = update-index --no-assume-unchanged
@@ -40,5 +41,7 @@
 	submoduleSummary = true
 [push]
 	recurseSubmodules = check
+[commit]
+	gpgsign = true
 [init]
 	defaultBranch = main

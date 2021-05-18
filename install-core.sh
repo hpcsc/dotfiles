@@ -37,6 +37,7 @@ ubuntu_scripts=(
   ./scripts/ubuntu-docker.sh
   ./scripts/ubuntu-ripgrep.sh
   ./scripts/ubuntu-universal-ctags.sh
+  ./scripts/ubuntu-keyboard.sh
 )
 
 fedora_scripts=(

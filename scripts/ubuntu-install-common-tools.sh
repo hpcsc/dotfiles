@@ -4,6 +4,11 @@ set -e
 
 is_ubuntu || exit 0
 
+if [[ -n "${DISPLAY}" ]]; then
+  echo_yellow "=== GUI is detected, installing gnome-tweak-tool"
+  sudo apt-get install -y gnome-tweak-tool
+fi
+
 # Install essential tools
 for i in zsh stow vim tree jq tmux tig direnv rsync; do
   echo_yellow "=== Installing $i"

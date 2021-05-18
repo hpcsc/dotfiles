@@ -12,3 +12,6 @@ dump-vscode-extensions:
 
 install-aws-profile:
 	curl -sL https://raw.githubusercontent.com/hpcsc/aws-profile/master/install | sudo bash
+
+install-alacritty:
+	sudo snap install alacritty --classic

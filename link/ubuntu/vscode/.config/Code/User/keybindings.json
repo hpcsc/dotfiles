@@ -1,0 +1,104 @@
+// Place your key bindings in this file to overwrite the defaults
+[
+    {
+        "key": "alt+shift+n",
+        "command": "workbench.action.files.newUntitledFile"
+    },
+    {
+        "key": "alt+shift+]",
+        "command": "workbench.action.terminal.focusNext",
+        "when": "terminalFocus"
+    },
+    {
+        "key": "alt+shift+[",
+        "command": "workbench.action.terminal.focusPrevious",
+        "when": "terminalFocus"
+    },
+    {
+        "key": "alt+[",
+        "command": "workbench.action.terminal.focusPreviousPane",
+        "when": "terminalFocus"
+    },
+    {
+        "key": "alt+]",
+        "command": "workbench.action.terminal.focusNextPane",
+        "when": "terminalFocus"
+    },
+    {
+        "key": "alt+w",
+        "command": "workbench.action.terminal.kill",
+        "when": "terminalFocus"
+    },
+    {
+        "key": "alt+k",
+        "command": "workbench.action.terminal.clear",
+        "when": "terminalFocus"
+    },
+    {
+        "key": "alt+shift+]",
+        "command": "workbench.action.nextEditor",
+        "when": "editorFocus"
+    },
+    {
+        "key": "alt+shift+[",
+        "command": "workbench.action.previousEditor",
+        "when": "editorFocus"
+    },
+    {
+        "key": "alt+shift+h",
+        "command": "workbench.action.navigateLeft"
+    },
+    {
+        "key": "alt+shift+l",
+        "command": "workbench.action.navigateRight"
+    },
+    {
+        "key": "alt+shift+j",
+        "command": "workbench.action.navigateDown"
+    },
+    {
+        "key": "alt+shift+k",
+        "command": "workbench.action.navigateUp"
+    },
+    {
+        "key": "alt+shift+m",
+        "command": "workbench.action.toggleMaximizedPanel"
+    },
+    {
+        "key": "ctrl+shift+/",
+        "command": "workbench.files.action.showActiveFileInExplorer"
+    },
+    {
+        "key": "alt+,",
+        "command": "workbench.action.openGlobalSettings"
+    },
+    {
+        "key": "alt+w",
+        "command": "workbench.action.closeActiveEditor",
+        "when": "editorFocus"
+    },
+    {
+        "key": "alt+\\",
+        "command": "workbench.action.splitEditor",
+        "when": "editorFocus"
+    },
+    {
+        "key": "alt+s",
+        "command": "workbench.action.files.save",
+        "when": "editorFocus"
+    },
+    {
+        "key": "ctrl+alt+t",
+        "command": "workbench.action.closeOtherEditors"
+    },
+    {
+        "key": "alt+\\",
+        "command": "workbench.action.terminal.split",
+        "when": "terminalFocus && terminalProcessSupported"
+    },
+    {
+        "key": "ctrl+shift+5",
+        "command": "-workbench.action.terminal.split",
+        "when": "terminalFocus && terminalProcessSupported"
+    }
+]

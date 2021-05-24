@@ -4,13 +4,6 @@ set -euo pipefail
 
 source ./load-zsh-autoload-as-functions.sh
 
-function stow_packages() {
-  stow -vv \
-    --dir=./link/ubuntu/vscode/.config \
-    --target="$HOME/.config/Code" \
-    --stow Code || echo_red "Failed to stow vscode settings"
-}
-
 function sync_extensions() {
   command -v code >/dev/null 2>&1 || {
       echo_yellow "VSCode executable is not in Path, exiting"
@@ -38,5 +31,4 @@ function sync_extensions() {
 }
 
 mkdir -p "$HOME/.config/Code"
-stow_packages
 sync_extensions

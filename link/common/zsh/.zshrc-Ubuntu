@@ -1,2 +1,3 @@
-alias tilix-dump='dconf dump /com/gexperts/Tilix/ >! ~/dotfiles/others/ubuntu/tilix.dconf'
-alias tilix-load='dconf load /com/gexperts/Tilix/ < ~/dotfiles/others/ubuntu/tilix.dconf'
+# turn off bracketed paste due to extra characters added when pasting
+# reference: https://unix.stackexchange.com/a/196574
+unset zle_bracketed_paste

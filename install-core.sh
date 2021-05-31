@@ -56,6 +56,7 @@ common_scripts=(
   ./scripts/common-stow.sh
   ./scripts/common-vim.sh
   ./scripts/common-neovim.sh
+  ./scripts/common-k8s.sh
   ./scripts/common-python-tools.sh
   ./scripts/common-working-folders.sh
 )

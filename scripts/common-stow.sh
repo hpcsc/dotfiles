@@ -43,7 +43,7 @@ function stow_packages() {
   stow -vv --dir=./link/common/dot-config --target="$HOME/.config" --stow .config || echo_red "Failed to stow .config folder"
 }
 
-backup
+# backup
 stow_packages
 
 exit 0

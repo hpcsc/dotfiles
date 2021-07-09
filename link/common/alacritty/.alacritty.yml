@@ -605,3 +605,7 @@ key_bindings:
   - { key: Back, mods: Command, chars: "\x15" }
   - { key: Delete, mods: Command, chars: "\x0b" }
   - { key: K, mods: Command, chars: "\x0c" }
+  - { key: J, mods: Alt, chars: "\x1bj" }
+  - { key: K, mods: Alt, chars: "\x1bk" }
+  - { key: L, mods: Alt, chars: "\x1bl" }
+  - { key: H, mods: Alt, chars: "\x1bh" }

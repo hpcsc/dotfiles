@@ -1,0 +1,14 @@
+cat <<EOF > ./docker-compose.yml
+version: "3"
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/code
+  backend:
+    image: backend
+    environment:
+    - ENVIRONMENT=local
+EOF

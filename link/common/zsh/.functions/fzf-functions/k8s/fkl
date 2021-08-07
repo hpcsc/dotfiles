@@ -1,6 +1,9 @@
 local arguments=$@
-local pods=$(kubectl get pod -o json | jq -c '[ .items[] | { name: .metadata.name, status: .status.phase, createdTime: .metadata.creationTimestamp } ]')
-local preview_command="echo '${pods}' | jq -r '.[] | select(.name == \"{}\") | \"Status: \(.status)\nCreated: \(.createdTime)\"'"
+local pods=$(kubectl get pod -o json | jq -c '[ .items[] | { name: .metadata.name, status: [ .status.containerStatuses[] | "name: \(.name), status: \(.state | keys[])" ], createdTime: .metadata.creationTimestamp } ]')
+local preview_command="echo '${pods}' | \
+                        jq -r '.[] | \
+                          select(.name == \"{}\") | \
+                          \"Name: \(.name)\nContainers:\n\t\(.status | join(\"\n\t\"))\nCreated: \(.createdTime)\"'"
 local pod=$(echo ${pods} | jq -r '.[].name' | fzf --preview="${preview_command}" --height 30% --reverse -0 -1 --header "Select pod")
 if [ "$pod" = "" ]; then
   return

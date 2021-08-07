@@ -38,14 +38,15 @@ source ~/.common-shell-functions.sh
 fpath=($fpath ~/.functions)
 autoload -Uz ~/.functions/**/*
 
-# =================== fasd  ===================
-eval "$(fasd --init auto)"
-
 # =================== prezto  ===================
 source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
 
 # =================== asdf =======================
 source ~/.asdf/asdf.sh
+
+# =================== zoxide  ===================
+# must be after sourcing asdf
+eval "$(zoxide init zsh)"
 
 # =================== fzf ========================
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh

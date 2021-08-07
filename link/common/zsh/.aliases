@@ -54,6 +54,8 @@ alias kr='kubectl rollout'
 alias ka='kubectl apply --record -f'
 alias kns='kubens'
 alias kcc='kubectx'
+alias kn='kubectl config set-context --current --namespace '
+alias kga='kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get --ignore-not-found --show-kind'
 
 alias h='helm'
 alias hls='helm ls -a'
@@ -88,6 +90,8 @@ _git_log_oneline_compact_format="%C(green)%h%C(reset) %s%C(red)%d%C(reset)"
 alias gloc='git log --topo-order --graph --decorate --pretty=format:"${_git_log_oneline_compact_format}"'
 alias gdt='git difftool'
 alias git-prune-local='git fetch -p origin && git branch -vv | grep ": gone" | sed "s/^[ \*]*\([^ ]*\).*$/\1/g" | xargs git branch -D'
+alias resolve='git diff --name-only --diff-filter=U | xargs git checkout --theirs'
+alias add-resolve='git diff --name-only --diff-filter=U | xargs git add'
 
 # Misc
 
@@ -98,3 +102,4 @@ alias pvim='rm -f ~/.nvim-startup.log && nvim --startuptime ~/.nvim-startup.log 
 alias itree='tree -a -L 2 -I "$(git check-ignore {.,}* | tr "\\n" "|").git"'
 alias colors='for i in {0..255}; do printf "\x1b[38;5;${i}m${i} "; done'
 alias read-secret='IFS= read -rs '
+alias mux='tmuxinator start'

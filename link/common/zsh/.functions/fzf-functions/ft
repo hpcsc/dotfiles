@@ -1,4 +1,4 @@
-if (tmux ls 2>&1 || true) | grep 'no server running'; then
+if (tmux ls 2>&1 || true) | grep 'no server running\|No such file'; then
   tmux new -c ${PWD}
 else
   current_sessions=$(tmux ls -F "#{session_name}: #{session_windows} windows #{W:[#{window_name}]}")

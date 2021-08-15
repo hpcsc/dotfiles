@@ -1,0 +1,4 @@
+git log --format="%C(auto) %h %s" | \
+  fzf | \
+  awk '{print $1}' | \
+  xargs git commit --fixup

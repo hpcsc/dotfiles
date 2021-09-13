@@ -9,7 +9,14 @@ if [ "$pod" = "" ]; then
   return
 fi;
 
-cmd="kubectl logs ${pod} ${arguments}"
+local container=$(kubectl get pod ${pod} -o json | \
+                  jq -r '[ .spec.initContainers // [], .spec.containers // [] ] | flatten | .[].name' | \
+                  fzf -0 -1 --header "Select container")
+if [ "$container" = "" ]; then
+  return
+fi;
+
+cmd="kubectl logs ${pod} -c ${container} ${arguments}"
 
 echo "=== ${cmd}"
 eval "${cmd}"

@@ -1,7 +1,7 @@
 local namespace=$(k-choose-namespace $@)
 local account=$(k-choose-account $namespace)
 
-echo "=== ClusterRoleBinding:"
+echo "=== ClusterRoles and Roles bound to service account '${account}' in namespace '${namespace}':"
 kubectl get clusterrolebinding -o json | jq -r "    
   .items[]
   | 
@@ -12,13 +12,14 @@ kubectl get clusterrolebinding -o json | jq -r "
         .kind == \"ServiceAccount\" 
         and
         .name == \"${account}\"
+        and
+        .namespace == \"${namespace}\"
     )
   )
   |
   (.roleRef.kind + \"/\" + .roleRef.name)
 "
 
-echo "=== RoleBinding:"
 kubectl get rolebinding -n $namespace -o json | jq -r "    
   .items[]
   | 

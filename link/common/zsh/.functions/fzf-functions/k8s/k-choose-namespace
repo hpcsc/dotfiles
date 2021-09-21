@@ -1,2 +1,2 @@
 local pattern=$@
-kubectl get ns --no-headers | awk '{if(tolower($0) ~ /'$pattern'/) print $1}' | fzf-tmux --height 30% --reverse -0 -1 --header 'Select k8s namespace'
+kubectl get ns --no-headers | awk '{if(tolower($0) ~ /'$pattern'/) print $1}' | fzf --height 30% --reverse -0 -1 --header 'Select k8s namespace'

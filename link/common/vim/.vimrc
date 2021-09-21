@@ -31,6 +31,7 @@ set ignorecase
 set smartcase " smart case insensitive search
 set mouse=a " enable mouse for scrolling and resizing
 set scrolloff=1 " always keep 1 line above and below the cursor for context
+set background=dark
 
 set complete-=i " disable scanning included files for keyword completion
 
@@ -114,10 +115,10 @@ colorscheme gruvbox
 " Diff Settings  {{{
 
 " change highlight background color when using vimdiff as git difftool
-highlight DiffChange   cterm=bold   gui=none    ctermfg=NONE          ctermbg=60
-highlight DiffText   cterm=bold   gui=none    ctermfg=NONE          ctermbg=52
-highlight DiffDelete   cterm=bold   gui=none    ctermfg=NONE          ctermbg=89
-highlight DiffAdd   cterm=bold    gui=none    ctermfg=NONE          ctermbg=49
+highlight DiffChange   cterm=bold   gui=none    ctermfg=bg          ctermbg=LightCyan
+highlight DiffText   cterm=bold   gui=none    ctermfg=bg          ctermbg=LightYellow
+highlight DiffDelete   cterm=bold   gui=none    ctermfg=bg          ctermbg=Red
+highlight DiffAdd   cterm=bold    gui=none    ctermfg=bg          ctermbg=Green
 
 " }}}
 

@@ -3,5 +3,5 @@ if [ "$namespace" = "" ]; then
   return;
 fi;
 
-kubectl get sa --no-headers -n $namespace | awk '{print $1}' | fzf-tmux --height 30% --reverse -1 -0 --header 'Select account'
+kubectl get sa --no-headers -n $namespace | awk '{print $1}' | fzf --height 30% --reverse -1 -0 --header 'Select account'
 

@@ -20,7 +20,7 @@ kubectl get clusterrolebinding -o json | jq -r "
   (.roleRef.kind + \"/\" + .roleRef.name)
 "
 
-kubectl get rolebinding -n $namespace -o json | jq -r "    
+kubectl get rolebinding --all-namespaces -o json | jq -r "    
   .items[]
   | 
   select(
@@ -35,6 +35,6 @@ kubectl get rolebinding -n $namespace -o json | jq -r "
     )
   )
   |
-  (.roleRef.kind + \"/\" + .roleRef.name)
+  (.roleRef.kind + \"/\" + .roleRef.name + \" (namespace \" +  .roleRef.name + \")\")
 "
 

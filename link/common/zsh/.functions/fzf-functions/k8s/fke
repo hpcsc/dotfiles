@@ -1,5 +1,49 @@
+local contextOpt=""
+local namespaceOpt=""
+
+function get_context() {
+  local context=$(cat ~/.kcn/contexts | fzf --header="Choose context")
+  if [ -z "${context}" ]; then
+    exit 1
+  fi
+
+  echo " --context ${context}"
+}
+
+function get_namespace() {
+  if [ ! -z "${namespaceOpt}" ]; then
+    echo "${namespaceOpt}" 
+    return
+  fi
+
+  local namespace=$(cat ~/.kcn/namespaces | fzf --header="Choose namespace")
+  if [ -z "${namespace}" ]; then
+    exit 1
+  fi
+
+  echo " -n ${namespace}"
+}
+
+while getopts ":cn" o; do
+  case "${o}" in
+    c)
+      contextOpt="$(get_context)"
+      namespaceOpt="$(get_namespace)"
+      ;;
+    n)
+      namespaceOpt="$(get_namespace)"
+      ;;
+    *)
+      # ignore unrecognised options
+      ;;
+  esac
+done
+
+shift $((OPTIND-1))
+
+
 local arguments=$@
-local pods=$(kubectl get pod -o json | jq -c '[ .items[] | { name: .metadata.name, status: [ .status.containerStatuses[] | "name: \(.name), status: \(.state | keys[])" ], createdTime: .metadata.creationTimestamp } ]')
+local pods=$(eval "kubectl get pod${contextOpt}${namespaceOpt} -o json" | jq -c '[ .items[] | { name: .metadata.name, status: [ .status.containerStatuses[] | "name: \(.name), status: \(.state | keys[])" ], createdTime: .metadata.creationTimestamp } ]')
 local preview_command="echo '${pods}' | \
                         jq -r '.[] | \
                           select(.name == \"{}\") | \
@@ -9,14 +53,14 @@ if [ "$pod" = "" ]; then
   return
 fi;
 
-local container=$(kubectl get pod ${pod} -o json | \
+local container=$(eval "kubectl get pod${contextOpt}${namespaceOpt} ${pod} -o json" | \
                   jq -r '[ .spec.initContainers // [], .spec.containers // [] ] | flatten | .[].name' | \
                   fzf -0 -1 --header "Select container")
 if [ "$container" = "" ]; then
   return
 fi;
 
-cmd="kubectl exec ${pod} -c ${container} -- ${arguments}"
+cmd="kubectl exec ${pod}${contextOpt}${namespaceOpt} -c ${container} -- ${arguments}"
 
 echo "=== ${cmd}"
 eval "${cmd}"

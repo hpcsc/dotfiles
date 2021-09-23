@@ -1,10 +1,57 @@
-local resource_type=${1:-pod}
+local contextOpt=""
+local namespaceOpt=""
+local typeOpt="pod"
 
-local selected=$(kubectl get ${resource_type} --no-headers | awk '{print $1}' | fzf --height 30% --reverse -0 -1)
+function get_context() {
+  local context=$(cat ~/.kcn/contexts | fzf --header="Choose context")
+  if [ -z "${context}" ]; then
+    exit 1
+  fi
+
+  echo " --context ${context}"
+}
+
+function get_namespace() {
+  if [ ! -z "${namespaceOpt}" ]; then
+    echo "${namespaceOpt}" 
+    return
+  fi
+
+  local namespace=$(cat ~/.kcn/namespaces | fzf --header="Choose namespace")
+  if [ -z "${namespace}" ]; then
+    exit 1
+  fi
+
+  echo " -n ${namespace}"
+}
+
+while getopts ":cnt:" o; do
+  case "${o}" in
+    c)
+      contextOpt="$(get_context)"
+      namespaceOpt="$(get_namespace)"
+      ;;
+    n)
+      namespaceOpt="$(get_namespace)"
+      ;;
+    t)
+      typeOpt="${OPTARG:-pod}"
+      ;;
+    *)
+      # ignore unrecognised options
+      ;;
+  esac
+done
+
+shift $((OPTIND-1))
+
+local arguments=$@
+
+local selected=$(eval "kubectl get ${typeOpt}${contextOpt}${namespaceOpt} --no-headers" | awk '{print $1}' | fzf --height 30% --reverse -0 -1)
 if [ "${selected}" = "" ]; then
   return
 fi;
 
-cmd="kubectl describe ${resource_type} ${selected}"
+cmd="kubectl describe ${typeOpt}${contextOpt}${namespaceOpt} ${selected}"
 echo "=== ${cmd}"
 eval "${cmd}"

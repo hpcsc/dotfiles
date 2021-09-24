@@ -1,3 +1,17 @@
+getopts ":u" o
+case "${o}" in
+  u)
+    mkdir -p ~/.kcn && rm -f ~/.kcn/{contexts,namespaces}
+    kubectl config get-contexts -o name > ~/.kcn/contexts
+    kubectl get ns --no-headers -o custom-columns=":metadata.name" > ~/.kcn/namespaces
+    echo "updated contexts and namespaces at ~/.kcn"
+    return
+    ;;
+  *)
+    # ignore unrecognised options
+    ;;
+esac
+
 local context=$(cat ~/.kcn/contexts | fzf --header="Choose context")
 if [ -z "${context}" ]; then
   return
@@ -10,4 +24,3 @@ fi
 
 kubectl config use-context ${context}
 kubectl config set-context --current --namespace ${namespace}
-

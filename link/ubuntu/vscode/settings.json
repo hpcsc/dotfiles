@@ -91,5 +91,8 @@
     "workbench.editor.decorations.badges": true,
     "workbench.editor.decorations.colors": true,
     "search.mode": "reuseEditor",
-    "workbench.tree.expandMode": "doubleClick"
+    "workbench.tree.expandMode": "doubleClick",
+    "files.associations": {
+        "Makefile": "makefile"
+    }
 }

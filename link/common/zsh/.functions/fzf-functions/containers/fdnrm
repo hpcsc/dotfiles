@@ -1,0 +1,1 @@
+docker network ls --format '{{.Name}}' | fzf --preview="docker network ls -f 'name={}'" -m | xargs docker network rm

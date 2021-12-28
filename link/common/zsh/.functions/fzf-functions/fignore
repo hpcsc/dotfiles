@@ -1,5 +1,5 @@
 TARGET_LOCATION=${1:-.}
-curl -s https://api.github.com/repos/github/gitignore/git/trees/master\?recursive=1 | \
+curl -s https://api.github.com/repos/github/gitignore/git/trees/main\?recursive=1 | \
   jq -r '.tree | .[] | select(.type == "blob" and (.path | endswith(".gitignore"))) | .path' | \
   fzf --height 30% --reverse --header 'Select .gitignore to download' | \
-  xargs -I{} bash -c "curl -s https://raw.githubusercontent.com/github/gitignore/master/{} -o ${TARGET_LOCATION}/.gitignore && echo 'Downloaded {} to ${TARGET_LOCATION}/.gitignore'"
+  xargs -I{} bash -c "curl -s https://raw.githubusercontent.com/github/gitignore/main/{} -o ${TARGET_LOCATION}/.gitignore && echo 'Downloaded {} to ${TARGET_LOCATION}/.gitignore'"

@@ -1,0 +1,2 @@
+docker ps -a --format '{{.Names}}' | fzf --preview="docker ps -a -f 'name={}'" -m | xargs docker container logs $@
+

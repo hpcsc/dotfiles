@@ -603,6 +603,7 @@ key_bindings:
   - { key: Left, mods: Alt, chars: "\x1bb" }
   - { key: Right, mods: Alt, chars: "\x1bf" }
   - { key: Back, mods: Command, chars: "\x15" }
+  - { key: Back, mods: Control, chars: "\x08" }
   - { key: Delete, mods: Command, chars: "\x0b" }
   - { key: K, mods: Command, chars: "\x0c" }
   - { key: J, mods: Alt, chars: "\x1bj" }

@@ -92,6 +92,34 @@ function _git_last_message() {
 zle -N _git_last_message
 bindkey "^g" _git_last_message
 
+# bind Ctrl-backspace
+_backward-kill-non-dash () {
+  # remove - and _ from word definition so that word deletion stops at the first - or _ character
+  local WORDCHARS=${WORDCHARS/_-//}
+  zle backward-kill-word
+  zle -f kill
+}
+zle -N _backward-kill-non-dash
+bindkey "^H" _backward-kill-non-dash
+
+# bind Ctrl-left
+_backward-non-dash () {
+  # remove - and _ from word definition so that word backword navigation stops at the first - or _ character
+  local WORDCHARS=${WORDCHARS/_-//}
+  zle backward-word
+}
+zle -N _backward-non-dash
+bindkey "^[[1;5D" _backward-non-dash
+
+# bind Ctrl-right
+_forward-non-dash () {
+  # remove - and _ from word definition so that word forward navigation stops at the first - or _ character
+  local WORDCHARS=${WORDCHARS/_-//}
+  zle forward-word
+}
+zle -N _forward-non-dash
+bindkey "^[[1;5C" _forward-non-dash
+
 # ======== load additional rc files ==============
 #
 # OS-specific customization

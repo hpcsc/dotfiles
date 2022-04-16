@@ -25,7 +25,6 @@ macos_scripts=(
   ./scripts/macos-keep-sudo.sh
   ./scripts/macos-install-homebrew.sh
   ./scripts/macos-brew-bundle.sh
-  ./scripts/macos-fonts.sh
   ./scripts/macos-stow.sh
 )
 
@@ -59,6 +58,7 @@ common_scripts=(
   ./scripts/common-tmux.sh
   ./scripts/common-k8s.sh
   ./scripts/common-python-tools.sh
+  ./scripts/common-fonts.sh
   ./scripts/common-working-folders.sh
 )
 

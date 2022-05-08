@@ -2,4 +2,5 @@ python
 kubectl
 helm
 terraform
+direnv
 zoxide,https://github.com/hpcsc/asdf-zoxide.git

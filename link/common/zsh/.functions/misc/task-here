@@ -1,0 +1,17 @@
+cat <<EOF > ./Taskfile.yml
+version: '3'
+
+output: prefixed
+
+vars:
+  APPLICATION: $(basename $PWD)
+
+# includes:
+#   test: Taskfile.test.yml
+
+tasks:
+  echo:
+    desc: echo
+    cmds:
+      - echo {{.APPLICATION}}
+EOF

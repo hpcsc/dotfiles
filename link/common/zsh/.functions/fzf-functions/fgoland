@@ -1,0 +1,3 @@
+find ~/Personal/Code ~/Workspace/Code -type d -maxdepth 1 -mindepth 1 | \
+  fzf | \
+  xargs goland

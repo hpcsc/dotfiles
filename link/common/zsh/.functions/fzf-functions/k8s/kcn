@@ -17,7 +17,7 @@ if [ -z "${context}" ]; then
   return
 fi
 
-local namespace=$(cat ~/.kcn/namespaces | fzf --header="Choose namespace")
+local namespace=$(cat ~/.kcn/namespaces | fzf --header="Choose namespace" --print-query | tr -d '[:space:]')
 if [ -z "${namespace}" ]; then
   return
 fi

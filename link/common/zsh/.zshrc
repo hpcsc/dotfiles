@@ -46,7 +46,18 @@ source ~/.asdf/asdf.sh
 
 # =================== zoxide  ===================
 # must be after sourcing asdf
-eval "$(zoxide init zsh)"
+
+# Lazy initialising zoxide
+z() {
+  # Remove this function, subsequent calls will execute 'z' directly
+  unfunction "$0"
+
+  # init
+  eval "$(zoxide init zsh)"
+
+  # Execute 'z' binary
+  $0 "$@"
+}
 
 # =================== fzf ========================
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
@@ -59,7 +70,21 @@ export FZF_ALT_C_COMMAND="fd -t d"
 [[ -f ~/.bin/tmuxinator.zsh ]] && source ~/.bin/tmuxinator.zsh
 
 # =================== direnv  ======================
-eval "$(direnv hook zsh)"
+# Lazy initialising direnv. Reference: https://frederic-hemberger.de/notes/shell/speed-up-initial-zsh-startup-with-lazy-loading/
+if [ $commands[direnv] ]; then
+
+  # Placeholder 'direnv' shell function that is executed on the first call only
+  direnv() {
+    # Remove this function, subsequent calls will execute 'direnv' directly
+    unfunction "$0"
+
+    # init
+    eval "$(direnv hook zsh)"
+
+    # Execute 'direnv' binary
+    $0 "$@"
+  }
+fi
 
 # ============ custom key bindings  ==============
 # changes hex 0x15 to delete everything to the left of the cursor, rather than the whole line

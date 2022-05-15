@@ -142,6 +142,10 @@ function async_callback_handler {
       _prompt_sorin_aws=$3
       zle && zle reset-prompt
       ;;
+    k8s_async_worker)
+      _prompt_sorin_k8s=$3
+      zle && zle reset-prompt
+      ;;
     git_async_worker)
       # We can safely split on ':' because it isn't allowed in ref names.
       IFS=':' read _git_target _git_post_target <<<"$3"
@@ -199,6 +203,11 @@ function aws_async_worker {
   print "($(print_text_with_color magenta aws)|$(print_text_with_color yellow ${current_aws_profile}))"
 }
 
+function k8s_async_worker {
+  _kube_ps1_update_cache
+  _kube_ps1
+}
+
 function start_async_jobs {
   # Initialize async worker. This needs to be done here and not in
   # prompt_sorin_setup so the git formatting can be overridden by other prompts.
@@ -209,16 +218,21 @@ function start_async_jobs {
     async_start_worker aws_async_job -n
     async_register_callback aws_async_job async_callback_handler
 
+    async_start_worker k8s_async_job -n
+    async_register_callback k8s_async_job async_callback_handler
+
     typeset -g prompt_prezto_async_init=1
   fi
 
   # Kill the old process of slow commands if it is still running.
   async_flush_jobs git_async_job
   async_flush_jobs aws_async_job
+  async_flush_jobs k8s_async_job
 
   # Compute slow commands in the background.
   async_job git_async_job git_async_worker "$PWD"
   async_job aws_async_job aws_async_worker "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}" "${AWS_SESSION_TOKEN}"
+  async_job k8s_async_job k8s_async_worker
 }
 
 function prompt_sorin_k8s_precmd {
@@ -243,8 +257,6 @@ function prompt_sorin_k8s_precmd {
     python-info
   fi
 
-  _kube_ps1_update_cache
-  _prompt_sorin_k8s="$(_kube_ps1) "
   start_async_jobs
 }
 
@@ -304,13 +316,14 @@ function prompt_sorin_k8s_setup {
 
   _prompt_sorin_aws=''
   _prompt_sorin_git=''
+  _prompt_sorin_k8s=''
   _prompt_sorin_pwd=''
 
   # Define prompts.
   PROMPT='${SSH_TTY:+"%F{9}%n%f%F{7}@%f%F{3}%m%f "}%F{4}${_prompt_sorin_pwd}%(!. %B%F{1}#%f%b.)${editor_info[keymap]} '
   RPROMPT='$python_info[virtualenv]${editor_info[overwrite]}%(?:: %F{1}'
   RPROMPT+=${show_return}
-  RPROMPT+='%f)${VIM:+" %B%F{6}V%f%b"}${_prompt_sorin_aws}${_prompt_sorin_k8s}${_prompt_sorin_git}'
+  RPROMPT+='%f)${VIM:+" %B%F{6}V%f%b"}${_prompt_sorin_aws}${_prompt_sorin_k8s} ${_prompt_sorin_git}'
   SPROMPT='zsh: correct %F{1}%R%f to %F{2}%r%f [nyae]? '
 }
 

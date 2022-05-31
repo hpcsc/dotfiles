@@ -94,6 +94,7 @@ alias gdt='git difftool'
 alias git-prune-local='git fetch -p origin && git branch -vv | grep ": gone" | sed "s/^[ \*]*\([^ ]*\).*$/\1/g" | xargs git branch -D'
 alias resolve='git diff --name-only --diff-filter=U | xargs git checkout --theirs'
 alias add-resolve='git diff --name-only --diff-filter=U | xargs git add'
+alias gnb='git checkout $(git branch -rl "*/HEAD" | sed "s/^.*\///g") && git pull -r && git checkout -b'
 
 # Misc
 

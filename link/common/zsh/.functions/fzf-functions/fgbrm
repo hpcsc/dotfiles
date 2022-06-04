@@ -1,0 +1,5 @@
+git branch | \
+  grep -v '^*' | \
+  sed -e 's/^[[:space:]]*//' | \
+  fzf -m | \
+  xargs git branch -D

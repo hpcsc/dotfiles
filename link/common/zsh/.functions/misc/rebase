@@ -1,0 +1,15 @@
+# get default branch
+TARGET_BRANCH=$(git branch -rl "*/HEAD" | sed "s/^.*\///g")
+
+# assume remote name is origin, remote branch has the same name with local branch
+# this git fetch command:
+# - brings over the commits from origin/${TARGET_BRANCH}
+# - updates local ${TARGET_BRANCH} if it's a fast-forward. If it's not a fast-forward, it will fail (because we don't use +/force in refspec)
+# - for git 1.8.4 and above, updates refs/remotes/origin/${TARGET_BRANCH} according to the config from remote.origin.fetch
+# Reference: https://stackoverflow.com/a/50637676
+git fetch origin ${TARGET_BRANCH}:${TARGET_BRANCH}
+echo "=== Fetched latest for origin/${TARGET_BRANCH}"
+
+git rebase ${TARGET_BRANCH}
+echo "=== Rebased $(git rev-parse --abbrev-ref HEAD) to ${TARGET_BRANCH}"
+

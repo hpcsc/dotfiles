@@ -2,15 +2,30 @@
 {
     "explorer.autoReveal": false,
     "terminal.external.osxExec": "iTerm.app",
-    "terminal.integrated.shell.osx": "/usr/local/bin/zsh",
-    "terminal.integrated.shellArgs.osx": ["-l"],
     "terminal.external.windowsExec": "ConEmu64.exe",
-    "terminal.integrated.shell.windows": "powershell.exe",
+    "terminal.integrated.profiles.windows": {
+        "powershell": {
+            "path": "powershell.exe"
+        }
+    },
+    "terminal.integrated.defaultProfile.windows": "powershell",
+    "terminal.integrated.profiles.osx": {
+        "zsh": {
+            "path": "/usr/local/bin/zsh",
+            "args": ["-l"]
+        }
+    },
+    "terminal.integrated.defaultProfile.osx": "zsh",
+    "terminal.integrated.profiles.linux": {
+        "zsh": {
+            "path": "/usr/local/bin/zsh",
+            "args": ["-l"]
+        }
+    },
+    "terminal.integrated.defaultProfile.linux": "zsh",
     "extensions.autoUpdate": true,
-    "editor.renderIndentGuides": true,
     "editor.renderWhitespace": "boundary",
     "files.trimTrailingWhitespace": true,
-    "window.zoomLevel": 1,
     "files.insertFinalNewline": true,
     "files.hotExit": "off",
     "zenMode.fullScreen": false,
@@ -48,7 +63,7 @@
     },
     "gitlens.keymap": "alternate",
     "diffEditor.renderSideBySide": false,
-    "telemetry.enableTelemetry": false,
+    "telemetry.telemetryLevel": "off",
     "window.openWithoutArgumentsInNewWindow": "on",
     "window.openFoldersInNewWindow": "on",
     "breadcrumbs.enabled": true,
@@ -81,11 +96,8 @@
     ],
     "vim.hlsearch": true,
     "gitlens.views.repositories.files.layout": "tree",
-    "gitlens.views.compare.enabled": false,
-    "gitlens.views.search.enabled": false,
-    "workbench.list.keyboardNavigation": "filter",
+    "workbench.list.defaultFindMode": "filter",
     "workbench.iconTheme": "vscode-icons",
-    "omnisharp.autoStart": false,
     "scm.defaultViewMode": "tree",
     "extensions.ignoreRecommendations": true,
     "[terraform]": {
@@ -94,5 +106,15 @@
     "workbench.editor.decorations.badges": true,
     "workbench.editor.decorations.colors": true,
     "search.mode": "reuseEditor",
-    "workbench.tree.expandMode": "doubleClick"
+    "workbench.tree.expandMode": "doubleClick",
+    "diffEditor.ignoreTrimWhitespace": false,
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.indentation": true,
+    "window.zoomLevel": 1,
+    "[typescript]": {
+        "editor.tabSize": 2
+    },
+    "[typescriptreact]": {
+        "editor.tabSize": 2
+    }
 }

@@ -69,6 +69,9 @@ syntax on
 if has('nvim')
   " force neovim terminal to use zsh available in PATH instead of /bin/zsh
   execute "set shell=". system('which zsh')
+
+  " make jumplist behaves like a stack in neovim
+  set jumpoptions=stack 
 endif
 
 " }}}
@@ -76,32 +79,35 @@ endif
 " VimPlug {{{
 call plug#begin('~/.vim/plugged')
 
-Plug 'scrooloose/nerdtree', { 'on':  'NERDTreeToggle' }
-Plug 'vim-airline/vim-airline'
-Plug 'junegunn/fzf', { 'dir': '~/.fzf', 'do': './install --all' }
-Plug 'junegunn/fzf.vim'
+function! Cond(cond, ...)
+  let opts = get(a:000, 0, {})
+  return a:cond ? opts : extend(opts, { 'on': [], 'for': [] })
+endfunction
+
 Plug 'tpope/vim-repeat'
 Plug 'tpope/vim-surround'
 Plug 'tpope/vim-commentary'
-Plug 'mileszs/ack.vim'
 Plug 'tpope/vim-unimpaired'
-Plug 'christoomey/vim-tmux-navigator'
-Plug 'SirVer/ultisnips'
-Plug 'will133/vim-dirdiff'
-Plug 'junegunn/vim-peekaboo'
-Plug 'mhinz/vim-signify'
-Plug 'osyo-manga/vim-over'
-Plug 'google/vim-searchindex'
-Plug 'jiangmiao/auto-pairs'
 Plug 'kana/vim-textobj-user'
 Plug 'rhysd/vim-textobj-anyblock'
 Plug 'michaeljsmith/vim-indent-object'
-Plug 'ludovicchabant/vim-gutentags'
+Plug 'mileszs/ack.vim'
 Plug 'morhetz/gruvbox'
+Plug 'SirVer/ultisnips', Cond(!exists('g:vscode'))
+Plug 'scrooloose/nerdtree', Cond(!exists('g:vscode'), { 'on':  'NERDTreeToggle' })
+Plug 'vim-airline/vim-airline', Cond(!exists('g:vscode'))
+Plug 'junegunn/fzf', Cond(!exists('g:vscode'), { 'dir': '~/.fzf', 'do': './install --all' })
+Plug 'junegunn/fzf.vim', Cond(!exists('g:vscode'))
+Plug 'christoomey/vim-tmux-navigator', Cond(!exists('g:vscode'))
+Plug 'junegunn/vim-peekaboo', Cond(!exists('g:vscode'))
+Plug 'mhinz/vim-signify', Cond(!exists('g:vscode'))
+Plug 'osyo-manga/vim-over', Cond(!exists('g:vscode'))
+Plug 'google/vim-searchindex', Cond(!exists('g:vscode'))
+Plug 'jiangmiao/auto-pairs', Cond(!exists('g:vscode'))
+Plug 'ludovicchabant/vim-gutentags', Cond(!exists('g:vscode'))
 
 if has('nvim')
   Plug 'autozimu/LanguageClient-neovim', { 'branch': 'next', 'do': 'bash install.sh' }
-  Plug 'Shougo/deoplete.nvim', { 'do': ':UpdateRemotePlugins' }
 endif
 
 call plug#end()
@@ -160,7 +166,6 @@ xnoremap @ :<C-u>call ExecuteMacroOverVisualRange()<CR>
 let g:airline#extensions#tabline#enabled = 1
 
 " }}}
-"
 " fzf Settings {{{
 
 if executable('rg')
@@ -176,17 +181,6 @@ let g:ackprg = 'rg --vimgrep --no-heading'
 
 " }}}
 
-" LanguageClient Settings {{{
-
-let g:deoplete#enable_at_startup = 1
-let g:LanguageClient_serverCommands = {
-    \ 'haskell': ['hie', '--lsp'],
-    \ 'rust': ['~/.cargo/bin/rustup', 'run', 'stable', 'rls'],
-    \ }
-
-nnoremap <F5> :call LanguageClient_contextMenu()<CR>
-
-" }}}
 
 " NERDTree Settings {{{
 

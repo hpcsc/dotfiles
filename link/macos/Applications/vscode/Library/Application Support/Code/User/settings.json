@@ -116,5 +116,6 @@
     },
     "[typescriptreact]": {
         "editor.tabSize": 2
-    }
+    },
+    "vscode-neovim.neovimExecutablePaths.darwin": "/usr/local/bin/nvim"
 }

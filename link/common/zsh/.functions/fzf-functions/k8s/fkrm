@@ -1,10 +1,6 @@
 local resource_type=${1:-pod}
 
-local selected=$(kubectl get ${resource_type} --no-headers | awk '{print $1}' | fzf --height 30% --reverse -0 --header="Choose resource to delete")
-if [ "${selected}" = "" ]; then
-  return
-fi;
-
-cmd="kubectl delete ${resource_type} ${selected}"
-echo "=== ${cmd}"
-eval "${cmd}"
+kubectl get ${resource_type} --no-headers | \
+  awk '{print $1}' | \
+  fzf --height 30% --reverse -0 --header="Choose resource to delete" -m | \
+  xargs kubectl delete ${resource_type}

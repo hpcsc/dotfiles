@@ -1,0 +1,54 @@
+local contextOpt=""
+local namespaceOpt=""
+
+function get_context() {
+  local context=$(cat ~/.kcn/contexts | fzf --header="Choose context")
+  if [ -z "${context}" ]; then
+    exit 1
+  fi
+
+  echo " --context ${context}"
+}
+
+function get_namespace() {
+  if [ ! -z "${namespaceOpt}" ]; then
+    echo "${namespaceOpt}" 
+    return
+  fi
+
+  local namespace=$(cat ~/.kcn/namespaces | fzf --header="Choose namespace")
+  if [ -z "${namespace}" ]; then
+    exit 1
+  fi
+
+  echo " -n ${namespace}"
+}
+
+while getopts ":cn:" o; do
+  case "${o}" in
+    c)
+      contextOpt="$(get_context)"
+      namespaceOpt="$(get_namespace)"
+      ;;
+    n)
+      namespaceOpt="$(get_namespace)"
+      ;;
+    *)
+      # ignore unrecognised options
+      ;;
+  esac
+done
+
+shift $((OPTIND-1))
+
+local arguments=$@
+
+local selected_pod=$(eval "kubectl get pod${contextOpt}${namespaceOpt} --no-headers" | awk '{print $1}' | fzf --height 30% --reverse -0 -1)
+if [ "${selected_pod}" = "" ]; then
+  return
+fi;
+
+cmd="istioctl experimental describe pod${contextOpt}${namespaceOpt} ${selected_pod}"
+echo "=== ${cmd}"
+eval "${cmd}"
+

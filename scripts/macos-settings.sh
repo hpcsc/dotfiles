@@ -121,6 +121,10 @@ defaults write com.apple.finder FXInfoPanesExpanded -dict \
 # Allow quitting via ⌘ + Q; doing so will also hide desktop icons
 defaults write com.apple.finder QuitMenuItem -bool true
 
+# Set default location for new Finder windows
+defaults write com.apple.finder NewWindowTargetPath -string "file://${HOME}/Workspace/"
+defaults write com.apple.finder NewWindowTarget -string "PfLo"
+
 ###############################################################################
 # Dock, Dashboard, and hot corners                                            #
 ###############################################################################

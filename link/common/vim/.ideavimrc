@@ -1,1 +1,4 @@
 source ~/.vimrc
+map <leader>e <Action>(ShowErrorDescription)
+map <leader>d <Action>(QuickImplementations)
+map <leader>h <Action>(QuickJavaDoc)

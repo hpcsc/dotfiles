@@ -1,4 +1,14 @@
-git log --format="%C(auto) %h %s" | \
+HASH=$(git log --format="%C(auto) %h %s" | \
   fzf | \
-  awk '{print $1}' | \
-  xargs -I{} sh -c 'git commit --fixup {} && GIT_SEQUENCE_EDITOR=touch git rebase -i --autosquash {}~1'
+  awk '{print $1}')
+
+if [ -z "${HASH}" ]; then
+  return
+fi
+
+if [ -z "$(git log ${HASH} --pretty=format:%P)" ]; then
+  # commit has no parent, assume to be root commit
+  echo "${HASH}" | xargs -I{} sh -c 'git commit --fixup {} && GIT_SEQUENCE_EDITOR=touch git rebase -i --autosquash --root'
+else
+  echo "${HASH}" | xargs -I{} sh -c 'git commit --fixup {} && GIT_SEQUENCE_EDITOR=touch git rebase -i --autosquash {}~1'
+fi

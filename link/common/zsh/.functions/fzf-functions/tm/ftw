@@ -1,0 +1,6 @@
+local selected_window=$(tmux list-windows -F '#{window_index}: #{window_name}#{window_raw_flags} (#{window_panes} panes)' | fzf | awk -F ':' '{print $1}')
+if [ -z "${selected_window}" ]; then
+  return
+fi
+
+tmux select-window -t ${selected_window}

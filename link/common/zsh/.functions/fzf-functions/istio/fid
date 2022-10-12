@@ -4,7 +4,7 @@ local namespaceOpt=""
 function get_context() {
   local context=$(cat ~/.kcn/contexts | fzf --header="Choose context")
   if [ -z "${context}" ]; then
-    exit 1
+    return
   fi
 
   echo " --context ${context}"
@@ -18,20 +18,29 @@ function get_namespace() {
 
   local namespace=$(cat ~/.kcn/namespaces | fzf --header="Choose namespace")
   if [ -z "${namespace}" ]; then
-    exit 1
+    return
   fi
 
   echo " -n ${namespace}"
 }
 
-while getopts ":cn:" o; do
+while getopts ":cn" o; do
   case "${o}" in
     c)
       contextOpt="$(get_context)"
+      if [ -z "${contextOpt}" ]; then
+        return
+      fi
       namespaceOpt="$(get_namespace)"
+      if [ -z "${namespaceOpt}" ]; then
+        return
+      fi
       ;;
     n)
       namespaceOpt="$(get_namespace)"
+      if [ -z "${namespaceOpt}" ]; then
+        return
+      fi
       ;;
     *)
       # ignore unrecognised options

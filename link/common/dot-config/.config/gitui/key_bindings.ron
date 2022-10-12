@@ -49,4 +49,8 @@
 
     tab_toggle: Some(( code: Char('L'), modifiers: ( bits: 1,),)),
     tab_toggle_reverse: Some(( code: Char('H'), modifiers: ( bits: 1,),)),
+
+    toggle_workarea: Some(( code: Tab, modifiers: ( bits: 0,),)),
+    exit: Some(( code: Char('Q'), modifiers: ( bits: 1,),)),
+    exit_popup: Some(( code: Char('q'), modifiers: ( bits: 0,),)),
 )

@@ -167,9 +167,12 @@ function async_callback_handler {
       fi
       ;;
     "[async]")
-      # Code is 1 for corrupted worker output and 2 for dead worker.
-      if [[ $2 -eq 2 ]]; then
-          # Our worker died unexpectedly.
+      # Code 1: Corrupt worker output.
+      # Code 2: ZLE watcher detected an error on the worker fd.
+      # Code 3: Response from async_job when worker is missing.
+      # Code 130: Async worker crashed
+      if [[ $2 -eq 2 ]] || [[ $2 -eq 130 ]]; then
+          # stop and restart worker
           typeset -g prompt_prezto_async_init=0
       fi
       ;;
@@ -212,12 +215,20 @@ function start_async_jobs {
   # Initialize async worker. This needs to be done here and not in
   # prompt_sorin_setup so the git formatting can be overridden by other prompts.
   if (( !${prompt_prezto_async_init:-0} )); then
+    async_unregister_callback git_async_job
+    async_stop_worker git_async_job
     async_start_worker git_async_job -n
     async_register_callback git_async_job async_callback_handler
 
-    async_start_worker aws_async_job -n
-    async_register_callback aws_async_job async_callback_handler
+    if zstyle -T ':prezto:module:prompt:sorin_k8s' aws; then
+      async_unregister_callback aws_async_job
+      async_stop_worker aws_async_job
+      async_start_worker aws_async_job -n
+      async_register_callback aws_async_job async_callback_handler
+    fi
 
+    async_unregister_callback k8s_async_job
+    async_stop_worker k8s_async_job
     async_start_worker k8s_async_job -n
     async_register_callback k8s_async_job async_callback_handler
 
@@ -225,13 +236,16 @@ function start_async_jobs {
   fi
 
   # Kill the old process of slow commands if it is still running.
-  async_flush_jobs git_async_job
-  async_flush_jobs aws_async_job
-  async_flush_jobs k8s_async_job
-
   # Compute slow commands in the background.
+  async_flush_jobs git_async_job
   async_job git_async_job git_async_worker "$PWD"
-  async_job aws_async_job aws_async_worker "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}" "${AWS_SESSION_TOKEN}"
+
+  if zstyle -T ':prezto:module:prompt:sorin_k8s' aws; then
+    async_flush_jobs aws_async_job
+    async_job aws_async_job aws_async_worker "${AWS_ACCESS_KEY_ID}" "${AWS_SECRET_ACCESS_KEY}" "${AWS_SESSION_TOKEN}"
+  fi
+
+  async_flush_jobs k8s_async_job
   async_job k8s_async_job k8s_async_worker
 }
 

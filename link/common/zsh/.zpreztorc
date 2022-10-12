@@ -99,6 +99,7 @@ zstyle ':prezto:module:editor' dot-expansion 'yes'
 # Auto set to 'off' on dumb terminals.
 # zstyle ':prezto:module:prompt' theme 'garrett'
 zstyle ':prezto:module:prompt' theme 'sorin_k8s'
+zstyle ':prezto:module:prompt:sorin_k8s' aws 'yes'
 
 #
 # Ruby

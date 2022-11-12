@@ -1,0 +1,26 @@
+local target=($(fd --type f --hidden --follow --exclude ".git" --exclude ".idea" . | fzf -m -0 -1 --header="Select target files for symlink" | tr '\n' ' '))
+if [ "${#target[@]}" -eq 0 ]; then
+  return
+fi
+
+local link_locations=($(fd --type d --hidden --follow --exclude ".git" --exclude ".idea" . | fzf -m -0 -1 --header="Select symlink location" | tr '\n' ' '))
+if [ "${#link_locations[@]}" -eq 0 ]; then
+  return
+fi
+
+local target_base_path=$(pwd)
+
+for l in "${link_locations[@]}"; do
+  echo "creating symlink at ${l}"
+  pushd ${l}
+
+  for t in "${target[@]}"; do
+    if [ -e "${t}" ]; then
+      echo "=== ${t} exists at ${l}, not creating symlink"
+    else
+      sudo ln -vs $(realpath --relative-to=. ${target_base_path}/${t}) ${t}
+    fi
+  done
+
+  popd
+done

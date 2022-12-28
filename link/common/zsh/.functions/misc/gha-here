@@ -1,0 +1,18 @@
+local file_path=./.github/workflows/commit.yml
+mkdir -p .github/workflows
+[ -f "${file_path}" ] && mv "${file_path}" "${file_path}.bk"
+  
+cat <<EOF > "${file_path}"
+name: Commit
+
+on:
+  push:
+
+jobs:
+  commit:
+    name: Commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+EOF

@@ -161,11 +161,29 @@ xnoremap @ :<C-u>call ExecuteMacroOverVisualRange()<CR>
 
 " }}}
 
+" Autocommands {{{
+
+" automatically mark a buffer using mO whenever leaving a buffer
+" so that we can always come back with `O
+function! MarkBuf()
+    if bufname('') !~ 'fzf'
+      normal! mO
+    endif
+endfunction
+
+augroup bufmark
+  autocmd!
+  autocmd BufLeave * call MarkBuf()
+augroup end
+
+" }}}
+
 " airline Settings {{{
 
 let g:airline#extensions#tabline#enabled = 1
 
 " }}}
+
 " fzf Settings {{{
 
 if executable('rg')

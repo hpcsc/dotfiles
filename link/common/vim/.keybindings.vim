@@ -73,6 +73,9 @@ vnoremap y ygv<Esc>
 xnoremap < <gv
 xnoremap > >gv
 
+" discard whatever under visual selection before pasting
+xnoremap <leader>p "_dP
+
 " }}}
 
 " NERDTree Mappings {{{

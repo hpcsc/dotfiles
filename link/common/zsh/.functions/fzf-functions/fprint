@@ -1,9 +1,52 @@
-selected_printer=$(lpstat -p | grep enabled | awk '{ print $2 }' | fzf --height 30% --reverse -1 -0 --header 'Select printer')
+local print_all_in_directory=false
+local printer_options=''
+
+usage() {
+  echo "====================================="
+  echo "Usage: fprint [options] [path/to/files/or/directory]"
+  echo "Options:"
+  echo "-a                              used when path to a directory is provided, to print all files in the directory instead of asking to select files"
+  echo "-o option-key=option=value      provide custom printer option. List of custom printer options can be listed by 'lpoptions -l'"
+  echo "Examples:"
+  echo "'fprint -o page-ranges=1-2 -a some/directory' - print page 1 and 2 of all files in 'some/directory'"
+  echo "'fprint -o ColorModel=Gray some/directory' - open fzf to select files from 'some/directory' and print them in Black/White"
+  echo "====================================="
+}
+
+if [ "$#" -eq 0 ]; then
+  usage
+  return
+fi
+
+while getopts "ao:" o; do
+  case "${o}" in
+    a)
+      print_all_in_directory=true
+      ;;
+    o)
+      printer_options="-o ${OPTARG}"
+      ;;
+    *)
+      usage
+      return
+      ;;
+  esac
+done
+
+shift "$((OPTIND-1))"
+
+send_to_printer() {
+  local f="$@"
+  echo "=== sending ${f} to printer"
+  lpr -o sides=${sides} -P ${selected_printer} ${f}
+}
+
+selected_printer=$(lpstat -p | grep enabled | awk '{ print $2 }' | fzf -1 -0 --header 'Select printer')
 if [ "${selected_printer}" = "" ]; then
   return
 fi;
 
-sides=$(echo 'one-sided\ntwo-sided-long-edge\ntwo-sided-short-edge' | fzf --height 30% --reverse)
+sides=$(echo 'one-sided\ntwo-sided-long-edge\ntwo-sided-short-edge' | fzf)
 if [ "${sides}" = "" ]; then
   return
 fi;
@@ -12,11 +55,32 @@ echo "====================================="
 echo "PRINTING OPTIONS:"
 echo "- PRINTER: ${selected_printer}"
 echo "- SIDES: ${sides}"
+echo "- CUSTOM OPTIONS: ${printer_options}"
 echo "====================================="
 
-for f in "$@"; do
-  echo "=== sending ${f} to printer"
-  lpr -o sides=${sides} -P ${selected_printer} ${f}
-done
+if [ "$#" -eq 1 ] && [ -d "$@" ]; then
+  local selected_files=''
+
+  if [ "${print_all_in_directory}" = "true" ]; then
+    echo "=== print all files in directory $@"
+    selected_files=$(rg --files "$@")
+  else
+    selected_files=$(rg --files "$@" | fzf -m)
+  fi
+
+  if [ -z "${selected_files}" ]; then
+    return
+  fi
+
+  while IFS= read -r f; do
+    echo "=== sending ${f} to printer"
+    lpr -o sides=${sides} -P ${selected_printer} ${printer_options} ${f}
+  done <<< "${selected_files}"
+else
+  for f in "$@"; do
+    echo "=== sending ${f} to printer"
+    lpr -o sides=${sides} -P ${selected_printer} ${printer_options} ${f}
+  done
+fi
 
 echo "=== done sending jobs to $selected_printer"

@@ -39,6 +39,9 @@ set complete-=i " disable scanning included files for keyword completion
 set splitbelow
 set splitright
 
+" Highlight yanked text for a brief period, compatible with some themes that use `HighlightedyankRegion`
+autocmd TextYankPost * silent! lua vim.highlight.on_yank {higroup=(vim.fn['hlexists']('HighlightedyankRegion') > 0 and 'HighlightedyankRegion' or 'IncSearch'), timeout=500}
+
 " Folding Settings  {{{
 
 set foldenable " enable folding
@@ -198,7 +201,6 @@ endif
 let g:ackprg = 'rg --vimgrep --no-heading'
 
 " }}}
-
 
 " NERDTree Settings {{{
 

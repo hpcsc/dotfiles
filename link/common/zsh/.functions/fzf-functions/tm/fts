@@ -1,37 +1,58 @@
 # adapted from https://github.com/ThePrimeagen/.dotfiles/blob/master/bin/.local/scripts/tmux-sessionizer
 
-if [ $# -eq 1 ]; then
-  selected=$1
-else
-  selected=$(find ~/Personal/Code ~/Workspace/Code -maxdepth 1 -mindepth 1 -type d | fzf)
-fi
+prompt_current_sessions() {
+  local current_sessions=$(tmux ls -F "#{session_name}: #{session_windows} windows #{W:[#{window_name}]}")
+  echo "${current_sessions}\nNew Session" | \
+                            fzf | \
+                            cut -d: -f1
+}
 
-if [ -z $selected ]; then
-  return
-fi
+new_detached_session() {
+  local selected_path=$(find ~/Personal/Code ~/Workspace/Code -maxdepth 1 -mindepth 1 -type d | fzf)
+  if [ -z "${selected_path}" ]; then
+    return
+  fi;
 
-selected_name=$(basename "$selected" | tr . _)
-tmux_running=$(pgrep tmux)
+  local selected_name=$(basename "${selected_path}" | tr . _)
+  if ! tmux has-session -t=${selected_name} 2> /dev/null; then
+    tmux new-session -ds ${selected_name} -c ${selected_path}
+  fi
 
-if [ -z $TMUX ]; then
+  echo ${selected_name}
+}
+
+if [ -z "${TMUX}" ]; then
   # tmux not running or tmux is in detached mode
-  if [ -z $tmux_running ]; then
+  if (tmux ls 2>&1 || true) | grep 'no server running\|No such file'; then
     # tmux not running, create a detached session
-    tmux new-session -ds $selected_name -c $selected
+    session_to_attach=$(new_detached_session)
   else
     # tmux is in detached mode 
-    if ! tmux has-session -t=$selected_name 2> /dev/null; then
-      # tmux doesn't have given session name
-      tmux new-session -ds $selected_name -c $selected
-    fi
+    session_to_attach=$(prompt_current_sessions)
+    if [ -z "${session_to_attach}" ]; then
+      return
+    fi;
+
+    if [ "${session_to_attach}" = "New Session"  ]; then
+      session_to_attach=$(new_detached_session)
+    fi;
   fi
 
-  tmux attach -t $selected_name
+  if [ -z "${session_to_attach}" ]; then
+    return
+  fi;
+
+  tmux attach -t "${session_to_attach}"
 else
   # tmux running and attached
-  if ! tmux has-session -t=$selected_name 2> /dev/null; then
-    tmux new-session -ds $selected_name -c $selected
-  fi
+  session_to_switch=$(prompt_current_sessions)
+  if [ -z "${session_to_switch}" ]; then
+    return
+  fi;
 
-  tmux switch-client -t $selected_name
+  if [ "${session_to_switch}" = "New Session"  ]; then
+    session_to_switch=$(new_detached_session)
+  fi;
+
+  tmux switch-client -t "${session_to_switch}"
 fi

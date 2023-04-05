@@ -1,0 +1,16 @@
+if ! (tmux ls 2>&1 || true) | grep 'no server running'; then
+  selected_session_names=($(tmux ls -F "#{session_name}: #{session_windows} windows #{W:[#{window_name}]}" | \
+      fzf -m | \
+      cut -d: -f1 | \
+      tr '\n' ' '))
+
+  if [ "${#selected_session_names[@]}" -eq 0 ]; then
+    return
+  fi
+
+  for n in "${selected_session_names[@]}"; do
+    tmux kill-session -t "${n}"
+    echo "=== killed session ${n}"
+  done
+fi
+

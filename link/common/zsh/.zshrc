@@ -41,6 +41,11 @@ autoload -Uz ~/.functions/**/*
 # =================== prezto  ===================
 source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
 
+# =================== misc  ===================
+# disable zsh bundled function mtools command mcd
+# which causes a conflict with our custom function mcd
+compdef -d mcd
+
 # =================== asdf =======================
 source ~/.asdf/asdf.sh
 

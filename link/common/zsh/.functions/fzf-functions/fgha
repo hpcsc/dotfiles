@@ -1,0 +1,20 @@
+local target_location=${1:-.}
+
+mkdir -p ${target_location}/.github/workflows
+local repo_path=$(curl -s 'https://api.github.com/repos/actions/starter-workflows/git/trees/main?recursive=1' | \
+  jq -r '.tree[] | select(.path | ( startswith("automation/") or startswith("ci/") or startswith("code-scanning/") or startswith("deployments/") or startswith("pages/") ) and ( endswith(".yml") or endswith(".yaml") )) | .path' | \
+  fzf --height 30% --reverse --header 'Select workflows to download')
+
+if [ -z "${repo_path}" ]; then
+  return
+fi
+
+local workflow_name=$(echo ${repo_path} | sed 's/\//-/g')
+local target_file=${target_location}/.github/workflows/${workflow_name}
+
+rm -vf ${target_file} 2> /dev/null
+
+curl -s "https://raw.githubusercontent.com/actions/starter-workflows/main/${repo_path}" \
+  -o ${target_file}
+
+echo "downloaded ${repo_path} to ${target_file}"

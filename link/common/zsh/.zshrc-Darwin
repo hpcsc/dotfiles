@@ -2,3 +2,64 @@ export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH:$HOME/.local/bin"
 export MANPATH="/usr/local/opt/coreutils/libexec/gnuman:$MANPATH"
 
 ssh-add -A &> /dev/null
+
+fsec() {
+  # assume jq, keychain-parser are available
+  local sub_command=$1
+  case "${sub_command}" in
+    list)
+      security dump-keychain | keychain-parser | jq -r '(["Service","Account"] | (., map(length*"-"))),(.[] | select(.attribute == "fsec") | [.service,.account]) | @tsv' | column -ts$'\t'
+      ;;
+    add)
+      echo -n "service: "
+      read svc
+      if [ -z "${svc}" ]; then
+        return
+      fi
+
+      echo -n "account: "
+      read acc
+      if [ -z "${acc}" ]; then
+        return
+      fi
+
+      echo -n "secret: "
+      IFS= read -rs secret
+      if [ -z "${secret}" ]; then
+        return
+      fi
+
+      secret=$(echo "${secret}" | tr -d '\n')
+
+      security add-generic-password -U -s "${svc}" -a "${acc}" -G fsec -w "${secret}"
+      echo "\n=== added secret for service ${svc} and account ${acc} to keychain"
+      ;;
+    delete)
+      local svc=$(security dump-keychain | keychain-parser | jq -r '.[] | select(.attribute == "fsec") | .service' | fzf)
+      if [ -z "${svc}" ]; then
+        return
+      fi
+
+      local acc=$(security dump-keychain | keychain-parser | jq -r '.[] | select(.service == "'${svc}'") | .account' | fzf)
+      if [ -z "${acc}" ]; then
+        return
+      fi
+
+      security delete-generic-password -s "${svc}" -a "${acc}"
+      echo "\n=== deleted secret for service ${svc} and account ${acc} from keychain"
+      ;;
+    *)
+      local svc=$(security dump-keychain | keychain-parser | jq -r '.[] | select(.attribute == "fsec") | .service' | fzf)
+      if [ -z "${svc}" ]; then
+        return
+      fi
+
+      local acc=$(security dump-keychain | keychain-parser | jq -r '.[] | select(.service == "'${svc}'") | .account' | fzf)
+      if [ -z "${acc}" ]; then
+        return
+      fi
+
+      security 2>&1 >/dev/null find-generic-password -g -s ${svc} -a ${acc} | grep password | sed 's/password:[[:space:]]"\(.*\)"/\1/g' | pbcopy
+      echo "=== copied secret for service ${svc} and account ${acc} to clipboard"
+  esac
+}

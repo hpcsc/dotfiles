@@ -49,7 +49,7 @@ fsec() {
       echo "\n=== deleted secret for service ${svc} and account ${acc} from keychain"
       ;;
     *)
-      local svc=$(security dump-keychain | keychain-parser | jq -r '.[] | select(.attribute == "fsec") | .service' | fzf)
+      local svc=$(security dump-keychain | keychain-parser | jq -r '[ .[] | select(.attribute == "fsec") ] | unique_by(.service)[] | .service' | fzf)
       if [ -z "${svc}" ]; then
         return
       fi

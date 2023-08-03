@@ -1,0 +1,85 @@
+rm -rfv ./kubernetes
+
+mkdir -p ./kubernetes/configmap-files
+
+cat <<EOF > ./kubernetes/namespace.yml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nginx
+EOF
+
+
+cat <<EOF > ./kubernetes/deployment.yml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      name: nginx
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:stable
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: html
+          configMap:
+            name: html
+EOF
+
+
+cat <<EOF > ./kubernetes/service.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30222
+  selector:
+    app: nginx
+EOF
+
+cat <<EOF > ./kubernetes/configmap-files/index.html
+<html>
+    <body>
+        <h1>Hello from nginx</h1>
+    </body>
+</html>
+EOF
+
+cat <<EOF > ./kubernetes/kustomization.yml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: nginx
+resources:
+- namespace.yml
+- deployment.yml
+- service.yml
+
+configMapGenerator:
+- name: html
+  files:
+  - ./configmap-files/index.html
+EOF
+
+
+printf "\033[0;32m%s\033[0m\n" "Run 'kubectl apply -k ./kubernetes' to render and apply manifests"

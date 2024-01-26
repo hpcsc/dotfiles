@@ -9,4 +9,6 @@ TAB:menu-complete
 
 control-k: history-search-backward
 control-j: history-search-forward
-control-w: backward-kill-word
+# Ctrl-backspace (default bind to backward-delete-char): delete word
+control-h: backward-kill-word
+

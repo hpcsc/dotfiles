@@ -1,0 +1,14 @@
+TO=$(git branch --format='%(refname:short)' | fzf --header='Select branch to rebase to')
+if [ -z "${TO}" ]; then
+  return
+fi
+
+FROM=$(git log --format="%C(auto) %h %s" | \
+  fzf --header='Select commit to rebase from (the one before the commit you want to keep)' | \
+  awk '{print $1}')
+
+if [ -z "${FROM}" ]; then
+  return
+fi
+
+git rebase --onto ${TO} ${FROM}

@@ -1,0 +1,16 @@
+  local sub_command=$1
+  local template_dir=~/repo-templates/templates
+  case "${sub_command}" in
+    list)
+      echo -e "\033[0;32mavailable templates:\033[0m"
+      find ${template_dir} -maxdepth 1 -mindepth 1 -type d -exec basename {} \;
+      ;;
+    *)
+      local template=$(find ${template_dir} -maxdepth 1 -mindepth 1 -type d -exec basename {} \; |
+        fzf --header='Choose a template')
+      if [ -z "${template}" ]; then
+        return
+      fi
+      boilerplate --template-url "${template_dir}/${template}" --output-folder . --missing-config-action ignore 
+  esac
+

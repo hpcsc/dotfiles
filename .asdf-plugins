@@ -4,3 +4,4 @@ helm
 terraform
 direnv
 zoxide,https://github.com/hpcsc/asdf-zoxide.git
+boilerplate,https://github.com/hpcsc/asdf-plugin-boilerplate.git

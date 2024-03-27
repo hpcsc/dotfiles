@@ -1,3 +1,21 @@
+REMOTE=origin
+
+# determine default branch
+if [ ! -f ".git/refs/remotes/${REMOTE}/HEAD" ]; then
+    # ${REMOTE}/HEAD is created when the repo is cloned
+    # if it doesn't exist for some reason, manually create and point it to either `main` or `master` so that we can deterministically check main branch
+    if [ -f ".git/refs/remotes/${REMOTE}/main" ]; then
+        git symbolic-ref "refs/remotes/${REMOTE}/HEAD" "refs/remotes/${REMOTE}/main"
+        echo "=== pointed ${REMOTE}/HEAD to ${REMOTE}/main"
+    elif [ -f ".git/refs/remotes/${REMOTE}/master" ]; then
+        git symbolic-ref "refs/remotes/${REMOTE}/HEAD" "refs/remotes/${REMOTE}/master"
+        echo "=== pointed ${REMOTE}/HEAD to ${REMOTE}/master"
+    else
+        echo "=== unable to determine default branch"
+        return
+    fi
+fi
+
 # get default branch
 TARGET_BRANCH=$(git branch -rl "*/HEAD" | sed "s/^.*\///g")
 
@@ -7,7 +25,7 @@ TARGET_BRANCH=$(git branch -rl "*/HEAD" | sed "s/^.*\///g")
 # - updates local ${TARGET_BRANCH} if it's a fast-forward. If it's not a fast-forward, it will fail (because we don't use +/force in refspec)
 # - for git 1.8.4 and above, updates refs/remotes/origin/${TARGET_BRANCH} according to the config from remote.origin.fetch
 # Reference: https://stackoverflow.com/a/50637676
-git fetch origin ${TARGET_BRANCH}:${TARGET_BRANCH} || return
+git fetch ${REMOTE} ${TARGET_BRANCH}:${TARGET_BRANCH} || return
 echo "=== Fetched latest for origin/${TARGET_BRANCH}"
 
 git rebase ${TARGET_BRANCH} || return

@@ -2,11 +2,17 @@ rm -rfv ./kubernetes
 
 mkdir -p ./kubernetes/configmap-files
 
+project_name=$(basename $(pwd))
+
 cat <<EOF > ./kubernetes/namespace.yml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: nginx
+  name: ${project_name}
+  labels:
+    app.kubernetes.io/name: ${project_name}
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: ${project_name}
 EOF
 
 
@@ -14,17 +20,23 @@ cat <<EOF > ./kubernetes/deployment.yml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx
+  name: ${project_name}
+  labels:
+    app.kubernetes.io/name: ${project_name}
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: ${project_name}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nginx
+      app.kubernetes.io/name: ${project_name}
   template:
     metadata:
-      name: nginx
+      name: ${project_name}
       labels:
-        app: nginx
+        app.kubernetes.io/name: ${project_name}
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: ${project_name}
     spec:
       containers:
         - name: nginx
@@ -46,7 +58,11 @@ cat <<EOF > ./kubernetes/service.yml
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx
+  name: ${project_name}
+  labels:
+    app.kubernetes.io/name: ${project_name}
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: ${project_name}
 spec:
   type: NodePort
   ports:
@@ -55,7 +71,7 @@ spec:
       targetPort: 80
       nodePort: 30222
   selector:
-    app: nginx
+    app.kubernetes.io/name: ${project_name}
 EOF
 
 cat <<EOF > ./kubernetes/configmap-files/index.html
@@ -69,7 +85,7 @@ EOF
 cat <<EOF > ./kubernetes/kustomization.yml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: nginx
+namespace: ${project_name}
 resources:
 - namespace.yml
 - deployment.yml

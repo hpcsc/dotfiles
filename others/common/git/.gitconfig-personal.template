@@ -1,0 +1,6 @@
+[core]
+	sshCommand = ssh -i ~/.ssh/id_ed25519.hpcsc
+[user]
+	name = David Nguyen
+	email = hpcsc@users.noreply.github.com
+	signingkey = D9ECBDA894A3D05F

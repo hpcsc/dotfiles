@@ -28,6 +28,8 @@
   	path = .gitconfig-personal
 [includeIf "gitdir:~/dotfiles/"]
   	path = .gitconfig-personal
+[includeIf "gitdir:~/dotfiles.wiki/"]
+  	path = .gitconfig-personal
 [includeIf "gitdir:~/repo-templates/"]
   	path = .gitconfig-personal
 [merge]

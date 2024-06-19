@@ -2,12 +2,10 @@
 	excludesfile = ~/.gitignore_global
 	editor = vim
 	autocrlf = input
-  ignorecase = false
+  ignoreCase = false
 	attributesfile = ~/.gitattributes
-[user]
-	name = David Nguyen
-	email = hpcsc@users.noreply.github.com
-	signingkey = E6725619F09FB12A
+[url "ssh://git@github.com/"]
+	insteadOf = https://github.com/
 [alias]
   hide = update-index --assume-unchanged
   unhide = update-index --no-assume-unchanged
@@ -26,6 +24,12 @@
 	submodule = log
 [includeIf "gitdir:~/Workspace/Code/"]
   	path = .gitconfig-work
+[includeIf "gitdir:~/Personal/Code/"]
+  	path = .gitconfig-personal
+[includeIf "gitdir:~/dotfiles/"]
+  	path = .gitconfig-personal
+[includeIf "gitdir:~/repo-templates/"]
+  	path = .gitconfig-personal
 [merge]
 	conflictstyle = diff3
 [difftool]

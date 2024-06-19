@@ -96,7 +96,6 @@ Plug 'rhysd/vim-textobj-anyblock'
 Plug 'michaeljsmith/vim-indent-object'
 Plug 'mileszs/ack.vim'
 Plug 'morhetz/gruvbox'
-Plug 'SirVer/ultisnips', Cond(!exists('g:vscode'))
 Plug 'scrooloose/nerdtree', Cond(!exists('g:vscode'), { 'on':  'NERDTreeToggle' })
 Plug 'vim-airline/vim-airline', Cond(!exists('g:vscode'))
 Plug 'junegunn/fzf', Cond(!exists('g:vscode'), { 'dir': '~/.fzf', 'do': './install --all' })
@@ -109,10 +108,6 @@ Plug 'google/vim-searchindex', Cond(!exists('g:vscode'))
 Plug 'jiangmiao/auto-pairs', Cond(!exists('g:vscode'))
 Plug 'ludovicchabant/vim-gutentags', Cond(!exists('g:vscode'))
 
-if has('nvim')
-  Plug 'autozimu/LanguageClient-neovim', { 'branch': 'next', 'do': 'bash install.sh' }
-endif
-
 call plug#end()
 " }}}
 
@@ -120,16 +115,6 @@ call plug#end()
 
 " gruvbox is provided by plugin so this line needs to be after VimPlug settings
 colorscheme gruvbox
-
-" Diff Settings  {{{
-
-" change highlight background color when using vimdiff as git difftool
-highlight DiffChange   cterm=bold   gui=none    ctermfg=bg          ctermbg=LightCyan
-highlight DiffText   cterm=bold   gui=none    ctermfg=bg          ctermbg=LightYellow
-highlight DiffDelete   cterm=bold   gui=none    ctermfg=bg          ctermbg=Red
-highlight DiffAdd   cterm=bold    gui=none    ctermfg=bg          ctermbg=Green
-
-" }}}
 
 " }}}
 
@@ -210,30 +195,10 @@ autocmd VimEnter * if argc() == 1 && isdirectory(argv()[0]) && !exists("s:std_in
 
 " }}}
 
-" Ultisnips Settings {{{
-
-let g:UltiSnipsExpandTrigger="<tab>"
-let g:UltiSnipsJumpForwardTrigger="<c-n>"
-let g:UltiSnipsJumpBackwardTrigger="<c-p>"
-let g:UltiSnipsSnippetDir="~/.vim/UltiSnips"
-let g:UltiSnipsSnippetDirectories=["~/.vim/UltiSnips", "UltiSnips"]
-
-" }}}
-
 " DirDiff Settings {{{
 
 " Sets the diff window (bottom window) height (rows)
 let g:DirDiffWindowSize = 5
-
-" }}}
-
-" vim-gutentags Settings {{{
-
-" Enable displaying status of gutentags in vim-airline
-let g:airline#extensions#gutentags#enabled = 1
-
-" Cache directory to store all tags files created by vim-gutentags for universal-ctags
-let g:gutentags_cache_dir="~/.ctags_cache"
 
 " }}}
 

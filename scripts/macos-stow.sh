@@ -7,7 +7,6 @@ is_macos || exit 0
 packages=(
   Rectangle
   PathFinder
-  Spectacle
 )
 
 function stow_packages() {

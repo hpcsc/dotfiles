@@ -23,7 +23,6 @@ rm -f ./install.log
 
 macos_scripts=(
   ./scripts/macos-keep-sudo.sh
-  ./scripts/macos-install-homebrew.sh
   ./scripts/macos-brew-bundle.sh
   ./scripts/macos-stow.sh
 )
@@ -62,7 +61,16 @@ common_scripts=(
   ./scripts/common-working-folders.sh
 )
 
-is_macos && (execute_scripts macos_scripts)
+if [ is_macos ]; then
+  if [ ! command -v brew ]; then
+    echo_red "=== homebrew needs to be installed before running this script"
+    exit 1
+  fi;
+ 
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+  execute_scripts macos_scripts
+fi;
+
 is_ubuntu && (execute_scripts ubuntu_scripts)
 is_fedora && (execute_scripts fedora_scripts)
 execute_scripts common_scripts

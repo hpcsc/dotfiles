@@ -1,0 +1,81 @@
+GITHUB_OWNER=${1:-hpcsc}
+
+mkdir -p ./.run
+
+cat <<EOF > ./.run/start-test-dependencies.run.xml
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="start-test-dependencies" type="ShConfigurationType">
+    <option name="SCRIPT_TEXT" value="" />
+    <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
+    <option name="SCRIPT_PATH" value="\$PROJECT_DIR\$/scripts/start-test-dependencies.sh" />
+    <option name="SCRIPT_OPTIONS" value="" />
+    <option name="INDEPENDENT_SCRIPT_WORKING_DIRECTORY" value="true" />
+    <option name="SCRIPT_WORKING_DIRECTORY" value="\$PROJECT_DIR\$" />
+    <option name="INDEPENDENT_INTERPRETER_PATH" value="true" />
+    <option name="INTERPRETER_PATH" value="/bin/bash" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="EXECUTE_IN_TERMINAL" value="true" />
+    <option name="EXECUTE_SCRIPT_FILE" value="true" />
+    <envs />
+    <method v="2" />
+  </configuration>
+</component>
+EOF
+
+cat <<EOF > ./.run/integration-test.run.xml
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="integration-test" type="GoTestRunConfiguration" factoryName="Go Test">
+    <module name="$(basename $PWD)" />
+    <working_directory value="\$PROJECT_DIR\$" />
+    <go_parameters value="-i -tags=&quot;integration&quot; -p 1" />
+    <envs>
+      <env name="APP_PATH" value="$(pwd)" />
+    </envs>
+    <kind value="DIRECTORY" />
+    <package value="github.com/${GITHUB_OWNER}/$(basename $PWD)" />
+    <directory value="\$PROJECT_DIR\$" />
+    <filePath value="\$PROJECT_DIR\$" />
+    <framework value="gotest" />
+    <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="start-test-dependencies" run_configuration_type="ShConfigurationType" />
+    </method>
+  </configuration>
+</component>
+EOF
+
+cat <<EOF > ./.run/integration-test-adhoc.run.xml
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="integration-test - adhoc" type="GoTestRunConfiguration" factoryName="Go Test">
+    <module name="$(basename $PWD)" />
+    <working_directory value="\$PROJECT_DIR\$" />
+    <go_parameters value="-tags=&quot;integration&quot; -p 1" />
+    <envs>
+      <env name="DEBUG" value="false" />
+    </envs>
+    <kind value="DIRECTORY" />
+    <package value="github.com/${GITHUB_OWNER}/$(basename $PWD)" />
+    <directory value="\$PROJECT_DIR\$" />
+    <filePath value="\$PROJECT_DIR\$" />
+    <framework value="gotest" />
+    <method v="2">
+      <option name="RunConfigurationTask" enabled="true" run_configuration_name="start-test-dependencies" run_configuration_type="ShConfigurationType" />
+    </method>
+  </configuration>
+</component>
+EOF
+
+cat <<EOF > ./.run/unit-test.run.xml
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="unit-test" type="GoTestRunConfiguration" factoryName="Go Test">
+    <module name="$(basename $PWD)" />
+    <working_directory value="\$PROJECT_DIR\$" />
+    <go_parameters value="-i -tags=&quot;unit&quot;" />
+    <kind value="DIRECTORY" />
+    <package value="github.com/${GITHUB_OWNER}/$(basename $PWD)" />
+    <directory value="\$PROJECT_DIR\$" />
+    <filePath value="\$PROJECT_DIR\$" />
+    <framework value="gotest" />
+    <method v="2" />
+  </configuration>
+</component>
+EOF

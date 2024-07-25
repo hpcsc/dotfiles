@@ -75,20 +75,20 @@ export FZF_ALT_C_COMMAND="fd -t d"
 [[ -f ~/.bin/tmuxinator.zsh ]] && source ~/.bin/tmuxinator.zsh
 
 # =================== direnv  ======================
-# Lazy initialising direnv. Reference: https://frederic-hemberger.de/notes/shell/speed-up-initial-zsh-startup-with-lazy-loading/
-if [ $commands[direnv] ]; then
-
-  # Placeholder 'direnv' shell function that is executed on the first call only
-  direnv() {
-    # Remove this function, subsequent calls will execute 'direnv' directly
-    unfunction "$0"
-
-    # init
-    eval "$(direnv hook zsh)"
-
-    # Execute 'direnv' binary
-    $0 "$@"
-  }
+# below is the output of `eval "$(direnv hook zsh)"`, inline the output here to avoid the cost of that eval (which slows down zsh load quite a bit)
+# the downside is that if there is any new change from `direnv hook zsh`, the below code needs to be updated
+_direnv_hook() {
+  trap -- '' SIGINT
+  eval "$(direnv export zsh)"
+  trap - SIGINT
+}
+typeset -ag precmd_functions
+if (( ! ${precmd_functions[(I)_direnv_hook]} )); then
+  precmd_functions=(_direnv_hook $precmd_functions)
+fi
+typeset -ag chpwd_functions
+if (( ! ${chpwd_functions[(I)_direnv_hook]} )); then
+  chpwd_functions=(_direnv_hook $chpwd_functions)
 fi
 
 # ============ custom key bindings  ==============

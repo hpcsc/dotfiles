@@ -150,6 +150,10 @@ _forward-non-dash () {
 zle -N _forward-non-dash
 bindkey "^[[1;5C" _forward-non-dash
 
+# =================== prompt  ======================
+
+eval "$(starship init zsh)"
+
 # ======== load additional rc files ==============
 #
 # OS-specific customization

@@ -1,0 +1,98 @@
+add_newline = false
+
+format = """
+$directory\
+$character\
+"""
+
+right_format = """
+$status\
+$kubernetes\
+$git_branch\
+$git_commit\
+$git_state\
+$git_metrics\
+$git_status
+$docker_context\
+$package\
+$dotnet\
+$golang\
+$nodejs\
+$python\
+$ruby\
+$rust\
+$aws\
+$azure\
+$direnv\
+$env_var\
+$custom\
+$jobs\
+"""
+
+[character]
+success_symbol = '[❯](bold red)[❯](bold yellow)[❯](bold green)'
+
+[directory]
+truncation_length = 2
+truncation_symbol = '-/'
+truncate_to_repo = false
+repo_root_style = 'bold yellow'
+before_repo_root_style = 'bold cyan'
+
+[direnv]
+disabled = false
+format = '(\([$allowed](red)\))'
+allowed_msg = ''
+denied_msg = 'direnv denied'
+
+[aws]
+format = '\[[$symbol($profile)(\($region\))(\[$duration\])]($style)\]'
+
+[docker_context]
+format = '\([$symbol$context]($style)\)'
+disabled = true
+
+[dotnet]
+format = '\[[$symbol($version)(🎯 $tfm)]($style)\]'
+
+[git_branch]
+format = ' [$branch]($style)'
+
+[git_status]
+style = 'green'
+disabled = false
+ignore_submodules = true
+ahead = '⬆'
+behind = '⬇'
+diverged = '⬆⬇'
+stashed = '✭'
+renamed = '➜'
+
+[golang]
+format = '\[[$symbol($version)]($style)\]'
+disabled = true
+
+[kubernetes]
+disabled = false
+format = '\([$symbol](bold blue)|[$context](red):[$namespace](blue)\)'
+symbol = '☸'
+
+[nodejs]
+format = '\[[$symbol($version)]($style)\]'
+
+[package]
+format = '\[[$symbol$version]($style)\]'
+
+[python]
+format = '\[[${symbol}${pyenv_prefix}(${version})(\($virtualenv\))]($style)\]'
+
+[rust]
+format = '\[[$symbol($version)]($style)\]'
+
+[ruby]
+format = '\[[$symbol($version)]($style)\]'
+disabled = true
+
+[status]
+disabled = false
+symbol = '🔴 '

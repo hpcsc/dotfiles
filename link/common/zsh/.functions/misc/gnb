@@ -1,0 +1,35 @@
+# assume to be origin always
+local remote=origin
+local root_folder=$(git rev-parse --show-toplevel)
+local remote_head="${root_folder}/.git/refs/remotes/${remote}/HEAD" 
+
+if [ ! -f "${remote_head}" ]; then
+    # ${remote}/HEAD is created when the repo is cloned
+    # if it doesn't exist for some reason, manually create and point it to either `main` or `master` so that we can deterministically check main branch
+    if [ -f "${root_folder}/.git/refs/remotes/${remote}/main" ]; then
+        git symbolic-ref "refs/remotes/${remote}/HEAD" "refs/remotes/${remote}/main"
+        echo_green "pointed ${remote}/HEAD to ${remote}/main"
+    elif [ -f "${root_folder}/.git/refs/remotes/${remote}/master" ]; then
+        git symbolic-ref "refs/remotes/${remote}/HEAD" "refs/remotes/${remote}/master"
+        echo_green "pointed ${remote}/HEAD to ${remote}/master"
+    else
+        echo_red "unable to determine default branch"
+        return
+    fi
+fi
+
+local branch_name=$1
+
+(
+    git stash && \
+    git checkout $(git branch -rl "*/HEAD" | sed "s/^.*\///g") && \
+    git pull -r && \
+    git checkout -b ${branch_name}
+) && \
+  echo_green "checked out new branch ${branch_name}" ||
+  echo_red "failed to check out new branch ${branch_name}"
+
+if [ "$(git stash list | wc -l)" != "0" ]; then
+    git stash pop
+fi
+

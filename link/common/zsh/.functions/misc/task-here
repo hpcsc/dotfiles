@@ -1,8 +1,6 @@
 cat <<EOF > ./Taskfile.yml
 version: '3'
 
-output: prefixed
-
 vars:
   APPLICATION: $(basename $PWD)
 

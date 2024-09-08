@@ -2,7 +2,7 @@ local context_opt=""
 local namespace_opt=""
 local fblog_opt=""
 
-function get_context() {
+get_context() {
   local context=$(cat ~/.kcn/contexts | fzf --header="Choose context")
   if [ -z "${context}" ]; then
     exit 1
@@ -11,7 +11,7 @@ function get_context() {
   echo " --context ${context}"
 }
 
-function get_namespace() {
+get_namespace() {
   if [ ! -z "${namespace_opt}" ]; then
     echo "${namespace_opt}" 
     return
@@ -44,6 +44,7 @@ while getopts ":cnd" o; do
 done
 
 shift $((OPTIND-1))
+other_args="$@"
 
 local label=$(eval "kubectl get pods ${context_opt}${namespace_opt} -o json" | \
   jq -r '[ .items[].metadata.labels | del(."pod-template-hash") | to_entries[] | select(.key | contains("uid") | not) | "\(.key)=\(.value)" ] | sort | unique | .[]' | \
@@ -55,5 +56,5 @@ fi
 
 eval "kubectl get pods ${context_opt}${namespace_opt} -l ${label} -o=jsonpath='{.items[*].metadata.name}'" | \
   tr ' ' '\n' | \
-  xpanes -d -x -l eh -c "kubectl logs ${context_opt}${namespace_opt} {} -f | fblog ${fblog_opt}"
+  xpanes -d -x -l eh -c "kubectl logs ${context_opt}${namespace_opt} ${other_args} {} -f | fblog ${fblog_opt}"
 

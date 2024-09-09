@@ -20,8 +20,15 @@ fi
 
 local branch_name=$1
 
+local diff_count=$(git diff --name-only | wc -l)
+if [ "${diff_count}" != "0" ]; then
+    echo_green "stashing local change"
+    git stash
+else
+    echo_green "no local change, skip stashing"
+fi
+
 (
-    git stash && \
     git checkout $(git branch -rl "*/HEAD" | sed "s/^.*\///g") && \
     git pull -r && \
     git checkout -b ${branch_name}
@@ -29,7 +36,8 @@ local branch_name=$1
   echo_green "checked out new branch ${branch_name}" ||
   echo_red "failed to check out new branch ${branch_name}"
 
-if [ "$(git stash list | wc -l)" != "0" ]; then
+if [ "${diff_count}" != "0" ]; then
+    echo_green "popping stash change"
     git stash pop
 fi
 

@@ -41,6 +41,10 @@ function stow_packages() {
   echo_yellow "=== Stowing .config folder"
   mkdir -p ~/.config
   stow -vv --dir=./link/common/dot-config --target="$HOME/.config" --stow .config || echo_red "Failed to stow .config folder"
+
+  echo_yellow "=== Stowing .local/bin folder"
+  mkdir -p ~/.local/bin
+  stow -vv --dir=./link/common/dot-local --target="$HOME/.local/bin" --stow bin
 }
 
 # backup

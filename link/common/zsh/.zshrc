@@ -49,6 +49,10 @@ compdef -d mcd
 # =================== asdf =======================
 source ~/.asdf/asdf.sh
 
+# =================== aqua =======================
+# need to be after asdf command above so that aqua directory is in front in PATH
+export PATH="${AQUA_ROOT_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/aquaproj-aqua}/bin:$PATH"
+
 # =================== zoxide  ===================
 # must be after sourcing asdf
 

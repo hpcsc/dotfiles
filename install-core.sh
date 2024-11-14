@@ -51,6 +51,7 @@ common_scripts=(
   ./scripts/common-prezto.sh
   ./scripts/common-asdf.sh
   ./scripts/common-asdf-plugins.sh
+  ./scripts/common-aqua.sh
   ./scripts/common-stow.sh
   ./scripts/common-vim.sh
   ./scripts/common-neovim.sh
@@ -66,7 +67,7 @@ if [ is_macos ]; then
     echo_red "=== homebrew needs to be installed before running this script"
     exit 1
   fi;
- 
+
   eval "$(/opt/homebrew/bin/brew shellenv)"
   execute_scripts macos_scripts
 fi;

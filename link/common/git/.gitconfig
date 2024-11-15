@@ -4,8 +4,6 @@
 	autocrlf = input
   ignoreCase = false
 	attributesfile = ~/.gitattributes
-[url "ssh://git@github.com/"]
-	insteadOf = https://github.com/
 [alias]
   hide = update-index --assume-unchanged
   unhide = update-index --no-assume-unchanged

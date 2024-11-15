@@ -46,15 +46,14 @@ source "${ZDOTDIR:-$HOME}/.zprezto/init.zsh"
 # which causes a conflict with our custom function mcd
 compdef -d mcd
 
-# =================== asdf =======================
-source ~/.asdf/asdf.sh
+# =================== mise =======================
+eval "$(~/.local/bin/mise activate zsh)"
 
 # =================== aqua =======================
-# need to be after asdf command above so that aqua directory is in front in PATH
 export PATH="${AQUA_ROOT_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/aquaproj-aqua}/bin:$PATH"
 
 # =================== zoxide  ===================
-# must be after sourcing asdf
+# must be after activating mise
 
 # Lazy initialising zoxide
 z() {
@@ -77,23 +76,6 @@ export FZF_ALT_C_COMMAND="fd -t d"
 
 # =================== tmux  ======================
 [[ -f ~/.bin/tmuxinator.zsh ]] && source ~/.bin/tmuxinator.zsh
-
-# =================== direnv  ======================
-# below is the output of `eval "$(direnv hook zsh)"`, inline the output here to avoid the cost of that eval (which slows down zsh load quite a bit)
-# the downside is that if there is any new change from `direnv hook zsh`, the below code needs to be updated
-_direnv_hook() {
-  trap -- '' SIGINT
-  eval "$(direnv export zsh)"
-  trap - SIGINT
-}
-typeset -ag precmd_functions
-if (( ! ${precmd_functions[(I)_direnv_hook]} )); then
-  precmd_functions=(_direnv_hook $precmd_functions)
-fi
-typeset -ag chpwd_functions
-if (( ! ${chpwd_functions[(I)_direnv_hook]} )); then
-  chpwd_functions=(_direnv_hook $chpwd_functions)
-fi
 
 # ============ custom key bindings  ==============
 # changes hex 0x15 to delete everything to the left of the cursor, rather than the whole line
@@ -156,7 +138,7 @@ bindkey "^[[1;5C" _forward-non-dash
 
 # =================== prompt  ======================
 
-eval "$(starship init zsh)"
+eval "$(mise exec starship -- starship init zsh)"
 
 # ======== load additional rc files ==============
 #

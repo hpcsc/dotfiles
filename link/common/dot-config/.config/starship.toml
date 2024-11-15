@@ -41,7 +41,7 @@ repo_root_style = 'bold yellow'
 before_repo_root_style = 'bold cyan'
 
 [direnv]
-disabled = false
+disabled = true
 format = '(\([$allowed](red)\))'
 allowed_msg = ''
 denied_msg = 'direnv denied'

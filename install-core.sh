@@ -30,7 +30,6 @@ macos_scripts=(
 ubuntu_scripts=(
   ./scripts/ubuntu-install-sudo.sh
   ./scripts/ubuntu-install-required-packages.sh
-  ./scripts/ubuntu-fasd.sh
   ./scripts/ubuntu-install-common-tools.sh
   ./scripts/ubuntu-docker.sh
   ./scripts/ubuntu-ripgrep.sh
@@ -41,7 +40,6 @@ ubuntu_scripts=(
 
 fedora_scripts=(
   ./scripts/fedora-install-required-packages.sh
-  ./scripts/fedora-fasd.sh
   ./scripts/fedora-install-common-tools.sh
   ./scripts/fedora-docker.sh
   ./scripts/fedora-alacritty.sh

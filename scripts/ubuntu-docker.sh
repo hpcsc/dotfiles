@@ -21,7 +21,7 @@ is_ubuntu || exit 0
 (command -v docker-compose >/dev/null 2>&1 && echo_green "=== docker-compose is already installed, skipped") || {
   echo_yellow "=== Installing docker-compose"
   download_url=$(curl https://api.github.com/repos/docker/compose/releases/latest | \
-                  jq -r '.assets[] | select(.name=="docker-compose-'$(uname -s)'-'$(uname -m)'") | .browser_download_url')
+                  jq -r '.assets[] | select(.name=="docker-compose-'$(uname -s | tr "[:upper:]" "[:lower:]")'-'$(uname -m)'") | .browser_download_url')
   echo_yellow "=== Downloading docker-compose from ${download_url}"
   sudo curl -L ${download_url} -o /usr/local/bin/docker-compose
   sudo chmod +x /usr/local/bin/docker-compose

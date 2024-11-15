@@ -33,18 +33,24 @@ function backup() {
   done
 }
 
+# use --adopt option with stow so that stow import existing file from target (if have) to this dotfiles repo and then remove existing file from target
+# git restore to revert the import
+# this is a hack for stow to overwrite file in target if exist
 function stow_packages() {
   for i in "${common_packages[@]}"; do
-    stow -vv --dir=./link/common --target="$HOME" --stow $i || echo_red "Failed to stow $i"
+    stow -vv --dir=./link/common --target="$HOME" --adopt $i || echo_red "Failed to stow $i"
+    git restore ./link/common/$i
   done
 
   echo_yellow "=== Stowing .config folder"
   mkdir -p ~/.config
-  stow -vv --dir=./link/common/dot-config --target="$HOME/.config" --stow .config || echo_red "Failed to stow .config folder"
+  stow -vv --dir=./link/common/dot-config --target="$HOME/.config" --adopt .config || echo_red "Failed to stow .config folder"
+  git restore ./link/common/dot-config/.config
 
   echo_yellow "=== Stowing .local/bin folder"
   mkdir -p ~/.local/bin
-  stow -vv --dir=./link/common/dot-local --target="$HOME/.local/bin" --stow bin
+  stow -vv --dir=./link/common/dot-local --target="$HOME/.local/bin" --adopt bin
+  git restore ./link/common/dot-local/bin
 }
 
 # backup

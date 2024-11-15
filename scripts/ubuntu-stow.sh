@@ -4,13 +4,14 @@ set -e
 
 is_ubuntu || exit 0
 
-declare -A packages=( 
+declare -A packages=(
   [copyq]="$HOME/.config/copyq"
   [vscode]="$HOME/.config/Code/User"
 )
 
 function stow_packages() {
   for package in "${!packages[@]}"; do
+    mkdir -p "${packages[$package]}"
     stow -vv \
       --dir=./link/ubuntu \
       --target="${packages[$package]}" \
@@ -19,5 +20,3 @@ function stow_packages() {
 }
 
 stow_packages
-
-exit 0

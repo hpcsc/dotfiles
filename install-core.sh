@@ -49,10 +49,10 @@ fedora_scripts=(
 
 common_scripts=(
   ./scripts/common-prezto.sh
-  ./scripts/common-asdf.sh
-  ./scripts/common-asdf-plugins.sh
   ./scripts/common-aqua.sh
+  ./scripts/common-mise.sh
   ./scripts/common-stow.sh
+  ./scripts/common-mise-global.sh
   ./scripts/common-vim.sh
   ./scripts/common-neovim.sh
   ./scripts/common-tmux.sh

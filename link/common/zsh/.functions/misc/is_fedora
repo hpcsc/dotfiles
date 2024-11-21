@@ -1,2 +1,2 @@
-[[ "$(distro_name)" = "Fedora" ]] || return 1
+[[ "$(distro_name)" == *"Fedora"* ]] || return 1
 

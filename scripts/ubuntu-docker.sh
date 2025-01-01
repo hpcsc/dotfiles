@@ -4,25 +4,25 @@ set -e
 
 is_ubuntu || exit 0
 
-(command -v docker >/dev/null 2>&1 && echo_green "=== Docker is already installed, skipped") || {
-  echo_yellow "=== Installing Docker CE"
-  sudo apt-get install ca-certificates
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-  sudo add-apt-repository \
-     "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-     $(lsb_release -cs) \
-     stable"
-  sudo sh -c 'apt-get update && apt-get install -y docker-ce'
-  # add current user to docker group, to solve permission issue in ubuntu
-  sudo usermod -a -G docker $(id -un)
-}
+echo_yellow "=== Setting up Docker Apt sources"
+# Add Docker's official GPG key:
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
+# Add the repository to Apt sources:
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
 
-(command -v docker-compose >/dev/null 2>&1 && echo_green "=== docker-compose is already installed, skipped") || {
-  echo_yellow "=== Installing docker-compose"
-  download_url=$(curl https://api.github.com/repos/docker/compose/releases/latest | \
-                  jq -r '.assets[] | select(.name=="docker-compose-'$(uname -s | tr "[:upper:]" "[:lower:]")'-'$(uname -m)'") | .browser_download_url')
-  echo_yellow "=== Downloading docker-compose from ${download_url}"
-  sudo curl -L ${download_url} -o /usr/local/bin/docker-compose
-  sudo chmod +x /usr/local/bin/docker-compose
-}
+echo_yellow "=== Installing Docker CE"
+sudo apt-get install -y \
+  docker-ce \
+  docker-ce-cli \
+  containerd.io \
+  docker-buildx-plugin \
+  docker-compose-plugin

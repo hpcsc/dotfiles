@@ -154,6 +154,22 @@ _clear-scrollback-buffer () {
 zle -N _clear-scrollback-buffer
 bindkey '^L' _clear-scrollback-buffer
 
+# bind Ctrl-F to invoke fzf and insert result of file selection to current location of cursor
+_insert_quoted_fzf_output() {
+  local output
+  output=$(fzf</dev/tty)
+  if [ -z "${output}" ]; then
+    zle reset-prompt
+    return
+  fi
+
+  LBUFFER+=${(q-)output}
+  zle reset-prompt
+}
+
+zle -N _insert_quoted_fzf_output
+bindkey '^F' _insert_quoted_fzf_output
+
 # =================== prompt  ======================
 
 eval "$(mise exec starship -- starship init zsh)"

@@ -2,6 +2,8 @@
 
 set -e
 
+# must be installed before mise since mise installs some tools (yazi) using cargo
+
 if (command -v rustup >/dev/null 2>&1) then
    echo_green "=== Rustup exists, updating"
    rustup self update

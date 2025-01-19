@@ -47,6 +47,7 @@ fedora_scripts=(
 
 common_scripts=(
   ./scripts/common-prezto.sh
+  ./scripts/common-rust.sh
   ./scripts/common-aqua.sh
   ./scripts/common-mise.sh
   ./scripts/common-stow.sh
@@ -56,7 +57,7 @@ common_scripts=(
   ./scripts/common-tmux.sh
   ./scripts/common-k8s.sh
   ./scripts/common-python-tools.sh
-  ./scripts/common-rust.sh
+  ./scripts/common-configure-yazi.sh
   ./scripts/common-fonts.sh
   ./scripts/common-working-folders.sh
 )

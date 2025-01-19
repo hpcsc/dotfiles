@@ -25,6 +25,30 @@ foreground = "#ebdbb2"
 [font]
 size = 16
 
+[font.bold]
+family = "FiraCode Nerd Font"
+style  = "Bold"
+
+[font.bold_italic]
+family = "FiraCode Nerd Font"
+style  = "Bold Italic"
+
+[font.glyph_offset]
+x = 0
+y = 0
+
+[font.italic]
+family = "FiraCode Nerd Font"
+style  = "Italic"
+
+[font.normal]
+family = "FiraCode Nerd Font"
+style  = "Regular"
+
+[font.offset]
+x = 0
+y = 0
+
 [[keyboard.bindings]]
 chars = "\u0001"
 key = "Left"

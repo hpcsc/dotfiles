@@ -95,6 +95,9 @@ bindkey -s '^z' 'fg^M'
 # bind Ctrl-t to trigger gitui
 bindkey -s '^t' 'gitui^M'
 
+# bind Ctrl-y to trigger yazi
+bindkey -s '^y' 'yazi^M'
+
 # bind Ctrl-j/k to do cycle through history substring search
 bindkey "^k" history-substring-search-up
 bindkey "^j" history-substring-search-down

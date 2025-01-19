@@ -43,9 +43,18 @@ function stow_packages() {
   done
 
   echo_yellow "=== Stowing .config folder"
-  mkdir -p ~/.config
-  stow -vv --dir=./link/common/dot-config --target="$HOME/.config" --adopt .config || echo_red "Failed to stow .config folder"
-  git restore ./link/common/dot-config/.config
+
+  echo_yellow "====== Stowing starship folder"
+  mkdir -p ~/.config/
+  stow -vv --dir=./link/common/dot-config --target="$HOME/.config" starship || echo_red "Failed to stow starship folder"
+
+  for dot_config_dir in ./link/common/dot-config/.config/*/; do
+    echo_yellow "====== Stowing ${dot_config_dir} folder"
+    local dot_config_package=$(basename ${dot_config_dir})
+    mkdir -p ~/.config/${dot_config_package}
+    stow -vv --dir=./link/common/dot-config/.config --target="$HOME/.config/${dot_config_package}" --adopt ${dot_config_package} || echo_red "Failed to stow ${dot_config_dir} folder"
+    git restore ./link/common/dot-config/.config/${dot_config_package}
+  done
 
   echo_yellow "=== Stowing .local/bin folder"
   mkdir -p ~/.local/bin

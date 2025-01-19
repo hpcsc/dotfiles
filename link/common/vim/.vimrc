@@ -39,6 +39,9 @@ set complete-=i " disable scanning included files for keyword completion
 set splitbelow
 set splitright
 
+" make jumplist behaves like a stack
+set jumpoptions=stack 
+
 " Highlight yanked text for a brief period, compatible with some themes that use `HighlightedyankRegion`
 autocmd TextYankPost * silent! lua vim.highlight.on_yank {higroup=(vim.fn['hlexists']('HighlightedyankRegion') > 0 and 'HighlightedyankRegion' or 'IncSearch'), timeout=500}
 
@@ -72,9 +75,6 @@ syntax on
 if has('nvim')
   " force neovim terminal to use zsh available in PATH instead of /bin/zsh
   execute "set shell=". system('which zsh')
-
-  " make jumplist behaves like a stack in neovim
-  set jumpoptions=stack 
 endif
 
 " }}}

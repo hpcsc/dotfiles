@@ -56,6 +56,7 @@ common_scripts=(
   ./scripts/common-tmux.sh
   ./scripts/common-k8s.sh
   ./scripts/common-python-tools.sh
+  ./scripts/common-rust.sh
   ./scripts/common-fonts.sh
   ./scripts/common-working-folders.sh
 )

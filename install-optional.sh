@@ -45,7 +45,6 @@ ubuntu_only_options=(
 
 common_options=(
   './scripts/common-krew.sh'
-  './scripts/common-rust.sh'
   './scripts/common-istio.sh'
   'Quit'
 )

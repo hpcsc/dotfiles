@@ -1,3 +1,23 @@
 [manager]
 show_hidden = true
 linemode = "size_and_mtime"
+
+[preview]
+wrap = "yes"
+
+[plugin]
+preloaders = [
+]
+
+previewers = [
+	{ name = "*/", run = "folder", sync = true },
+	# Code
+	{ mime = "text/*", run = "code" },
+	{ mime = "*/{xml,javascript,wine-extension-ini}", run = "code" },
+	# JSON
+	{ mime = "application/{json,ndjson}", run = "json" },
+	# Empty file
+	{ mime = "inode/empty", run = "empty" },
+	# Fallback
+	{ name = "*", run = "file" },
+]

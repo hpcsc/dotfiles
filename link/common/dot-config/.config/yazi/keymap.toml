@@ -1,0 +1,6 @@
+[[manager.prepend_keymap]]
+desc = "Go to root of current git repository"
+on = [ "g", "r" ]
+run = '''
+	shell 'ya emit cd "$(git rev-parse --show-toplevel)"'
+'''

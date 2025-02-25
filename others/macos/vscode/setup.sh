@@ -11,6 +11,7 @@ function stow_packages() {
 function install_extensions() {
   command -v code >/dev/null 2>&1 || {
       echo_yellow "VSCode executable is not in Path, creating symlink from /usr/local/bin/code -> /Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+      sudo mkdir -p /usr/local/bin/
       sudo ln -s "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" /usr/local/bin/code
   }
 

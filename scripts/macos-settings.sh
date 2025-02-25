@@ -18,6 +18,8 @@ while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 # General UI/UX                                                               #
 ###############################################################################
 
+echo_yellow "=== Updating General UI/UX"
+
 # Set standby delay to 24 hours (default is 1 hour)
 sudo pmset -a standbydelay 86400
 
@@ -42,6 +44,8 @@ defaults write -g ApplePressAndHoldEnabled -bool false
 ###############################################################################
 # Trackpad, mouse, keyboard, Bluetooth accessories, and input                 #
 ###############################################################################
+
+echo_yellow "=== Updating mouse/keyboard settings"
 
 # Increase sound quality for Bluetooth headphones/headsets
 defaults write com.apple.BluetoothAudioAgent "Apple Bitpool Min (editable)" -int 40
@@ -80,6 +84,8 @@ defaults write com.apple.touchbar.agent PresentationModeFnModes -dict-add functi
 # Screen                                                                      #
 ###############################################################################
 
+echo_yellow "=== Updating screen settings"
+
 # Require password immediately after sleep or screen saver begins
 defaults write com.apple.screensaver askForPassword -int 1
 defaults write com.apple.screensaver askForPasswordDelay -int 0
@@ -87,6 +93,8 @@ defaults write com.apple.screensaver askForPasswordDelay -int 0
 ###############################################################################
 # Finder                                                                      #
 ###############################################################################
+
+echo_yellow "=== Updating finder settings"
 
 # Finder: show path bar
 defaults write com.apple.finder ShowPathbar -bool true
@@ -129,6 +137,8 @@ defaults write com.apple.finder NewWindowTarget -string "PfLo"
 # Dock, Dashboard, and hot corners                                            #
 ###############################################################################
 
+echo_yellow "=== Updating dock settings"
+
 # Dark menu bar and dock
 defaults write $HOME/Library/Preferences/.GlobalPreferences.plist AppleInterfaceTheme -string "Dark"
 
@@ -142,16 +152,10 @@ defaults write com.apple.dock mineffect -string "scale"
 defaults write com.apple.dock minimize-to-application -bool true
 
 ###############################################################################
-# Safari & WebKit                                                             #
-###############################################################################
-
-# Privacy: don’t send search queries to Apple
-defaults write com.apple.Safari UniversalSearchEnabled -bool false
-defaults write com.apple.Safari SuppressSearchSuggestions -bool true
-
-###############################################################################
 # Mail                                                                        #
 ###############################################################################
+
+echo_yellow "=== Updating mail settings"
 
 # Disable send and reply animations in Mail.app
 defaults write com.apple.mail DisableReplyAnimations -bool true
@@ -170,6 +174,8 @@ defaults write com.apple.mail SpellCheckingBehavior -string "NoSpellCheckingEnab
 # Activity Monitor                                                            #
 ###############################################################################
 
+echo_yellow "=== Updating activity monitor settings"
+
 # Show the main window when launching Activity Monitor
 defaults write com.apple.ActivityMonitor OpenMainWindow -bool true
 
@@ -187,6 +193,8 @@ defaults write com.apple.ActivityMonitor SortDirection -int 0
 # Address Book, Dashboard, iCal, TextEdit, and Disk Utility                   #
 ###############################################################################
 
+echo_yellow "=== Updating misc settings"
+
 # Use plain text mode for new TextEdit documents
 defaults write com.apple.TextEdit RichText -int 0
 # Open and save files as UTF-8 in TextEdit
@@ -203,12 +211,16 @@ defaults write com.apple.ical "first day of the week" 1
 # Photos                                                                      #
 ###############################################################################
 
+echo_yellow "=== Updating photos settings"
+
 # Prevent Photos from opening automatically when devices are plugged in
 defaults -currentHost write com.apple.ImageCapture disableHotPlug -bool true
 
 ###############################################################################
 # Kill affected applications                                                  #
 ###############################################################################
+
+echo_yellow "=== Restarting apps"
 
 for app in "Activity Monitor" "Address Book" "Calendar" "Contacts" "cfprefsd" \
     "Dock" "Finder" "Mail" "Messages" "Photos" "Safari" "SystemUIServer" \

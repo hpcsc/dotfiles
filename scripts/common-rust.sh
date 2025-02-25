@@ -10,7 +10,7 @@ if (command -v rustup >/dev/null 2>&1) then
    rustup update stable
 else
    echo_green "=== Installing rustup"
-   curl https://sh.rustup.rs -sSf | sh
+   curl https://sh.rustup.rs -sSf | sh -s -- -y
 fi;
 
 echo_green "=== Installing/Updating Rust language server"

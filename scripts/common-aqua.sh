@@ -2,10 +2,10 @@
 
 set -e
 
-echo_yellow "=== Installing aqua"
+LATEST_INSTALLER_VERSION=$(curl -s https://api.github.com/repos/aquaproj/aqua-installer/releases/latest | jq -r '.tag_name')
+echo_yellow "=== Installing aqua from installer ${LATEST_INSTALLER_VERSION}"
 
 rm -f /tmp/aqua-installer
-curl -sSfL https://raw.githubusercontent.com/aquaproj/aqua-installer/v3.0.1/aqua-installer -o /tmp/aqua-installer
-echo "fb4b3b7d026e5aba1fc478c268e8fbd653e01404c8a8c6284fdba88ae62eda6a  /tmp/aqua-installer" | sha256sum -c
+curl -sSfL https://raw.githubusercontent.com/aquaproj/aqua-installer/${LATEST_INSTALLER_VERSION}/aqua-installer -o /tmp/aqua-installer
 chmod +x /tmp/aqua-installer
 /tmp/aqua-installer

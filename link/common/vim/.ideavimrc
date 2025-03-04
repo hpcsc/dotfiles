@@ -3,6 +3,8 @@ source ~/.vimrc
 set highlightedyank
 set nerdtree
 
+map gi <Action>(GotoImplementation)
+
 # reference: https://gist.github.com/zchee/9c78f91cc5ad771c1f5d
 map <leader>b <Action>(ToggleLineBreakpoint)
 map <leader>n <Action>(ShowErrorDescription)

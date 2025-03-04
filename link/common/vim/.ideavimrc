@@ -1,6 +1,16 @@
 source ~/.vimrc
+
+set highlightedyank
+set nerdtree
+
 # reference: https://gist.github.com/zchee/9c78f91cc5ad771c1f5d
+map <leader>b <Action>(ToggleLineBreakpoint)
 map <leader>n <Action>(ShowErrorDescription)
 map <leader>d <Action>(QuickImplementations)
 map <leader>h <Action>(QuickJavaDoc)
 map <leader>p <Action>(ParameterInfo)
+
+" Errors
+map <leader>en <Action>(GotoNextError)
+map <leader>ep <Action>(GotoPreviousError)
+

@@ -82,6 +82,18 @@
         {
             "before": ["<leader>", "<space>"],
             "after": ["o", "<Esc>"]
+        },
+        {
+            "before": ["<leader>", "e", "n"],
+            "commands": [
+                "editor.action.marker.next"
+            ]
+        },
+        {
+            "before": ["<leader>", "e", "p"],
+            "commands": [
+                "editor.action.marker.prev"
+            ]
         }
     ],
     "vim.visualModeKeyBindingsNonRecursive": [
@@ -117,5 +129,10 @@
     "[typescriptreact]": {
         "editor.tabSize": 2
     },
-    "vscode-neovim.neovimExecutablePaths.darwin": "/usr/local/bin/nvim"
+    "vscode-neovim.neovimExecutablePaths.darwin": "/usr/local/bin/nvim",
+    "vim.vimrc.enable": true,
+    "vim.enableNeovim": true,
+    "vim.highlightedyank.enable": true,
+    "vim.neovimUseConfigFile": true,
+    "vim.showMarksInGutter": true
 }

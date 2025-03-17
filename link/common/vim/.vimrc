@@ -107,6 +107,7 @@ Plug 'osyo-manga/vim-over', Cond(!exists('g:vscode'))
 Plug 'google/vim-searchindex', Cond(!exists('g:vscode'))
 Plug 'jiangmiao/auto-pairs', Cond(!exists('g:vscode'))
 Plug 'ludovicchabant/vim-gutentags', Cond(!exists('g:vscode'))
+Plug 'vim-scripts/argtextobj.vim'
 
 call plug#end()
 " }}}

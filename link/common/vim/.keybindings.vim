@@ -1,9 +1,13 @@
 let mapleader = "\<space>"
 
-map <leader>ew :e %%
-map <leader>es :sp %%
-map <leader>ev :vsp %%
-map <leader>et :tabe %%
+" these are not used frequent enough, disable for now
+" so that can use <leader>e for Goland error navigation
+"
+"
+" map <leader>ew :e %%
+" map <leader>es :sp %%
+" map <leader>ev :vsp %%
+" map <leader>et :tabe %%
 
 " disable arrow navigation keys :(
 noremap <Up> <NOP>

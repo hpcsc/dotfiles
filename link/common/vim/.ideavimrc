@@ -4,9 +4,10 @@ set highlightedyank
 set nerdtree
 
 map gi <Action>(GotoImplementation)
+
 " Errors
-map gn <Action>(GotoNextError)
-map gN <Action>(GotoPreviousError)
+map <leader>e <Action>(GotoNextError)
+map <leader>E <Action>(GotoPreviousError)
 
 
 # reference: https://gist.github.com/zchee/9c78f91cc5ad771c1f5d

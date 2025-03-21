@@ -40,7 +40,7 @@ set splitbelow
 set splitright
 
 " make jumplist behaves like a stack
-set jumpoptions=stack 
+set jumpoptions=stack
 
 " Highlight yanked text for a brief period, compatible with some themes that use `HighlightedyankRegion`
 autocmd TextYankPost * silent! lua vim.highlight.on_yank {higroup=(vim.fn['hlexists']('HighlightedyankRegion') > 0 and 'HighlightedyankRegion' or 'IncSearch'), timeout=500}
@@ -52,7 +52,7 @@ set foldlevelstart=10 " open most folds by default
 set foldnestmax=10 " 10 nested fold max
 set foldmethod=syntax " fold based on filetype syntax
 let javaScript_fold=1
-let xml_syntax_folding=1 
+let xml_syntax_folding=1
 
 " }}}
 
@@ -170,6 +170,10 @@ augroup end
 " airline Settings {{{
 
 let g:airline#extensions#tabline#enabled = 1
+" airline uses `0x2632` character (wide character) to show trailing whitespaces, which NeoVim 0.10.* doesn't handle well
+" change to use other character to temporarily work around the issue
+" once https://github.com/neovim/neovim/issues/31956 is fixed and merged, this can be removed
+let g:airline#extensions#whitespace#symbol = '!'
 
 " }}}
 

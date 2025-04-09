@@ -45,6 +45,9 @@ nnoremap <silent> <leader>> :exe "vertical resize " . (winwidth(0) * 3/2)<CR>
 nnoremap <silent> <leader>= :winc =<CR>
 nnoremap <C-d> <C-d>zz
 nnoremap <C-u> <C-u>zz
+nnoremap H Hzz
+nnoremap M Mzz
+nnoremap L Lzz
 
 " insert newline in normal mode
 nnoremap <silent> <leader><space> o<Esc>

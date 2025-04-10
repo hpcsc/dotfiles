@@ -7,7 +7,6 @@ function module.apply_to_config(config)
     config.initial_rows = 300
     config.initial_cols = 600
     config.scrollback_lines = 10000
-    -- config.default_prog = { 'tmux', 'new', '-A', '-s', '0' }
     config.hide_tab_bar_if_only_one_tab = true
     config.font = wezterm.font {
         family = 'FiraCode Nerd Font',

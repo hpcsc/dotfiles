@@ -36,6 +36,7 @@ ubuntu_scripts=(
   ./scripts/ubuntu-stow.sh
   ./scripts/ubuntu-universal-ctags.sh
   ./scripts/ubuntu-keyboard.sh
+  ./scripts/ubuntu-wezterm.sh
 )
 
 fedora_scripts=(

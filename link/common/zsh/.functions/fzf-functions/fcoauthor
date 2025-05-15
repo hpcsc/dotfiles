@@ -1,0 +1,20 @@
+if [ ! -f ~/.git-co-authors ]; then
+  echo "~/.git-co-authors file is required"
+  return
+fi
+
+HASH=$(git log --format="%C(auto) %h %s" | \
+  fzf --header='Choose starting commit to add Co-Authored-By' | \
+  awk '{print $1}')
+
+if [ -z "${HASH}" ]; then
+  return
+fi
+
+COAUTHOR=$(cat ~/.git-co-authors | fzf --header='Choose a co-author')
+if [ -z "${COAUTHOR}" ]; then
+  return
+fi
+
+git rebase ${HASH}~1 -x "git commit --amend -m $'$(git log --format=%B -n 1 HEAD)\n\nCo-Authored-By: ${COAUTHOR}'"
+

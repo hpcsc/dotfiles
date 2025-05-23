@@ -73,6 +73,10 @@ export FZF_DEFAULT_COMMAND='rg --files --hidden --smart-case --sort-files --foll
 export FZF_DEFAULT_OPTS="--reverse --height 30%"
 export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
 export FZF_ALT_C_COMMAND="fd -t d"
+export FZF_ALT_C_OPTS="
+  --walker-skip .git,node_modules,target
+  --preview-window=bottom
+  --preview 'tree -C {}'"
 
 # =================== tmux  ======================
 [[ -f ~/.bin/tmuxinator.zsh ]] && source ~/.bin/tmuxinator.zsh

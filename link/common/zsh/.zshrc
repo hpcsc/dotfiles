@@ -145,7 +145,7 @@ bindkey "^[[1;5C" _forward-non-dash
 
 # ref: https://unix.stackexchange.com/a/531178
 _clear-scrollback-buffer () {
-  # Behavior of clear: 
+  # Behavior of clear:
   # 1. clear scrollback if E3 cap is supported (terminal, platform specific)
   # 2. then clear visible screen
   # For some terminal 'e[3J' need to be sent explicitly to clear scrollback
@@ -176,6 +176,12 @@ _insert_quoted_fzf_output() {
 
 zle -N _insert_quoted_fzf_output
 bindkey '^F' _insert_quoted_fzf_output
+
+### Jetbrains terminal
+if [[ "$TERMINAL_EMULATOR" == "JetBrains-JediTerm" ]]; then
+  # alt + c
+  bindkey "ç" fzf-cd-widget
+fi
 
 # =================== prompt  ======================
 

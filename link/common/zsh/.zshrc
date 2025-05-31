@@ -178,7 +178,7 @@ zle -N _insert_quoted_fzf_output
 bindkey '^F' _insert_quoted_fzf_output
 
 ### Jetbrains terminal
-if [[ "$TERMINAL_EMULATOR" == "JetBrains-JediTerm" ]]; then
+if [[ "$TERMINAL_EMULATOR" == "JetBrains-JediTerm" ]] || [[ "$TERM_PROGRAM" == "vscode" ]]; then
   # alt + c
   bindkey "ç" fzf-cd-widget
 fi

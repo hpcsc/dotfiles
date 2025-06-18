@@ -16,5 +16,4 @@ if [ -z "${COAUTHOR}" ]; then
   return
 fi
 
-git rebase ${HASH}~1 -x "git commit --amend -m $'$(git log --format=%B -n 1 HEAD)\n\nCo-Authored-By: ${COAUTHOR}'"
-
+git rebase ${HASH}~1 -x 'git commit --amend -m "$(git log --format=%B -n 1 HEAD)" -m "Co-Authored-By: '${COAUTHOR}'"'

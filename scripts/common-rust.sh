@@ -14,7 +14,7 @@ else
 fi;
 
 echo_green "=== Installing/Updating Rust language server"
-rustup component add rls rust-analysis rust-src
+~/.cargo/bin/rustup component add rls rust-analysis rust-src
 
 echo_green "=== Installing/Updating Rust additional tools"
-rustup component add rustfmt clippy
+~/.cargo/bin/rustup component add rustfmt clippy

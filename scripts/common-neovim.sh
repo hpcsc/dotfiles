@@ -3,4 +3,4 @@
 set -e
 
 echo_yellow "=== Installing Neovim plugins"
-nvim +PlugInstall +UpdateRemotePlugins +qall
+~/.local/bin/mise exec neovim -- nvim +PlugInstall +UpdateRemotePlugins +qall

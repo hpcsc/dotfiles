@@ -61,7 +61,7 @@ fsec() {
         return
       fi
 
-      security 2>&1 >/dev/null find-generic-password -g -s ${svc} -a ${acc} | grep password | sed 's/password:[[:space:]]"\(.*\)"/\1/g' | pbcopy
+      security 2>&1 >/dev/null find-generic-password -g -s ${svc} -a ${acc} | grep password | sed 's/password:[[:space:]]"\(.*\)"/\1/g' | tr -d '\n' | pbcopy
       echo "=== copied secret for service ${svc} and account ${acc} to clipboard"
   esac
 }

@@ -40,4 +40,6 @@
     file_history: Some(( code: Char('h'), modifiers: "CONTROL")),
 
     undo_commit: Some(( code: Char('u'), modifiers: "CONTROL")),
+
+    open_commit_editor: Some(( code: Char('e'), modifiers: "CONTROL")),
 )

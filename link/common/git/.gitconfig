@@ -4,6 +4,8 @@
 	autocrlf = input
   ignoreCase = false
 	attributesfile = ~/.gitattributes
+  # use delta for `git diff`
+  pager = delta
 [alias]
   hide = update-index --assume-unchanged
   unhide = update-index --no-assume-unchanged
@@ -18,7 +20,6 @@
 	autoStash = true
 [diff]
 	mnemonicprefix = true
-	tool = vimdiff
 	submodule = log
 [includeIf "gitdir:~/Workspace/Code/"]
   	path = .gitconfig-work
@@ -31,14 +32,7 @@
 [includeIf "gitdir:~/repo-templates/"]
   	path = .gitconfig-personal
 [merge]
-	conflictstyle = diff3
-[difftool]
-	prompt = false
-[difftool "code"]
-  cmd = code \"$LOCAL\" \"$REMOTE\" --diff --wait
-  trustExitCode = false
-[difftool "dirdiff"]
-  cmd = vim -f '+next' '+execute \"DirDiff\" argv(0) argv(1)' $LOCAL $REMOTE '+syntax off'
+	conflictstyle = zdiff3
 [diff "plist"]
 	textconv = plutil -convert xml1 -o -
 [status]
@@ -49,3 +43,46 @@
 	gpgsign = true
 [init]
 	defaultBranch = main
+[interactive]
+  # use delta in `git add -p`
+  diffFilter = delta --color-only
+[delta]
+  navigate = true  # use n and N to move between diff sections
+  dark = true      # or light = true, or omit for auto-detection
+  side-by-side = true
+  features = arctic-fox
+[delta "arctic-fox"]
+  # author: https://github.com/anthony-halim
+  dark = true
+  syntax-theme = Nord
+  file-added-label = [+]
+  file-copied-label = [==]
+  file-modified-label = [*]
+  file-removed-label = [-]
+  file-renamed-label = [->]
+  file-style = omit
+  hunk-header-decoration-style = "#5E81AC" ul
+  hunk-header-file-style = blue ul bold
+  hunk-header-line-number-style = yellow box bold
+  hunk-header-style = file line-number syntax bold italic
+  plus-style = brightgreen
+  plus-emph-style = black green
+  minus-style = brightred
+  minus-emph-style = black red
+  line-numbers = true
+  line-numbers-minus-style = brightred
+  line-numbers-plus-style = brightgreen
+  line-numbers-left-style = "#5E81AC"
+  line-numbers-right-style = "#5E81AC"
+  line-numbers-zero-style = "#4C566A"
+  zero-style = syntax
+  whitespace-error-style = black bold
+  blame-code-style = syntax
+  blame-format = "{author:<18} {commit:<6} {timestamp:<15}"
+  blame-palette = "#2E3440" "#3B4252" "#434C5E"
+  merge-conflict-begin-symbol = ~
+  merge-conflict-end-symbol = ~
+  merge-conflict-ours-diff-header-style = yellow bold
+  merge-conflict-ours-diff-header-decoration-style = "#5E81AC" box
+  merge-conflict-theirs-diff-header-style = yellow bold
+  merge-conflict-theirs-diff-header-decoration-style = "#5E81AC" box

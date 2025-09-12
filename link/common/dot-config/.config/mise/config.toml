@@ -12,7 +12,7 @@ task = "3.43.3"
 "cargo:yazi-cli" = "25.4.8"
 neovim = "0.11.1"
 go = "1.24.3"
+delta = "0.18.2"
 
 [settings]
 experimental = true
-

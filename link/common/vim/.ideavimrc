@@ -18,3 +18,5 @@ map <leader>h <Action>(QuickJavaDoc)
 map <leader>p <Action>(ParameterInfo)
 map <leader>r <Action>(RunClass)
 
+set clipboard^=ideaput
+set ideajoin

@@ -109,6 +109,11 @@ Plug 'jiangmiao/auto-pairs', Cond(!exists('g:vscode'))
 Plug 'ludovicchabant/vim-gutentags', Cond(!exists('g:vscode'))
 Plug 'vim-scripts/argtextobj.vim'
 
+if has('nvim')
+  Plug 'nvim-lua/plenary.nvim'
+  Plug 'nvim-telescope/telescope.nvim', { 'tag': '0.1.8' }
+endif
+
 call plug#end()
 " }}}
 
@@ -220,6 +225,15 @@ autocmd VimEnter * if argc() == 1 && isdirectory(argv()[0]) && !exists("s:std_in
 
 " Sets the diff window (bottom window) height (rows)
 let g:DirDiffWindowSize = 5
+
+" }}}
+
+" telescope Settings {{{
+"
+nnoremap <leader>ff <cmd>Telescope find_files<cr>
+nnoremap <leader>fg <cmd>Telescope live_grep<cr>
+nnoremap <leader>fb <cmd>Telescope buffers<cr>
+nnoremap <leader>fh <cmd>Telescope help_tags<cr>
 
 " }}}
 

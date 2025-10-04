@@ -2,6 +2,7 @@
 
 common_packages=(
   bash
+  claude
   git
   vim
   zsh

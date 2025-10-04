@@ -98,8 +98,6 @@ Plug 'mileszs/ack.vim'
 Plug 'morhetz/gruvbox'
 Plug 'scrooloose/nerdtree', Cond(!exists('g:vscode'), { 'on':  'NERDTreeToggle' })
 Plug 'vim-airline/vim-airline', Cond(!exists('g:vscode'))
-Plug 'junegunn/fzf', Cond(!exists('g:vscode'), { 'dir': '~/.fzf', 'do': './install --all' })
-Plug 'junegunn/fzf.vim', Cond(!exists('g:vscode'))
 Plug 'christoomey/vim-tmux-navigator', Cond(!exists('g:vscode'))
 Plug 'junegunn/vim-peekaboo', Cond(!exists('g:vscode'))
 Plug 'mhinz/vim-signify', Cond(!exists('g:vscode'))

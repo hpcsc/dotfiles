@@ -1,0 +1,11 @@
+local selected=$(find ~/Personal/Code ~/Workspace/Code -type d -maxdepth 1 -mindepth 1 | fzf)
+if [ -z "${selected}" ]; then
+  return
+fi
+
+# vim telescope only works with the current directory
+# if we call `nvim ${selected}`, the current directory is not changing and therefore telescope not showing files from the selected dir
+# cd to the directory instead as a workaround
+# because telescope only 
+cd "${selected}"
+nvim .

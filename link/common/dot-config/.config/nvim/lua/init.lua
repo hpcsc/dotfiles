@@ -37,3 +37,6 @@ require'marks'.setup {
 }
 
 require('telescope').load_extension('fzf')
+vim.keymap.set('n', '<leader>-', function()
+  require('yazi').yazi()
+end)

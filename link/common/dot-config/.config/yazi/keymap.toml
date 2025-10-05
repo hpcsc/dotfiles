@@ -1,4 +1,4 @@
-[[manager.prepend_keymap]]
+[[mgr.prepend_keymap]]
 desc = "Go to root of current git repository"
 on = [ "g", "r" ]
 run = '''

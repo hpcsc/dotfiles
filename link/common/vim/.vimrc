@@ -112,6 +112,7 @@ if has('nvim')
   " configuration is in ~/.config/nvim/lua/init.lua
   Plug 'nvim-telescope/telescope-fzf-native.nvim', { 'branch': 'main', 'do': 'make' }
   Plug 'chentoast/marks.nvim'
+  Plug 'mikavilpas/yazi.nvim', { 'branch': 'main' }
 endif
 
 call plug#end()
@@ -176,7 +177,7 @@ nnoremap <leader>/ :call SyncTree()<CR>
 " automatically mark a buffer using mO whenever leaving a buffer
 " so that we can always come back with `O
 function! MarkBuf()
-    if bufname('') !~ 'fzf'
+    if bufname('') !~ 'fzf' && &buftype !=# "terminal"
       normal! mO
     endif
 endfunction

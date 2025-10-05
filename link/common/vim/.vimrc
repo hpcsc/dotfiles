@@ -94,7 +94,6 @@ Plug 'tpope/vim-unimpaired'
 Plug 'kana/vim-textobj-user'
 Plug 'rhysd/vim-textobj-anyblock'
 Plug 'michaeljsmith/vim-indent-object'
-Plug 'mileszs/ack.vim'
 Plug 'morhetz/gruvbox'
 Plug 'scrooloose/nerdtree', Cond(!exists('g:vscode'), { 'on':  'NERDTreeToggle' })
 Plug 'vim-airline/vim-airline', Cond(!exists('g:vscode'))
@@ -104,7 +103,6 @@ Plug 'mhinz/vim-signify', Cond(!exists('g:vscode'))
 Plug 'osyo-manga/vim-over', Cond(!exists('g:vscode'))
 Plug 'google/vim-searchindex', Cond(!exists('g:vscode'))
 Plug 'jiangmiao/auto-pairs', Cond(!exists('g:vscode'))
-Plug 'ludovicchabant/vim-gutentags', Cond(!exists('g:vscode'))
 Plug 'vim-scripts/argtextobj.vim'
 
 if has('nvim')
@@ -202,12 +200,6 @@ if executable('rg')
   " Use rg over Grep
   set grepprg=rg\ --vimgrep
 endif
-
-" }}}
-
-" Ack.Vim Settings {{{
-
-let g:ackprg = 'rg --vimgrep --no-heading'
 
 " }}}
 

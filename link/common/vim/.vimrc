@@ -108,6 +108,9 @@ Plug 'vim-scripts/argtextobj.vim'
 if has('nvim')
   Plug 'nvim-lua/plenary.nvim'
   Plug 'nvim-telescope/telescope.nvim', { 'tag': '0.1.8' }
+
+  " configuration is in ~/.config/nvim/lua/init.lua
+  Plug 'chentoast/marks.nvim'
 endif
 
 call plug#end()

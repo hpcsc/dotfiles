@@ -110,6 +110,7 @@ if has('nvim')
   Plug 'nvim-telescope/telescope.nvim', { 'tag': '0.1.8' }
 
   " configuration is in ~/.config/nvim/lua/init.lua
+  Plug 'nvim-telescope/telescope-fzf-native.nvim', { 'branch': 'main', 'do': 'make' }
   Plug 'chentoast/marks.nvim'
 endif
 
@@ -223,7 +224,7 @@ let g:DirDiffWindowSize = 5
 
 " telescope Settings {{{
 "
-nnoremap <leader>ff <cmd>Telescope find_files<cr>
+nnoremap <leader>ff <cmd>Telescope find_files find_command=rg,--files,--hidden,-g,!.git<cr>
 nnoremap <leader>fg <cmd>Telescope live_grep<cr>
 nnoremap <leader>fb <cmd>Telescope buffers<cr>
 nnoremap <leader>fh <cmd>Telescope help_tags<cr>

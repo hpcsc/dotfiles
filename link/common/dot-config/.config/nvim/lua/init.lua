@@ -35,3 +35,5 @@ require'marks'.setup {
   },
   mappings = {}
 }
+
+require('telescope').load_extension('fzf')

@@ -6,6 +6,20 @@ vim.api.nvim_create_autocmd("TextYankPost", {
 	end,
 })
 
+-- [[
+-- `checktime`: compares the timestamp of the file on disk with the timestamp of the buffer in memory.
+--    If a discrepancy is found, it indicates that the file has been changed externally.
+--    Use in combination with `autoread` option
+-- behavior:
+-- - If autoread is enabled and a buffer has not been modified within Neovim,
+--   `checktime` will automatically reload the buffer's contents from the disk without prompting the user.
+-- - If autoread is disabled, or if the buffer has been modified within Neovim (creating a "dirty" buffer),
+--   `checktime` will prompt you to decide how to handle the external change. You will typically be given options to reload the file (discarding local changes), keep local changes (overwriting the external changes on save), or merge the changes.
+-- ]]
+vim.api.nvim_create_autocmd({ "BufEnter", "CursorHold", "CursorHoldI", "FocusGained" }, {
+	command = "if mode() != 'c' | checktime | endif",
+})
+
 -- number_toggle_group: relative in normal, absolute in insert
 local number_toggle_group = vim.api.nvim_create_augroup("number_toggle", { clear = true })
 vim.api.nvim_create_autocmd({ "BufEnter", "FocusGained", "InsertLeave" }, {

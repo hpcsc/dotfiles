@@ -20,6 +20,12 @@ cp -vf /tmp/Fira/* ${DESTINATION}
 
 rm -rf /tmp/Fira.zip /tmp/Fira
 
+echo_yellow "=== Installing Powerline Fira Mono fonts to ${DESTINATION}"
+git clone https://github.com/powerline/fonts.git /tmp/powerline-fonts
+cp -vf /tmp/powerline-fonts/FiraMono/* ${DESTINATION}
+
+rm -rf /tmp/powerline-fonts
+
 if is_ubuntu || is_fedora; then
   echo_yellow "=== Refreshing fonts cache"
   fc-cache -vf

@@ -1,26 +1,44 @@
 return {
 	"nvim-telescope/telescope.nvim",
 	tag = "0.1.8",
-	opts = {
-		pickers = {
-			find_files = {
-				find_command = { "rg", "--files", "--hidden", "-g", "!.git" },
+	opts = function()
+		local actions = require("telescope.actions")
+		return {
+			defaults = {
+				path_display = {
+					shorten = {
+						len = 1,
+						exclude = { -3, -2, -1 }, -- display first character of each directory, except for the last 3
+					},
+				},
+				mappings = {
+					i = { ["<C-c>"] = actions.close },
+					n = { ["q"] = actions.close },
+				},
 			},
-		},
-		extensions = { "fzf" },
-	},
+			pickers = {
+				find_files = {
+					find_command = { "rg", "--files", "--hidden", "-g", "!**/.git/*" },
+				},
+			},
+			extensions = { "fzf" },
+		}
+	end,
 	dependencies = {
 		{ "nvim-lua/plenary.nvim", lazy = true },
 	},
+	keys = function()
+		local lazy_telescope = function(builtin)
+			return function(...)
+				require("telescope.builtin")[builtin](...)
+			end
+		end
 
-	init = function()
-		local builtin = require("telescope.builtin")
-		vim.keymap.set("n", "<leader>ff", builtin.find_files, { desc = "Telescope find files" })
-		vim.keymap.set("n", "<leader>fg", builtin.live_grep, { desc = "Telescope live grep" })
-		vim.keymap.set("n", "<leader>fb", builtin.buffers, { desc = "Telescope buffers" })
-		vim.keymap.set("n", "<leader>fh", builtin.help_tags, { desc = "Telescope help tags" })
-		vim.keymap.set("n", "<leader>;", function()
-			require("yazi").yazi()
-		end)
+		return {
+			{ "<leader>ff", lazy_telescope("find_files"), desc = "Telescope find files" },
+			{ "<leader>fg", lazy_telescope("live_grep"), desc = "Telescope find files by content" },
+			{ "<leader>fb", lazy_telescope("buffers"), desc = "Telescope find buffers" },
+			{ "<leader>fh", lazy_telescope("help_tags"), desc = "Telescope find help tags" },
+		}
 	end,
 }

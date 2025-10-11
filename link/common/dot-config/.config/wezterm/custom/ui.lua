@@ -9,8 +9,7 @@ function module.apply_to_config(config)
     config.scrollback_lines = 10000
     config.hide_tab_bar_if_only_one_tab = true
     config.font = wezterm.font {
-        family = 'FiraCode Nerd Font',
-        harfbuzz_features = { 'calt=0', 'clig=0', 'liga=1' }
+        family = 'Fira Mono for Powerline',
     }
 
     config.font_size = 16

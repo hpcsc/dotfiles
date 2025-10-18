@@ -20,6 +20,9 @@ return {
 				find_files = {
 					find_command = { "rg", "--files", "--hidden", "-g", "!**/.git/*" },
 				},
+				live_grep = {
+					additional_args = { "--hidden", "-g", "!**/.git/*" },
+				},
 			},
 			extensions = { "fzf" },
 		}

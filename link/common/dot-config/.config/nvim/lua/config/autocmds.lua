@@ -49,7 +49,7 @@ vim.api.nvim_create_autocmd("BufLeave", {
 -- set foldmethod depending on whether the given file type has treesitter parser or not
 vim.api.nvim_create_autocmd({ "FileType" }, {
 	callback = function()
-		if require("nvim-treesitter.parsers").has_parser() then
+		if package.loaded["nvim-treesitter.parsers"] and require("nvim-treesitter.parsers").has_parser() then
 			vim.opt.foldmethod = "expr"
 			vim.opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
 		else

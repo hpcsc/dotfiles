@@ -48,10 +48,7 @@ opt.grepprg = "rg --vimgrep"
 -- ]]
 opt.autoread = true
 
--- Folding
+-- Folding, additional fold settings (foldmethod, foldexpr) are setup in autocmd
 opt.foldenable = true -- enable folding
 opt.foldlevelstart = 10 -- open most folds by default
 opt.foldnestmax = 10 -- 10 nested fold max
-opt.foldmethod = "syntax" -- fold based on filetype syntax
-vim.g.javaScript_fold = 1
-vim.g.xml_syntax_folding = 1

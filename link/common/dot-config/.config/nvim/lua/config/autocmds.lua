@@ -46,13 +46,14 @@ vim.api.nvim_create_autocmd("BufLeave", {
 	end,
 })
 
--- C# indentation
-vim.api.nvim_create_autocmd("FileType", {
-	pattern = "cs",
+-- set foldmethod depending on whether the given file type has treesitter parser or not
+vim.api.nvim_create_autocmd({ "FileType" }, {
 	callback = function()
-		vim.bo.tabstop = 4
-		vim.bo.shiftwidth = 4
-		vim.bo.softtabstop = 4
-		vim.bo.expandtab = true
+		if require("nvim-treesitter.parsers").has_parser() then
+			vim.opt.foldmethod = "expr"
+			vim.opt.foldexpr = "v:lua.vim.treesitter.foldexpr()"
+		else
+			vim.opt.foldmethod = "syntax"
+		end
 	end,
 })

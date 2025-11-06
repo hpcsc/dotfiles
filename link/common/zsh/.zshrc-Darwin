@@ -1,7 +1,10 @@
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
-export PATH="$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
-export MANPATH="$(brew --prefix coreutils)/libexec/gnuman:$(brew --prefix gnu-sed)/libexec/gnubin:$MANPATH"
+# below lines put GNU coreutils/gnu-sed aliases (the ones without `g` prefix) in the PATH
+# however if we use prezto, those aliases are not needed because prezto gnu-utility already creates wrappers
+# that call `g` binaries. Ref: https://github.com/sorin-ionescu/prezto/blob/master/modules/gnu-utility/init.zsh
+# export PATH="$(brew --prefix coreutils)/libexec/gnubin:$(brew --prefix gnu-sed)/libexec/gnubin:$PATH"
+# export MANPATH="$(brew --prefix coreutils)/libexec/gnuman:$(brew --prefix gnu-sed)/libexec/gnubin:$MANPATH"
 
 ssh-add --apple-use-keychain &> /dev/null
 

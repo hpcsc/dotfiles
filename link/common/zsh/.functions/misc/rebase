@@ -1,19 +1,11 @@
 REMOTE=origin
 
 # determine default branch
-if [ ! -f ".git/refs/remotes/${REMOTE}/HEAD" ]; then
+git symbolic-ref -q "refs/remotes/${REMOTE}/HEAD" >/dev/null
+if [ $? -ne 0 ]; then
     # ${REMOTE}/HEAD is created when the repo is cloned
-    # if it doesn't exist for some reason, manually create and point it to either `main` or `master` so that we can deterministically check main branch
-    if [ -f ".git/refs/remotes/${REMOTE}/main" ]; then
-        git symbolic-ref "refs/remotes/${REMOTE}/HEAD" "refs/remotes/${REMOTE}/main"
-        echo "=== pointed ${REMOTE}/HEAD to ${REMOTE}/main"
-    elif [ -f ".git/refs/remotes/${REMOTE}/master" ]; then
-        git symbolic-ref "refs/remotes/${REMOTE}/HEAD" "refs/remotes/${REMOTE}/master"
-        echo "=== pointed ${REMOTE}/HEAD to ${REMOTE}/master"
-    else
-        echo "=== unable to determine default branch"
-        return
-    fi
+    # if it doesn't exist for some reason, ask git to automatically determine default branch from remote so that we can deterministically check main branch
+    git remote set-head ${REMOTE} -a || return
 fi
 
 # get default branch

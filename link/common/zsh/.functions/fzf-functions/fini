@@ -9,7 +9,7 @@ case "${sub_command}" in
     nl -w2 -s': ' "${INITIATIVE_FILE}" | \
       fzf --accept-nth 1 -d ':' | \
       xargs -I{} sed -i '' '{}d' ~/.git-initiative;;
-  (*)
+  (amend)
     HASH=$(git log --format="%C(auto) %h %s" | \
       fzf --header='Choose starting commit to add Initiative trailer' | \
       awk '{print $1}')
@@ -28,6 +28,14 @@ case "${sub_command}" in
     #   log="${log}\n\nInitiative: ${ini}"
     # fi
     local trailer="\n\nInitiative: ${ini}"
-    git rebase ${HASH}~1 -x 'git commit --amend -m "$(git log --format=%B -n 1 HEAD)" -m "Initiative: '${ini}'"'
+    git rebase ${HASH}~1 -x 'git commit --amend -m "$(git log --format=%B -n 1 HEAD)" -m "Initiative: '${ini}'"';;
+  (*)
+    local ini=$(cat ~/.git-initiative | fzf --header='Choose an initiative')
+    if [ -z "${ini}" ]; then
+      return
+    fi
+
+    echo -n "Initiative: ${ini}" | pbcopy
+    echo "Copied 'Initiative: ${ini}' to clipboard";;
 esac
 

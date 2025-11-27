@@ -8,12 +8,22 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 
 ssh-add --apple-use-keychain &> /dev/null
 
+new_fsec_keychain_if_not_exist() {
+  if [ -f ~/Library/Keychains/fsec-db ]; then
+    return
+  fi
+
+  security create-keychain fsec
+  echo "=== created new keychain fsec"
+}
+
 fsec() {
   # assume jq, keychain-parser are available
   local sub_command=$1
   case "${sub_command}" in
     list)
-      security dump-keychain | keychain-parser | jq -r '(["Service","Account"] | (., map(length*"-"))),(.[] | select(.attribute == "fsec") | [.service,.account]) | @tsv' | column -ts$'\t'
+      new_fsec_keychain_if_not_exist
+      security dump-keychain fsec | keychain-parser | jq -r '(["Service","Account"] | (., map(length*"-"))),(.[] | select(.attribute == "fsec") | [.service,.account]) | @tsv' | column -ts$'\t'
       ;;
     add)
       echo -n "service: "
@@ -36,35 +46,38 @@ fsec() {
 
       secret=$(echo "${secret}" | tr -d '\n')
 
-      security add-generic-password -U -s "${svc}" -a "${acc}" -G fsec -w "${secret}"
+      new_fsec_keychain_if_not_exist
+      security add-generic-password -U -s "${svc}" -a "${acc}" -G fsec -w "${secret}" fsec
       echo "\n=== added secret for service ${svc} and account ${acc} to keychain"
       ;;
     delete)
-      local svc=$(security dump-keychain | keychain-parser | jq -r '.[] | select(.attribute == "fsec") | .service' | fzf)
+      new_fsec_keychain_if_not_exist
+      local svc=$(security dump-keychain fsec | keychain-parser | jq -r '.[] | select(.attribute == "fsec") | .service' | fzf)
       if [ -z "${svc}" ]; then
         return
       fi
 
-      local acc=$(security dump-keychain | keychain-parser | jq -r '.[] | select(.service == "'${svc}'") | .account' | fzf)
+      local acc=$(security dump-keychain fsec | keychain-parser | jq -r '.[] | select(.service == "'${svc}'") | .account' | fzf)
       if [ -z "${acc}" ]; then
         return
       fi
 
-      security delete-generic-password -s "${svc}" -a "${acc}"
+      security delete-generic-password -s "${svc}" -a "${acc}" fsec
       echo "\n=== deleted secret for service ${svc} and account ${acc} from keychain"
       ;;
     *)
-      local svc=$(security dump-keychain | keychain-parser | jq -r '[ .[] | select(.attribute == "fsec") ] | unique_by(.service)[] | .service' | fzf)
+      new_fsec_keychain_if_not_exist
+      local svc=$(security dump-keychain fsec | keychain-parser | jq -r '[ .[] | select(.attribute == "fsec") ] | unique_by(.service)[] | .service' | fzf)
       if [ -z "${svc}" ]; then
         return
       fi
 
-      local acc=$(security dump-keychain | keychain-parser | jq -r '.[] | select(.service == "'${svc}'") | .account' | fzf)
+      local acc=$(security dump-keychain fsec | keychain-parser | jq -r '.[] | select(.service == "'${svc}'") | .account' | fzf)
       if [ -z "${acc}" ]; then
         return
       fi
 
-      security 2>&1 >/dev/null find-generic-password -g -s ${svc} -a ${acc} | grep password | sed 's/password:[[:space:]]"\(.*\)"/\1/g' | tr -d '\n' | pbcopy
+      security 2>&1 >/dev/null find-generic-password -g -s ${svc} -a ${acc} fsec | grep password | sed 's/password:[[:space:]]"\(.*\)"/\1/g' | tr -d '\n' | pbcopy
       echo "=== copied secret for service ${svc} and account ${acc} to clipboard"
   esac
 }

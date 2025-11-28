@@ -23,7 +23,7 @@ fsec() {
   case "${sub_command}" in
     list)
       new_fsec_keychain_if_not_exist
-      security dump-keychain fsec | keychain-parser | jq -r '(["Service","Account"] | (., map(length*"-"))),(.[] | select(.attribute == "fsec") | [.service,.account]) | @tsv' | column -ts$'\t'
+      security dump-keychain fsec | keychain-parser | jq -r '(["Service","Account"] | (., map(length*"-"))),(. // [] | .[] | select(.attribute == "fsec") | [.service,.account]) | @tsv' | column -ts$'\t'
       ;;
     add)
       echo -n "service: "

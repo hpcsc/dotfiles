@@ -47,7 +47,7 @@ allowed_msg = ''
 denied_msg = 'direnv denied'
 
 [aws]
-format = '\[[$symbol($profile)(\($region\))(\[$duration\])]($style)\]'
+format = '\[[($profile)(\($region\))(\[$duration\])]($style)\]'
 
 [docker_context]
 format = '\([$symbol$context]($style)\)'

@@ -91,13 +91,11 @@ bindkey "^X^_" redo
 # bind Ctrl-Space to accept zsh auto suggestion
 bindkey '^ ' autosuggest-accept
 
-bindkey '^p' fzf-file-widget
-
 # bind Ctrl-z to fg command (.e.g. to switch from terminal back to suspended vim session)
 bindkey -s '^z' 'fg^M'
 
-# bind Ctrl-t to trigger gitui
-bindkey -s '^t' 'gitui^M'
+# bind Ctrl-p to trigger gitui
+bindkey -s '^p' 'gitui^M'
 
 # bind Ctrl-y to trigger yazi
 bindkey -s '^y' 'yazi^M'
@@ -106,16 +104,7 @@ bindkey -s '^y' 'yazi^M'
 bindkey "^k" history-substring-search-up
 bindkey "^j" history-substring-search-down
 
-# custom function and zsh zle widget to get last commit message and output git commit command
-# bind Ctrl-g to this custom zle widget
-function _git_last_message() {
-  BUFFER=${LBUFFER}'git commit -m "'$(git log -1 --pretty=%s)'"'
-  zle end-of-line;
-}
-zle -N _git_last_message
-bindkey "^g" _git_last_message
-
-# bind Ctrl-backspace
+# bind Ctrl-backspace (which send the same control character as Ctrl+H)
 _backward-kill-non-dash () {
   # remove - and _ from word definition so that word deletion stops at the first - or _ character
   local WORDCHARS=${WORDCHARS/_-//}
@@ -160,22 +149,6 @@ _clear-scrollback-buffer () {
 
 zle -N _clear-scrollback-buffer
 bindkey '^L' _clear-scrollback-buffer
-
-# bind Ctrl-F to invoke fzf and insert result of file selection to current location of cursor
-_insert_quoted_fzf_output() {
-  local output
-  output=$(fzf</dev/tty)
-  if [ -z "${output}" ]; then
-    zle reset-prompt
-    return
-  fi
-
-  LBUFFER+=${(q-)output}
-  zle reset-prompt
-}
-
-zle -N _insert_quoted_fzf_output
-bindkey '^F' _insert_quoted_fzf_output
 
 ### Jetbrains terminal
 if [[ "$TERMINAL_EMULATOR" == "JetBrains-JediTerm" ]] || [[ "$TERM_PROGRAM" == "vscode" ]]; then

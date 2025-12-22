@@ -95,7 +95,7 @@ import (
 
 ### Verify Tests Can Fail
 
-**IMPORTANT**: Always verify tests can actually detect failures to avoid false positives due to CUE's unification behavior.
+🚨 **CRITICAL**: Always verify tests can actually detect failures to avoid false positives due to CUE's unification behavior.
 
 **For new code (TDD)**:
 1. Write a failing test first with the expected behavior
@@ -322,9 +322,10 @@ When passing values through nested definitions, **avoid using the same field nam
 
 1. **Explore existing CUE files** - Understand patterns and structure
 2. **Write tests first** - Define expected behavior before implementation
-3. **Implement definitions** - Create schemas and configurations
-4. **Validate** - Run `cue vet` after each change
-5. **Export and verify** - Check generated output matches expectations
+3. **⚠️ VERIFY TESTS CAN FAIL** - For retrospective tests: write → pass → break → fail → restore
+4. **Implement definitions** - Create schemas and configurations
+5. **Validate** - Run `cue vet` after each change
+6. **Export and verify** - Check generated output matches expectations
 
 ## Debugging Tips
 

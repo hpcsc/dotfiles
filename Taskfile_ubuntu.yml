@@ -1,0 +1,74 @@
+version: '3'
+
+vars:
+  SCRIPT_DIR: ./scripts
+
+tasks:
+  base:
+    desc: Ubuntu base setup
+    run: once
+    cmds:
+      - task: install-sudo
+      - task: install-required
+      - task: install-common
+
+  extras:
+    desc: Ubuntu extras (parallel)
+    run: once
+    deps:
+      - docker
+      - stow
+      - keyboard
+      - wezterm
+
+  net-core:
+    desc: Install .NET Core
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-net-core.sh"
+
+  install-sudo:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-install-sudo.sh"
+
+  install-required:
+    run: once
+    interactive: true
+    deps:
+      - install-sudo
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-install-required-packages.sh"
+
+  install-common:
+    run: once
+    deps:
+      - install-required
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-install-common-tools.sh"
+
+  docker:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-docker.sh"
+
+  stow:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-stow.sh"
+
+  keyboard:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-keyboard.sh"
+
+  wezterm:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-wezterm.sh"

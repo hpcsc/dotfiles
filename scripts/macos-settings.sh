@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Dependencies: stow (common-stow.sh)
+# This script configures macOS settings and preferences
+# Note: requires stowed dotfile configs for proper operation
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -e
 
 is_macos || exit 0
@@ -216,18 +223,6 @@ echo_yellow "=== Updating photos settings"
 # Prevent Photos from opening automatically when devices are plugged in
 defaults -currentHost write com.apple.ImageCapture disableHotPlug -bool true
 
-###############################################################################
-# Kill affected applications                                                  #
-###############################################################################
-
-echo_yellow "=== Restarting apps"
-
-for app in "Activity Monitor" "Address Book" "Calendar" "Contacts" "cfprefsd" \
-    "Dock" "Finder" "Mail" "Messages" "Photos" "Safari" "SystemUIServer" \
-    "Terminal" "Tweetbot" "iCal" "ControlStrip"; do
-    killall "${app}" &> /dev/null
-done
-
-echo "Done. Note that some of these changes require a logout/restart to take effect."
+echo_green "Done. Note that some of these changes require a logout/restart to take effect."
 
 

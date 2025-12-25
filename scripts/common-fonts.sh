@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Dependencies: none
+# This script installs Fira Code and Powerline Fira Mono fonts
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -e
 
 DESTINATION=$(is_macos && echo "${HOME}/Library/Fonts" || echo "${HOME}/.local/share/fonts")

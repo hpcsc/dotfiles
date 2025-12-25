@@ -34,13 +34,10 @@ function prompt_and_execute() {
 }
 
 macos_only_options=(
-  './scripts/macos-haskell.sh' 
 )
 
 ubuntu_only_options=(
-  './scripts/ubuntu-haskell.sh' 
   './scripts/ubuntu-net-core.sh'
-  './scripts/ubuntu-tilix.sh'
 )
 
 common_options=(

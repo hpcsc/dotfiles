@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Dependencies: stow (common-stow.sh)
+# This script requires ~/.tmux.conf to be stowed for plugin list configuration
+# Note: TPM (tmux plugin manager) reads plugin list from .tmux.conf
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -euo pipefail
 
 if [ -d ~/.tmux/plugins/tpm ]; then

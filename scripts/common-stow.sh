@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Dependencies: stow binary (installed by OS package manager)
+# This script creates symlinks for dotfiles including config files
+# Platform-specific: macOS uses brew, Ubuntu uses apt, Fedora uses dnf
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 common_packages=(
   bash
   claude
@@ -7,10 +14,7 @@ common_packages=(
   vim
   zsh
   tmux
-  tig
-  ctags
   shell
-  alacritty
 )
 
 function backup() {

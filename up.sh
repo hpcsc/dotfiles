@@ -1,5 +1,10 @@
 #!/bin/bash
 
-./install-core.sh | tee install-core-full-log.log
+if [ ! -f ./bin/task ]; then
+    echo "Installing Taskfile"
+    ./install-taskfile.sh
+fi
 
-./install-optional.sh | tee install-optional-full-log.log
+export PATH="${PATH}:$(pwd)/bin"
+
+task up

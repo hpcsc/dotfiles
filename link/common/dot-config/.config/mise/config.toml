@@ -16,6 +16,7 @@ delta = "0.18.2"
 "aqua:junegunn/fzf" = "0.67.0"
 "cargo:ast-grep" = "0.40.0"
 "cargo:tlrc" = "1.12.0"
+tree-sitter = "0.25.10"
 
 [settings]
 experimental = true

@@ -140,6 +140,46 @@ func (f *FakeStream) WithError(err error) *FakeStream {...}
 func (f *FakeBus) TriggeredWithCommand() *domain.Command {...}
 ```
 
+#### Testing Observable Behaviors
+
+**Principle:** Tests should verify **what** the system does (observable behaviors), not **how** it does it (implementation details). This creates tests that are more resilient to refactoring and focuses on business value.
+
+##### Example: Testing Command Bus Dispatch
+
+❌ **Bad - Testing Implementation Details:**
+```go
+// Tests internal handlers map that could change
+b := inmemory.NewBus()
+b.Register(fake.CommandType, fake.NewHandler())
+b.Dispatch(context.TODO(), fake.NewCommand())
+
+// Fragile! Tests internal storage structure
+require.Len(t, b.handlers, 1)
+require.NotNil(t, b.handlers[fake.CommandType])
+```
+
+✅ **Good - Testing Observable Behaviors:**
+```go
+// Tests that handler was triggered with command - the observable effect
+b := inmemory.NewBus()
+handler := fake.NewHandler()
+b.Register(fake.CommandType, handler)
+
+cmd := fake.NewCommand()
+err := b.Dispatch(context.TODO(), cmd)
+
+require.NoError(t, err)
+require.Equal(t, &cmd, handler.TriggeredWithCommand())
+```
+
+##### Key Benefits
+
+- **Refactoring Safety:** Tests survive internal changes when observable behavior remains the same
+- **Business Focus:** Tests verify user-facing behavior and business rules
+- **Test Stability:** Tests intent rather than implementation, reducing maintenance
+
+**Rule of thumb:** If you can change the internal implementation without changing the test, you're testing the right behavior. If the test breaks when you rename a private field or change an internal method, you're testing implementation details.
+
 ## Key Architectural Principles
 
 ### 1. Natural Language Readability

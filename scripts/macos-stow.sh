@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Dependencies: macos-brew-bundle.sh (installs stow)
+# This script stows macOS application settings
+# Note: stow is installed by Homebrew in Brewfile
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -e
 
 is_macos || exit 0

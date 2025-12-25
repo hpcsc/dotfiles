@@ -1,0 +1,126 @@
+version: '3'
+
+vars:
+  SCRIPT_DIR: ./scripts
+
+tasks:
+  base:
+    desc: Common scripts with no dependencies (parallel)
+    run: once
+    deps:
+      - working-folders
+      - prezto
+      - fonts
+
+  core:
+    desc: Critical dependency chain (rust -> mise -> stow -> mise-global)
+    run: once
+    cmds:
+      - task: rust
+      - task: mise
+      - task: stow
+      - task: mise-global
+
+  devtools:
+    desc: Development tools setup (parallel after common:core)
+    run: once
+    deps:
+      - core
+      - vim
+      - neovim
+      - tmux
+
+  langtools:
+    desc: Language-specific tools (parallel after common:core)
+    run: once
+    deps:
+      - core
+      - configure-yazi
+
+  krew:
+    desc: Install Krew plugins
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-krew.sh"
+
+  istio:
+    desc: Install Istio
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-istio.sh"
+
+  working-folders:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-working-folders.sh"
+
+  prezto:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-prezto.sh"
+
+  vim:
+    desc: Install Vim plugins - requires mise for Go SDK
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-vim.sh"
+
+  neovim:
+    desc: Install Neovim plugins - requires mise
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-neovim.sh"
+
+  tmux:
+    desc: Install tmux plugins - requires stow for .tmux.conf
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-tmux.sh"
+
+  fonts:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-fonts.sh"
+
+  rust:
+    desc: Install Rust toolchain - no dependencies
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-rust.sh"
+
+  mise:
+    desc: Install mise - requires rust for cargo
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-mise.sh"
+
+  stow:
+    desc: Stow dotfiles - requires stow binary from OS
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-stow.sh"
+
+  mise-global:
+    desc: Install global tools via mise - requires mise plus stow
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-mise-global.sh"
+
+  configure-yazi:
+    desc: Install yazi plugins - requires mise
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-yazi.sh"

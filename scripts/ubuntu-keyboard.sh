@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Dependencies: none
+# This script configures GNOME keyboard settings (requires gsettings)
+# Note: Only runs if gsettings is available (Ubuntu with GUI)
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -e
 
 is_ubuntu || exit 0

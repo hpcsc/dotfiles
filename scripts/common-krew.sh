@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Dependencies: kubectl (installed by common-asdf-plugins.sh)
+# This script requires kubectl to install plugins
+# Note: Optional task - should be run after main installation
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -e
 
 [ -d "$HOME/.krew" ] && {
@@ -24,4 +31,5 @@ set -e
 
 KREW_PLUGINS_LIST=./others/common/kube/krew-plugins
 echo_yellow "=== Installing krew plugins from ${KREW_PLUGINS_LIST}"
+# requires kubectl (installed by common-asdf-plugins.sh)
 cat ${KREW_PLUGINS_LIST} | xargs ${HOME}/.krew/bin/kubectl-krew install

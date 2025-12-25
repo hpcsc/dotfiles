@@ -1,8 +1,0 @@
-python
-kubectl
-helm
-terraform
-direnv
-starship
-zoxide,https://github.com/hpcsc/asdf-zoxide.git
-boilerplate,https://github.com/hpcsc/asdf-plugin-boilerplate.git

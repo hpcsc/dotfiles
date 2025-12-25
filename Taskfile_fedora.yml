@@ -1,0 +1,38 @@
+version: '3'
+
+vars:
+  SCRIPT_DIR: ./scripts
+
+tasks:
+  base:
+    desc: Fedora base setup
+    run: once
+    cmds:
+      - task: install-required
+      - task: install-common
+
+  extras:
+    desc: Fedora extras (parallel)
+    run: once
+    deps:
+      - docker
+
+  install-required:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/fedora-install-required-packages.sh"
+
+  install-common:
+    run: once
+    deps:
+      - install-required
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/fedora-install-common-tools.sh"
+
+  docker:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/fedora-docker.sh"

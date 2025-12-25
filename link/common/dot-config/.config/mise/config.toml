@@ -16,6 +16,15 @@ delta = "0.18.2"
 "cargo:ast-grep" = "0.40.3"
 "cargo:tlrc" = "1.12.0"
 tree-sitter = "0.25.10"
+bat = "0.26.1"
+fd = "10.3.0"
+ripgrep = "15.1.0"
+jq = "1.8.1"
+yq = "4.50.1"
+gh = "2.83.2"
+kubectx = "0.9.5"
+helm = "4.0.4"
+direnv = "2.37.1"
 
 [settings]
 experimental = true

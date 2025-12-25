@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Dependencies: ubuntu-install-common-tools.sh (installs stow)
+# This script stows Ubuntu application settings
+# Note: stow is installed by ubuntu-install-common-tools.sh
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -e
 
 is_ubuntu || exit 0

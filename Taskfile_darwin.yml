@@ -1,0 +1,42 @@
+version: '3'
+
+vars:
+  SCRIPT_DIR: ./scripts
+
+tasks:
+  base:
+    desc: macOS base setup (keep-sudo -> brew-bundle -> stow-macos)
+    run: once
+    cmds:
+      - task: keep-sudo
+      - task: brew-bundle
+      - task: stow-macos
+
+  settings:
+    desc: macOS final settings (run last)
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/macos-settings.sh"
+
+  keep-sudo:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/macos-keep-sudo.sh"
+
+  brew-bundle:
+    run: once
+    deps:
+      - keep-sudo
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/macos-brew-bundle.sh"
+
+  stow-macos:
+    run: once
+    deps:
+      - brew-bundle
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/macos-stow.sh"

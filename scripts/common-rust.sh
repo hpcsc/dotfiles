@@ -1,5 +1,9 @@
 #!/bin/bash
 
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -e
 
 # must be installed before mise since mise installs some tools (yazi) using cargo

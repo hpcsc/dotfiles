@@ -1,0 +1,63 @@
+version: '3'
+
+vars:
+  SCRIPT_DIR: ./scripts
+
+tasks:
+  base:
+    desc: Fedora base setup
+    run: once
+    cmds:
+      - task: install-required
+      - task: install-common
+
+  extras:
+    desc: Fedora extras (parallel)
+    run: once
+    deps:
+      - docker
+      - alacritty
+
+  haskell:
+    desc: Install Haskell
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/fedora-haskell.sh"
+
+  dry-run:
+    desc: Show Fedora tasks
+    silent: true
+    cmds:
+      - |
+          cat <<EOF
+          === Fedora tasks that would run ===
+          base: install-required, install-common (sequential)
+          extras: docker, alacritty (parallel)
+          optional: haskell (available on demand)
+          EOF
+
+  install-required:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/fedora-install-required-packages.sh"
+
+  install-common:
+    run: once
+    deps:
+      - install-required
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/fedora-install-common-tools.sh"
+
+  docker:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/fedora-docker.sh"
+
+  alacritty:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/fedora-alacritty.sh"

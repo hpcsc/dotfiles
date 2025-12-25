@@ -1,9 +1,8 @@
 #!/bin/bash
 
-# source and export helper functions to be used by the rest of this script
-set -a
-source ./load-zsh-autoload-as-functions.sh
-set +a
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/scripts/_utilities.sh"
 
 function execute_scripts() {
   local scripts_array_name=$1[@]

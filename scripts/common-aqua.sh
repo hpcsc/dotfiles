@@ -1,5 +1,9 @@
 #!/bin/bash
 
+
+# Source utility functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/_utilities.sh"
 set -e
 
 LATEST_INSTALLER_VERSION=$(curl -s https://api.github.com/repos/aquaproj/aqua-installer/releases/latest | jq -r '.tag_name')

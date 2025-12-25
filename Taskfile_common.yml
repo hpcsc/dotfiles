@@ -1,0 +1,155 @@
+version: '3'
+
+vars:
+  SCRIPT_DIR: ./scripts
+
+tasks:
+  base:
+    desc: Common scripts with no dependencies (parallel)
+    run: once
+    deps:
+      - working-folders
+      - prezto
+      - aqua
+      - vim
+      - neovim
+      - tmux
+      - fonts
+
+  core:
+    desc: Critical dependency chain (rust -> mise -> stow -> mise-global)
+    run: once
+    cmds:
+      - task: rust
+      - task: mise
+      - task: stow
+      - task: mise-global
+
+  devtools:
+    desc: Development tools setup (parallel after common:core)
+    run: once
+    deps:
+      - core
+      - asdf
+      - asdf-plugins
+      - k8s
+
+  langtools:
+    desc: Language-specific tools (parallel after common:core)
+    run: once
+    deps:
+      - core
+      - configure-yazi
+      - python-tools
+
+  krew:
+    desc: Install Krew plugins
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-krew.sh"
+
+  istio:
+    desc: Install Istio
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-istio.sh"
+
+  working-folders:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-working-folders.sh"
+
+  prezto:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-prezto.sh"
+
+  aqua:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-aqua.sh"
+
+  vim:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-vim.sh"
+
+  neovim:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-neovim.sh"
+
+  tmux:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-tmux.sh"
+
+  fonts:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-fonts.sh"
+
+  rust:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-rust.sh"
+
+  mise:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-mise.sh"
+
+  stow:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-stow.sh"
+
+  mise-global:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-mise-global.sh"
+
+  asdf:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-asdf.sh"
+
+  asdf-plugins:
+    run: once
+    deps:
+      - asdf
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-asdf-plugins.sh"
+
+  k8s:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-k8s.sh"
+
+  configure-yazi:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-yazi.sh"
+
+  python-tools:
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-python-tools.sh"

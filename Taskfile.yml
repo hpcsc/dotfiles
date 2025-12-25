@@ -1,0 +1,132 @@
+version: '3'
+
+output: group
+set: [pipefail]
+
+includes:
+  common:
+    taskfile: ./Taskfile_common.yml
+  macos:
+    taskfile: ./Taskfile_darwin.yml
+  ubuntu:
+    taskfile: ./Taskfile_ubuntu.yml
+  fedora:
+    taskfile: ./Taskfile_fedora.yml
+
+env:
+  LOG_DIR: ./logs
+
+tasks:
+  default:
+    desc: Full installation (equivalent to ./install-core.sh)
+    interactive: true
+    cmds:
+      - |
+          mkdir -vp "${LOG_DIR}/$(date +%Y%m%d-%H%M%S)"
+          if [[ "$(uname -s)" == "Darwin" ]]; then
+            task default-macos
+          elif grep -q 'Ubuntu' /etc/os-release 2>/dev/null; then
+            task default-ubuntu
+          elif grep -q 'Fedora' /etc/os-release 2>/dev/null; then
+            task default-fedora
+          else
+            echo "Unsupported operating system"
+            exit 1
+          fi
+
+  default-macos:
+    desc: macOS full installation
+    cmds:
+      - task: macos:base
+      - task: common:base
+      - task: common:core
+      - task: common:devtools
+      - task: common:langtools
+      - task: macos:settings
+
+  default-ubuntu:
+    desc: Ubuntu full installation
+    cmds:
+      - task: ubuntu:base
+      - task: common:base
+      - task: common:core
+      - task: common:devtools
+      - task: common:langtools
+      - task: ubuntu:extras
+
+  default-fedora:
+    desc: Fedora full installation
+    cmds:
+      - task: fedora:base
+      - task: common:base
+      - task: common:core
+      - task: common:devtools
+      - task: common:langtools
+      - task: fedora:extras
+
+  up:
+    desc: Main entry - run core then prompt for optional
+    cmds:
+      - task: default
+      # - bash install-optional.sh
+
+  dry-run:
+    desc: Show what would be executed without running scripts
+    cmds:
+      - task: dry-run-common
+      - |
+          if [[ "$(uname -s)" == "Darwin" ]]; then
+            task macos:dry-run
+          elif grep -q 'Ubuntu' /etc/os-release 2>/dev/null; then
+            task ubuntu:dry-run
+          elif grep -q 'Fedora' /etc/os-release 2>/dev/null; then
+            task fedora:dry-run
+          fi
+      - echo ""
+      - echo "=== Dry run complete. Use 'task default' to execute ==="
+
+  dry-run-common:
+    desc: Dry run common tasks
+    silent: true
+    cmds:
+      - |
+          cat <<EOF
+          === Common tasks that would run ===
+          base: working-folders, prezto, aqua, vim, neovim, tmux, fonts (parallel)
+          core: rust, mise, stow, mise-global (sequential)
+          devtools: asdf, asdf-plugins, k8s (parallel)
+          langtools: configure-yazi, python-tools (parallel)
+          optional: krew, istio (available on demand)
+          EOF
+
+  optional:haskell:
+    desc: Install Haskell
+    cmds:
+      - |
+          if [[ "$(uname -s)" == "Darwin" ]]; then
+            task macos:haskell
+          elif grep -q 'Ubuntu' /etc/os-release 2>/dev/null; then
+            task ubuntu:haskell
+          elif grep -q 'Fedora' /etc/os-release 2>/dev/null; then
+            task fedora:haskell
+          fi
+
+  optional:net-core:
+    desc: Install .NET Core (Ubuntu only)
+    cmds:
+      - task: ubuntu:net-core
+
+  optional:tilix:
+    desc: Install Tilix (Ubuntu only)
+    cmds:
+      - task: ubuntu:tilix
+
+  optional:krew:
+    desc: Install Krew plugins
+    cmds:
+      - task: common:krew
+
+  optional:istio:
+    desc: Install Istio
+    cmds:
+      - task: common:istio

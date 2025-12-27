@@ -48,6 +48,7 @@ compdef -d mcd
 
 # =================== mise =======================
 eval "$(~/.local/bin/mise activate zsh)"
+alias gmise='mise use --path ~/.config/mise/config.toml'
 
 # =================== aqua =======================
 export PATH="${AQUA_ROOT_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/aquaproj-aqua}/bin:$PATH"

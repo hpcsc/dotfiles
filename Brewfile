@@ -1,5 +1,4 @@
 tap "beeftornado/rmtree"
-tap "homebrew/services"
 tap "tomanthony/brews"
 brew "bat"
 brew "colima"

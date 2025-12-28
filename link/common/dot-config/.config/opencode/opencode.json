@@ -10,6 +10,13 @@
       "git diff": "allow",
       "rg": "allow",
       "find": "allow",
+      "fd": "allow",
+      "echo": "allow",
+      "sort": "allow",
+      "uniq": "allow",
+      "head": "allow",
+      "tail": "allow",
+      "wc": "allow",
       "ls": "allow"
     }
   },

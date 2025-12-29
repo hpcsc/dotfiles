@@ -34,5 +34,11 @@
         }
       }
     }
+  },
+  "lsp": {
+    "cue": {
+      "command": ["/usr/local/bin/start-cue-lsp.sh"],
+      "extensions": [".cue"]
+    }
   }
 }

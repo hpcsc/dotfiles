@@ -63,8 +63,13 @@ function stow_packages() {
 
   echo_yellow "=== Stowing .local/bin folder"
   mkdir -p ~/.local/bin
-  stow -vv --dir=./link/common/dot-local --target="$HOME/.local/bin" --adopt bin
+  stow -vv --dir=./link/common/dot-local --target="$HOME/.local/bin" --adopt bin || echo_red "Failed to stow .local/bin"
   git restore ./link/common/dot-local/bin
+
+  echo_yellow "=== Stowing /usr/local/bin folder"
+  mkdir -p /usr/local/bin
+  sudo stow -vv --dir=./link/common --target="/usr/local/bin" --adopt usr-local-bin || echo_red "Failed to stow usr-local-bin"
+  git restore ./link/common/usr-local-bin
 }
 
 # backup

@@ -31,8 +31,16 @@ if [ -z "$LOG_DIR" ]; then
   exit 1
 fi
 
+if [ -d "$LOG_DIR" ]; then
+  mkdir -p "$LOG_DIR"
+fi
+
 # Calculate LOG_PATH by finding the most recent log directory
 LOG_PATH=$(ls "$LOG_DIR" | sort | tail -1 | xargs -I{} echo "$LOG_DIR"/{})
+if [ -z "$LOG_PATH" ]; then
+  LOG_PATH="${LOG_DIR}/$(date +%Y%m%d-%H%M%S)"
+  mkdir -vp "${LOG_PATH}"
+fi
 echo "Logging to directory: $LOG_PATH"
 
 LOG_FILE="${LOG_PATH}/${LOG_NAME}.log"

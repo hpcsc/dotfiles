@@ -57,7 +57,7 @@ Delegate to the `tdd-refactorer` agent for this step.
 - Skip if no refactoring is needed
 
 ### COMMIT Phase
-Delegate to the `tdd-commit` agent to commit the completed step.
+Delegate to the `commit` agent to commit the completed step.
 - Stage all changes from this TDD cycle
 - Agent will draft commit message and request user approval
 - **GATE**: Do NOT proceed to next step until commit is complete

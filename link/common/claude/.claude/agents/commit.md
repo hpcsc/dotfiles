@@ -1,12 +1,12 @@
 ---
-name: tdd-commit
+name: commit
 description: Create a git commit for staged changes with a well-crafted commit message following conventional commit guidelines.
 tools: Bash, Read, AskUserQuestion
 model: inherit
 color: green
 ---
 
-# TDD Commit Agent
+# Commit Agent
 
 You create git commits for staged changes with well-crafted commit messages.
 

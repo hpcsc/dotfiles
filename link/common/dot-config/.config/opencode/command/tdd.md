@@ -42,22 +42,22 @@ Get user approval before proceeding.
 For each step in the approved plan, execute a complete Red-Green-Refactor cycle:
 
 ### RED Phase
-Use the Task tool with subagent_type "general" and prompt containing the tdd-test-writer agent content for this step.
+Use the Task tool with subagent_type "general" and prompt containing the `tdd-test-writer` agent content for this step.
 - **GATE**: Do NOT proceed until the test FAILS with the expected error
 - If test passes unexpectedly, clarify whether behavior already exists
 
 ### GREEN Phase
-Use the Task tool with subagent_type "general" and prompt containing the tdd-implementer agent content for this step.
+Use the Task tool with subagent_type "general" and prompt containing the `tdd-implementer` agent content for this step.
 - **GATE**: Do NOT proceed until the test PASSES
 - Implement ONLY what's needed to pass the current test
 
 ### REFACTOR Phase
-Use the Task tool with subagent_type "general" and prompt containing the tdd-refactorer agent content for this step.
+Use the Task tool with subagent_type "general" and prompt containing the `tdd-refactorer` agent content for this step.
 - **GATE**: All tests must still PASS after refactoring
 - Skip if no refactoring is needed
 
 ### COMMIT Phase
-Use the Task tool with subagent_type "general" and prompt containing the tdd-commit agent content to commit the completed step.
+Use the Task tool with subagent_type "general" and prompt containing the `commit` agent content to commit the completed step.
 - Stage all changes from this TDD cycle
 - Agent will draft commit message and request user approval
 - **GATE**: Do NOT proceed to next step until commit is complete

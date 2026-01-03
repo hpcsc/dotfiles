@@ -3,7 +3,7 @@ description: Commit staged changes with proper formatting and optional additiona
 subtask: true
 ---
 
-Run the commit agent to create a git commit for staged changes with a well-crafted commit message following conventional commit guidelines.
+Run the commit agent to create a git commit for staged changes with a well-crafted commit message following commit guidelines.
 
 The agent will:
 - Verify staged changes exist

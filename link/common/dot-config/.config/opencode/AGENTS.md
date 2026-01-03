@@ -1,15 +1,12 @@
-# Tools for shell interactions
+# Tooling Guidelines
 
-## Finding code structure
+## Code Structure Analysis
+- Use `ast-grep -p '<pattern>' --lang=<language>` for syntax-aware matching
+- Avoid text-only tools (`rg`, `grep`) unless explicitly requested
 
-You run in an environment where `ast-grep is available`.
-Whenever a search requires syntax-aware or structural matching, default to `ast-grep -p '<pattern>'` (and set `--lang` appropriately).
-Avoid falling back to text-only tools like `rg` or `grep` unless I explicitly request a plain-text search.
-
-## Others
-
-- Finding files: use `fd`
-- Finding text/strings: use `rg`
-- Selecting from multiple results: pipe to `fzf`
-- Interacting with JSON: use `jq`
-- Interacting with YAML or XML: use `yq`
+## File Operations
+- Finding files: `fd`
+- Finding text/strings: `rg`
+- Selecting from results: pipe to `fzf`
+- JSON manipulation: `jq`
+- YAML/XML manipulation: `yq`

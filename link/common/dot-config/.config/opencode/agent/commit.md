@@ -53,6 +53,8 @@ Follow these rules strictly:
 - NEVER mention AI, Claude, or generated content
 - NEVER add signatures like "Co-Authored-By: Claude"
 - NEVER add "🤖 Generated with..." or similar
+- NEVER include generic file lists in commit messages
+- Include file paths only when they provide essential context for understanding the change
 - Write as a human developer would
 
 ### Step 5: Request User Approval

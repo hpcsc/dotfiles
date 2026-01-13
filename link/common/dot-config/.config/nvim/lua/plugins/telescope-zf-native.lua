@@ -1,7 +1,5 @@
 return {
-	"nvim-telescope/telescope-fzf-native.nvim",
-	branch = "main",
-	build = "make",
+	"natecraddock/telescope-zf-native.nvim",
 	dependencies = {
 		{ "nvim-telescope/telescope.nvim", lazy = true },
 	},

@@ -24,8 +24,10 @@ return {
 					additional_args = { "--hidden", "-g", "!**/.git/*" },
 				},
 			},
-			extensions = { "fzf" },
 		}
+	end,
+	config = function()
+		require("telescope").load_extension("zf-native")
 	end,
 	dependencies = {
 		{ "nvim-lua/plenary.nvim", lazy = true },

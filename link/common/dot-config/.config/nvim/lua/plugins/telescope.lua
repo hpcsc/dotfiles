@@ -24,7 +24,7 @@ return {
 					additional_args = { "--hidden", "-g", "!**/.git/*" },
 				},
 			},
-			extensions = { "fzf" },
+			extensions = { "zf-native" },
 		}
 	end,
 	dependencies = {

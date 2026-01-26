@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# Step 1: Get test functions using rg (match both standalone tests and suite test methods)
+# Matches:
+#   - func TestFoo(t *testing.T)                      - standalone test
+#   - func (s *SomeSuite) TestFoo(t *testing.T)       - suite test method
+test_list=$(rg --type go '^func (\(.*\) )?(Test\w+)\(t \*testing\.T\)' --only-matching --replace '$2' --with-filename $@)
+
+# Let user select a parent test
+selected=$(printf '%s' "$test_list" | fzf \
+    --prompt="Select test function: " \
+    --height=40% \
+    --delimiter=: \
+    --with-nth=2 \
+    --preview='echo "File: {1}"' \
+    --preview-window=right:60%)
+
+if [ -z "$selected" ]; then
+    echo "No test selected"
+    exit 0
+fi
+
+file=$(echo "$selected" | cut -d: -f1)
+test_name=$(echo "$selected" | cut -d: -f2)
+package_dir=$(dirname "$file")
+
+# Step 2: Find subtests using ast-grep on the single selected file
+# Get the test function's line range
+start_line=$(rg -n "^func ${test_name}\(t \*testing\.T\)" "$file" | cut -d: -f1)
+# Find closing brace by counting braces (approximate)
+end_line=$(tail -n +$start_line "$file" | rg -n '^\}' | head -1 | cut -d: -f1)
+end_line=$((start_line + end_line - 1))
+
+# Find subtests within this test function using rg (handle both t.Run and s.Run patterns)
+subtests=$(sed -n "${start_line},${end_line}p" "$file" | rg '[ts]\.Run\(([^,)]+)' --only-matching --replace '$1' | sed 's/^"//;s/"$//')
+
+# If subtests exist, show option to drill down
+if [ -n "$subtests" ]; then
+    subtest_list="${test_name} (run all)"$'\n'
+    while IFS= read -r name; do
+        subtest_list+="${test_name}/${name}"$'\n'
+    done <<< "$subtests"
+
+    # Let user select subtests (multi-select with Tab)
+    subtest_selected=$(printf '%s' "$subtest_list" | fzf \
+        --multi \
+        --prompt="Select subtest(s) (Tab to multi-select): " \
+        --height=40% \
+        --header='Tab=multi-select | Enter=run selected')
+
+    if [ -z "$subtest_selected" ]; then
+        echo "No test selected"
+        exit 0
+    fi
+
+    # Build test path regex for multiple selections
+    if echo "$subtest_selected" | grep -q "(run all)"; then
+        test_path="$test_name"
+    else
+        # Join multiple selections with | for regex
+        test_path=$(echo "$subtest_selected" | tr '\n' '|' | sed 's/|$//')
+    fi
+else
+    test_path="$test_name"
+fi
+
+# Run the test
+echo "Running: go test -v -run \"^${test_path}$\" ./$package_dir"
+go test -v -run "^${test_path}$" "./$package_dir"

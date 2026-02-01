@@ -22,11 +22,14 @@ Use extended thinking to deeply analyze the requirements and design an implement
 Each step in the plan MUST:
 - Be small enough to complete in ONE implementation cycle
 - Focus on a single behavior or business rule
+- **Include BOTH implementation AND its corresponding tests in the SAME step**
 - Be testable through public/exported API only
 - Contribute toward feature completion
 - Leave the codebase in a working, committable state
 - Not break existing functionality
 - Build on previous steps
+
+**CRITICAL**: Never separate implementation and tests into different steps. Each commitable step must include both the code changes and the tests that verify those changes. This ensures each commit is self-contained and verifiable.
 
 ### Output the Plan:
 ```markdown
@@ -36,19 +39,23 @@ Each step in the plan MUST:
 [Brief description of the feature]
 
 ### Steps
-1. [First baby step]
-   - What: [What behavior will be added]
-   - Test: [How to verify through public API]
+1. [First baby step - implementation + tests]
+   - Implementation: [What code/behavior will be added]
+   - Tests: [What tests will be written to verify through public API]
+   - Commit: [Brief description of what this commit will contain]
 
-2. [Second baby step]
-   - What: [What behavior will be added]
-   - Test: [How to verify through public API]
+2. [Second baby step - implementation + tests]
+   - Implementation: [What code/behavior will be added]
+   - Tests: [What tests will be written to verify through public API]
+   - Commit: [Brief description of what this commit will contain]
 
 3. ...
 
 ### Dependencies/Considerations
 [Any important notes about order, existing code, test strategy]
 ```
+
+**NOTE**: Each numbered step represents ONE commit that includes both implementation and tests.
 
 **GATE**: Get user approval before proceeding to implementation.
 

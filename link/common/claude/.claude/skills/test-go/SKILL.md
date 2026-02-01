@@ -6,75 +6,56 @@ description: Write Go tests following behavior-driven testing principles. Tests 
 
 You are a Go testing expert who writes tests that verify behavior through public APIs, not implementation details.
 
-## When to Use This Skill
+## Required Reading
 
-Use this skill when:
-- Writing new tests for Go code
-- Reviewing existing tests for anti-patterns
-- Debugging why tests are brittle or failing after refactoring
-- Ensuring test coverage focuses on business behavior
+**Before writing tests, read the comprehensive Go testing guidelines:**
 
-## Core Principles
+```bash
+cat ~/.config/ai/guidelines/go/testing-patterns.md
+```
 
-**Test behavior through public API only. Never test implementation details.**
+This is your complete reference for:
+- **Three Essential Qualities** (Fidelity, Resilience, Precision) - Framework for test design
+- **Public API Testing Principles** - Never test implementation details
+- **Never Exposing Internals** - Test as a regular client would
+- **Test Clarity** (Avoiding noise and over-abstraction) - Balanced visibility
+- **Assertion Strictness** - When to use strict vs loose assertions
+- **Anti-Patterns with Detailed Examples** - Common mistakes and fixes
+- **Test Helper Patterns** - Recording doubles, fakes, builders
 
-### What to Test
-- Observable behavior: outputs, return values, state changes, side effects
-- Business rules: domain logic, validation rules, error conditions
-- Integration points: how components interact through public interfaces
+## Your Workflow
 
-### What NOT to Test
-- Implementation details: internal method calls, private fields
-- Trivial code: simple getters/setters, field assignments
-- Framework behavior: Go language features
+When asked to write Go tests:
 
-## Quick Testing Checklist
+### 1. Understand the Code
+- Read the source file(s) to understand the public API
+- Identify behaviors to test (not implementation details)
+- Look for business rules, validation logic, error conditions
 
-Before writing a test, verify:
-- [ ] Testing through public/exported API only
-- [ ] Asserting on actual behavior (outputs, side effects, state)
-- [ ] Not testing trivial code (getters/setters)
-- [ ] Not just verifying functions were called
-- [ ] Test names describe the scenario clearly
-- [ ] Tests are independent and can run in any order
-- [ ] Both happy path and error cases are covered
-- [ ] Using strict assertions (require.Equal, not require.Contains)
-- [ ] Only relevant details are visible in the test (not too much noise, not too abstracted)
+### 2. Apply the Quick Checklist
 
-## Your Process
+Before writing each test, verify:
+- [ ] Testing through exported (Capitalized) functions/methods only
+- [ ] Asserting on outputs/side effects, not internal calls
+- [ ] Skipping trivial getters/setters - test business logic instead
+- [ ] Test names describe scenarios (not "CallsValidator")
+- [ ] Using nested subtests with `t.Run()`
+- [ ] Using `require.Equal()` for exact assertions (not `require.Contains`)
+- [ ] Relevant values visible in test (not hidden in helpers)
+- [ ] Both success and error cases covered
 
-When writing tests:
-
-1. **Read the code** - Understand the public API and business behavior
-2. **Identify behaviors to test** - What outcomes should this code produce?
-3. **Write descriptive test names** - Describe the scenario being tested
-4. **Use nested subtests** - Group related test cases with `t.Run()`
-5. **Expose relevant details** - Make values that affect assertions visible in the test
-6. **Assert strictly** - Use exact equality, not loose containment checks
-7. **Verify both paths** - Test success cases and error conditions
-
-## Common Anti-Patterns to Avoid
-
-1. **Testing internal calls** - Don't spy on whether internal methods were invoked
-2. **Call count assertions** - Don't just verify a function ran; verify what it did
-3. **Testing trivial code** - Skip getters/setters; test business logic that uses them
-4. **Mocking the subject** - Don't mock the thing you're testing
-5. **Over-mocking** - Use real objects when possible
-6. **Too much noise** - Don't expose irrelevant setup details that obscure the test
-7. **Too much abstraction** - Don't hide critical values in helper functions
-
-## Test Structure Template
+### 3. Write Tests Using This Structure
 
 ```go
 func TestFeatureName(t *testing.T) {
     t.Run("describes specific scenario", func(t *testing.T) {
-        // Arrange - set up test data
+        // Arrange - set up test data (relevant details visible)
         subject := NewSubject()
 
-        // Act - execute the behavior
+        // Act - execute through public API
         result, err := subject.Method(input)
 
-        // Assert - verify observable outcomes
+        // Assert - verify observable behavior
         require.NoError(t, err)
         require.Equal(t, expected, result)
     })
@@ -85,10 +66,72 @@ func TestFeatureName(t *testing.T) {
 }
 ```
 
-## Progressive Disclosure
+### 4. Actively Avoid Anti-Patterns
 
-For detailed patterns and examples, reference:
-- `principles.md` - Core testing principles with code examples
-- `test-clarity.md` - Include only relevant details in tests (avoiding noise and over-abstraction)
-- `anti-patterns.md` - Common mistakes and how to fix them
-- `test-helpers.md` - Patterns for test doubles and fixtures
+While writing, watch for these red flags:
+- ❌ **Mocking internal dependencies** - Test behavior through public API instead
+- ❌ **Only checking call counts** - Verify actual data passed and returned
+- ❌ **Testing trivial getters/setters** - Test business logic that uses them
+- ❌ **Using `require.Contains`** where exact match is needed
+- ❌ **Not asserting on error messages** - Use `require.EqualError()`
+- ❌ **Hiding critical values in helpers** - Pass relevant values as parameters
+- ❌ **One giant test** - Separate scenarios with subtests
+
+For detailed examples of each anti-pattern and how to fix them, refer to the guidelines above.
+
+### 5. Test Clarity Guidelines
+
+**Expose details when:**
+- ✅ It directly affects the assertion
+- ✅ It shows relationship between input and output (e.g., `balance + 500`)
+- ✅ Hiding it would require jumping to helper to understand test
+
+**Hide details when:**
+- ✅ Required for construction but irrelevant to test
+- ✅ Same boilerplate across many tests
+- ✅ Exposing it adds noise obscuring test purpose
+
+## Test Structure Examples
+
+### Good Test - Visible Relationships
+```go
+func TestAccount_Withdraw(t *testing.T) {
+    t.Run("fails with insufficient funds", func(t *testing.T) {
+        balance := 1000
+        account := createAccountWithBalance(balance)
+
+        err := account.Withdraw(balance + 500)
+
+        require.EqualError(t, err, "insufficient funds")
+    })
+}
+```
+
+### Good Test - Error Handling
+```go
+func TestProcess(t *testing.T) {
+    processor := NewProcessor()
+
+    t.Run("rejects negative amount", func(t *testing.T) {
+        err := processor.Process(-100, "123")
+
+        require.EqualError(t, err, "amount must be positive")
+    })
+
+    t.Run("succeeds with valid inputs", func(t *testing.T) {
+        err := processor.Process(100, "123")
+
+        require.NoError(t, err)
+    })
+}
+```
+
+## Remember
+
+Your goal is to write tests that:
+1. **Test behavior through public API only** - Never test internals
+2. **Assert on what code does, not how it does it** - Verify outcomes
+3. **Are clear with relevant details visible** - Balanced clarity
+4. **Follow all testing guidelines** - Reference the comprehensive guide
+
+When in doubt, always refer back to `~/.config/ai/guidelines/go/testing-patterns.md` for detailed guidance and examples.

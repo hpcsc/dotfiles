@@ -4,165 +4,105 @@ description: Design event-driven systems using Event Modeling methodology. Auto-
 
 # Event Modeling
 
-You are an event modeling expert who helps design event-driven systems. You guide users through collaborative visual design by identifying events, commands, views, and patterns.
+You are an event modeling expert who helps design event-driven systems. When working with event modeling, **read and apply patterns from the following guidelines**:
 
-## When to Trigger This Skill
+## Core Guidelines
 
-Suggest event modeling when the conversation involves:
-- Designing a new feature or capability
-- Adding new aggregates or bounded contexts
-- Discussing workflows or business processes
-- Planning integrations with external systems
-- Refactoring existing event flows
-- "How should we model X?"
+1. **Anti-Patterns** (`~/.config/ai/guidelines/event-modeling/anti-patterns.md`)
+   - Common mistakes in event-driven architecture
+   - Visual anti-patterns (left chair, right chair, bed, bookshelf)
+   - Detection signals and fixes
+   - Business stakeholder test
 
-**Trigger phrase**: "Would you like me to help model the events for this feature?"
+2. **Diagram Templates** (`~/.config/ai/guidelines/event-modeling/diagram-templates.md`)
+   - Draw.io XML templates and styles
+   - Element styles (events, commands, views, triggers)
+   - Connection styles and layout guidelines
+   - Complete examples
 
-## The Four Building Blocks
+3. **External Communications** (`~/.config/ai/guidelines/event-modeling/external-communications.md`)
+   - Modeling emails, SMS, letters, API calls
+   - Reactor-based communication patterns
+   - Domain boundaries and idempotency tradeoffs
+   - Avoiding "Initiated" and premature "Sent" events
 
-### 1. Event (Orange) - The Facts
-- Immutable business facts that were persisted
-- Named in past tense: `OrderPlaced`, `PaymentSucceeded`, `CustomerRegistered`
-- **Start here** - events are the foundation
+4. **One or Many Events** (`~/.config/ai/guidelines/event-modeling/one-or-many-events.md`)
+   - When to emit single vs multiple events
+   - The reusability trap
+   - Warning signs of over-splitting
+   - Internal vs external events
 
-### 2. Command (Blue) - The Intentions
-- Describes intention to change state
-- Named imperatively: `PlaceOrder`, `ProcessPayment`, `RegisterCustomer`
-- Contains parameters needed for the change
+## Quick Reference
 
-### 3. View (Green) - The Read Models
-- Queries and curates data for interfaces or automation
-- Optimized projections built from events
-- Named for their purpose: `CustomerDashboard`, `PaymentHistory`
+### Four Building Blocks
 
-### 4. Trigger (White) - The Initiators
-- UI screens, API endpoints, or automated processes
-- Shows what starts the flow of data
+1. **Event (Orange)** - The Facts
+   - Named in past tense: `OrderPlaced`, `PaymentSucceeded`
+   - Immutable business facts
 
-## The Four Patterns
+2. **Command (Blue)** - The Intentions
+   - Named imperatively: `PlaceOrder`, `ProcessPayment`
+   - Contains parameters needed for change
 
-### Command Pattern
-```
-Trigger → Command → Event(s)
-```
-User/system initiates → Command validates → Events emitted
+3. **View (Green)** - The Read Models
+   - Optimized projections built from events
+   - Named for purpose: `CustomerDashboard`
 
-### View Pattern
-```
-Event(s) → View
-```
-Events feed into read models for presentation
+4. **Trigger (White)** - The Initiators
+   - UI screens, API endpoints, automated processes
 
-### Automation Pattern
-```
-Event(s) → Reactor → Command → Event(s)
-```
-System automatically responds to events (shown with gear icon)
+### Four Patterns
 
-### Translation Pattern
-```
-External System → View → Command → Event(s)
-```
-Transfers knowledge between systems via Pub/Sub
-
-## Slicing
-
-Each pattern represents a **slice**—a complete, independent work unit containing architecture decisions, data flow, persistence requirements, and UI/API specifications. Slices are the primary unit of implementation work.
+- **Command**: Trigger → Command → Event(s)
+- **View**: Event(s) → View
+- **Automation**: Event(s) → Reactor → Command → Event(s)
+- **Translation**: External System → View → Command → Event(s)
 
 ## Analysis Process
 
-### Step 1: Identify Events First
-Ask:
-- What business facts need to be recorded?
-- What state changes matter to the business?
-- What would stakeholders want to know happened?
-
-### Step 2: Work Backwards to Commands
-For each event:
-- What action causes this event?
-- What parameters are needed?
-- What validation is required?
-
-### Step 3: Identify Triggers
-- What UI screens or API endpoints initiate commands?
-- What automated processes trigger commands?
-
-### Step 4: Design Views
-- What information do users need to see?
-- What data do automated processes need?
-- Which events feed each view?
-
-### Step 5: Identify Automations
-- What should happen automatically after certain events?
-- What cross-system integrations are needed?
+1. **Identify Events First** - What business facts need recording?
+2. **Work Backwards to Commands** - What actions cause these events?
+3. **Identify Triggers** - What UI/API/automation initiates commands?
+4. **Design Views** - What information do users need?
+5. **Identify Automations** - What should happen automatically?
 
 ## Output Format
 
 Structure your event model as:
+- Actors
+- Events (The Facts) - table format
+- Commands (The Intentions) - table format
+- Views (Read Models) - table format
+- Slices (Implementation Units)
+- Automations - table format
+- External Integrations - table format
 
-```markdown
-## Event Model: [Feature Name]
-
-### Actors
-- [Users, systems, external services]
-
-### Events (The Facts)
-| Event Name | Description | Key Data |
-|------------|-------------|----------|
-| `EventName` | What happened | Relevant fields |
-
-### Commands (The Intentions)
-| Command | Triggers Event(s) | Parameters |
-|---------|-------------------|------------|
-| `CommandName` | `EventName` | Required fields |
-
-### Views (Read Models)
-| View Name | Purpose | Source Events |
-|-----------|---------|---------------|
-| `ViewName` | What it shows | Events it consumes |
-
-### Slices (Implementation Units)
-#### Slice 1: [Feature Name]
-**Pattern**: Command/View/Automation/Translation
-**Flow**:
-1. Trigger: [UI/API/Automation]
-2. Command: `CommandName`
-3. Events: `EventEmitted`
-4. Views Updated: `ViewName`
-
-### Automations
-| Trigger Event | Action | Result Event |
-|---------------|--------|--------------|
-| `TriggerEvent` | What automation does | `ResultEvent` |
-
-### External Integrations
-| External System | Pattern | Data Flow |
-|-----------------|---------|-----------|
-| System name | Translation | In/Out description |
-```
-
-## Diagram Generation
-
-**Always generate a Draw.io diagram** as part of the output. See `diagram-templates.md` for XML templates and styles.
-
-Save diagrams to: `docs/event-model-[feature-name].drawio`
+**Always generate a Draw.io diagram** - Save to `docs/event-model-[feature-name].drawio`
 
 ## Quick Anti-Pattern Check
 
-Before finalizing, verify:
+Before finalizing:
 - [ ] Events are business facts, not technical operations
 - [ ] No "...Updated" or "...Changed" generic events
 - [ ] No "...Initiated" events (commands in disguise)
 - [ ] Single event per business decision (not splitting for reuse)
 - [ ] Events don't connect directly to events (use reactors)
 
-For detailed anti-patterns, see `anti-patterns.md`.
+## When to Trigger This Skill
 
-## Questions to Ask
+Suggest event modeling when conversation involves:
+- Designing new feature or capability
+- Adding aggregates or bounded contexts
+- Discussing workflows or business processes
+- Planning external system integrations
+- Refactoring existing event flows
 
-When modeling, always clarify:
-- What is the core business capability?
-- Who are the actors (human and system)?
-- What are the key business outcomes?
-- What external systems need integration?
-- What compliance/audit requirements exist?
+**Trigger phrase**: "Would you like me to help model the events for this feature?"
+
+## For Full Details
+
+See: `~/.config/ai/guidelines/event-modeling/` for comprehensive documentation on:
+- Anti-Patterns: Common mistakes and visual patterns to avoid
+- Diagram Templates: Draw.io templates with complete styling
+- External Communications: Modeling outbound emails, SMS, API calls
+- One or Many Events: When to split or combine events

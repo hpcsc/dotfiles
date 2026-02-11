@@ -132,9 +132,39 @@ CustomerEngaged → [reactor sends email] → EmailDelivered (optional callback)
 
 ---
 
+### 6. False Equivalence
+
+**What it is**: Using the same event for different business scenarios that have different semantics, invariants, or downstream requirements.
+
+**Bad**:
+```
+AccountClosed { AccountID }
+
+// Used for three different scenarios:
+// - Customer voluntary closure (requires zero balance)
+// - Fraud closure (freezes funds, legal hold)
+// - Dormancy closure (reversible, can reopen)
+```
+
+**Good**:
+```
+AccountClosedByCustomer { AccountID, FinalBalance: 0, CustomerConfirmed: true }
+AccountClosedForFraud { AccountID, BalanceFrozen, InvestigatorID, Reason }
+AccountClosedForInactivity { AccountID, InactiveDays, ReopenEligible: true }
+```
+
+**Detection**:
+- Multiple handlers in same aggregate emit same event but have different invariants
+- Downstream handlers switch on event payload fields
+- Business scenarios have different semantics but share event name
+
+**Fix**: See `multiple-producers.md` for full guidance on when same event is cohesion vs coupling.
+
+---
+
 ## Visual Anti-Patterns (Diagram Shapes)
 
-### 6. The Left Chair 🪑
+### 7. The Left Chair 🪑
 
 **Visual**: One command → multiple cascading events (3-7+)
 
@@ -152,7 +182,7 @@ RegisterCustomer ───┼─→ CustomerAddressCreated
 
 ---
 
-### 7. The Right Chair 🪑
+### 8. The Right Chair 🪑
 
 **Visual**: Multiple events all feeding into a single "god" read model
 
@@ -170,7 +200,7 @@ ReviewSubmitted      ─┘
 
 ---
 
-### 8. The Bed 🛏️
+### 9. The Bed 🛏️
 
 **Visual**: One UI component sequentially firing multiple commands
 
@@ -186,7 +216,7 @@ ReviewSubmitted      ─┘
 
 ---
 
-### 9. The Bookshelf 📚
+### 10. The Bookshelf 📚
 
 **Visual**: One slice contains massive logic; all others are anemic
 
@@ -205,7 +235,7 @@ Slice 4: █
 
 ## External Communication Anti-Patterns
 
-### 10. Premature "...Sent" Events
+### 11. Premature "...Sent" Events
 
 **Bad**: Emitting `EmailSent` immediately after calling the provider but before confirmation.
 
@@ -229,6 +259,7 @@ Only record delivery facts when you have confirmation.
 | One More Field | Many nullable fields | "Are these really the same event?" |
 | Clickbait Event | Payload only contains ID | "Can consumers act without querying?" |
 | Initiated Events | Events that just trigger processes | "Is this a fact or an intention?" |
+| False Equivalence | Multiple handlers, different invariants | "Do these have same business outcome?" |
 | Left Chair | Command → 3+ events | "Is this one decision or multiple?" |
 | Right Chair | Many events → one view | "Does this view need all this data?" |
 | The Bed | UI fires sequential commands | "Should backend orchestrate this?" |

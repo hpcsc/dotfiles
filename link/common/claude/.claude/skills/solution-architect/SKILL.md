@@ -48,5 +48,3 @@ Before implementing:
 ## For Full Details
 
 See: `~/.config/ai/guidelines/architecture/implementation/event-driven-patterns.md`
-
-Use the `solution-architect` agent for in-depth analysis.

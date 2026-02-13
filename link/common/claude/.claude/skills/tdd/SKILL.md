@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 Implement a feature using Test-Driven Development: $ARGUMENTS
 
 ## Phase 1: MODE SELECTION

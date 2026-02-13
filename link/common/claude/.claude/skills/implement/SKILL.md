@@ -1,3 +1,7 @@
+---
+disable-model-invocation: true
+---
+
 Implement a feature with quality-assured testing: $ARGUMENTS
 
 ## Overview

@@ -41,5 +41,3 @@ Before approving any design:
 ## For Full Details
 
 See: `~/.config/ai/guidelines/architecture/design/domain-modeling.md`
-
-Use the `domain-modeler` agent for in-depth analysis.

@@ -170,35 +170,132 @@ func TestFeatureName(t *testing.T) {
 
 ---
 
-## Test Double Organization
+## Test Double Patterns
 
-Test doubles and real implementations are **co-located in the same package**:
+**Use concrete implementations (memory, broken, recording) instead of mocks whenever possible.**
+
+### Why Prefer These Over Mocks
+
+1. **More realistic**: Behave like real implementations, testing actual code paths
+2. **Less setup code**: No need to configure mock expectations
+3. **Better resilience**: Tests survive internal refactoring without changes
+4. **Easier debugging**: Behavior is transparent, not hidden behind mock expectations
+
+### When to Use Each Type
+
+| Type | File | Use When |
+|------|------|----------|
+| **Memory** | `memory.go` | Testing happy paths, verifying storage/retrieval |
+| **Broken** | `broken.go` | Testing error handling, resilience patterns |
+| **Recording** | `fake.go` | Need to verify specific call details |
+| **Mock** | - | Last resort - verifying call sequences only |
+
+### Pattern 1: Memory (Happy Path)
+
+In-memory implementation for testing successful operations:
 
 ```go
-domain/event/stream/
-├── esdb.go        // Real event.Stream implementation
-├── memory.go      // Real event.Stream implementation
-├── broken.go      // Broken event.Stream implementation for tests
-└── fake.go        // Fake event.Stream implementation for tests
+// Fresh empty state
+memoryStream := stream.NewMemoryStream()
 
-domain/command/bus/
-├── inmemory.go    // Real command.Bus implementation
-└── fake.go        // Fake command.Bus implementation for tests
+// Or pre-populated state
+memoryStore := store.NewMemory(map[string]uint64{
+    "projection-1": 100,
+})
 
-domain/command/handler/
-├── inmemory.go    // Real command.Handler implementation
-└── fake.go        // Fake command.Handler implementation for tests
+s := store.New(memoryStream)
+err := s.Save(streamID, aggregate, 0)
+require.NoError(t, err)
 
-// All implementations (real and fake) implement the same interface
-var _ command.Bus = (*inmemory.Bus)(nil)
-var _ command.Bus = (*fake.Bus)(nil)
-var _ event.Stream = (*esdb)(nil)
-var _ event.Stream = (*fake.Stream)(nil)
-
-// Test doubles have additional methods for setup and verification
-func (f *FakeStream) WithError(err error) *FakeStream {...}
-func (f *FakeBus) TriggeredWithCommand() *domain.Command {...}
+// Verify actual behavior
+events, _ := memoryStream.EventsForStream(ctx, streamID)
+require.Len(t, events, 1)
 ```
+
+### Pattern 2: Broken (Error Path)
+
+Always-fails implementation with fluent API for configuring errors:
+
+```go
+// Configure specific errors
+brokenStream := stream.NewBroken().
+    WithSaveError(errors.New("save failed")).
+    WithEventsForStreamError(errors.New("read failed"))
+
+brokenStore := store.NewBroken().
+    WithGetError(errors.New("get failed")).
+    WithSetError(errors.New("set failed"))
+```
+
+Benefits:
+- **Readable**: Intent is clear from method names
+- **Flexible**: Configure only what you need
+- **Type-safe**: Compile-time checking
+
+### Pattern 3: Recording (Call Verification)
+
+Use when you need to verify specific call details that aren't observable through the public API:
+
+```go
+type recordingEmailSender struct {
+	calls []emailCall
+}
+
+type emailCall struct {
+	recipient string
+	message   string
+}
+
+func (r *recordingEmailSender) Send(to, msg string) error {
+	r.calls = append(r.calls, emailCall{recipient: to, message: msg})
+	return nil
+}
+
+func (r *recordingEmailSender) LastCall() emailCall {
+	if len(r.calls) == 0 {
+		return emailCall{}
+	}
+	return r.calls[len(r.calls)-1]
+}
+```
+
+**Note**: Prefer memory/broken patterns first. Only use recording when you truly need to verify call details.
+
+### Collocation
+
+All test doubles live **alongside** the real implementation:
+
+```
+internal/domain/event/stream/
+├── esdb.go        // Real implementation
+├── memory.go      // In-memory for happy path
+├── broken.go      // Always-fails for errors
+└── fake.go       // Recording for call verification
+```
+
+Each implementation satisfies the same interface:
+
+```go
+var _ event.Stream = (*esdb)(nil)
+var _ event.Stream = (*memory)(nil)
+var _ event.Stream = (*broken)(nil)
+```
+
+### Summary
+
+| Priority | Use This | Not This |
+|----------|----------|----------|
+| 1st | Real implementation | Any test double |
+| 2nd | Memory (`memory.go`) | Mock |
+| 3rd | Broken (`broken.go`) | Mock for errors |
+| 4th | Recording (`fake.go`) | - |
+| Last | Mock | - |
+
+When in doubt: prefer concrete implementations over mocks.
+| 4th | Fake | - |
+| Last | Mock | - |
+
+When in doubt: prefer concrete implementations over mocks. They provide better test fidelity with less code.
 
 ---
 
@@ -1104,83 +1201,6 @@ Hide a detail in a helper if:
 
 ## Test Helper Patterns
 
-### Recording Test Doubles
-
-```go
-type recordingEmailSender struct {
-    calls []emailCall
-}
-
-type emailCall struct {
-    recipient string
-    message   string
-}
-
-func (r *recordingEmailSender) Send(to, msg string) error {
-    r.calls = append(r.calls, emailCall{
-        recipient: to,
-        message:   msg,
-    })
-    return nil
-}
-
-func (r *recordingEmailSender) LastCall() emailCall {
-    if len(r.calls) == 0 {
-        return emailCall{}
-    }
-    return r.calls[len(r.calls)-1]
-}
-```
-
-### Failing Test Doubles
-
-```go
-type failingEmailSender struct {
-    err error
-}
-
-func NewFailingEmailSender(err error) *failingEmailSender {
-    return &failingEmailSender{err: err}
-}
-
-func (f *failingEmailSender) Send(to, msg string) error {
-    return f.err
-}
-```
-
-### In-Memory Implementations
-
-```go
-type InMemoryUserRepository struct {
-    users  map[string]*User
-    nextID int
-}
-
-func NewInMemoryUserRepository() *InMemoryUserRepository {
-    return &InMemoryUserRepository{
-        users:  make(map[string]*User),
-        nextID: 1,
-    }
-}
-
-func (r *InMemoryUserRepository) Save(user *User) error {
-    if user.ID == "" {
-        user.ID = fmt.Sprintf("user-%d", r.nextID)
-        r.nextID++
-    }
-    r.users[user.ID] = user
-    return nil
-}
-
-func (r *InMemoryUserRepository) FindByID(id string) (*User, error) {
-    user, ok := r.users[id]
-    if !ok {
-        return nil, errors.New("user not found")
-    }
-    return user, nil
-}
-```
-
 ### Var Blocks for Test Setup
 
 ```go
@@ -1612,6 +1632,7 @@ Before writing a test, verify the three essential qualities:
 **Resilience (survives harmless changes):**
 - [ ] Testing through public/exported API only
 - [ ] Using fakes/in-memory implementations instead of mocks when possible
+- [ ] Using broken implementations to test error paths
 - [ ] Not verifying unnecessary dependency interactions
 - [ ] Tests are deterministic (no flakiness)
 
@@ -1650,5 +1671,6 @@ Before writing a test, verify the three essential qualities:
 | **Match assertion strictness** | Always strict or always loose | Strict for contracts, loose for presentation |
 | **Expose relevant details** | Hide everything in helpers | Show values that affect assertions |
 | **Use real implementations** | Mock everything | In-memory implementations when possible |
+| **Test error paths** | Mock errors | Use broken implementations |
 
 **Goal: 100% coverage of business behavior through public API, not implementation details.**

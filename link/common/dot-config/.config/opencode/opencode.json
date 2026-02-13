@@ -1,11 +1,16 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "permission": {
+    "external_directory": {
+      "~/.config/ai/**": "allow"
+    },
     "edit": "ask",
     "bash": {
       "*": "ask",
       "cat*": "allow",
       "grep*": "allow",
+      "go build*": "allow",
+      "go vet*": "allow",
       "go test*": "allow",
       "git status*": "allow",
       "git show*": "allow",
@@ -27,25 +32,5 @@
       "ls*": "allow"
     }
   },
-  "theme": "gruvbox",
-  "provider": {
-    "ollama": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Ollama (local)",
-      "options": {
-        "baseURL": "http://localhost:11434/v1"
-      },
-      "models": {
-        "llama3.1": {
-          "name": "Llama 3.1"
-        }
-      }
-    }
-  },
-  "lsp": {
-    "cue": {
-      "command": ["/usr/local/bin/start-cue-lsp.sh"],
-      "extensions": [".cue"]
-    }
-  }
+  "theme": "gruvbox"
 }

@@ -27,7 +27,7 @@ return {
 		}
 	end,
 	config = function()
-		require("telescope").load_extension("zf-native")
+		require("telescope").load_extension("fzf")
 	end,
 	dependencies = {
 		{ "nvim-lua/plenary.nvim", lazy = true },

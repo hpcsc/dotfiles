@@ -43,8 +43,35 @@ Before writing each test, verify:
 - [ ] Using `require.Equal()` for exact assertions (not `require.Contains`)
 - [ ] Relevant values visible in test (not hidden in helpers)
 - [ ] Both success and error cases covered
+- [ ] Test verifies a meaningful unit of behavior (not just object existence)
 
-### 3. Write Tests Using This Structure
+### 3. Plan Tests (One Behavior Per Test)
+
+Before writing tests, present a list to the user with:
+- What each test will verify
+- The specific behavior being tested
+- What scenario would cause the test to fail if the code changes incorrectly
+
+Example format:
+```
+Tests to implement:
+1. "rejects negative amount" - validates input validation fails for negative values
+   - Fails if: code accepts negative amounts or changes error message
+2. "succeeds with valid inputs" - validates successful processing path
+   - Fails if: code breaks the happy path or introduces unexpected errors
+```
+
+**Rule:** Each test should verify ONE unit of behavior. A test verifies one behavior when:
+- It has a single reason to fail
+- The test name describes one scenario, not multiple
+- The assertion block tests one outcome
+- It tests something meaningful for the problem domain (not just object existence)
+
+See guidelines for detailed explanation: "What is a Unit of Behavior"
+
+**Exception:** Integration tests may test multiple behaviors in one flow.
+
+### 4. Write Tests Using This Structure
 
 ```go
 func TestFeatureName(t *testing.T) {
@@ -66,12 +93,14 @@ func TestFeatureName(t *testing.T) {
 }
 ```
 
-### 4. Actively Avoid Anti-Patterns
+### 5. Actively Avoid Anti-Patterns
 
 While writing, watch for these red flags:
 - ❌ **Mocking internal dependencies** - Test behavior through public API instead
 - ❌ **Only checking call counts** - Verify actual data passed and returned
 - ❌ **Testing trivial getters/setters** - Test business logic that uses them
+- ❌ **Testing constructor returns non-nil** - This tests object existence, not behavior. If construction fails, other tests will catch it.
+- ❌ **Test that only checks `require.NoError(t, err)` with no other assertion** - This tests nothing meaningful
 - ❌ **Using `require.Contains`** where exact match is needed
 - ❌ **Not asserting on error messages** - Use `require.EqualError()`
 - ❌ **Hiding critical values in helpers** - Pass relevant values as parameters
@@ -79,7 +108,7 @@ While writing, watch for these red flags:
 
 For detailed examples of each anti-pattern and how to fix them, refer to the guidelines above.
 
-### 5. Test Clarity Guidelines
+### 6. Test Clarity Guidelines
 
 **Expose details when:**
 - ✅ It directly affects the assertion

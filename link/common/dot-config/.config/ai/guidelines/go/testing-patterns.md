@@ -121,6 +121,49 @@ These qualities often conflict:
 
 ---
 
+## What is a Unit of Behavior?
+
+A **unit of behavior** is something meaningful for the problem domain - ideally something a business person can recognize as useful.
+
+### What is NOT a Unit of Behavior:
+
+- ❌ Object existence (`require.NotNil(t, p)`)
+- ❌ Constructor success (`NewX()` returns non-nil)
+- ❌ A test that only checks `require.NoError(t, err)` with no other assertion
+
+### What IS a Unit of Behavior:
+
+An observable outcome that matters to callers:
+- **"rejects invalid input"** - business validation
+- **"saves data to database"** - side effect
+- **"returns sorted results"** - output correctness
+- **"notifies subscribers on error"** - external communication
+
+#### Example of Useless Test
+
+```go
+// BAD: Only tests object exists
+t.Run("creates projector", func(t *testing.T) {
+    p := NewProjector(proj, store, sub, logger)
+    require.NotNil(t, p)  // Useless - other tests would fail if this returned nil
+})
+```
+
+#### Example of Useful Test
+
+```go
+// GOOD: Tests observable behavior
+t.Run("saves checkpoint after processing events", func(t *testing.T) {
+    err := projector.Start(ctx)
+    require.NoError(t, err)
+    
+    cp, err := checkpointStore.Get("projection")
+    require.Equal(t, uint64(10), cp)  // Verifies meaningful behavior
+})
+```
+
+---
+
 ## Test Structure
 
 ```go
@@ -1306,6 +1349,39 @@ func TestValidateAmount(t *testing.T) {
 ---
 
 ## Common Anti-Patterns to Avoid (Detailed)
+
+### Anti-Pattern 0: Testing Constructor Returns Non-Nil
+
+#### Problem
+```go
+// BAD: Only tests object exists
+func TestNewProjector(t *testing.T) {
+    p := projection.NewProjector(proj, store, sub, logger)
+    require.NotNil(t, p)  // Useless - other tests would fail if this returned nil
+}
+```
+
+#### Why It's Wrong
+- Tests object existence, not behavior
+- If construction fails, other tests would catch it anyway
+- A business person wouldn't care about this test
+- Provides no value in catching bugs
+
+#### Fix
+```go
+// GOOD: Test the actual behavior of the constructed object
+func TestProjector_Start(t *testing.T) {
+    t.Run("saves checkpoint after processing events", func(t *testing.T) {
+        projector := projection.NewProjector(proj, store, sub, logger)
+        err := projector.Start(ctx)
+        
+        cp, err := store.Get("projection")
+        require.Equal(t, uint64(10), cp)
+    })
+}
+```
+
+---
 
 ### Anti-Pattern 1: Mocking Internal Dependencies
 

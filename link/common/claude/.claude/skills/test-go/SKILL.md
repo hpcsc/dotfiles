@@ -32,20 +32,7 @@ When asked to write Go tests:
 - Identify behaviors to test (not implementation details)
 - Look for business rules, validation logic, error conditions
 
-### 2. Apply the Quick Checklist
-
-Before writing each test, verify:
-- [ ] Testing through exported (Capitalized) functions/methods only
-- [ ] Asserting on outputs/side effects, not internal calls
-- [ ] Skipping trivial getters/setters - test business logic instead
-- [ ] Test names describe scenarios (not "CallsValidator")
-- [ ] Using nested subtests with `t.Run()`
-- [ ] Using `require.Equal()` for exact assertions (not `require.Contains`)
-- [ ] Relevant values visible in test (not hidden in helpers)
-- [ ] Both success and error cases covered
-- [ ] Test verifies a meaningful unit of behavior (not just object existence)
-
-### 3. Plan Tests (One Behavior Per Test)
+### 2. Plan Tests (One Behavior Per Test)
 
 Before writing tests, present a list to the user with:
 - What each test will verify
@@ -71,7 +58,7 @@ See guidelines for detailed explanation: "What is a Unit of Behavior"
 
 **Exception:** Integration tests may test multiple behaviors in one flow.
 
-### 4. Write Tests Using This Structure
+### 3. Write Tests Using This Structure
 
 ```go
 func TestFeatureName(t *testing.T) {
@@ -93,22 +80,7 @@ func TestFeatureName(t *testing.T) {
 }
 ```
 
-### 5. Actively Avoid Anti-Patterns
-
-While writing, watch for these red flags:
-- ❌ **Mocking internal dependencies** - Test behavior through public API instead
-- ❌ **Only checking call counts** - Verify actual data passed and returned
-- ❌ **Testing trivial getters/setters** - Test business logic that uses them
-- ❌ **Testing constructor returns non-nil** - This tests object existence, not behavior. If construction fails, other tests will catch it.
-- ❌ **Test that only checks `require.NoError(t, err)` with no other assertion** - This tests nothing meaningful
-- ❌ **Using `require.Contains`** where exact match is needed
-- ❌ **Not asserting on error messages** - Use `require.EqualError()`
-- ❌ **Hiding critical values in helpers** - Pass relevant values as parameters
-- ❌ **One giant test** - Separate scenarios with subtests
-
-For detailed examples of each anti-pattern and how to fix them, refer to the guidelines above.
-
-### 6. Test Clarity Guidelines
+### 4. Test Clarity Guidelines
 
 **Expose details when:**
 - ✅ It directly affects the assertion

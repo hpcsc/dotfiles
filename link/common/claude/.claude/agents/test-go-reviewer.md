@@ -49,82 +49,12 @@ Read all test files that were created or modified. Look for:
 
 ### Step 3: Check Against Guidelines
 
-Review tests for each of these criteria:
+Review tests against two sources:
 
-#### 1. Public API Testing
-- ✅ Tests call exported (capitalized) functions only
-- ✅ No testing of internal (lowercase) methods
-- ✅ No reaching into internal fields or state
-- ❌ **VIOLATION**: Tests that spy on internal method calls
-- ❌ **VIOLATION**: Tests that access unexported fields
+1. **Go testing guidelines** (`~/.config/ai/guidelines/go/testing-patterns.md`) — the authoritative reference covering Three Essential Qualities, assertion strictness, anti-patterns with examples, and test helper patterns.
+2. **Go testing rules** (automatically loaded for `*_test.go` files) — universal principles covering public API testing, outcome-based assertions, mocking boundaries, trivial tests, test independence, value visibility, and naming.
 
-#### 2. Behavior Over Implementation
-- ✅ Tests assert on outputs, return values, side effects
-- ✅ Tests verify what the code does, not how it does it
-- ❌ **VIOLATION**: Mocking internal dependencies
-- ❌ **VIOLATION**: Verifying only that functions were called
-- ❌ **VIOLATION**: Counting invocations without checking behavior
-
-#### 3. No Trivial Tests
-- ✅ Tests verify business logic and behavior
-- ✅ Skip simple getters/setters unless they have logic
-- ❌ **VIOLATION**: Testing simple field assignments
-- ❌ **VIOLATION**: Testing Go's zero value behavior
-- ❌ **VIOLATION**: Testing framework features, not your code
-
-#### 4. Test Clarity (Relevant Details)
-- ✅ Values that affect assertions are visible in the test
-- ✅ Relationships between inputs and outputs are clear (e.g., `balance + 500`)
-- ✅ Test helpers accept parameters for relevant values
-- ✅ No excessive noise (too many irrelevant fields in setup)
-- ✅ No over-abstraction (critical values not hidden in helpers)
-- ❌ **VIOLATION**: Magic values with unclear origin
-- ❌ **VIOLATION**: All values hardcoded in helper with no parameters
-- ❌ **VIOLATION**: Too many irrelevant fields obscuring test purpose
-
-#### 5. Descriptive Test Names
-- ✅ Test names describe the scenario being tested
-- ✅ Use format: "TestFunction_Scenario" or nested t.Run with descriptions
-- ❌ **VIOLATION**: Names like "TestCallsValidator" (describes HOW not WHAT)
-- ❌ **VIOLATION**: Generic names like "TestProcess" without scenario
-
-#### 6. Strict Assertions
-- ✅ Use `require.Equal()` for exact matches
-- ✅ Verify error messages with `require.EqualError()`
-- ✅ Check all return values (don't ignore errors)
-- ❌ **VIOLATION**: Using `require.Contains()` where exact match needed
-- ❌ **VIOLATION**: Using `require.Error()` without checking message
-- ❌ **VIOLATION**: Ignoring return values
-
-#### 7. No Mocking External Types
-- ✅ Use real implementations when feasible (httptest, in-memory DB)
-- ✅ Use fake implementations for third-party libraries
-- ✅ Wrap external libraries and mock the wrapper
-- ❌ **VIOLATION**: Mocking `database/sql` types directly
-- ❌ **VIOLATION**: Mocking `http.Client` instead of using `httptest`
-- ❌ **VIOLATION**: Mocking AWS/GCP SDK types directly
-- ❌ **VIOLATION**: Mocking third-party library interfaces
-
-#### 8. Test Independence
-- ✅ Each test can run independently
-- ✅ Tests can run in any order
-- ✅ Tests clean up after themselves
-- ❌ **VIOLATION**: Tests depend on execution order
-- ❌ **VIOLATION**: Tests share mutable state
-
-#### 9. Proper Test Structure
-- ✅ Use nested subtests with `t.Run()`
-- ✅ Follow Arrange-Act-Assert pattern
-- ✅ Group related test cases
-- ❌ **VIOLATION**: One giant test function with multiple scenarios
-- ❌ **VIOLATION**: Mixed concerns in single test
-
-#### 10. Coverage of Scenarios
-- ✅ Both success and error cases tested
-- ✅ Edge cases covered
-- ✅ All important branches tested
-- ❌ **VIOLATION**: Only testing happy path
-- ❌ **VIOLATION**: Missing error case tests
+Flag any test that violates criteria from either source. For each violation, note the specific principle broken and why it matters.
 
 ### Step 4: Document Violations
 

@@ -27,6 +27,7 @@ kubectx = "0.9.5"
 helm = "4.0.4"
 direnv = "2.37.1"
 uv = "0.9.20"
+"github:natecraddock/zf"= { version = "0.10.2", bin = "zf" }
 
 [settings]
 experimental = true

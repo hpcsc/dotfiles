@@ -37,15 +37,18 @@ When asked to write Go tests:
 Before writing tests, present a list to the user with:
 - What each test will verify
 - The specific behavior being tested
+- Where the expected value comes from (domain knowledge, spec, or business rule)
 - What scenario would cause the test to fail if the code changes incorrectly
 
 Example format:
 ```
 Tests to implement:
 1. "rejects negative amount" - validates input validation fails for negative values
+   - Expected: error "amount must be positive" (business rule: amounts must be positive)
    - Fails if: code accepts negative amounts or changes error message
-2. "succeeds with valid inputs" - validates successful processing path
-   - Fails if: code breaks the happy path or introduces unexpected errors
+2. "converts USD to cents" - validates currency conversion
+   - Expected: 1050 cents for $10.50 (mathematical fact: dollars × 100)
+   - Fails if: rounding bug or incorrect multiplication
 ```
 
 **Rule:** Each test should verify ONE unit of behavior. A test verifies one behavior when:
@@ -132,7 +135,8 @@ func TestProcess(t *testing.T) {
 Your goal is to write tests that:
 1. **Test behavior through public API only** - Never test internals
 2. **Assert on what code does, not how it does it** - Verify outcomes
-3. **Are clear with relevant details visible** - Balanced clarity
-4. **Follow all testing guidelines** - Reference the comprehensive guide
+3. **Provide independent verification** - Expected values from domain knowledge, never from the code under test
+4. **Are clear with relevant details visible** - Balanced clarity
+5. **Follow all testing guidelines** - Reference the comprehensive guide
 
 When in doubt, always refer back to `~/.config/ai/guidelines/go/testing-patterns.md` for detailed guidance and examples.

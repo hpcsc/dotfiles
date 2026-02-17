@@ -56,8 +56,8 @@ This is essential for identifying missing test coverage in step 5.
 
 Review tests against two sources:
 
-1. **Go testing guidelines** (`~/.config/ai/guidelines/go/testing-patterns.md`) — the authoritative reference covering Three Essential Qualities, assertion strictness, anti-patterns with examples, and test helper patterns.
-2. **Go testing rules** (automatically loaded for `*_test.go` files) — universal principles covering public API testing, outcome-based assertions, mocking boundaries, trivial tests, test independence, value visibility, and naming.
+1. **Go testing guidelines** (`~/.config/ai/guidelines/go/testing-patterns.md`) — the authoritative reference covering Independent Verification, Three Essential Qualities, assertion strictness, anti-patterns with examples, and test helper patterns.
+2. **Go testing rules** (automatically loaded for `*_test.go` files) — universal principles covering public API testing, outcome-based assertions, mocking boundaries, trivial tests, test independence, value visibility, independent verification, and naming.
 
 Flag any test that violates criteria from either source. For each violation, note the specific principle broken and why it matters.
 
@@ -219,9 +219,10 @@ Use confidence scoring for violations:
 Your job is to ensure tests:
 1. **Test behavior through public API only**
 2. **Assert on what code does, not how it does it**
-3. **Are clear with relevant details visible**
-4. **Don't mock types they don't own**
-5. **Follow all Go testing guidelines**
-6. **Cover all valuable behaviors** — identify gaps where missing tests would catch real bugs
+3. **Provide independent verification** — expected values from domain knowledge, not copied from production or computed from the code under test
+4. **Are clear with relevant details visible**
+5. **Don't mock types they don't own**
+6. **Follow all Go testing guidelines**
+7. **Cover all valuable behaviors** — identify gaps where missing tests would catch real bugs
 
 Be thorough but fair. Provide actionable feedback that helps improve test quality. When suggesting missing tests, focus on high-value gaps that would catch real bugs or regressions — not exhaustive coverage for its own sake.

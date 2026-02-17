@@ -13,6 +13,98 @@ Tests should verify **what** the system does (observable behaviors), not **how**
 
 ---
 
+## Independent Verification
+
+A test provides independent verification when its expected values come from **outside the implementation** — from business requirements, specifications, or domain knowledge — rather than restating what the code does.
+
+The key question: **if the implementation breaks, will this test catch it?**
+
+### Degrees of Independence
+
+| Degree | Expected value source | Can it fail on a bug? | Value |
+|---|---|---|---|
+| Strong | Domain knowledge / spec | Yes, and failure is self-evidently wrong | High |
+| Moderate | Externally verified lookup | Yes, but correctness requires checking an external source | Medium |
+| Weak | Copied from production code | Yes, but correctness requires checking production intent | Low (change detector) |
+| None (tautology) | Computed from production code | No | Zero |
+
+### Strong Independence
+
+The test encodes domain knowledge the implementation must satisfy. The test and the implementation arrive at the same answer from different directions.
+
+```go
+// The test knows $10.50 = 1050 cents — a mathematical fact independent of how ConvertToCents works.
+func TestConvertUSDToCents(t *testing.T) {
+    require.Equal(t, int64(1050), ConvertToCents(10.50, "USD"))
+}
+```
+
+### Weak Independence (Change Detectors)
+
+The expected value was copied from production code. The test detects changes but cannot tell you whether the new value is correct.
+
+```go
+// Where does 2 come from? From looking at the production code.
+func TestDefaultDecimalPlaces(t *testing.T) {
+    require.Equal(t, 2, DefaultDecimalPlaces("USD"))
+}
+```
+
+A particularly bad variant duplicates the production formula:
+
+```go
+// BAD: Same formula as production — fails on change but provides no guidance on correctness.
+func TestDiscount(t *testing.T) {
+    price := 100.0
+    discount := 0.2
+    expected := price - (price * discount)
+    require.Equal(t, expected, ApplyDiscount(price, discount))
+}
+```
+
+### No Independence (Tautologies)
+
+The expected value is derived from the code under test at runtime. The test **cannot fail**.
+
+```go
+// BAD: Both sides evaluate the same code path — passes no matter what ApplyDiscount does.
+func TestDiscount(t *testing.T) {
+    expected := ApplyDiscount(100.0, 0.2)
+    require.Equal(t, expected, ApplyDiscount(100.0, 0.2))
+}
+```
+
+Other tautology forms:
+- Asserting a mock returns what you told it to return
+- Using a shared helper that computes both expected and actual values from the same source
+
+### Prefer Higher-Level Behavioral Tests Over Change Detectors
+
+When you notice a change-detector test, check whether a behavioral test already covers it. If so, the change detector is redundant. If not, write the behavioral test first.
+
+```go
+// Change detector: weak independence
+func TestDefaultDecimalPlaces(t *testing.T) {
+    require.Equal(t, 2, DefaultDecimalPlaces("USD"))
+}
+
+// Behavioral: strong independence — failure is self-evidently wrong
+func TestFormatUSDAmount(t *testing.T) {
+    require.Equal(t, "$10.50", FormatAmount(10.5, "USD"))
+}
+```
+
+If someone changes `DefaultDecimalPlaces("USD")` to `3`, both fail. But the formatting test fails with `"$10.500" != "$10.50"` — self-evidently wrong. The change detector only says `3 != 2`.
+
+### Identifying the Degree
+
+Two questions, applied in order:
+
+1. **Can the test fail at all?** If the expected value is derived from the code under test at runtime, it's a tautology. Remove it or replace it with a hardcoded expected value.
+2. **If it fails, is the failure self-evidently wrong?** If yes, the test has strong independence. If you'd just update the test to match the new production value, it has weak independence.
+
+---
+
 ## Three Essential Qualities of Effective Tests
 
 Every test should maximize these interconnected qualities:
@@ -1623,7 +1715,52 @@ func TestGetUser(t *testing.T) {
 
 ---
 
-### Anti-Pattern 7: One Giant Test
+### Anti-Pattern 7: Tautology Tests and Change Detectors
+
+#### Problem: Tautology (No Independence)
+```go
+// BAD: Expected value comes from the code under test — cannot fail.
+func TestDiscount(t *testing.T) {
+    expected := ApplyDiscount(100.0, 0.2)
+    require.Equal(t, expected, ApplyDiscount(100.0, 0.2))
+}
+```
+
+#### Why It's Wrong
+- The test is true by construction — both sides run the same code path
+- No matter what `ApplyDiscount` does (wrong formula, panics, returns zero), the test passes
+- Provides zero defect detection while giving false coverage confidence
+
+#### Problem: Change Detector (Weak Independence)
+```go
+// BAD: Expected value copied from production code — detects change but not correctness.
+func TestDefaultTimeout(t *testing.T) {
+    require.Equal(t, 30, DefaultTimeout())
+}
+```
+
+#### Why It's Limited
+- If someone changes `DefaultTimeout()` to `60`, the test fails, but the developer has no way to know if `60` is wrong without consulting an external source
+- The test becomes a mechanical "copy the new value" chore with no guidance on correctness
+
+#### Fix: Use Hardcoded Domain-Derived Values or Behavioral Tests
+```go
+// GOOD (strong independence): Domain knowledge — $10.50 = 1050 cents is a mathematical fact.
+func TestConvertUSDToCents(t *testing.T) {
+    require.Equal(t, int64(1050), ConvertToCents(10.50, "USD"))
+}
+
+// GOOD (behavioral): Failure is self-evidently wrong — "$10.500" is clearly incorrect.
+func TestFormatUSDAmount(t *testing.T) {
+    require.Equal(t, "$10.50", FormatAmount(10.5, "USD"))
+}
+```
+
+When a change-detector test is the only coverage, prefer replacing it with a higher-level behavioral test whose failure is self-evidently wrong.
+
+---
+
+### Anti-Pattern 8: One Giant Test
 
 #### Problem
 ```go
@@ -1692,6 +1829,8 @@ When reviewing tests, check for these red flags:
 - [ ] Exporting private methods just for testing
 - [ ] Heavy mocking setup (>3 mocks)
 - [ ] Tests break when refactoring without behavior changes
+- [ ] Expected values copied from production code without domain justification (change detector)
+- [ ] Expected values computed from the code under test at runtime (tautology)
 
 ---
 
@@ -1704,6 +1843,7 @@ Before writing a test, verify the three essential qualities:
 - [ ] Includes comprehensive assertions about expected outcomes
 - [ ] Tests edge cases and boundary conditions
 - [ ] Asserts on actual values, not just that functions ran
+- [ ] Expected values have independent verification (domain knowledge, not copied from production code)
 
 **Resilience (survives harmless changes):**
 - [ ] Testing through public/exported API only
@@ -1748,5 +1888,6 @@ Before writing a test, verify the three essential qualities:
 | **Expose relevant details** | Hide everything in helpers | Show values that affect assertions |
 | **Use real implementations** | Mock everything | In-memory implementations when possible |
 | **Test error paths** | Mock errors | Use broken implementations |
+| **Independent verification** | Copy expected values from production code | Derive expected values from domain knowledge or specs |
 
 **Goal: 100% coverage of business behavior through public API, not implementation details.**

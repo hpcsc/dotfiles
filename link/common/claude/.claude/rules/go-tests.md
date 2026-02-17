@@ -15,3 +15,4 @@ When writing or modifying Go test files, follow these universal principles:
 - **Test independence** — No shared mutable state, no order dependence. Each test must run in isolation and in any order.
 - **Relevant values visible in the test** — Values that affect assertions belong in the test body, not hidden inside helpers. Helpers should accept parameters for relevant values.
 - **One behavior per test** — Each test has a single reason to fail, with a name describing that scenario (e.g., "fails with insufficient funds"), not implementation (e.g., "CallsValidator"). Integration tests may verify multiple behaviors in one flow.
+- **Independent verification** — Expected values must come from domain knowledge or specifications, not from copying production code output. Never derive expected values from the code under test at runtime (tautology). Prefer behavioral tests whose failures are self-evidently wrong over change-detector tests that just mirror a constant.

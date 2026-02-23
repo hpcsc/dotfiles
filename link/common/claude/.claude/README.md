@@ -1,103 +1,135 @@
-# Claude Code Skills
+# Claude Code Skills & Agents
 
-Custom skills that auto-trigger based on conversation context.
+Custom skills and agents for software development workflows.
 
-## Available Skills
-
-### Event Modeling
-
-**Location**: `~/.claude/skills/event-modeling/`
-
-**Auto-triggers when**:
-- Designing new features or capabilities
-- Discussing workflows or business processes
-- Adding new aggregates or bounded contexts
-- Planning external system integrations
-
-**Example prompts that trigger this skill**:
+## Architecture
 
 ```
-"I need to add a payment reminder feature"
-
-"How should we model the order fulfillment process?"
-
-"We need to integrate with Stripe for subscriptions"
-
-"Let's design the customer onboarding workflow"
-
-"What events should we emit when a user cancels their subscription?"
+Skills (user-facing)              Agents (autonomous workers)
+─────────────────────             ────────────────────────────
+/write-user-story ──────────────> (standalone, no agent)
+/decompose-to-tasks ────────────> decompose-to-tasks
+/implement ─────────────────┬───> decompose-to-tasks (planning)
+                            ├───> test-go-reviewer (review)
+                            └───> commit (committing)
+/tdd ───────────────────────┬───> decompose-to-tasks (planning)
+                            ├───> tdd-test-writer (red)
+                            ├───> tdd-implementer (green)
+                            ├───> tdd-refactorer (refactor)
+                            └───> commit (committing)
+/pcommit ───────────────────────> (standalone, no agent)
+/review-go-tests ───────────────> (standalone, no agent)
+/test-go ───────────────────────> (standalone, no agent)
 ```
 
-**What it does**:
-- Identifies events, commands, views, and automations
-- Generates Draw.io diagrams
-- Checks for anti-patterns
-- Structures output as implementation slices
+## Workflow Pipeline
 
----
-
-### Domain Design Review
-
-**Location**: `~/.claude/skills/domain-design-review/`
-
-**Auto-triggers when**:
-- Designing new features or aggregates
-- Adding cross-service functionality
-- Discussing bounded context boundaries
-- Planning significant refactoring
-
-**Example prompts that trigger this skill**:
+The skills form a pipeline from idea to committed code:
 
 ```
-"Let's add a risk assessment to the payment flow"
-
-"I want to add customer communication tracking to the Account aggregate"
-
-"We need PaymentService to check the customer's risk score"
-
-"Should we add a loyalty points field to the Customer entity?"
-
-"How do we share customer data between billing and communications?"
+/write-user-story     Write user stories, save to user-stories/
+        │
+        ▼
+/decompose-to-tasks   Break stories into tasks, save to tasks/
+        │
+        ▼
+/implement or /tdd    Implement tasks with quality gates
+        │
+        ▼
+/pcommit              Commit completed work
 ```
 
-**What it does**:
-- Reviews designs against 8 architectural anti-patterns
-- Identifies coupling risks and god objects
-- Validates bounded context boundaries
-- Suggests fixes with code examples
+Each stage produces artifacts the next stage consumes:
+- `/write-user-story` outputs `user-stories/[feature].md`
+- `/decompose-to-tasks` outputs `tasks/[story].md`
+- `/implement` and `/tdd` accept either a description or a `tasks/` file directly
 
----
+## Skills
 
-## How Skills Work
+### Implementation Skills
 
-Skills auto-trigger based on semantic matching. When Claude detects a relevant conversation, it will ask:
+| Skill | Invocation | Description |
+|-------|------------|-------------|
+| **implement** | `/implement <feature>` | Implement with quality-assured testing. Delegates planning, review, and commits to agents. |
+| **tdd** | `/tdd <feature>` | Test-driven development with Red-Green-Refactor cycles. Supports hands-off and ping-pong modes. |
+| **pcommit** | `/pcommit` | Draft and execute a commit for staged changes with user approval. |
 
-> "Would you like me to help model the events for this feature?"
+### Planning Skills
 
-or
+| Skill | Invocation | Description |
+|-------|------------|-------------|
+| **write-user-story** | `/write-user-story <feature>` | Generate INVEST-compliant user stories. Saves to `user-stories/`. |
+| **decompose-to-tasks** | `/decompose-to-tasks <story>` | Break a user story into ordered, codebase-aware tasks. Saves to `tasks/`. |
 
-> "Would you like me to run a design review against common architectural anti-patterns?"
+### Design & Architecture Skills
 
-You can accept or decline. Skills run in the main conversation with full context.
+| Skill | Invocation | Description |
+|-------|------------|-------------|
+| **event-modeling** | Auto-triggers | Design event-driven systems using Event Modeling methodology. |
+| **domain-design-review** | Auto-triggers | Review designs against 8 architectural anti-patterns. |
+| **solution-architect** | Auto-triggers | Guidance on Saga, Process Manager, Choreography, and Outbox patterns. |
 
-## Manual Invocation
+### Language & Testing Skills
 
-If a skill doesn't auto-trigger, you can explicitly request it:
+| Skill | Invocation | Description |
+|-------|------------|-------------|
+| **test-go** | Auto-triggers | Write Go tests following behavior-driven testing principles. |
+| **review-go-tests** | `/review-go-tests` | Review Go tests against testing guidelines. |
+| **cue** | Auto-triggers | Work with CUE configuration files. |
+| **implement-go-interface** | `/implement-go-interface` | Create Go interface test doubles. |
 
-```
-"Use the event modeling skill to design this feature"
+### Writing
 
-"Run a domain design review on this proposal"
+| Skill | Invocation | Description |
+|-------|------------|-------------|
+| **write** | Auto-triggers | Write or edit articles/notes following style guidelines. |
 
-"Check this design for architectural anti-patterns"
-```
+## Agents
 
-## Skill vs Command vs Agent
+Agents run in isolated sub-processes, delegated to by skills or spawned directly.
+
+### Planning Agents
+
+| Agent | Used By | Description |
+|-------|---------|-------------|
+| **decompose-to-tasks** | `/decompose-to-tasks`, `/implement`, `/tdd` | Explores codebase, decomposes stories into ordered tasks. |
+
+### TDD Agents
+
+| Agent | Used By | Description |
+|-------|---------|-------------|
+| **tdd-test-writer** | `/tdd` | Red phase: writes a failing test for expected behavior. |
+| **tdd-implementer** | `/tdd` | Green phase: minimum code to make the test pass. |
+| **tdd-refactorer** | `/tdd` | Refactor phase: structural improvements while keeping tests green. |
+
+### Review Agents
+
+| Agent | Used By | Description |
+|-------|---------|-------------|
+| **test-go-reviewer** | `/implement` | Reviews Go tests against behavior-driven testing guidelines. |
+| **test-reviewer** | (direct use) | Reviews tests across all languages against testing guidelines. |
+
+### Commit Agent
+
+| Agent | Used By | Description |
+|-------|---------|-------------|
+| **commit** | `/tdd`, `/implement` | Creates commits with well-crafted messages and user approval. |
+
+### Domain Agents
+
+| Agent | Used By | Description |
+|-------|---------|-------------|
+| **go-expert** | (direct use) | Senior Go engineer with clean architecture and DDD expertise. |
+| **domain-modeler** | (direct use) | Domain modeling: aggregates, bounded contexts, boundaries. |
+| **event-modeling-expert** | (direct use) | Event-driven system design and visual modeling. |
+| **solution-architect** | (direct use) | Event sourcing, distributed processes, and integration patterns. |
+| **cue-expert** | (direct use) | CUE schema validation, testing, and configuration. |
+
+## Skill vs Agent
 
 | Type | Discovery | Context | Best For |
 |------|-----------|---------|----------|
-| **Skill** | Auto | Main conversation | Complex workflows Claude should suggest |
-| **Command** | Manual `/name` | Main conversation | Quick explicit prompts |
-| **Agent** | Explicit | Isolated | Multi-step autonomous work |
+| **Skill** | Auto or `/name` | Main conversation | Orchestrating workflows, user interaction |
+| **Agent** | Delegated by skills | Isolated sub-process | Focused autonomous work |
 
-Skills are ideal when you want Claude to proactively offer help based on what you're discussing.
+Skills orchestrate the user-facing workflow. Agents do the autonomous work within each step.

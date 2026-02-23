@@ -12,6 +12,58 @@ This command orchestrates a rigorous implementation workflow with built-in test 
 3. Test quality review against best practices
 4. Human approval and commit
 
+## Phase 0: LANGUAGE DETECTION
+
+Before starting, detect the project language to select the appropriate agents and guidelines.
+
+### Detection Rules
+
+Check for these files in the project root (first match wins):
+
+| Marker file | Language |
+|---|---|
+| `go.mod` | Go |
+| `package.json` | JavaScript/TypeScript |
+| `Gemfile` or `*.gemspec` | Ruby |
+| `pyproject.toml` or `setup.py` or `requirements.txt` | Python |
+| `Cargo.toml` | Rust |
+| (none matched) | Generic |
+
+### Language Configuration
+
+Use the detected language to resolve these values for the rest of the workflow:
+
+| | Go | Generic (all others) |
+|---|---|---|
+| **Implementation agent** | `go-expert` | `general-purpose` |
+| **Reviewer agent** | `test-go-reviewer` | `test-reviewer` |
+| **Test guidelines ref** | `test-go` skill guidelines | language-agnostic testing principles |
+
+**Test command**: Always auto-detect from the project. Check for `Makefile` test targets, `package.json` scripts, framework conventions, etc. Never hardcode a specific command.
+
+### Language-Specific Test Instructions
+
+Inline test instructions provided to the implementation agent vary by language:
+
+**Go:**
+- Write tests following the global `test-go` skill guidelines
+- Test behavior through public/exported API only
+- Write descriptive test names that describe scenarios
+- Use nested subtests with `t.Run()`
+- Include only relevant details in tests (avoid noise and over-abstraction)
+- Assert strictly with `require.Equal`, not `require.Contains`
+- Test both success and error cases
+
+**Generic (all others):**
+- Test behavior through public API only
+- Write descriptive test names that describe scenarios
+- Include only relevant details in tests (avoid noise and over-abstraction)
+- Use strict equality assertions where possible
+- Test both success and error cases
+- Follow the project's existing test conventions (framework, file layout, helpers)
+
+---
+
 ## Phase 1: PLANNING (Codebase-Aware Decomposition)
 
 ### Check for Existing Task File
@@ -58,20 +110,14 @@ For each step in the approved plan, execute a complete implementation and review
 
 #### Step 1: Implementation with Tests
 
-Delegate to a `go-expert` sub-agent to implement the step with tests.
+Delegate to the **implementation agent** (resolved in Phase 0) to implement the step with tests.
 
 **Agent Instructions:**
 ```
 Implement step [N] from the plan: [step description]
 
 Requirements:
-- Write tests following the global test-go skill guidelines
-- Test behavior through public/exported API only
-- Write descriptive test names that describe scenarios
-- Use nested subtests with t.Run()
-- Include only relevant details in tests (avoid noise and over-abstraction)
-- Assert strictly with require.Equal, not require.Contains
-- Test both success and error cases
+[Insert language-specific test instructions from Phase 0]
 
 Implementation:
 - Read existing code to understand patterns
@@ -92,7 +138,7 @@ When complete, provide:
 
 #### Step 2: Test Quality Review
 
-Delegate to the `test-go-reviewer` agent to analyze test quality.
+Delegate to the **reviewer agent** (resolved in Phase 0) to analyze test quality.
 
 **Agent Task:**
 ```
@@ -104,8 +150,8 @@ Test files to review:
 Provide detailed feedback with specific violations and suggestions.
 ```
 
-The `test-go-reviewer` agent will:
-- Check all test-go guidelines (public API, clarity, anti-patterns, mocking)
+The reviewer agent will:
+- Check all testing guidelines (public API, clarity, anti-patterns, mocking)
 - Provide file:line references for violations
 - Explain why violations matter and how to fix them
 - Give verdict: APPROVED or NEEDS REVISION
@@ -128,7 +174,7 @@ If reviewer verdict is "NEEDS REVISION":
    Re-run tests to ensure they still pass.
    ```
 
-2. After revision, delegate back to `test-go-reviewer` agent for re-review
+2. After revision, delegate back to reviewer agent for re-review
 
 3. Repeat until reviewer verdict is "APPROVED"
 
@@ -187,19 +233,16 @@ Delegate to the `commit` skill to create a commit for this step.
 After all steps are done:
 
 1. **Run Full Test Suite**
-   ```bash
-   make test.all.fast
-   # or appropriate test command for the project
-   ```
+   Run the test command detected in Phase 0.
 
 2. **Summarize Implementation**
    ```markdown
    ## Feature Complete: [Feature Name]
 
    ### Steps Completed
-   1. ✅ [Step 1]
-   2. ✅ [Step 2]
-   3. ✅ [Step 3]
+   1. [Step 1]
+   2. [Step 2]
+   3. [Step 3]
    ...
 
    ### Commits Created
@@ -210,10 +253,10 @@ After all steps are done:
    ### Test Coverage
    - Tests written: [count]
    - Test files: [list]
-   - All tests passing: ✅
+   - All tests passing
 
    ### Quality Assurance
-   - All tests reviewed against test-go guidelines
+   - All tests reviewed against testing guidelines
    - All steps approved by human reviewer
    ```
 
@@ -224,10 +267,10 @@ After all steps are done:
 ## Key Principles
 
 1. **Baby Steps** - Each cycle should be small and focused
-2. **Public API Testing** - Behavior verified through exported interfaces only
+2. **Public API Testing** - Behavior verified through public interfaces only
 3. **Quality Gates** - Multiple checkpoints before proceeding
 4. **Human in the Loop** - User approves each step before commit
-5. **Best Practices** - All tests follow test-go guidelines
+5. **Best Practices** - All tests follow testing guidelines for the detected language
 
 ---
 

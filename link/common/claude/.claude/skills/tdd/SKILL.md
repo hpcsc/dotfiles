@@ -43,40 +43,41 @@ Human and Claude take turns in the TDD cycle.
 
 ---
 
-## Phase 2: PLANNING (Think Deeply)
+## Phase 2: PLANNING (Codebase-Aware Decomposition)
 
-Use extended thinking to deeply analyze the requirements and design a TDD implementation plan.
+### Check for Existing Task File
 
-### Analysis Steps:
-1. **Understand the Feature** - What is the user asking for? What is the expected behavior?
-2. **Identify Components** - What modules, functions, types need to be created or modified?
-3. **Break Down into Baby Steps** - Decompose into the smallest possible increments
+If `$ARGUMENTS` points to an existing file in `tasks/` (e.g., `tasks/rate-limiting.md`):
+1. Read the task file
+2. Present the task list to the user
+3. Skip decomposition and proceed directly to the approval gate below
 
-### TDD Step Requirements:
-Each step in the plan MUST:
-- Be small enough to complete in ONE TDD cycle (one test, one implementation)
-- Contribute toward feature completion
-- Leave the codebase in a working, committable state
-- Not break existing functionality
-- Build on previous steps
+### Decompose via Agent
 
-### Output the Plan:
-```markdown
-## TDD Implementation Plan: [Feature Name]
+If the input is NOT an existing task file, delegate to the `decompose-to-tasks` agent using the Task tool:
 
-### Overview
-[Brief description of the feature]
+```
+Decompose the following user story into implementation tasks:
 
-### Steps
-1. [First baby step] - [What test will verify this]
-2. [Second baby step] - [What test will verify this]
-3. ...
-
-### Dependencies/Considerations
-[Any important notes about order, existing code, etc.]
+[user story / feature description from $ARGUMENTS]
 ```
 
-Get user approval before proceeding.
+The agent will:
+- Explore the codebase to identify affected files, patterns, and domain types
+- Decompose into baby-step tasks ordered by dependency
+- Save to `tasks/[story-name].md`
+- Return a summary with file path, task titles, and key codebase findings
+
+### Present the Plan
+
+Show the user the task list from the agent output (or from the existing task file). Each task maps to one TDD cycle in Phase 3:
+- The task's **Behavior** + **Acceptance Criteria** define what the failing test should assert
+- The task's **Verification** defines how to confirm it works
+- The task's **Affected Files/Modules** + **Patterns to Follow** inform where to write tests and implementation
+
+Each task MUST be small enough to complete in ONE TDD cycle (one test, one implementation).
+
+**GATE**: Get user approval before proceeding. If the user requests changes to the task list, delegate back to the agent with the feedback.
 
 ---
 

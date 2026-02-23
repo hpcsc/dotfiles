@@ -1,4 +1,5 @@
 ---
+name: cue-expert
 description: CUE configuration expert specializing in schema validation, testing, and configuration management
 ---
 

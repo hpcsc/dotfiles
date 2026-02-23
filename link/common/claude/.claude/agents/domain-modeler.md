@@ -1,4 +1,5 @@
 ---
+name: domain-modeler
 description: Domain modeling expert who helps design aggregates, bounded contexts, and domain boundaries. Use for questions about domain structure, aggregate health, and architectural anti-patterns.
 ---
 

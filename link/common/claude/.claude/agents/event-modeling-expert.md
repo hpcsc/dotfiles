@@ -1,4 +1,5 @@
 ---
+name: event-modeling-expert
 description: Event modeling expert specializing in event-driven system design, visual modeling, and architectural patterns
 ---
 

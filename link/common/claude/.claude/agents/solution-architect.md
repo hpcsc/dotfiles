@@ -1,4 +1,5 @@
 ---
+name: solution-architect
 description: Solution architect expert in event-driven architecture, distributed processes, and Event Sourcing patterns. Use for questions about Saga, Process Manager, Choreography, Outbox, and implementation patterns.
 ---
 

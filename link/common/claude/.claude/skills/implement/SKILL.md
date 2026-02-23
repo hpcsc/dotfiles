@@ -12,56 +12,41 @@ This command orchestrates a rigorous implementation workflow with built-in test 
 3. Test quality review against best practices
 4. Human approval and commit
 
-## Phase 1: PLANNING (Think Deeply)
+## Phase 1: PLANNING (Codebase-Aware Decomposition)
 
-Use extended thinking to deeply analyze the requirements and design an implementation plan.
+### Check for Existing Task File
 
-### Analysis Steps:
-1. **Understand the Feature** - What is the user asking for? What is the expected behavior?
-2. **Identify Components** - What modules, functions, types need to be created or modified?
-3. **Break Down into Baby Steps** - Decompose into the smallest possible increments
-4. **Consider Test Strategy** - How will each step be tested through public API?
+If `$ARGUMENTS` points to an existing file in `tasks/` (e.g., `tasks/rate-limiting.md`):
+1. Read the task file
+2. Present the task list to the user
+3. Skip decomposition and proceed directly to the approval gate below
 
-### Step Requirements:
-Each step in the plan MUST:
-- Be small enough to complete in ONE implementation cycle
-- Focus on a single behavior or business rule
-- **Include BOTH implementation AND its corresponding tests in the SAME step**
-- Be testable through public/exported API only
-- Contribute toward feature completion
-- Leave the codebase in a working, committable state
-- Not break existing functionality
-- Build on previous steps
+### Decompose via Agent
 
-**CRITICAL**: Never separate implementation and tests into different steps. Each commitable step must include both the code changes and the tests that verify those changes. This ensures each commit is self-contained and verifiable.
+If the input is NOT an existing task file, delegate to the `decompose-to-tasks` agent using the Task tool:
 
-### Output the Plan:
-```markdown
-## Implementation Plan: [Feature Name]
+```
+Decompose the following user story into implementation tasks:
 
-### Overview
-[Brief description of the feature]
-
-### Steps
-1. [First baby step - implementation + tests]
-   - Implementation: [What code/behavior will be added]
-   - Tests: [What tests will be written to verify through public API]
-   - Commit: [Brief description of what this commit will contain]
-
-2. [Second baby step - implementation + tests]
-   - Implementation: [What code/behavior will be added]
-   - Tests: [What tests will be written to verify through public API]
-   - Commit: [Brief description of what this commit will contain]
-
-3. ...
-
-### Dependencies/Considerations
-[Any important notes about order, existing code, test strategy]
+[user story / feature description from $ARGUMENTS]
 ```
 
-**NOTE**: Each numbered step represents ONE commit that includes both implementation and tests.
+The agent will:
+- Explore the codebase to identify affected files, patterns, and domain types
+- Decompose into baby-step tasks ordered by dependency
+- Save to `tasks/[story-name].md`
+- Return a summary with file path, task titles, and key codebase findings
 
-**GATE**: Get user approval before proceeding to implementation.
+### Present the Plan
+
+Show the user the task list from the agent output (or from the existing task file). Each task maps to one implementation cycle in Phase 2:
+- The task's **Behavior** + **Acceptance Criteria** define what to implement and test
+- The task's **Verification** defines how to confirm it works
+- The task's **Affected Files/Modules** + **Patterns to Follow** inform implementation approach
+
+**CRITICAL**: Each task represents ONE commit that includes both implementation and tests. Never separate implementation and tests into different steps.
+
+**GATE**: Get user approval before proceeding to implementation. If the user requests changes to the task list, delegate back to the agent with the feedback.
 
 ---
 

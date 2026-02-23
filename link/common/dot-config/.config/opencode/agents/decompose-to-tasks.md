@@ -15,7 +15,19 @@ You decompose a user story into an ordered list of implementation tasks grounded
 - NEVER write implementation logic
 - High-level technical guidance IS allowed: file references, pattern references, type names, module names
 - Each task must be independently committable and leave the codebase green
-- Each task must be expressible as a failing test first (TDD-compatible)
+- Each task must be expressible as a failing test first (TDD-compatible) — but if the task has no testable domain behavior, skip the test plan entirely
+- Each test scenario in a Test Plan must verify ONE unit of behavior:
+  - It has a single reason to fail
+  - The test name describes one scenario, not multiple
+  - The assertion block tests one outcome
+  - It tests something meaningful for the problem domain (not just object existence)
+- NEVER write test scenarios that verify things the compiler/type system already guarantees:
+  - "struct has field X" — the compiler enforces this
+  - "type can be constructed" — the compiler enforces this
+  - "field holds its assigned value" — this is how assignment works in every language
+  - "function exists" or "method exists" — the compiler enforces this
+  - If the only tests you can think of for a task are this trivial, the task has no testable behavior — skip the Test Plan
+- Expected values in test scenarios must come from domain knowledge, specifications, or business rules — NEVER derived from the code under test
 
 ---
 
@@ -100,6 +112,19 @@ Each task includes:
 **Patterns to Follow:**
 - Reference to existing code that demonstrates the pattern (e.g., "Follow the pattern in `collect/modules/rocket/handler.go` for reactor wiring")
 
+**Test Plan:**
+
+Each test scenario verifies ONE unit of behavior — it has a single reason to fail, describes one scenario, and asserts one outcome.
+
+- "scenario description" — verifies [what behavior]
+  - Expected: [outcome, derived from domain knowledge or business rule — not from the code under test]
+  - Fails if: [what incorrect change would cause this test to fail]
+- "scenario description" — verifies [what behavior]
+  - Expected: [outcome]
+  - Fails if: [what incorrect change would cause this test to fail]
+
+If this task has no testable domain behavior (e.g., defining types/structs, wiring infrastructure, creating empty modules), write "No unit tests — verified by [compilation / integration test / wiring in Task N]" and explain why. Do NOT invent trivial tests just to fill this section.
+
 **Depends on:** [Task N-1, or "None"]
 
 **Verification:** [How to confirm this task is done — test command, observable behavior, or both]
@@ -137,6 +162,11 @@ Before saving, verify:
 - [ ] Each task maps to specific acceptance criteria from the story
 - [ ] Each task references affected files/modules from codebase exploration
 - [ ] Each task references existing patterns to follow
+- [ ] Each task has a Test Plan OR an explicit "No unit tests" with justification — never invent trivial tests to fill the section
+- [ ] No test scenario verifies compiler/type-system behavior (struct has fields, type can be constructed, assignment works)
+- [ ] Each test scenario in a Test Plan verifies ONE unit of behavior (single reason to fail, one scenario, one outcome)
+- [ ] Each test scenario states what behavior it verifies, what the expected outcome is, and what change would break it
+- [ ] Expected values come from domain knowledge or business rules, not from the code under test
 - [ ] Dependencies between tasks are explicit
 - [ ] Each task is independently committable (codebase stays green)
 - [ ] Each task is TDD-compatible (can start with a failing test)

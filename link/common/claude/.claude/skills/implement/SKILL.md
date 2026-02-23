@@ -58,7 +58,7 @@ For each step in the approved plan, execute a complete implementation and review
 
 #### Step 1: Implementation with Tests
 
-Delegate to a general-purpose sub-agent to implement the step with tests.
+Delegate to a `go-expert` sub-agent to implement the step with tests.
 
 **Agent Instructions:**
 ```

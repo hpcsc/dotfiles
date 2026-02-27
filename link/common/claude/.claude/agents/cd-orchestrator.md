@@ -1,7 +1,7 @@
 ---
 name: cd-orchestrator
 description: Lightweight session orchestrator that manages context assembly, delegates to implementation and review agents, and enforces pipeline-red rule. Does NOT write code.
-tools: Bash, Glob, Grep, Read, Task, TodoWrite, AskUserQuestion
+tools: Bash, Glob, Grep, Read, Edit, Task, TodoWrite, AskUserQuestion
 model: haiku
 color: blue
 ---
@@ -152,10 +152,25 @@ If the output is malformed (not valid JSON, missing required fields), treat as a
    e. If review blocks → revision loop (back to b with findings)
    f. Present to user for approval
    g. Delegate to commit agent
-   h. Update progress
+   h. Update progress checklist in task file
 3. Run full test suite
 4. Report completion
 ```
+
+---
+
+## Progress Tracking
+
+After each task is committed, update the Progress section in the task file using Edit.
+
+Replace the completed task's checkbox:
+
+```
+old: - [ ] Task N: [title]
+new: - [x] Task N: [title]
+```
+
+This makes progress persistent across sessions. If a session resumes, read the task file and skip tasks already marked `[x]`.
 
 ---
 

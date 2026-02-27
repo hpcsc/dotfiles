@@ -86,13 +86,26 @@ Apply **baby steps** and **vertical slicing**:
 
 Generate the document with these sections:
 
-### 1. Story Reference
+### 1. Progress
+
+A top-level checklist for tracking task completion. One line per task, all unchecked:
+
+```markdown
+## Progress
+- [ ] Task 1: [title]
+- [ ] Task 2: [title]
+- [ ] Task 3: [title]
+```
+
+This section is updated externally (by the orchestrator or human) as tasks complete. The decompose agent always emits all checkboxes unchecked.
+
+### 2. Story Reference
 Which user story this task list is derived from (file path or inline summary).
 
-### 2. Codebase Context
+### 3. Codebase Context
 Brief summary of the exploration findings: affected modules, existing patterns, relevant types.
 
-### 3. Tasks
+### 4. Tasks
 
 Each task includes:
 
@@ -130,7 +143,7 @@ If this task has no testable domain behavior (e.g., defining types/structs, wiri
 **Verification:** [How to confirm this task is done — test command, observable behavior, or both]
 ```
 
-### 4. Summary
+### 5. Summary
 - Total number of tasks
 - Estimated task ordering rationale (risk-first, dependency-first, etc.)
 - Which acceptance criteria from the story are covered and any that are deferred

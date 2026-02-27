@@ -7,6 +7,7 @@ Custom skills and agents for software development workflows.
 ```
 Skills (user-facing)              Agents (autonomous workers)
 ─────────────────────             ────────────────────────────
+
 /write-user-story ──────────────> (standalone, no agent)
 /decompose-to-tasks ────────────> decompose-to-tasks
 /implement ─────────────────┬───> decompose-to-tasks (planning)
@@ -17,14 +18,25 @@ Skills (user-facing)              Agents (autonomous workers)
                             ├───> tdd-implementer (green)
                             ├───> tdd-refactorer (refactor)
                             └───> commit (committing)
+/cd-implement ──────────────┬───> decompose-to-tasks (planning)
+                            ├───> cd-orchestrator (lifecycle)
+                            │       ├──> go-expert or general-purpose (impl)
+                            │       ├──> cd-review-orchestrator (review)
+                            │       │      ├──> cd-semantic-reviewer (logic)
+                            │       │      │    or cd-semantic-go-reviewer (Go)
+                            │       │      ├──> cd-security-reviewer
+                            │       │      ├──> cd-performance-reviewer
+                            │       │      └──> cd-concurrency-reviewer
+                            │       └──> commit (committing)
+                            └───> (user approval gates between steps)
 /pcommit ───────────────────────> (standalone, no agent)
 /review-go-tests ───────────────> (standalone, no agent)
 /test-go ───────────────────────> (standalone, no agent)
 ```
 
-## Workflow Pipeline
+## Workflow Pipelines
 
-The skills form a pipeline from idea to committed code:
+### Standard Pipeline
 
 ```
 /write-user-story     Write user stories, save to user-stories/
@@ -39,10 +51,20 @@ The skills form a pipeline from idea to committed code:
 /pcommit              Commit completed work
 ```
 
+### CD Pipeline (orchestrator-managed)
+
+```
+/write-user-story     Write user stories, save to user-stories/
+        │
+        ▼
+/cd-implement         Decompose, implement, review (4 parallel reviewers),
+                      and commit -- all orchestrator-managed with human gates
+```
+
 Each stage produces artifacts the next stage consumes:
 - `/write-user-story` outputs `user-stories/[feature].md`
 - `/decompose-to-tasks` outputs `tasks/[story].md`
-- `/implement` and `/tdd` accept either a description or a `tasks/` file directly
+- `/implement`, `/tdd`, and `/cd-implement` accept either a description or a `tasks/` file directly
 
 ## Skills
 
@@ -51,6 +73,7 @@ Each stage produces artifacts the next stage consumes:
 | Skill | Invocation | Description |
 |-------|------------|-------------|
 | **implement** | `/implement <feature>` | Implement with quality-assured testing. Delegates planning, review, and commits to agents. |
+| **cd-implement** | `/cd-implement <feature>` | Orchestrator-managed implementation with 4 parallel reviewers (semantic, security, performance, concurrency) and human approval gates. |
 | **tdd** | `/tdd <feature>` | Test-driven development with Red-Green-Refactor cycles. Supports hands-off and ping-pong modes. |
 | **pcommit** | `/pcommit` | Draft and execute a commit for staged changes with user approval. |
 
@@ -92,7 +115,26 @@ Agents run in isolated sub-processes, delegated to by skills or spawned directly
 
 | Agent | Used By | Description |
 |-------|---------|-------------|
-| **decompose-to-tasks** | `/decompose-to-tasks`, `/implement`, `/tdd` | Explores codebase, decomposes stories into ordered tasks. |
+| **decompose-to-tasks** | `/decompose-to-tasks`, `/implement`, `/tdd`, `/cd-implement` | Explores codebase, decomposes stories into ordered tasks. |
+
+### CD Orchestration Agents
+
+| Agent | Used By | Model | Description |
+|-------|---------|-------|-------------|
+| **cd-orchestrator** | `/cd-implement` | haiku | Session lifecycle, context assembly, delegation, pipeline-red enforcement. Does NOT write code. |
+| **cd-review-orchestrator** | `cd-orchestrator` | haiku | Coordinates 4 review sub-agents in parallel, validates JSON schemas, produces aggregated pass/block verdict. |
+
+### CD Review Sub-Agents
+
+All review sub-agents output structured JSON: `{decision: "pass|block", findings: [{file, line, issue, why}]}`.
+
+| Agent | Used By | Model | Scope |
+|-------|---------|-------|-------|
+| **cd-semantic-reviewer** | `cd-review-orchestrator` | inherit | Logic correctness, edge cases, intent alignment, test quality. |
+| **cd-semantic-go-reviewer** | `cd-review-orchestrator` | inherit | Same as semantic reviewer, with Go-specific testing guidelines. |
+| **cd-security-reviewer** | `cd-review-orchestrator` | sonnet | Injection patterns, authorization gaps, audit trails, secret exposure. |
+| **cd-performance-reviewer** | `cd-review-orchestrator` | haiku | Missing timeouts, resource leaks, unbounded operations, graceful degradation. |
+| **cd-concurrency-reviewer** | `cd-review-orchestrator` | sonnet | Shared state synchronization, race conditions, idempotency, deadlocks. |
 
 ### TDD Agents
 
@@ -113,13 +155,13 @@ Agents run in isolated sub-processes, delegated to by skills or spawned directly
 
 | Agent | Used By | Description |
 |-------|---------|-------------|
-| **commit** | `/tdd`, `/implement` | Creates commits with well-crafted messages and user approval. |
+| **commit** | `/tdd`, `/implement`, `cd-orchestrator` | Creates commits with well-crafted messages and user approval. |
 
 ### Domain Agents
 
 | Agent | Used By | Description |
 |-------|---------|-------------|
-| **go-expert** | (direct use) | Senior Go engineer with clean architecture and DDD expertise. |
+| **go-expert** | `/cd-implement` (Go projects) | Senior Go engineer with clean architecture and DDD expertise. |
 | **domain-modeler** | (direct use) | Domain modeling: aggregates, bounded contexts, boundaries. |
 | **event-modeling-expert** | (direct use) | Event-driven system design and visual modeling. |
 | **solution-architect** | (direct use) | Event sourcing, distributed processes, and integration patterns. |
@@ -133,3 +175,13 @@ Agents run in isolated sub-processes, delegated to by skills or spawned directly
 | **Agent** | Delegated by skills | Isolated sub-process | Focused autonomous work |
 
 Skills orchestrate the user-facing workflow. Agents do the autonomous work within each step.
+
+## Data Exchange Patterns
+
+| Boundary | Format | Why |
+|----------|--------|-----|
+| Skill → Agent | Text (structured bundle) | LLMs consume prose natively |
+| Agent → Agent (context) | Text (task description, diffs) | Open-ended guidance for LLM |
+| Review sub-agent → Review orchestrator | JSON `{decision, findings[]}` | Programmatic branching and aggregation |
+| Review orchestrator → Orchestrator | JSON `{decision, findings[]}` | Gate logic (pass/block) |
+| Decompose agent → Disk | Markdown `tasks/[name].md` | Human-readable persistent artifact |

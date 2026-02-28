@@ -32,7 +32,7 @@ Detect the project language to configure the orchestrator. Check for marker file
 
 | | Go | Generic (all others) |
 |---|---|---|
-| **Implementation agent** | `go-expert` | `general-purpose` |
+| **Implementation agent** | `go-implementer` | `general-purpose` |
 | **Semantic reviewer** | `cd-semantic-go-reviewer` | `cd-semantic-reviewer` |
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
@@ -82,9 +82,13 @@ Plan:
 [full task list]
 
 For each task:
-1. If task is marked Testable: Yes → delegate to test-case-designer, present test plan to user for approval
-2. Delegate to implementation agent (with approved test plan if testable, otherwise without)
-3. Verify tests pass (or compilation succeeds for non-testable tasks)
+1. If task is marked Testable: Yes:
+   a. Delegate to test-case-designer to design test scenarios
+   b. **GATE**: Present test plan to user for approval
+2. Delegate to implementation agent:
+   - If testable: pass the approved test plan. Instruct the agent to write the tests FIRST, verify they fail, THEN write the implementation to make them pass.
+   - If not testable: pass task description only
+3. Verify correctness using the task's Verification field (tests pass, compilation succeeds, etc.)
 4. Delegate to cd-review-orchestrator for parallel review
 5. If review blocks: route findings back, revision loop
 6. Present to user for approval

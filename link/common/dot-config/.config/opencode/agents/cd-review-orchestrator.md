@@ -41,21 +41,22 @@ git diff --staged --name-only
 
 ### Step 2: Detect Language
 
-Check for language markers to select the appropriate semantic reviewer:
+Check for language markers to select the appropriate reviewers:
 
-| Marker | Semantic Reviewer |
-|---|---|
-| `*_test.go` in changed files, or `go.mod` exists | `cd-semantic-go-reviewer` |
-| All other cases | `cd-semantic-reviewer` |
+| Marker | Semantic Reviewer | Guidelines Reviewer |
+|---|---|---|
+| `*_test.go` in changed files, or `go.mod` exists | `cd-semantic-go-reviewer` | `cd-go-guidelines-reviewer` |
+| All other cases | `cd-semantic-reviewer` | _(none)_ |
 
 ### Step 3: Launch Review Sub-Agents in Parallel
 
-Invoke all four review sub-agents using the Task tool simultaneously:
+Invoke review sub-agents using the Task tool simultaneously:
 
 1. **Semantic reviewer** (`cd-semantic-reviewer` or `cd-semantic-go-reviewer`)
 2. **Security reviewer** (`cd-security-reviewer`)
 3. **Performance reviewer** (`cd-performance-reviewer`)
 4. **Concurrency reviewer** (`cd-concurrency-reviewer`)
+5. **Guidelines reviewer** (Go only: `cd-go-guidelines-reviewer`) — skip for non-Go projects
 
 Each agent receives:
 
@@ -128,7 +129,7 @@ Return a structured JSON verdict to the caller:
   "decision": "pass | block",
   "findings": [
     {
-      "agent": "semantic | security | performance | concurrency",
+      "agent": "semantic | security | performance | concurrency | guidelines",
       "file": "path/to/file",
       "line": 42,
       "issue": "description",
@@ -155,6 +156,7 @@ Also provide a human-readable summary:
 - Security: [pass/block] ([N] findings)
 - Performance: [pass/block] ([N] findings)
 - Concurrency: [pass/block] ([N] findings)
+- Guidelines: [pass/block/skipped] ([N] findings) _(Go only)_
 ```
 
 ---

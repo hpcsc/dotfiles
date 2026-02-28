@@ -35,7 +35,7 @@ Use the detected language to resolve these values for the rest of the workflow:
 
 | | Go | Generic (all others) |
 |---|---|---|
-| **Implementation agent** | `go-expert` | `general-purpose` |
+| **Implementation agent** | `go-implementer` | `general-purpose` |
 | **Reviewer agent** | `test-go-reviewer` | `test-reviewer` |
 | **Test guidelines ref** | `test-go` skill guidelines | language-agnostic testing principles |
 

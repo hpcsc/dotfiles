@@ -11,23 +11,12 @@ You decompose a user story into an ordered list of implementation tasks grounded
 
 ## Important Restrictions
 
-- NEVER include code samples, snippets, or pseudocode
-- NEVER write implementation logic
+- NEVER include code samples, snippets, pseudocode, or inline expressions (e.g., `if x := foo.Bar(); x != ""`)
+- NEVER write implementation logic or suggest control flow approaches (e.g., "consider extracting X out of Y", "capture a variable in the enclosing scope")
+- NEVER describe type conversions, method calls, or API usage details the implementation agent will discover from the compiler or by reading the referenced code
 - High-level technical guidance IS allowed: file references, pattern references, type names, module names
 - Each task must be independently committable and leave the codebase green
-- Each task must be expressible as a failing test first (TDD-compatible) — but if the task has no testable domain behavior, skip the test plan entirely
-- Each test scenario in a Test Plan must verify ONE unit of behavior:
-  - It has a single reason to fail
-  - The test name describes one scenario, not multiple
-  - The assertion block tests one outcome
-  - It tests something meaningful for the problem domain (not just object existence)
-- NEVER write test scenarios that verify things the compiler/type system already guarantees:
-  - "struct has field X" — the compiler enforces this
-  - "type can be constructed" — the compiler enforces this
-  - "field holds its assigned value" — this is how assignment works in every language
-  - "function exists" or "method exists" — the compiler enforces this
-  - If the only tests you can think of for a task are this trivial, the task has no testable behavior — skip the Test Plan
-- Expected values in test scenarios must come from domain knowledge, specifications, or business rules — NEVER derived from the code under test
+- Do NOT include test plans — the Behavior and Acceptance Criteria fields define what needs to be true; the implementation agent decides how to test it
 
 ---
 
@@ -55,8 +44,7 @@ Before decomposing, explore the codebase to ground the tasks in reality. Use tar
 1. **Affected files and modules** — Where will changes land?
 2. **Existing patterns** — How are similar features implemented? What conventions exist?
 3. **Domain types** — What aggregates, value objects, events, commands, projections are relevant?
-4. **Test conventions** — How are similar features tested? What test utilities exist?
-5. **Infrastructure wiring** — How are handlers, reactors, projectors connected?
+4. **Infrastructure wiring** — How are handlers, reactors, projectors connected?
 
 Summarize findings briefly in the output document under "Codebase Context."
 
@@ -68,7 +56,6 @@ Apply **baby steps** and **vertical slicing**:
 - Each task delivers a thin, complete slice of behavior
 - Each task is independently committable
 - Each task leaves the codebase green (all tests pass)
-- Each task can start with a failing test (TDD-compatible)
 - Tasks are ordered by dependency, then by risk/value
 
 ### Decomposition Guidelines
@@ -123,24 +110,11 @@ Each task includes:
 - `path/to/other/` — [what changes here]
 
 **Patterns to Follow:**
-- Reference to existing code that demonstrates the pattern (e.g., "Follow the pattern in `collect/modules/rocket/handler.go` for reactor wiring")
+- Reference the file and line range only (e.g., "Follow the pattern in `collect/modules/rocket/handler.go:45-60` for reactor wiring"). Do not paraphrase the pattern, reproduce expressions from it, or suggest how to adapt it — the implementation agent will read the reference directly.
 
-**Test Plan:**
-
-Each test scenario verifies ONE unit of behavior — it has a single reason to fail, describes one scenario, and asserts one outcome.
-
-- "scenario description" — verifies [what behavior]
-  - Expected: [outcome, derived from domain knowledge or business rule — not from the code under test]
-  - Fails if: [what incorrect change would cause this test to fail]
-- "scenario description" — verifies [what behavior]
-  - Expected: [outcome]
-  - Fails if: [what incorrect change would cause this test to fail]
-
-If this task has no testable domain behavior (e.g., defining types/structs, wiring infrastructure, creating empty modules), write "No unit tests — verified by [compilation / integration test / wiring in Task N]" and explain why. Do NOT invent trivial tests just to fill this section.
+**Testable:** Yes | No — [if No, state what verifies correctness: compilation, integration test in Task N, manual wiring check]
 
 **Depends on:** [Task N-1, or "None"]
-
-**Verification:** [How to confirm this task is done — test command, observable behavior, or both]
 ```
 
 ### 5. Summary
@@ -175,15 +149,10 @@ Before saving, verify:
 - [ ] Each task maps to specific acceptance criteria from the story
 - [ ] Each task references affected files/modules from codebase exploration
 - [ ] Each task references existing patterns to follow
-- [ ] Each task has a Test Plan OR an explicit "No unit tests" with justification — never invent trivial tests to fill the section
-- [ ] No test scenario verifies compiler/type-system behavior (struct has fields, type can be constructed, assignment works)
-- [ ] Each test scenario in a Test Plan verifies ONE unit of behavior (single reason to fail, one scenario, one outcome)
-- [ ] Each test scenario states what behavior it verifies, what the expected outcome is, and what change would break it
-- [ ] Expected values come from domain knowledge or business rules, not from the code under test
+- [ ] No test plans included — Behavior and Acceptance Criteria are sufficient
 - [ ] Dependencies between tasks are explicit
 - [ ] Each task is independently committable (codebase stays green)
-- [ ] Each task is TDD-compatible (can start with a failing test)
-- [ ] No code samples or implementation logic included
+- [ ] No code samples, implementation logic, or control flow suggestions included
 - [ ] All acceptance criteria from the story are accounted for
 - [ ] Tasks are ordered logically (dependency-first, then risk/value)
 - [ ] Saved to `tasks/[story-name].md`

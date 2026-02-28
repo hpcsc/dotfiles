@@ -9,7 +9,6 @@ Implement a feature with orchestrator-managed quality gates: $ARGUMENTS
 This skill routes all work through the `cd-orchestrator` agent, which delegates to specialized agents. You (the skill runner) invoke the orchestrator and relay results to the user.
 
 The orchestrator enforces:
-- Pipeline-red rule (no new work if tests fail)
 - Minimal context passing at every agent boundary
 - Structured JSON contracts between agents
 - Human approval gates before each commit
@@ -83,9 +82,9 @@ Plan:
 [full task list]
 
 For each task:
-1. Verify pipeline is green
-2. Assemble minimal context and delegate to implementation agent
-3. Verify tests pass
+1. If task is marked Testable: Yes → delegate to test-case-designer, present test plan to user for approval
+2. Delegate to implementation agent (with approved test plan if testable, otherwise without)
+3. Verify tests pass (or compilation succeeds for non-testable tasks)
 4. Delegate to cd-review-orchestrator for parallel review
 5. If review blocks: route findings back, revision loop
 6. Present to user for approval
@@ -106,10 +105,6 @@ The orchestrator reports back after each task:
 - Show the user: review findings with file:line references
 - The orchestrator handles the revision loop automatically
 - If revision loop exceeds 3 iterations, escalate to user
-
-**If pipeline goes red:**
-- The orchestrator stops and reports
-- Suggest using `/cd-fix` to restore
 
 ---
 
@@ -160,6 +155,5 @@ After all tasks complete:
 | Revision loop exhausted | Escalate to user with findings |
 | Agent timeout/crash | Orchestrator retries once, then escalates |
 | User rejects step | Understand concern, adjust, re-delegate via orchestrator |
-| Pipeline goes red mid-session | Stop, suggest `/cd-fix` |
 
 Never skip quality gates. Never proceed without user approval at human review gates.

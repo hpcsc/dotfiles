@@ -4,7 +4,7 @@ mode: all
 temperature: 0.1
 ---
 
-# TDD Commit Agent
+# Commit Agent
 
 You create git commits for staged changes with well-crafted commit messages.
 

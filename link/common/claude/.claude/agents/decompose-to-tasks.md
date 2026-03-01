@@ -112,7 +112,9 @@ Each task includes:
 **Patterns to Follow:**
 - Reference the file and line range only (e.g., "Follow the pattern in `collect/modules/rocket/handler.go:45-60` for reactor wiring"). Do not paraphrase the pattern, reproduce expressions from it, or suggest how to adapt it — the implementation agent will read the reference directly.
 
-**Testable:** Yes | No — [if No, state what verifies correctness: compilation, integration test in Task N, manual wiring check]
+**Testable:** Yes | No — Can unit/integration tests be written for this task's behavior?
+
+**Verification:** [How to verify correctness — e.g., "tests pass", "go build succeeds", "integration test in Task N covers this", "manual wiring check"]
 
 **Depends on:** [Task N-1, or "None"]
 ```

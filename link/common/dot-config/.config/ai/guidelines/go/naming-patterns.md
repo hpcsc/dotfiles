@@ -79,7 +79,37 @@ type CommandBus interface {...}  // Redundant with package name
 type EventStream interface {...} // Redundant with package name
 ```
 
-### 3. Constructor Pattern
+### 3. Concrete Struct Naming (No Interface)
+
+When a package has a single concrete struct with no interface (no need for multiple implementations or test fakes), prefer a **role or capability noun** that describes what the struct does. Fall back to `Instance` when no better name exists.
+
+```go
+// ✅ Best — descriptive role noun, no stuttering
+package lexer
+type Tokenizer struct { ... }    // lexer.Tokenizer — describes what it does
+func New(...) *Tokenizer { ... }
+
+package config
+type Loader struct { ... }       // config.Loader
+func New(...) *Loader { ... }
+```
+
+```go
+// ✅ Acceptable — when no descriptive name adds clarity over the package name
+package lexer
+type Instance struct { ... }     // lexer.Instance — fallback
+func New(...) *Instance { ... }
+```
+
+**Naming priority:**
+1. A role/capability noun that describes what the struct does (`Tokenizer`, `Loader`, `Resolver`)
+2. `Instance` as a fallback when the package name already says it all
+
+**When NOT to use either:**
+- Multiple implementations exist or are likely → use an interface
+- Consumers need to stub it in tests → define an interface instead
+
+### 4. Constructor Pattern
 
 ```go
 // Return interface types for real implementations
@@ -91,7 +121,7 @@ func NewFakeBus() *FakeBus {...}
 func NewFakeStream() *FakeStream {...}
 ```
 
-### 4. Interface Compliance Check
+### 5. Interface Compliance Check
 
 ```go
 // Clear assertion of interface implementation

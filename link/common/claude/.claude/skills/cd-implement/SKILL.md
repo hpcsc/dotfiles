@@ -2,22 +2,13 @@
 disable-model-invocation: true
 ---
 
-Implement a feature with orchestrator-managed quality gates: $ARGUMENTS
-
-## Overview
-
-This skill routes all work through the `cd-orchestrator` agent, which delegates to specialized agents. You (the skill runner) invoke the orchestrator and relay results to the user.
-
-The orchestrator enforces:
-- Minimal context passing at every agent boundary
-- Structured JSON contracts between agents
-- Human approval gates before each commit
+Implement a feature with quality gates: $ARGUMENTS
 
 ---
 
 ## Phase 0: Language Detection
 
-Detect the project language to configure the orchestrator. Check for marker files (first match wins):
+Detect the project language. Check for marker files (first match wins):
 
 | Marker file | Language |
 |---|---|
@@ -34,6 +25,7 @@ Detect the project language to configure the orchestrator. Check for marker file
 |---|---|---|
 | **Implementation agent** | `go-implementer` | `general-purpose` |
 | **Semantic reviewer** | `cd-semantic-go-reviewer` | `cd-semantic-reviewer` |
+| **Guidelines reviewer** | `cd-go-guidelines-reviewer` | _(skip)_ |
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
 
@@ -48,67 +40,126 @@ If `$ARGUMENTS` points to an existing file in `tasks/`:
 2. Present the task list to the user
 3. Skip decomposition, proceed to approval gate
 
-### Decompose via Agent
+### Decompose
 
-If input is NOT an existing task file, delegate to the `decompose-to-tasks` agent:
+Spawn the `decompose-to-tasks` agent:
 
-```
-Decompose the following user story into implementation tasks:
-
-[user story / feature description from $ARGUMENTS]
-```
+> Decompose the following user story into implementation tasks: [user story from $ARGUMENTS]
 
 ### Present the Plan
 
-Show the user the task list. Each task maps to one implementation cycle in Phase 2.
+Show the user the task list. Each task maps to one cycle in Phase 2.
 
-**GATE**: Get user approval before proceeding. If changes requested, delegate back to the decomposition agent.
+**GATE**: Get user approval before proceeding. If changes requested, spawn the decomposition agent again with feedback.
 
 ---
 
 ## Phase 2: Implementation Cycles
 
-Delegate the entire cycle management to `cd-orchestrator`:
+For each task in the approved plan, execute Steps 1–7 in order. **Do NOT skip or reorder steps.**
+
+### Step 1: Assemble Context
+
+Read the task's Affected Files and Patterns to Follow. Prepare a minimal context summary — only files relevant to the current task.
+
+### Step 2: Design Test Cases (testable tasks only)
+
+If the task is marked `Testable: Yes`:
+
+1. Spawn the `test-case-designer` agent with:
+
+   ```
+   Task: [imperative description from task list]
+   Behavior: [observable behavior to achieve]
+   Acceptance Criteria: [from task list]
+   Affected Files: [from task list]
+   Patterns to Follow: [from task list]
+   ```
+
+2. Present the returned test plan to the user.
+
+3. **GATE**: Wait for user approval. If the user requests changes, spawn `test-case-designer` again with the feedback. Do NOT proceed until approved.
+
+If the task is marked `Testable: No`, skip to Step 3.
+
+### Step 3: Implement
+
+Spawn the resolved implementation agent (`go-implementer` or `general-purpose`) with:
 
 ```
-Execute implementation cycles for the following plan:
-
-Language: [detected language]
-Implementation agent: [resolved agent name]
-Semantic reviewer: [resolved reviewer name]
-Test command: [detected test command]
-
-Plan:
-[full task list]
-
-For each task:
-1. If task is marked Testable: Yes:
-   a. Delegate to test-case-designer to design test scenarios
-   b. **GATE**: Present test plan to user for approval
-2. Delegate to implementation agent:
-   - If testable: pass the approved test plan. Instruct the agent to write the tests FIRST, verify they fail, THEN write the implementation to make them pass.
-   - If not testable: pass task description only
-3. Verify correctness using the task's Verification field (tests pass, compilation succeeds, etc.)
-4. Delegate to cd-review-orchestrator for parallel review
-5. If review blocks: route findings back, revision loop
-6. Present to user for approval
-7. Delegate to commit agent
-8. Report progress
+Task: [imperative description from task list]
+Behavior: [observable behavior to achieve]
+Acceptance Criteria: [from task list]
+Affected Files: [from task list]
+Patterns to Follow: [from task list]
+Test Instructions: [language-specific]
 ```
 
-### Handling Orchestrator Results
+If Step 2 produced an approved test plan, append:
 
-The orchestrator reports back after each task:
+```
+Approved Test Plan:
+[test plan approved by user]
 
-**If task succeeds:**
-- Show the user: implementation summary, review verdict, files changed
-- Confirm commit was created
-- Show remaining tasks
+Write failing tests first, then implement to make them pass.
+```
 
-**If review blocks:**
-- Show the user: review findings with file:line references
-- The orchestrator handles the revision loop automatically
-- If revision loop exceeds 3 iterations, escalate to user
+**GATE**: Do NOT proceed until the agent reports back and tests pass (or compilation succeeds for non-testable tasks).
+
+### Step 4: Review
+
+Collect staged changes (`git diff --staged`) and changed file list (`git diff --staged --name-only`).
+
+Spawn these review agents **in parallel**:
+
+1. **Semantic reviewer** — resolved semantic reviewer agent
+2. **Security reviewer** — `cd-security-reviewer`
+3. **Performance reviewer** — `cd-performance-reviewer`
+4. **Concurrency reviewer** — `cd-concurrency-reviewer`
+5. **Guidelines reviewer** (Go only) — `cd-go-guidelines-reviewer` — skip for non-Go projects
+
+Each reviewer receives:
+
+```
+Review the following staged changes for: [step description]
+
+Changed files:
+[file list]
+
+Diff:
+[staged diff]
+```
+
+**Aggregate results**: if ANY reviewer returns `block`, the aggregate verdict is `block`. Collect all findings with file:line references.
+
+- If aggregate verdict is `pass` → proceed to Step 5
+- If aggregate verdict is `block` → send findings back to the implementation agent (Step 3) for revision, then re-review. Max 3 revision iterations before escalating to user.
+
+### Step 5: Human Approval
+
+Present to the user:
+- Implementation summary and files changed
+- Review verdict (with per-reviewer breakdown)
+- Test output
+
+**GATE**: Wait for user approval. If the user rejects, understand the concern, adjust, and go back to Step 3.
+
+### Step 6: Commit
+
+Spawn the `commit` agent:
+
+> Commit staged changes for: [step description]
+
+### Step 7: Update Progress
+
+Update the task file checkbox:
+
+```
+old: - [ ] Task N: [title]
+new: - [x] Task N: [title]
+```
+
+Show remaining tasks and proceed to the next task (back to Step 1).
 
 ---
 
@@ -132,7 +183,7 @@ After all tasks complete:
    ...
 
    ### Quality Assurance
-   - All steps reviewed by 4 parallel reviewers (semantic, security, performance, concurrency)
+   - All steps reviewed by parallel reviewers (semantic, security, performance, concurrency)
    - All steps approved by human reviewer
    - Full test suite passing
    ```
@@ -154,10 +205,11 @@ After all tasks complete:
 
 | Scenario | Action |
 |---|---|
-| Tests fail after implementation | Orchestrator routes back to implementation agent |
-| Review blocks | Orchestrator handles revision loop (max 3 iterations) |
+| Agent spawn fails | Retry once. If it fails again, report the error to the user. Do NOT do the work yourself. |
+| Tests fail after implementation | Spawn implementation agent again with failure output |
+| Review blocks | Spawn implementation agent again with findings (max 3 iterations) |
 | Revision loop exhausted | Escalate to user with findings |
-| Agent timeout/crash | Orchestrator retries once, then escalates |
-| User rejects step | Understand concern, adjust, re-delegate via orchestrator |
+| Malformed reviewer output | Treat as `block`, record a finding noting the reviewer failed |
+| User rejects step | Understand concern, adjust, re-spawn implementation agent |
 
-Never skip quality gates. Never proceed without user approval at human review gates.
+Never skip quality gates. Never proceed without user approval at gates (Steps 2 and 5).

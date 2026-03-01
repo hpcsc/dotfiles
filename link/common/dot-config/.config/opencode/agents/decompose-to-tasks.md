@@ -73,13 +73,26 @@ Apply **baby steps** and **vertical slicing**:
 
 Generate the document with these sections:
 
-### 1. Story Reference
+### 1. Progress
+
+A top-level checklist for tracking task completion. One line per task, all unchecked:
+
+```markdown
+## Progress
+- [ ] Task 1: [title]
+- [ ] Task 2: [title]
+- [ ] Task 3: [title]
+```
+
+This section is updated externally (by the orchestrator or human) as tasks complete. The decompose agent always emits all checkboxes unchecked.
+
+### 2. Story Reference
 Which user story this task list is derived from (file path or inline summary).
 
-### 2. Codebase Context
+### 3. Codebase Context
 Brief summary of the exploration findings: affected modules, existing patterns, relevant types.
 
-### 3. Tasks
+### 4. Tasks
 
 Each task includes:
 
@@ -99,12 +112,14 @@ Each task includes:
 **Patterns to Follow:**
 - Reference the file and line range only (e.g., "Follow the pattern in `collect/modules/rocket/handler.go:45-60` for reactor wiring"). Do not paraphrase the pattern, reproduce expressions from it, or suggest how to adapt it — the implementation agent will read the reference directly.
 
-**Testable:** Yes | No — [if No, state what verifies correctness: compilation, integration test in Task N, manual wiring check]
+**Testable:** Yes | No — Can unit/integration tests be written for this task's behavior?
+
+**Verification:** [How to verify correctness — e.g., "tests pass", "go build succeeds", "integration test in Task N covers this", "manual wiring check"]
 
 **Depends on:** [Task N-1, or "None"]
 ```
 
-### 4. Summary
+### 5. Summary
 - Total number of tasks
 - Estimated task ordering rationale (risk-first, dependency-first, etc.)
 - Which acceptance criteria from the story are covered and any that are deferred

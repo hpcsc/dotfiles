@@ -57,29 +57,7 @@ Follow these rules strictly:
 - Include file paths only when they provide essential context for understanding the change
 - Write as a human developer would
 
-### Step 5: Request User Approval
-
-Present the drafted commit message to the user and ask for approval:
-
-```markdown
-## Proposed Commit Message
-
-```
-[commit message here]
-```
-
-**Files to be committed:**
-- [list of staged files]
-```
-
-Ask: "Proceed with this commit?"
-- Approve
-- Edit message (let user provide changes)
-- Cancel
-
-**NEVER commit without explicit user approval.**
-
-### Step 6: Execute Commit (Only After Approval)
+### Step 5: Execute Commit
 
 Use HEREDOC format for the commit:
 ```bash

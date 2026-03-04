@@ -50,16 +50,7 @@ If additional context was provided via $ARGUMENTS:
 - Include file paths only when they provide essential context
 - Write as a human developer would
 
-### Step 5: Request User Approval
-
-Present the drafted commit message and ask for approval:
-- Approve
-- Edit message (let user provide changes)
-- Cancel
-
-**NEVER commit without explicit user approval.**
-
-### Step 6: Execute Commit (Only After Approval)
+### Step 5: Execute Commit
 
 Use HEREDOC format:
 ```bash
@@ -72,7 +63,7 @@ EOF
 )"
 ```
 
-### Step 7: Confirm
+### Step 6: Confirm
 
 After successful commit, show:
 - The commit message used

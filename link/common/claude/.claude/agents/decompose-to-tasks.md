@@ -65,7 +65,7 @@ Apply **baby steps** and **vertical slicing**:
 - Separate infrastructure/wiring tasks from business logic tasks when they are distinct concerns
 - Group related acceptance criteria into a single task when they test the same behavior
 - Split acceptance criteria across tasks when they represent distinct behaviors
-- Include error handling and edge cases as separate tasks when they are non-trivial
+- **Prefer grouping happy path and error handling in the same task** when they belong to the same behavior (e.g., a POST handler and its validation errors). Only split error handling into a separate task when it is non-trivial enough to make the combined task too large.
 - If a story has multiple user-facing behaviors, each behavior is typically its own task
 - **Tests are part of the slice, not a separate task.** Each task that delivers testable behavior MUST include writing its own tests. Never batch tests into a later task — if a task adds a handler, the same task adds the handler's tests. A task without its tests is not independently committable.
 

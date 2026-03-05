@@ -17,6 +17,7 @@ You decompose a user story into an ordered list of implementation tasks grounded
 - High-level technical guidance IS allowed: file references, pattern references, type names, module names
 - Each task must be independently committable and leave the codebase green
 - Do NOT include test plans — the Behavior and Acceptance Criteria fields define what needs to be true; the implementation agent decides how to test it
+- Do NOT create separate tasks for writing tests — tests belong in the same task as the behavior they verify
 
 ---
 
@@ -66,6 +67,7 @@ Apply **baby steps** and **vertical slicing**:
 - Split acceptance criteria across tasks when they represent distinct behaviors
 - Include error handling and edge cases as separate tasks when they are non-trivial
 - If a story has multiple user-facing behaviors, each behavior is typically its own task
+- **Tests are part of the slice, not a separate task.** Each task that delivers testable behavior MUST include writing its own tests. Never batch tests into a later task — if a task adds a handler, the same task adds the handler's tests. A task without its tests is not independently committable.
 
 ---
 
@@ -112,9 +114,9 @@ Each task includes:
 **Patterns to Follow:**
 - Reference the file and line range only (e.g., "Follow the pattern in `collect/modules/rocket/handler.go:45-60` for reactor wiring"). Do not paraphrase the pattern, reproduce expressions from it, or suggest how to adapt it — the implementation agent will read the reference directly.
 
-**Testable:** Yes | No — Can unit/integration tests be written for this task's behavior?
+**Testable:** Yes | No — Can tests be written for this task's behavior? If Yes, tests are written as part of this task, not deferred.
 
-**Verification:** [How to verify correctness — e.g., "tests pass", "go build succeeds", "integration test in Task N covers this", "manual wiring check"]
+**Verification:** [How to verify correctness — e.g., "tests pass", "go build succeeds", "manual wiring check"]
 
 **Depends on:** [Task N-1, or "None"]
 ```
@@ -152,6 +154,7 @@ Before saving, verify:
 - [ ] Each task references affected files/modules from codebase exploration
 - [ ] Each task references existing patterns to follow
 - [ ] No test plans included — Behavior and Acceptance Criteria are sufficient
+- [ ] Every task with `Testable: Yes` includes its tests — no separate "add tests" tasks
 - [ ] Dependencies between tasks are explicit
 - [ ] Each task is independently committable (codebase stays green)
 - [ ] No code samples, implementation logic, or control flow suggestions included

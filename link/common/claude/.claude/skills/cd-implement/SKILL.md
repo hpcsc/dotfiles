@@ -50,7 +50,11 @@ Spawn the `decompose-to-tasks` agent:
 
 Show the user the task list. Each task maps to one cycle in Phase 2.
 
-**GATE**: Get user approval before proceeding. If changes requested, spawn the decomposition agent again with feedback.
+**GATE — approval loop**:
+- Ask the user to approve or request changes.
+- If changes requested, spawn the decomposition agent again with the feedback, then present the **revised** plan to the user and repeat this gate.
+- Continue looping until the user explicitly approves.
+- Do NOT proceed to Phase 2 until the plan is approved.
 
 ---
 
@@ -78,7 +82,11 @@ If the task is marked `Testable: Yes`:
 
 2. Present the returned test plan to the user.
 
-3. **GATE**: Wait for user approval. If the user requests changes, spawn `test-case-designer` again with the feedback. Do NOT proceed until approved.
+3. **GATE — approval loop**:
+   - Ask the user to approve or request changes.
+   - If the user requests changes, spawn `test-case-designer` again with the feedback, then present the **revised** test plan to the user and repeat this gate.
+   - Continue looping until the user explicitly approves.
+   - Do NOT proceed to Step 3 until the test plan is approved.
 
 If the task is marked `Testable: No`, skip to Step 3.
 
@@ -142,7 +150,11 @@ Present to the user:
 - Review verdict (with per-reviewer breakdown)
 - Test output
 
-**GATE**: Wait for user approval. If the user rejects, understand the concern, adjust, and go back to Step 3.
+**GATE — approval loop**:
+- Ask the user to approve or reject.
+- If the user rejects, understand the concern, spawn the implementation agent (Step 3) with the feedback to revise, then run review (Step 4) again, present the **revised** summary to the user, and repeat this gate.
+- Continue looping until the user explicitly approves.
+- Do NOT proceed to Step 6 until approved.
 
 ### Step 6: Commit
 

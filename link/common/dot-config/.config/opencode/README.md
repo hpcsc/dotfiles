@@ -66,11 +66,10 @@ Both tools read shared guidelines from `~/.config/ai/guidelines/`. No duplicatio
 | **go-expert** | Senior Go engineer for direct use |
 | **semantic-reviewer** | Logic correctness, edge cases, test quality |
 | **semantic-go-reviewer** | Same + Go testing guidelines |
-| **security-reviewer** | Injection, auth gaps, secret exposure |
-| **performance-reviewer** | Timeouts, resource leaks, unbounded ops |
 | **concurrency-reviewer** | Shared state, races, deadlocks |
 | **concurrency-go-reviewer** | Same + Go concurrency guidelines |
 | **go-guidelines-reviewer** | Go naming, architecture, workflow conventions |
+| **mutation-go-reviewer** | Runs go-gremlins mutation testing, surfaces actionable test gaps |
 | **go-test-reviewer** | Go tests against testing guidelines |
 | **test-reviewer** | Tests across all languages |
 | **tdd-test-writer** | TDD red phase |

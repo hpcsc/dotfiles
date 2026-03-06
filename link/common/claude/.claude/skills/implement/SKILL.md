@@ -118,13 +118,21 @@ Write failing tests first, then implement to make them pass.
 
 Collect staged changes (`git diff --staged`) and changed file list (`git diff --staged --name-only`).
 
-Spawn these review agents **in parallel**:
+#### Triage reviewers
 
-1. **Semantic reviewer** — resolved semantic reviewer agent
-2. **Security reviewer** — `security-reviewer`
-3. **Performance reviewer** — `performance-reviewer`
-4. **Concurrency reviewer** — `concurrency-reviewer`
-5. **Guidelines reviewer** (Go only) — `go-guidelines-reviewer` — skip for non-Go projects
+Decide which reviewers to spawn based on the diff content:
+
+| Reviewer | When to spawn | Skip when |
+|---|---|---|
+| **Semantic** (resolved agent) | ALWAYS | — |
+| **Guidelines** (`go-guidelines-reviewer`) | ALWAYS for Go projects | non-Go projects |
+| **Security** (`security-reviewer`) | Diff touches: input handling, SQL/queries, auth/authz, file ops, network requests, secrets/credentials, HTML output, deserialization | Pure refactors, test-only changes, renaming, config/docs |
+| **Performance** (`performance-reviewer`) | Diff touches: I/O ops, database queries, loops over collections, goroutine/thread spawning, resource allocation, retry/timeout logic | Renaming, adding fields, type changes, test-only, docs |
+| **Concurrency** (`concurrency-reviewer`) | Diff touches: goroutines/threads/async, channels/locks/mutexes, shared mutable state, database transactions, sync primitives | Single-threaded code, no shared state, test-only, docs |
+
+When in doubt, spawn the reviewer — false negatives are worse than an extra agent.
+
+#### Spawn selected reviewers in parallel
 
 Each reviewer receives:
 
@@ -197,7 +205,7 @@ After all tasks complete:
    ...
 
    ### Quality Assurance
-   - All steps reviewed by parallel reviewers (semantic, security, performance, concurrency)
+   - All steps reviewed by applicable reviewers (semantic + security/performance/concurrency as needed)
    - All steps approved by human reviewer
    - Full test suite passing
    ```

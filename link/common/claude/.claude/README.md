@@ -14,10 +14,9 @@ Skills (user-facing)              Agents (autonomous workers)
                            ├────> test-case-designer (test design)
                            ├────> go-implementer or general-purpose (impl)
                            ├────> semantic-go-reviewer or semantic-reviewer
-                           ├────> security-reviewer
-                           ├────> performance-reviewer
                            ├────> concurrency-go-reviewer or concurrency-reviewer
                            ├────> go-guidelines-reviewer (Go only)
+                           ├────> mutation-go-reviewer (Go only)
                            └────> commit (committing)
 /tdd ──────────────────────┬────> decompose-to-tasks (planning)
                            ├────> tdd-test-writer (red)
@@ -60,7 +59,7 @@ Each stage produces artifacts the next stage consumes:
 
 | Skill | Invocation | Description |
 |-------|------------|-------------|
-| **implement** | `/implement <feature>` | Unified implementation pipeline: planning, test design, implementation (language-aware), 5 parallel reviewers, human approval gates, and commit. |
+| **implement** | `/implement <feature>` | Unified implementation pipeline: planning, test design, implementation (language-aware), parallel reviewers, human approval gates, and commit. |
 | **tdd** | `/tdd <feature>` | Test-driven development with Red-Green-Refactor cycles. Supports hands-off and ping-pong modes. |
 | **commit** | `/commit` | Delegate to the commit agent for staged changes. |
 | **refactor-go** | `/refactor-go <target>` | Go refactoring with investigation, planning, test-first updates, implementation, and review. |
@@ -127,11 +126,10 @@ All review agents output structured JSON: `{decision: "pass|block", findings: [{
 |-------|---------|-------|
 | **semantic-reviewer** | `/implement` | Logic correctness, edge cases, intent alignment, test quality. |
 | **semantic-go-reviewer** | `/implement` (Go) | Same as semantic reviewer, with Go-specific testing guidelines. |
-| **security-reviewer** | `/implement` | Injection patterns, authorization gaps, audit trails, secret exposure. |
-| **performance-reviewer** | `/implement` | Missing timeouts, resource leaks, unbounded operations, graceful degradation. |
 | **concurrency-reviewer** | `/implement` | Shared state synchronization, race conditions, idempotency, deadlocks. |
 | **concurrency-go-reviewer** | `/implement` (Go) | Same as concurrency reviewer, with Go concurrency guidelines (goroutine lifecycle, channel discipline, sync primitives). |
 | **go-guidelines-reviewer** | `/implement` (Go) | Naming patterns, architecture principles, development workflow conventions. |
+| **mutation-go-reviewer** | `/implement` (Go) | Runs go-gremlins mutation testing, interprets survived mutants, surfaces actionable test gaps. |
 | **test-go-reviewer** | (direct use) | Reviews Go tests against behavior-driven testing guidelines. |
 | **test-reviewer** | (direct use) | Reviews tests across all languages against testing guidelines. |
 

@@ -16,7 +16,7 @@ Skills (user-facing)              Agents (autonomous workers)
                            ├────> semantic-go-reviewer or semantic-reviewer
                            ├────> security-reviewer
                            ├────> performance-reviewer
-                           ├────> concurrency-reviewer
+                           ├────> concurrency-go-reviewer or concurrency-reviewer
                            ├────> go-guidelines-reviewer (Go only)
                            └────> commit (committing)
 /tdd ──────────────────────┬────> decompose-to-tasks (planning)
@@ -130,6 +130,7 @@ All review agents output structured JSON: `{decision: "pass|block", findings: [{
 | **security-reviewer** | `/implement` | Injection patterns, authorization gaps, audit trails, secret exposure. |
 | **performance-reviewer** | `/implement` | Missing timeouts, resource leaks, unbounded operations, graceful degradation. |
 | **concurrency-reviewer** | `/implement` | Shared state synchronization, race conditions, idempotency, deadlocks. |
+| **concurrency-go-reviewer** | `/implement` (Go) | Same as concurrency reviewer, with Go concurrency guidelines (goroutine lifecycle, channel discipline, sync primitives). |
 | **go-guidelines-reviewer** | `/implement` (Go) | Naming patterns, architecture principles, development workflow conventions. |
 | **test-go-reviewer** | (direct use) | Reviews Go tests against behavior-driven testing guidelines. |
 | **test-reviewer** | (direct use) | Reviews tests across all languages against testing guidelines. |

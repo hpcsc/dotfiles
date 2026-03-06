@@ -25,6 +25,7 @@ Detect the project language. Check for marker files (first match wins):
 |---|---|---|
 | **Implementation agent** | `go-implementer` | `general-purpose` |
 | **Semantic reviewer** | `semantic-go-reviewer` | `semantic-reviewer` |
+| **Concurrency reviewer** | `concurrency-go-reviewer` | `concurrency-reviewer` |
 | **Guidelines reviewer** | `go-guidelines-reviewer` | _(skip)_ |
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
@@ -128,7 +129,7 @@ Decide which reviewers to spawn based on the diff content:
 | **Guidelines** (`go-guidelines-reviewer`) | ALWAYS for Go projects | non-Go projects |
 | **Security** (`security-reviewer`) | Diff touches: input handling, SQL/queries, auth/authz, file ops, network requests, secrets/credentials, HTML output, deserialization | Pure refactors, test-only changes, renaming, config/docs |
 | **Performance** (`performance-reviewer`) | Diff touches: I/O ops, database queries, loops over collections, goroutine/thread spawning, resource allocation, retry/timeout logic | Renaming, adding fields, type changes, test-only, docs |
-| **Concurrency** (`concurrency-reviewer`) | Diff touches: goroutines/threads/async, channels/locks/mutexes, shared mutable state, database transactions, sync primitives | Single-threaded code, no shared state, test-only, docs |
+| **Concurrency** (resolved agent) | Diff touches: goroutines/threads/async, channels/locks/mutexes, shared mutable state, database transactions, sync primitives | Single-threaded code, no shared state, test-only, docs |
 
 When in doubt, spawn the reviewer — false negatives are worse than an extra agent.
 

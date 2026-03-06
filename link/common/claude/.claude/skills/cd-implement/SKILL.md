@@ -181,7 +181,9 @@ After all tasks complete:
 
 1. **Run full test suite** (detected test command)
 
-2. **Summarize**
+2. **Archive task file** — move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist).
+
+3. **Summarize**
    ```markdown
    ## Feature Complete: [Feature Name]
 
@@ -200,7 +202,7 @@ After all tasks complete:
    - Full test suite passing
    ```
 
-3. **Ask user if they want to create a pull request**
+4. **Ask user if they want to create a pull request**
 
 ---
 

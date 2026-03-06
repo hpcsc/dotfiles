@@ -27,6 +27,7 @@ Detect the project language. Check for marker files (first match wins):
 | **Semantic reviewer** | `semantic-go-reviewer` | `semantic-reviewer` |
 | **Concurrency reviewer** | `concurrency-go-reviewer` | `concurrency-reviewer` |
 | **Guidelines reviewer** | `go-guidelines-reviewer` | _(skip)_ |
+| **Mutation reviewer** | `mutation-go-reviewer` | _(skip)_ |
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
 
@@ -130,6 +131,7 @@ Decide which reviewers to spawn based on the diff content:
 | **Security** (`security-reviewer`) | Diff touches: input handling, SQL/queries, auth/authz, file ops, network requests, secrets/credentials, HTML output, deserialization | Pure refactors, test-only changes, renaming, config/docs |
 | **Performance** (`performance-reviewer`) | Diff touches: I/O ops, database queries, loops over collections, goroutine/thread spawning, resource allocation, retry/timeout logic | Renaming, adding fields, type changes, test-only, docs |
 | **Concurrency** (resolved agent) | Diff touches: goroutines/threads/async, channels/locks/mutexes, shared mutable state, database transactions, sync primitives | Single-threaded code, no shared state, test-only, docs |
+| **Mutation** (resolved agent) | Go project AND diff contains `*_test.go` unit test changes (not integration tests) | Non-Go projects, no `*_test.go` in diff, integration-test-only changes |
 
 When in doubt, spawn the reviewer — false negatives are worse than an extra agent.
 

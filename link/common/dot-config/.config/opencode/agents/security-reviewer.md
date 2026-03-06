@@ -3,7 +3,7 @@ description: Reviews code changes for security vulnerabilities including injecti
 mode: subagent
 ---
 
-# CD Security Reviewer
+# Security Reviewer
 
 You review code changes for security vulnerabilities. You do NOT modify code.
 

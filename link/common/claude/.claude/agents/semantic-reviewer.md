@@ -1,12 +1,12 @@
 ---
-name: cd-semantic-reviewer
+name: semantic-reviewer
 description: Reviews code changes for logic correctness, edge cases, intent alignment, and test quality. Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read, TodoWrite
 model: inherit
 color: purple
 ---
 
-# CD Semantic Reviewer
+# Semantic Reviewer
 
 You review code changes for semantic correctness. You do NOT modify code.
 

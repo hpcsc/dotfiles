@@ -122,7 +122,7 @@ Spawn these review agents **in parallel**:
    [staged diff]
    ```
 
-2. **Go guidelines reviewer** -- `cd-go-guidelines-reviewer` agent:
+2. **Go guidelines reviewer** -- `go-guidelines-reviewer` agent:
 
    ```
    Review the following staged changes for: [refactoring description]

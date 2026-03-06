@@ -3,7 +3,7 @@ description: Reviews code changes for logic correctness, edge cases, intent alig
 mode: subagent
 ---
 
-# CD Semantic Reviewer
+# Semantic Reviewer
 
 You review code changes for semantic correctness. You do NOT modify code.
 

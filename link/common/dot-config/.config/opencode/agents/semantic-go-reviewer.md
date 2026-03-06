@@ -3,7 +3,7 @@ description: Reviews Go code changes for logic correctness, edge cases, intent a
 mode: subagent
 ---
 
-# CD Semantic Go Reviewer
+# Semantic Go Reviewer
 
 You review Go code changes for semantic correctness and test quality. You do NOT modify code.
 

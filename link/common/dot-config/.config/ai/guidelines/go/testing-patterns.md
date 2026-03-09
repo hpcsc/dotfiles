@@ -215,21 +215,49 @@ These qualities often conflict:
 
 ## What is a Unit of Behavior?
 
-A **unit of behavior** is something meaningful for the problem domain - ideally something a business person can recognize as useful.
+A **unit of behavior** is an observable outcome that a caller depends on. The "caller" might be a product user, another service, another package, or another developer on your team.
+
+The key question: **"If this behavior changed, would someone outside this code need to know?"**
+
+### Three Tiers of Behavioral Contracts
+
+Not every behavior traces back to a user story. Infrastructure code has behavioral contracts too — the behavior just serves developers instead of end users.
+
+| Tier | Who cares | Example |
+|------|-----------|---------|
+| **Domain** | Product owner, end user | "Paused accounts cannot receive payments" |
+| **Contract** | Other services, other packages | "Events are published to SNS in order" |
+| **Structural** | Other developers on your team | "Returns ErrNotFound when key is missing" |
+
+All three tiers are valid behaviors worth testing. The distinction between behavior and implementation isn't about who the caller is — it's about whether any caller depends on it.
+
+### How to Tell Behavior from Implementation
+
+Ask: **"Does any caller of this code depend on this specific detail?"**
+
+| Assertion | Caller depends on it? | Verdict |
+|-----------|-----------------------|---------|
+| `Get` returns the value after `Set` | Yes — that's the contract | **Behavior** |
+| Items are stored in a `map[string]entry` | No — could be a slice, tree, anything | **Implementation** |
+| Concurrent `Get`/`Set` don't panic | Yes — callers run this concurrently | **Behavior** |
+| A `sync.RWMutex` is used internally | No — callers care about thread-safety, not the mechanism | **Implementation** |
 
 ### What is NOT a Unit of Behavior:
 
-- ❌ Object existence (`require.NotNil(t, p)`)
-- ❌ Constructor success (`NewX()` returns non-nil)
-- ❌ A test that only checks `require.NoError(t, err)` with no other assertion
+- Object existence (`require.NotNil(t, p)`)
+- Constructor success (`NewX()` returns non-nil)
+- A test that only checks `require.NoError(t, err)` with no other assertion
+- Internal mechanisms (which data structure, which sync primitive, which call order)
 
 ### What IS a Unit of Behavior:
 
-An observable outcome that matters to callers:
-- **"rejects invalid input"** - business validation
-- **"saves data to database"** - side effect
-- **"returns sorted results"** - output correctness
-- **"notifies subscribers on error"** - external communication
+An observable outcome that a caller depends on:
+- **"rejects invalid input"** - domain: business validation
+- **"saves data to database"** - domain: side effect
+- **"returns sorted results"** - domain: output correctness
+- **"publishes events in version order"** - contract: downstream consumers depend on ordering
+- **"returns ErrNotFound when key is missing"** - structural: callers handle this case
+- **"notifies subscribers on error"** - contract: external communication
 
 #### Example of Useless Test
 
@@ -248,7 +276,7 @@ t.Run("creates projector", func(t *testing.T) {
 t.Run("saves checkpoint after processing events", func(t *testing.T) {
     err := projector.Start(ctx)
     require.NoError(t, err)
-    
+
     cp, err := checkpointStore.Get("projection")
     require.Equal(t, uint64(10), cp)  // Verifies meaningful behavior
 })

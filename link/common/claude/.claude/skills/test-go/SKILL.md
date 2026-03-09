@@ -55,7 +55,7 @@ Tests to implement:
 - It has a single reason to fail
 - The test name describes one scenario, not multiple
 - The assertion block tests one outcome
-- It tests something meaningful for the problem domain (not just object existence)
+- It tests an observable outcome that a caller depends on (not just object existence)
 
 See guidelines for detailed explanation: "What is a Unit of Behavior"
 

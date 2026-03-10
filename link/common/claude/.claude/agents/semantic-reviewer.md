@@ -23,7 +23,7 @@ Before reviewing, read the testing guidelines for the project language:
 
 ```bash
 # For language-agnostic principles
-cat ~/.config/ai/guidelines/testing
+cat ~/.config/ai/guidelines/testing/patterns.md
 ```
 
 ---

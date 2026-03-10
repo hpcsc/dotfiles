@@ -284,6 +284,86 @@ t.Run("saves checkpoint after processing events", func(t *testing.T) {
 
 ---
 
+## HTTP Handlers: The Component Is the Endpoint
+
+An HTTP handler — whether it returns JSON, HTML, or streamed chunks — may be composed of multiple internal pieces (controllers, templates, view models, serializers, middleware). **These are implementation details. The unit of behavior is the HTTP response.**
+
+The public API is: HTTP request in → HTTP response out. Test through `httptest.NewRecorder` and the handler function, asserting on what the caller (browser, API client, frontend) observes.
+
+### What Is Observable Behavior
+
+| Observable (test this) | Why |
+|---|---|
+| Status codes (200, 422, 500) | API contract — callers branch on this |
+| Error messages shown to the user | User-visible feedback |
+| Response body data values (IDs, amounts, names) | Correctness of business logic |
+| Content-Type, Location, and other semantic headers | API contract — callers depend on these |
+| Ordering of streamed chunks | Contract — frontend relies on skeleton-before-content |
+| Presence of key content in rendered output | "Does the user see the error / the subject / the amount?" |
+
+### What Is Implementation Detail
+
+| Implementation (don't test this) | Why |
+|---|---|
+| Specific HTML tags or elements (`<iframe>`, `<details>`, `<div>`) | Template refactoring shouldn't break tests |
+| CSS classes, inline styles, data-attributes | Presentation, not behavior |
+| Number of DOM nodes, nesting depth | Structural, not behavioral |
+| Whether a value is in a `<span>` vs `<p>` vs `<h4>` | Irrelevant to the user |
+| Internal types (view models, template data structs) | Private to the handler package |
+| Which template engine or serializer is used | Swappable without changing behavior |
+
+### The Litmus Test
+
+> "If I change **how** the response is built (swap template engine, restructure HTML, rename a view model field) but the user sees the **same content** — should any test break?"
+>
+> If yes, the test is asserting on implementation.
+
+### Example: HTML Handler
+
+```go
+// BAD: Testing HTML structure
+doc := parseHTML(w.Body)
+require.Equal(t, 1, doc.Find("iframe").Length())
+require.Equal(t, "day-card", doc.Find("div").First().AttrOr("class", ""))
+
+// GOOD: Testing user-visible content
+require.Equal(t, http.StatusOK, w.Result().StatusCode)
+require.Contains(t, dayCard.HTML, "Day 42")
+require.Contains(t, dayCard.HTML, "Test Subject")
+require.Contains(t, dayCard.HTML, "provider unavailable")
+```
+
+### Example: API Handler
+
+```go
+// BAD: Testing JSON field ordering or internal serialization
+require.JSONEq(t, `{"status":"ok","data":{"id":"123"}}`, w.Body.String())
+
+// GOOD: Testing response contract and data values
+require.Equal(t, http.StatusOK, w.Result().StatusCode)
+require.Equal(t, "application/json", w.Result().Header.Get("Content-Type"))
+
+var resp ResponseBody
+require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+require.Equal(t, "123", resp.Data.ID)
+require.Equal(t, "ok", resp.Status)
+```
+
+### When HTML Structure IS Behavior
+
+Sometimes structure matters because a downstream caller depends on it (e.g., HTMX swap targets, streaming chunk `target` fields, accessibility landmarks). In those cases the structure is a **contract**, not an implementation detail, and is worth testing:
+
+```go
+// Target IDs are a contract — HTMX swaps depend on them
+require.ElementsMatch(t, []string{"day-0-30", "day-0-31"}, targets)
+
+// Streaming order is a contract — frontend renders progressively
+require.Equal(t, "skeleton", chunks[0].Type)
+require.Equal(t, "summary", chunks[len(chunks)-1].Type)
+```
+
+---
+
 ## Test Structure
 
 ```go

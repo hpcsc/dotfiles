@@ -13,6 +13,92 @@ Tests should verify **what** the system does (observable behaviors), not **how**
 
 ---
 
+## Independent Verification
+
+A test provides independent verification when its expected values come from **outside the implementation** — from business requirements, specifications, or domain knowledge — rather than restating what the code does.
+
+The key question: **if the implementation breaks, will this test catch it?**
+
+### Degrees of Independence
+
+| Degree | Expected value source | Can it fail on a bug? | Value |
+|---|---|---|---|
+| Strong | Domain knowledge / spec | Yes, and failure is self-evidently wrong | High |
+| Moderate | Externally verified lookup | Yes, but correctness requires checking an external source | Medium |
+| Weak | Copied from production code | Yes, but correctness requires checking production intent | Low (change detector) |
+| None (tautology) | Computed from production code | No | Zero |
+
+### Strong Independence
+
+The test encodes domain knowledge the implementation must satisfy. The test and the implementation arrive at the same answer from different directions.
+
+```
+// The test knows $10.50 = 1050 cents — a mathematical fact independent of how convertToCents works.
+test "convert USD to cents":
+    assert convertToCents(10.50, "USD") == 1050
+```
+
+### Weak Independence (Change Detectors)
+
+The expected value was copied from production code. The test detects changes but cannot tell you whether the new value is correct.
+
+```
+// Where does 2 come from? From looking at the production code.
+test "default decimal places":
+    assert defaultDecimalPlaces("USD") == 2
+```
+
+A particularly bad variant duplicates the production formula:
+
+```
+// BAD: Same formula as production — fails on change but provides no guidance on correctness.
+test "discount":
+    price = 100.0
+    discount = 0.2
+    expected = price - (price * discount)
+    assert applyDiscount(price, discount) == expected
+```
+
+### No Independence (Tautologies)
+
+The expected value is derived from the code under test at runtime. The test **cannot fail**.
+
+```
+// BAD: Both sides evaluate the same code path — passes no matter what applyDiscount does.
+test "discount":
+    expected = applyDiscount(100.0, 0.2)
+    assert applyDiscount(100.0, 0.2) == expected
+```
+
+Other tautology forms:
+- Asserting a mock returns what you told it to return
+- Using a shared helper that computes both expected and actual values from the same source
+
+### Prefer Higher-Level Behavioral Tests Over Change Detectors
+
+When you notice a change-detector test, check whether a behavioral test already covers it. If so, the change detector is redundant. If not, write the behavioral test first.
+
+```
+// Change detector: weak independence
+test "default decimal places":
+    assert defaultDecimalPlaces("USD") == 2
+
+// Behavioral: strong independence — failure is self-evidently wrong
+test "format USD amount":
+    assert formatAmount(10.5, "USD") == "$10.50"
+```
+
+If someone changes `defaultDecimalPlaces("USD")` to `3`, both fail. But the formatting test fails with `"$10.500" != "$10.50"` — self-evidently wrong. The change detector only says `3 != 2`.
+
+### Identifying the Degree
+
+Two questions, applied in order:
+
+1. **Can the test fail at all?** If the expected value is derived from the code under test at runtime, it's a tautology. Remove it or replace it with a hardcoded expected value.
+2. **If it fails, is the failure self-evidently wrong?** If yes, the test has strong independence. If you'd just update the test to match the new production value, it has weak independence.
+
+---
+
 ## Three Essential Qualities of Effective Tests
 
 Every test should maximize these interconnected qualities:
@@ -114,6 +200,94 @@ These qualities often conflict:
 ❌ **Implementation details**: internal method calls, private fields
 ❌ **Trivial code**: simple getters/setters, field assignments
 ❌ **Framework behavior**: language features
+
+---
+
+## What is a Unit of Behavior?
+
+A **unit of behavior** is an observable outcome that a caller depends on. The "caller" might be a product user, another service, another package, or another developer on your team.
+
+The key question: **"If this behavior changed, would someone outside this code need to know?"**
+
+### Three Tiers of Behavioral Contracts
+
+Not every behavior traces back to a user story. Infrastructure code has behavioral contracts too — the behavior just serves developers instead of end users.
+
+| Tier | Who cares | Example |
+|------|-----------|---------|
+| **Domain** | Product owner, end user | "Paused accounts cannot receive payments" |
+| **Contract** | Other services, other packages | "Events are published in order" |
+| **Structural** | Other developers on your team | "Returns NotFound error when key is missing" |
+
+All three tiers are valid behaviors worth testing. The distinction between behavior and implementation isn't about who the caller is — it's about whether any caller depends on it.
+
+### How to Tell Behavior from Implementation
+
+Ask: **"Does any caller of this code depend on this specific detail?"**
+
+| Assertion | Caller depends on it? | Verdict |
+|-----------|-----------------------|---------|
+| `get` returns the value after `set` | Yes — that's the contract | **Behavior** |
+| Items are stored in a hash map | No — could be a list, tree, anything | **Implementation** |
+| Concurrent `get`/`set` don't corrupt data | Yes — callers run this concurrently | **Behavior** |
+| A read-write lock is used internally | No — callers care about thread-safety, not the mechanism | **Implementation** |
+
+### What is NOT a Unit of Behavior
+
+- Object existence (asserting non-null after construction)
+- Constructor success (construction returning non-null)
+- A test that only checks for absence of error with no other assertion
+- Internal mechanisms (which data structure, which sync primitive, which call order)
+
+### What IS a Unit of Behavior
+
+An observable outcome that a caller depends on:
+- **"rejects invalid input"** — domain: business validation
+- **"saves data to database"** — domain: side effect
+- **"returns sorted results"** — domain: output correctness
+- **"publishes events in version order"** — contract: downstream consumers depend on ordering
+- **"returns NotFound error when key is missing"** — structural: callers handle this case
+- **"notifies subscribers on error"** — contract: external communication
+
+---
+
+## HTTP Handlers: The Component Is the Endpoint
+
+An HTTP handler — whether it returns JSON, HTML, or streamed chunks — may be composed of multiple internal pieces (controllers, templates, view models, serializers, middleware). **These are implementation details. The unit of behavior is the HTTP response.**
+
+The public API is: HTTP request in → HTTP response out. Test through a test server/recorder and the handler function, asserting on what the caller (browser, API client, frontend) observes.
+
+### What Is Observable Behavior
+
+| Observable (test this) | Why |
+|---|---|
+| Status codes (200, 422, 500) | API contract — callers branch on this |
+| Error messages shown to the user | User-visible feedback |
+| Response body data values (IDs, amounts, names) | Correctness of business logic |
+| Content-Type, Location, and other semantic headers | API contract — callers depend on these |
+| Ordering of streamed chunks | Contract — frontend relies on skeleton-before-content |
+| Presence of key content in rendered output | "Does the user see the error / the subject / the amount?" |
+
+### What Is Implementation Detail
+
+| Implementation (don't test this) | Why |
+|---|---|
+| Specific HTML tags or elements (`<iframe>`, `<details>`, `<div>`) | Template refactoring shouldn't break tests |
+| CSS classes, inline styles, data-attributes | Presentation, not behavior |
+| Number of DOM nodes, nesting depth | Structural, not behavioral |
+| Whether a value is in a `<span>` vs `<p>` vs `<h4>` | Irrelevant to the user |
+| Internal types (view models, template data structs) | Private to the handler package |
+| Which template engine or serializer is used | Swappable without changing behavior |
+
+### The Litmus Test
+
+> "If I change **how** the response is built (swap template engine, restructure HTML, rename a view model field) but the user sees the **same content** — should any test break?"
+>
+> If yes, the test is asserting on implementation.
+
+### When Response Structure IS Behavior
+
+Sometimes structure matters because a downstream caller depends on it (e.g., HTMX swap targets, streaming chunk target fields, accessibility landmarks, API field names). In those cases the structure is a **contract**, not an implementation detail, and is worth testing.
 
 ---
 
@@ -536,6 +710,35 @@ Strict assertions increase **precision** (failures pinpoint exactly what changed
 
 ## Common Anti-Patterns to Avoid
 
+### Anti-Pattern 0: Testing Constructor Returns Non-Null
+
+#### Problem
+```
+// BAD: Only tests object exists
+test "create projector":
+    p = createProjector(proj, store, sub, logger)
+    assert p != null  // Useless — other tests would fail if this returned null
+```
+
+#### Why It's Wrong
+- Tests object existence, not behavior
+- If construction fails, other tests would catch it anyway
+- Provides no value in catching bugs
+
+#### Fix
+```
+// GOOD: Test the actual behavior of the constructed object
+test "projector start":
+    test "saves checkpoint after processing events":
+        projector = createProjector(proj, store, sub, logger)
+        projector.start()
+
+        checkpoint = checkpointStore.get("projection")
+        assert checkpoint == 10
+```
+
+---
+
 ### Anti-Pattern 1: Mocking Internal Dependencies
 
 #### Problem
@@ -806,6 +1009,65 @@ test "account withdraw":
 
 ---
 
+### Anti-Pattern 8: Tautology Tests and Change Detectors
+
+#### Problem: Tautology (No Independence)
+```
+// BAD: Expected value comes from the code under test — cannot fail.
+test "discount":
+    expected = applyDiscount(100.0, 0.2)
+    assert applyDiscount(100.0, 0.2) == expected
+```
+
+#### Why It's Wrong
+- The test is true by construction — both sides run the same code path
+- No matter what `applyDiscount` does (wrong formula, panics, returns zero), the test passes
+- Provides zero defect detection while giving false coverage confidence
+
+#### Problem: Change Detector (Weak Independence)
+```
+// BAD: Expected value copied from production code — detects change but not correctness.
+test "default timeout":
+    assert defaultTimeout() == 30
+```
+
+#### Why It's Limited
+- If someone changes `defaultTimeout()` to `60`, the test fails, but the developer has no way to know if `60` is wrong without consulting an external source
+- The test becomes a mechanical "copy the new value" chore with no guidance on correctness
+
+#### Fix: Use Domain-Derived Values or Behavioral Tests
+```
+// GOOD (strong independence): Domain knowledge — $10.50 = 1050 cents is a mathematical fact.
+test "convert USD to cents":
+    assert convertToCents(10.50, "USD") == 1050
+
+// GOOD (behavioral): Failure is self-evidently wrong — "$10.500" is clearly incorrect.
+test "format USD amount":
+    assert formatAmount(10.5, "USD") == "$10.50"
+```
+
+When a change-detector test is the only coverage, prefer replacing it with a higher-level behavioral test whose failure is self-evidently wrong.
+
+---
+
+### Detection Checklist
+
+When reviewing tests, check for these red flags:
+
+- [ ] Test names include "Calls", "Invokes", "Uses" (testing HOW, not WHAT)
+- [ ] Mocking internal dependencies of the subject under test
+- [ ] Asserting on call counts without verifying behavior
+- [ ] Testing getters/setters without business logic
+- [ ] Using contains/substring match where exact match is needed
+- [ ] Not asserting on error messages
+- [ ] Exposing private methods/fields just for testing
+- [ ] Heavy mocking setup (>3 mocks)
+- [ ] Tests break when refactoring without behavior changes
+- [ ] Expected values copied from production code without domain justification (change detector)
+- [ ] Expected values computed from the code under test at runtime (tautology)
+
+---
+
 ## Quick Testing Checklist
 
 Before writing a test, verify the three essential qualities:
@@ -815,6 +1077,7 @@ Before writing a test, verify the three essential qualities:
 - [ ] Includes comprehensive assertions about expected outcomes
 - [ ] Tests edge cases and boundary conditions
 - [ ] Asserts on actual values, not just that functions ran
+- [ ] Expected values have independent verification (domain knowledge, not copied from production code)
 
 **Resilience (survives harmless changes):**
 - [ ] Testing through public API only

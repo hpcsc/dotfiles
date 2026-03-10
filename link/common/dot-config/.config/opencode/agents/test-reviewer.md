@@ -24,7 +24,7 @@ Before reviewing, familiarize yourself with the comprehensive guidelines:
 
 ```bash
 # Read the complete language-agnostic testing guidelines
-cat ~/.config/ai/guidelines/testing
+cat ~/.config/ai/guidelines/testing/patterns.md
 ```
 
 This is the authoritative reference that defines what good tests look like, including:

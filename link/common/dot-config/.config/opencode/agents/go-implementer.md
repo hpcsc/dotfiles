@@ -28,6 +28,11 @@ Read the task description, affected files, and pattern references provided. Read
 
 ### Step 2: Write Tests First
 
+**When NOT to write tests — check this FIRST:**
+- If the task is marked `Testable: No`, do NOT write tests. Go directly to Step 3.
+- If the task's artifacts (types, templates, internal helpers) have no public API entry point yet (e.g., the controller that uses them is in a later task), do NOT write tests that exercise internal artifacts directly. Tests for these artifacts belong in the task that wires the public API.
+- Never test unexported templates, types, or functions by exporting them just for testing.
+
 Write tests BEFORE any production code.
 
 If a test plan was provided (from the test-case-designer), implement each scenario as a test. If no test plan, design tests from the task's behavior and acceptance criteria.

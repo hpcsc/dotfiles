@@ -68,6 +68,7 @@ Apply **baby steps** and **vertical slicing**:
 - **Prefer grouping happy path and error handling in the same task** when they belong to the same behavior (e.g., a POST handler and its validation errors). Only split error handling into a separate task when it is non-trivial enough to make the combined task too large.
 - If a story has multiple user-facing behaviors, each behavior is typically its own task
 - **Tests are part of the slice, not a separate task.** Each task that delivers testable behavior MUST include writing its own tests. Never batch tests into a later task — if a task adds a handler, the same task adds the handler's tests. A task without its tests is not independently committable.
+- **A task marked `Testable: Yes` must be testable through a public API** (exported function, HTTP handler, CLI command). If a task introduces internal artifacts (types, templates, helpers) whose only meaningful tests would call unexported code or execute internal templates directly, either (a) combine it with the task that wires them into a public API, or (b) mark it `Testable: No`. Do not mark a task `Testable: Yes` if the only way to verify it is by testing implementation details.
 
 ---
 

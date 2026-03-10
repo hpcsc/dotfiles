@@ -80,6 +80,8 @@ Apply the Go testing guidelines:
 
 ### Step 7: Identify Missing Tests
 
+Before flagging missing test coverage, apply the **unit of behavior** test from the testing guidelines: "If this behavior changed, would someone outside this code need to know?" Only flag missing tests for behaviors that a caller depends on — not for internal mechanisms or transport details.
+
 Compare production code against test coverage:
 - Uncovered error paths
 - Missing boundary conditions
@@ -88,7 +90,10 @@ Compare production code against test coverage:
 - Untested side effects (writes, notifications, state changes)
 - Uncovered conditional branches in public methods
 
-Do NOT suggest tests for trivial code, private methods, or already-covered scenarios.
+Do NOT suggest tests for:
+- Trivial code, private methods, or already-covered scenarios
+- Internal mechanisms (how data is passed between components, which data structure is used, which transport mechanism is chosen)
+- Scenarios where the caller depends on the **outcome** but not the **specific mechanism** being tested
 
 ---
 

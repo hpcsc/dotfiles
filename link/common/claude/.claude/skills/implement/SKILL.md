@@ -31,6 +31,15 @@ Detect the project language. Check for marker files (first match wins):
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
 
+### Testing Guidelines
+
+| Language | Required reading |
+|---|---|
+| Go | `~/.config/ai/guidelines/go/testing-patterns.md` |
+| (others) | _(none)_ |
+
+When a testing guideline exists for the detected language (see table above), pass it as `Required Reading` to the `test-case-designer` agent. Include the file path and the instruction: "Read this before designing test cases. Apply the 'What is a Unit of Behavior?' section when deciding whether a scenario is worth testing."
+
 ---
 
 ## Phase 1: Planning
@@ -47,6 +56,8 @@ If `$ARGUMENTS` points to an existing file in `tasks/`:
 Spawn the `decompose-to-tasks` agent:
 
 > Decompose the following user story into implementation tasks: [user story from $ARGUMENTS]
+
+When a testing guideline exists for the detected language (see Testing Guidelines table above), pass it as `Required Reading` to the `decompose-to-tasks` agent. Include the file path and the instruction: "Read this before deciding task testability. Apply the 'What is a Unit of Behavior?' section when deciding whether a task delivers independently testable behavior or is only meaningful through a downstream consumer."
 
 ### Present the Plan
 

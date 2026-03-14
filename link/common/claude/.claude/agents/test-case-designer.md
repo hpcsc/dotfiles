@@ -33,28 +33,38 @@ Patterns to Follow: [from task list]
 Read the affected files and any referenced patterns to understand:
 - The current behavior and public API surface
 - Existing test files and conventions for the affected code
+- Existing test scenarios and what behaviors they cover
 - Domain types and interfaces involved
 - Error paths and edge cases visible in the code
 
 ### Step 2: Design Test Cases
 
-For each acceptance criterion, design one or more test scenarios. Each scenario must answer all four questions — if you can't answer one, the scenario is incomplete or not worth testing:
+For each acceptance criterion, design one or more test scenarios. Use these questions to decide whether a scenario is worth keeping — if you can't answer all four, the scenario is incomplete or not worth testing:
 
-1. **Caller** — Who depends on this behavior? (end user, downstream service, consuming package, another developer). If you can't name a caller, this is likely an implementation detail — drop it.
-2. **Verifies** — What observable behavior does this test? Must be expressed through the public API, not internal implementation.
-3. **Expected** — What is the expected outcome? Must be grounded in domain knowledge or the behavioral contract, not derived from reading the current implementation.
-4. **Breaks when** — What change to the code under test would cause this test to fail? If the answer is "a refactor that doesn't change behavior," the test is coupled to implementation — redesign it.
+- Who depends on this behavior? If you can't name a caller, this is likely an implementation detail — drop it.
+- Can the behavior be expressed through the public API? If the only way to test it is through internals, drop it or redesign.
+- Is the expected outcome grounded in domain knowledge or the behavioral contract, not derived from reading the current implementation?
+- Would a harmless refactor break this test? If yes, the test is coupled to implementation — redesign it.
 
 Also consider scenarios NOT in the acceptance criteria but visible from the code context:
 - Error paths (dependency failures, invalid inputs)
 - Boundary conditions (empty collections, zero values, nil)
 - Graceful degradation (missing data, partial failures)
 
-### Step 3: Filter Out Worthless Tests
+### Step 3: Assess Impact on Existing Tests
+
+Review existing test scenarios in the affected test files and classify each as:
+- **Update**: The test covers behavior that the task changes — the test's setup, assertions, or expectations need to change to match the new behavior.
+- **Remove**: The test covers behavior that the task eliminates, or the test is now redundant because a new scenario supersedes it.
+- **Keep**: The test is unaffected by the task — no action needed (do not list these).
+
+Only list tests that require action. If no existing tests are affected, state that explicitly.
+
+### Step 4: Filter Out Worthless Tests
 
 Remove any scenario where:
-- You couldn't name a caller in Step 2
-- "Breaks when" describes a harmless refactor rather than a behavioral change
+- You couldn't name a caller
+- It would only break on a harmless refactor, not a behavioral change
 - It verifies something the compiler/type system guarantees (struct has fields, type can be constructed)
 - It duplicates an existing test in the codebase
 - It tests framework behavior rather than a behavioral contract
@@ -64,36 +74,112 @@ Remove any scenario where:
 
 ## Output Format
 
-Return the test plan as structured text. Every scenario MUST include all four fields — no exceptions. If you cannot fill a field, the scenario should have been filtered out in Step 3.
+Your output MUST use the exact structure below. Every scenario MUST have exactly four bullet fields on separate lines. No exceptions. No abbreviations. Do NOT compress a scenario into a single line or omit any field.
 
-```markdown
+If you cannot fill all four fields for a scenario, it should have been filtered out in Step 4.
+
+WRONG — this is a format violation:
+
+```
+1. **Percentage discount** — Verifies that 20% off $100 returns $80
+
+2. **Discount cap** — Verifies discount cannot exceed order total
+```
+
+RIGHT — every scenario has all four fields on separate lines:
+
+```
+1. **Percentage discount reduces total**
+   - Caller: Checkout page displaying order total
+   - Behavior under test: Applying a percentage discount to an order
+   - Expected: 20% discount on a $100 order yields $80.00 total
+   - Breaks when: Discount calculation logic is removed or percentage is misapplied
+```
+
+Use this structure for your full output:
+
+```
 ## Test Plan: [Task title]
 
 ### Scenarios
 
 1. **[Scenario name]**
    - Caller: [who depends on this behavior]
-   - Verifies: [what observable behavior this tests]
+   - Behavior under test: [what observable behavior through the public API]
    - Expected: [outcome, from domain knowledge or behavioral contract]
    - Breaks when: [what behavioral change would cause this to fail]
 
 2. **[Scenario name]**
    - Caller: [who depends on this behavior]
-   - Verifies: [what observable behavior]
+   - Behavior under test: [what observable behavior]
    - Expected: [outcome]
    - Breaks when: [what behavioral change would cause failure]
 
-[repeat for each scenario]
+### Existing Test Impact
+
+| Test | Action | Reason |
+|------|--------|--------|
+| [test name or description] | Update / Remove | [why this test is affected] |
 
 ### Filtered Out
 
 | Scenario | Reason |
 |----------|--------|
-| [scenario name] | [why it was removed — e.g. "no caller depends on this", "breaks on harmless refactor", "compiler guarantees this"] |
+| [name] | [why removed] |
 
 ### Test Location
 - File: `path/to/expected_test_file`
 - Convention: [brief note on test structure convention from existing tests]
+```
+
+Here is a complete example of correct output:
+
+```
+## Test Plan: Add discount calculation
+
+### Scenarios
+
+1. **Percentage discount reduces total**
+   - Caller: Checkout page displaying order total
+   - Behavior under test: Applying a percentage discount to an order
+   - Expected: 20% discount on a $100 order yields $80.00 total
+   - Breaks when: Discount calculation logic is removed or percentage is misapplied
+
+2. **Discount cannot exceed order total**
+   - Caller: Payment service receiving the final amount
+   - Behavior under test: Applying a discount larger than the order total
+   - Expected: Order total floors at $0.00, never goes negative
+   - Breaks when: Floor/clamp at zero is removed from discount calculation
+
+3. **Stacking multiple discounts**
+   - Caller: Promotions engine applying coupon + loyalty discount
+   - Behavior under test: Applying two discounts sequentially to the same order
+   - Expected: Both discounts apply — 10% coupon + $5 loyalty on $100 yields $85.00
+   - Breaks when: Only the first or last discount is applied instead of both
+
+4. **Expired discount code is rejected**
+   - Caller: End user entering a coupon code at checkout
+   - Behavior under test: Submitting a discount code past its expiration date
+   - Expected: Error indicating the code is expired; order total unchanged
+   - Breaks when: Expiration check is removed or bypassed
+
+### Existing Test Impact
+
+| Test | Action | Reason |
+|------|--------|--------|
+| TestOrderTotal/basic_total | Update | Order total now accounts for discounts — expected value and setup need a discount field |
+| TestOrderTotal/zero_items | Remove | Superseded by "Discount cannot exceed order total" which covers the zero-floor behavior more completely |
+
+### Filtered Out
+
+| Scenario | Reason |
+|----------|--------|
+| Discount struct can be created | Tests type construction — compiler guarantees this |
+| ApplyDiscount returns no error for valid input | Sole assertion is "no error" — no meaningful behavioral outcome |
+
+### Test Location
+- File: `order/discount_test.go`
+- Convention: Table-driven tests grouped by behavior, `testify/assert`
 ```
 
 ---

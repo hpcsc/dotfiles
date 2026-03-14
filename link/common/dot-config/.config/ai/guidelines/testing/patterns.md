@@ -251,6 +251,87 @@ An observable outcome that a caller depends on:
 
 ---
 
+## Detecting Implementation Detail Tests
+
+The anti-patterns and checklists later in this guide cover known patterns. This section provides a **general decision procedure** for evaluating any assertion — including novel cases that don't match a known pattern.
+
+### The Definitive Test: Refactor Invariance
+
+> If you can restructure internals without changing any requirements, and the test breaks, it was testing implementation.
+
+A behavioral test is invariant across all correct implementations. An implementation-detail test is coupled to one specific correct implementation.
+
+**Apply this mentally**: imagine a plausible refactor (extract a helper, change a data structure, swap a dependency, restructure internal flow). If the behavior is preserved but the test would break, the test is asserting on implementation.
+
+### Decision Procedure
+
+For any assertion under review, apply these three questions in order:
+
+**1. Does any caller depend on this specific detail?**
+
+This is the primary filter. "Caller" means anyone outside the code under test: an end user, another service, another package, another developer on your team (see Three Tiers of Behavioral Contracts above).
+
+| Assertion | Caller depends on it? | Verdict |
+|---|---|---|
+| `withdraw` returns an insufficient-funds error | Yes — callers handle this error | **Behavior** |
+| Withdrawal calls an internal `validateBalance` method | No — callers care about the rejection, not the mechanism | **Implementation** |
+| `publishEvents` sends events to the stream | Yes — downstream consumers read from it | **Behavior** |
+| Events are batched internally before publishing | No — consumers care about receipt, not batching strategy | **Implementation** |
+
+If no caller depends on it, it's an implementation detail. Stop here.
+
+**2. Does the assertion verify an outcome or a mechanism?**
+
+Outcomes are what changed after the action. Mechanisms are how the change was produced.
+
+| Mechanism (implementation) | Outcome (behavior) |
+|---|---|
+| `assert mockValidator.wasCalled == true` | `assert error.message == "amount must be positive"` |
+| `assert spy.callCount == 1` | `assert recorder.lastRecipient == "cust-123"` |
+| Asserting which internal function was invoked | Asserting on the return value, error, or side effect |
+
+**Exception**: A side effect *is* an outcome when the side effect is the point. "Submitting an order publishes an OrderPlaced event" — the event publication is the observable outcome at the system boundary. The test is behavioral because a downstream caller depends on it.
+
+**3. Would this test survive a behavior-preserving refactor?**
+
+Mentally apply one of these refactors:
+- Extract or inline an internal helper
+- Change the internal data structure
+- Swap one implementation of a dependency for another
+- Reorder internal steps that have no externally observable ordering
+
+If the test would break, it's coupled to implementation.
+
+### Applying to Common Gray Areas
+
+**Asserting on side effects at system boundaries:**
+```
+// Behavioral — the requirement is that the email gets sent with correct data.
+assert recorder.lastRecipient == "cust-123"
+assert recorder.lastMessage == "Payment received"
+```
+The email sender is a system boundary. The caller (the customer) depends on receiving the email. This is an outcome, not a mechanism.
+
+**Asserting on internal call ordering:**
+```
+// Implementation — no caller depends on validation happening before persistence.
+assert spy.callOrder == ["validate", "persist"]
+```
+Unless the ordering is a contract (e.g., "events must be published in version order"), internal call ordering is a mechanism.
+
+**Asserting on intermediate state:**
+```
+// Implementation — no caller observes the internal cache state.
+assert cache.size == 1
+
+// Behavioral — but better: test the actual behavior (cache hit returns same result).
+result1 = service.getUser("123")
+result2 = service.getUser("123")
+assert result1 == result2
+```
+
+---
+
 ## HTTP Handlers: The Component Is the Endpoint
 
 An HTTP handler — whether it returns JSON, HTML, or streamed chunks — may be composed of multiple internal pieces (controllers, templates, view models, serializers, middleware). **These are implementation details. The unit of behavior is the HTTP response.**

@@ -96,11 +96,23 @@ If the task is marked `Testable: Yes`:
    Patterns to Follow: [from task list]
    ```
 
-2. Present the returned test plan to the user.
+2. **Format validation** — before presenting to the user, check the returned output for ALL of the following. If any check fails, re-spawn `test-case-designer` with the original task bundle plus this feedback (max 2 retries, then escalate to user):
 
-3. **GATE — approval loop**:
+   > Your output does not conform to the required format. Fix these issues:
+   > [list each failed check]
+   > Re-read the Output Format section in your prompt and follow it exactly.
+
+   Checks:
+   - Contains ALL required sections: `## Test Plan`, `**Caller Pattern**`, `### Scenarios`, `### Existing Test Impact`, `### Filtered Out`, `### Test Location`
+   - Every scenario is a numbered item with a bold name, followed by exactly four bullet fields on separate lines: `- Caller:`, `- Behavior under test:`, `- Expected:`, `- Breaks when:`
+   - Scenarios are NOT in a table
+   - No bullet field has an empty or placeholder value
+
+3. Present the validated test plan to the user.
+
+4. **GATE — approval loop**:
    - Ask the user to approve or request changes.
-   - If the user requests changes, spawn `test-case-designer` again with the feedback, then present the **revised** test plan to the user and repeat this gate.
+   - If the user requests changes, spawn `test-case-designer` again with the feedback, then validate (step 2) and present the **revised** test plan to the user and repeat this gate.
    - Continue looping until the user explicitly approves.
    - Do NOT proceed to Step 3 until the test plan is approved.
 

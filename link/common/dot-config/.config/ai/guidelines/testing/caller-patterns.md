@@ -9,12 +9,13 @@ The existing testing guidelines cover **how** to write good tests (public API, b
 | Section | Line | Use when... |
 |---|---|---|
 | [How to Identify the Caller](#how-to-identify-the-caller) | ~25 | Deciding what to assert on for a given component |
-| [UI](#1-ui-user--page) | ~48 | Testing pages, forms, rendered output |
-| [Inbound](#2-inbound-external-system--handler) | ~100 | Testing webhooks, uploads, API requests from external systems |
+| [UI](#1-ui-user--page) | ~48 | Testing pages, JSON APIs for frontends, rendered output |
+| [Inbound](#2-inbound-external-system--handler) | ~100 | Testing webhooks, uploads, commands from browsers or external systems |
 | [Outbound](#3-outbound-our-system--external-service) | ~152 | Testing email sends, API calls to providers, file delivery |
 | [Async Processing](#4-async-processing-trigger--side-effects) | ~210 | Testing message consumers, event reactors, scheduled jobs |
 | [Exported API](#5-exported-api-other-code--this-interface) | ~271 | Testing packages used by other code in the system |
-| [Quick Reference](#quick-reference) | ~327 | Lookup table for all five patterns |
+| [Not Every Test Has a Caller](#not-every-test-has-a-caller) | ~340 | Config guard tests, deployment parity checks |
+| [Quick Reference](#quick-reference) | ~370 | Lookup table for all five patterns |
 
 ---
 
@@ -29,8 +30,8 @@ The answers map to one of five patterns:
 
 | Input from | Output observed by | Pattern |
 |---|---|---|
-| End user (browser, app) | End user | **UI** |
-| External system (webhook, upload, API call) | Our system (acceptance/rejection) | **Inbound** |
+| End user (browser, app) | End user (reads content) | **UI** |
+| End user or external system (browser form, webhook, upload, API call) | Our system (acceptance/rejection + side effects) | **Inbound** |
 | Our system (business logic) | External service (email provider, payment API) | **Outbound** |
 | Infrastructure (queue, event bus, scheduler) | Infrastructure or downstream consumers | **Async Processing** |
 | Other code in the system | Other code in the system | **Exported API** |
@@ -43,6 +44,8 @@ The answers map to one of five patterns:
 
 **The caller is the end user** — a human looking at a screen, reading content, and clicking things. They don't know or care about HTML structure, CSS classes, view models, or which template engine rendered the page.
 
+This pattern applies regardless of response format. A server-rendered HTML page and a JSON API consumed by a frontend SPA are both UI — the caller is a human reading content on a screen. What matters is that the user sees correct information, not how it was serialized.
+
 ### What to assert on
 
 | Assert on (behavior) | Why |
@@ -51,6 +54,7 @@ The answers map to one of five patterns:
 | User-facing error messages ("Invalid amount") | User needs actionable feedback |
 | Status codes and redirects | Determines what the user sees next |
 | Key interaction outcomes (form submission result) | User expects their action to work |
+| JSON response data shown to the user | User sees this rendered by the frontend |
 
 ### What NOT to assert on
 
@@ -68,7 +72,7 @@ The answers map to one of five patterns:
 >
 > If yes, the test is asserting on implementation.
 
-### Test shape
+### Test shape: Server-rendered HTML
 
 ```
 // Arrange
@@ -81,6 +85,21 @@ response = server.get("/account/123")
 assert response.status == 200
 assert response.body.contains("$10.50")
 assert response.body.contains("John Doe")
+```
+
+### Test shape: JSON API for frontend
+
+```
+// Arrange — set up state the user would see
+repository = createInMemoryRepository(customer)
+
+// Act — simulate what the frontend requests
+response = handler.handle(GET("/customers/123"))
+
+// Assert — what the user sees (via the frontend)
+assert response.status == 200
+assert response.body.json.Status == "Accepted"
+assert response.body.json.Questions[0].Statement == "Do you consent?"
 ```
 
 ### Error scenario
@@ -107,7 +126,9 @@ assert response.swapTargets == ["day-0-30", "day-0-31"]
 
 **Direction:** Outside -> in
 
-**The caller is the external system** sending data to us — a payment provider webhook, an SMS delivery callback, a client CSV upload, an API request. They care whether we accepted or rejected their input correctly.
+**The caller is whoever sends data that changes state** — a payment provider webhook, an SMS delivery callback, a client CSV upload, or a user submitting a form in their browser. They care whether we accepted or rejected their input correctly, and the system cares about the side effects produced.
+
+A user clicking "Grant Consent" in a browser and a payment provider sending a webhook are the same pattern: input arrives, we validate and accept or reject, and side effects are produced. The distinguishing trait of Inbound vs UI is whether the request **changes state**. UI queries return data for the user to read; Inbound commands mutate the system.
 
 ### What to assert on
 
@@ -158,6 +179,23 @@ result = handler.handle(event)
 
 assert result.error.contains("unmapped event")
 assert eventStore.isEmpty()
+```
+
+### Test shape: User-initiated command
+
+When a user submits a form or clicks a button in a browser, the test shape is the same — assert on acceptance/rejection and side effects:
+
+```
+// Arrange — set up state
+eventStream = createInMemoryEventStream(customerCreated, esignConsentRequired)
+
+// Act — user grants consent via browser
+response = handler.handle(POST("/customers/123/esign-consent"))
+
+// Assert — accepted + correct side effect
+assert response.status == 204
+assert eventStream.newEvents[0].type == "ESIGNConsentGranted"
+assert eventStream.newEvents[0].customerId == "123"
 ```
 
 ### Boundary parsing
@@ -411,12 +449,33 @@ assert error.message == "account is paused"
 
 ---
 
+## Not Every Test Has a Caller
+
+The five patterns above cover tests of **runtime behavior** — there is always an actor whose expectations define correctness. Some tests don't have a natural runtime caller. They exist to guard against **configuration drift** between code and infrastructure, catching deployment failures rather than runtime failures.
+
+The most common example: verifying that an SNS filter policy in a `serverless.yml` declares the same event types that a projector subscribes to in code. Another: verifying that every route registered in code has a corresponding entry in the infrastructure config.
+
+```
+// Arrange — read the infrastructure config
+serverlessYml = readFile("./serverless.yml")
+projector = createProjector()
+
+// Assert — code and config agree
+assert serverlessYml.filterPolicy.eventTypes == projector.subscribedEventTypes()
+```
+
+These tests have no HTTP request, no queue message, no event processing. The "who would file a bug?" answer is "the on-call engineer when events stop flowing after a deploy." They are deployment safety nets, and the caller-pattern framework does not apply to them. That's fine.
+
+**When to write these:** When two independently-maintained artifacts (code and config, schema and code, route registration and infrastructure) must stay in sync and divergence causes silent failures at deploy time.
+
+---
+
 ## Quick Reference
 
 | Pattern | Direction | Caller | Assert on | Don't assert on |
 |---|---|---|---|---|
-| **UI** | User -> Page | End user | Visible content, error messages, redirects | HTML structure, CSS, view models |
-| **Inbound** | Outside -> In | External system | Acceptance/rejection, validation errors, parsing | Internal routing, processing order |
+| **UI** | User -> Page/JSON | End user reading content | Visible content, JSON data, error messages, redirects | HTML structure, CSS, view models, serialization format |
+| **Inbound** | Outside -> In | External system or user submitting a command | Acceptance/rejection, side effects (events, state), validation errors, parsing | Internal routing, processing order |
 | **Outbound** | In -> Outside | Downstream recipient | Content delivered, correct recipient, suppression | Template engine, data lookup strategy |
 | **Async Processing** | Trigger -> Side effects | Infrastructure | Output events/state, business rules, idempotency | Internal data structures, intermediate state |
 | **Exported API** | Cross-package | Other code | Contract behavior, error types, domain correctness | Storage backend, internal structure |
@@ -426,11 +485,17 @@ assert error.message == "account is paused"
 When reviewing or writing a test, ask:
 
 1. **Who would file a bug if this behavior broke?**
-   - End user seeing wrong content -> **UI**
+   - End user seeing wrong content (HTML or JSON) -> **UI**
+   - User action not accepted, or wrong side effects produced -> **Inbound**
    - External system getting wrong response -> **Inbound**
    - Customer getting wrong email -> **Outbound**
    - Downstream consumer getting wrong events -> **Async Processing**
    - Another developer's code breaking -> **Exported API**
+   - Deploy fails or events stop flowing silently -> **Config guard** (no runtime caller)
 
-2. **What should I put in the assertion?**
+2. **Does the request change state or return data?**
+   - Returns data for a human to read -> **UI**
+   - Changes state (writes events, mutates records) -> **Inbound**
+
+3. **What should I put in the assertion?**
    - What the **caller observes**, not how the system produced it.

@@ -19,6 +19,10 @@ When working with Go code, **read and apply patterns from the following guidelin
    - Test double co-location with real implementations
    - Testing observable behaviors (not implementation details)
 
+2b. **Caller Patterns** (`~/.config/ai/guidelines/testing/caller-patterns.md`)
+   - Five caller patterns (UI for reads, Inbound for state changes, Outbound, Async Processing, Exported API) plus config guard exception
+   - What to assert on vs. ignore for each component type
+
 3. **Architecture Principles** (`~/.config/ai/guidelines/go/architecture-principles.md`)
    - Dependency Inversion Principle
    - Single Responsibility Principle

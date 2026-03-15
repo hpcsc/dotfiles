@@ -35,10 +35,13 @@ Detect the project language. Check for marker files (first match wins):
 
 | Language | Required reading |
 |---|---|
+| All | `~/.config/ai/guidelines/testing/caller-patterns.md` |
 | Go | `~/.config/ai/guidelines/go/testing-patterns.md` |
-| (others) | _(none)_ |
+| (others) | _(none beyond caller-patterns)_ |
 
-When a testing guideline exists for the detected language (see table above), pass it as `Required Reading` to the `test-case-designer` agent. Include the file path and the instruction: "Read this before designing test cases. Apply the 'What is a Unit of Behavior?' section when deciding whether a scenario is worth testing."
+When passing testing guidelines to the `test-case-designer` agent, always include `caller-patterns.md` with the instruction: "Read this first. Identify the caller pattern (UI for reads, Inbound for state changes, Outbound, Async Processing, Exported API) before designing test cases. Use the pattern's assert-on/don't-assert-on tables to guide scenario design."
+
+When a language-specific testing guideline also exists (see table above), include it as additional `Required Reading` with the instruction: "Apply the 'What is a Unit of Behavior?' section when deciding whether a scenario is worth testing."
 
 ---
 
@@ -57,7 +60,7 @@ Spawn the `decompose-to-tasks` agent:
 
 > Decompose the following user story into implementation tasks: [user story from $ARGUMENTS]
 
-When a testing guideline exists for the detected language (see Testing Guidelines table above), pass it as `Required Reading` to the `decompose-to-tasks` agent. Include the file path and the instruction: "Read this before deciding task testability. Apply the 'What is a Unit of Behavior?' section when deciding whether a task delivers independently testable behavior or is only meaningful through a downstream consumer."
+When a testing guideline exists for the detected language (see Testing Guidelines table above), pass both `caller-patterns.md` and the language-specific guideline as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Read caller-patterns.md to understand which caller patterns lead to testable behavior. Apply the 'What is a Unit of Behavior?' section from the language-specific guideline when deciding whether a task delivers independently testable behavior or is only meaningful through a downstream consumer."
 
 ### Present the Plan
 

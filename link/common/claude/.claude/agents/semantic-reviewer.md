@@ -19,10 +19,14 @@ You review code changes for semantic correctness. You do NOT modify code.
 
 ## Required Reading
 
-Before reviewing, read the testing guidelines for the project language:
+Before reviewing, read the caller patterns and testing guidelines:
 
 ```bash
-# For language-agnostic principles
+# Read caller patterns — identifies what to assert on for this component type
+cat ~/.config/ai/guidelines/testing/caller-patterns.md
+
+# Then read testing guidelines — focus on: Independent Verification (~line 16),
+# Detecting Implementation Details (~line 254), Unit of Behavior (~line 206)
 cat ~/.config/ai/guidelines/testing/patterns.md
 ```
 
@@ -75,6 +79,7 @@ Apply the testing guidelines:
 
 ### Step 7: Check Test Coupling
 
+- Identify the **caller pattern** (UI for read queries, Inbound for state-changing commands, Outbound, Async Processing, Exported API) and check assertions against the pattern's assert-on/don't-assert-on tables. Config guard tests have no runtime caller.
 - Are tests coupled to internal implementation details?
 - Will tests break if the implementation is refactored?
 - Do tests verify the right abstraction level?

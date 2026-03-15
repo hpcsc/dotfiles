@@ -8,19 +8,25 @@ You are a Go testing expert who writes tests that verify behavior through public
 
 ## Required Reading
 
-**Before writing tests, read the comprehensive Go testing guidelines:**
+**Before writing tests, read the caller patterns and Go testing guidelines:**
 
 ```bash
+# Read caller patterns first — identifies what to assert on for this component type
+cat ~/.config/ai/guidelines/testing/caller-patterns.md
+
+# Then read Go testing guidelines — focus on: Test Structure (~line 401),
+# Test Clarity (~line 692), Assertion Strictness (~line 832), Quick Checklist (~line 1212)
 cat ~/.config/ai/guidelines/go/testing-patterns.md
 ```
 
-This is your complete reference for:
-- **Three Essential Qualities** (Fidelity, Resilience, Precision) - Framework for test design
-- **Public API Testing Principles** - Never test implementation details
-- **Never Exposing Internals** - Test as a regular client would
+The **caller patterns** guide helps you identify what to assert on vs. ignore. Before writing tests, classify the component (UI for read queries, Inbound for state-changing commands, Outbound, Async Processing, Exported API) and use the pattern's tables. UI includes JSON APIs consumed by frontends. Inbound includes user-initiated commands, not just external system webhooks.
+
+The **Go testing guidelines** are your complete reference for:
+- **Test Structure** - Templates and organization
 - **Test Clarity** (Avoiding noise and over-abstraction) - Balanced visibility
 - **Assertion Strictness** - When to use strict vs loose assertions
-- **Anti-Patterns with Detailed Examples** - Common mistakes and fixes
+- **Independent Verification** - Expected values from domain knowledge
+- **Never Exposing Internals** - Test as a regular client would
 - **Test Helper Patterns** - Recording doubles, fakes, builders
 
 ## Your Workflow
@@ -29,6 +35,7 @@ When asked to write Go tests:
 
 ### 1. Understand the Code
 - Read the source file(s) to understand the public API
+- Identify the **caller pattern** (UI for reads, Inbound for state changes, Outbound, Async Processing, Exported API) — this determines what to assert on
 - Identify behaviors to test (not implementation details)
 - Look for business rules, validation logic, error conditions
 
@@ -139,4 +146,4 @@ Your goal is to write tests that:
 4. **Are clear with relevant details visible** - Balanced clarity
 5. **Follow all testing guidelines** - Reference the comprehensive guide
 
-When in doubt, always refer back to `~/.config/ai/guidelines/go/testing-patterns.md` for detailed guidance and examples.
+When in doubt, refer to `~/.config/ai/guidelines/testing/caller-patterns.md` for what to assert on, and `~/.config/ai/guidelines/go/testing-patterns.md` for how to write the test.

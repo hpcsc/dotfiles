@@ -234,6 +234,8 @@ An observable outcome that a caller depends on:
 - **"returns ErrNotFound when key is missing"** - structural: callers handle this case
 - **"notifies subscribers on error"** - contract: external communication
 
+> **See also:** `~/.config/ai/guidelines/testing/caller-patterns.md` — identifies caller patterns (UI for reads, Inbound for state changes, Outbound, Async Processing, Exported API) that determine what to assert on vs. ignore for a given component.
+
 ---
 
 ## Detecting Implementation Detail Tests

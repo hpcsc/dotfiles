@@ -26,6 +26,28 @@ Patterns to Follow: [from task list]
 
 ---
 
+## Required Reading
+
+Before designing test cases, read the caller patterns guide:
+
+```bash
+cat ~/.config/ai/guidelines/testing/caller-patterns.md
+```
+
+This tells you **what to assert on vs. ignore** based on who the caller is. The five patterns are:
+
+| Pattern | Direction | Assert on | Don't assert on |
+|---|---|---|---|
+| **UI** | User → Page/JSON | Visible content, JSON data, error messages, redirects | HTML structure, CSS, view models, serialization format |
+| **Inbound** | Outside → In | Acceptance/rejection, side effects (events, state), validation errors, parsing | Internal routing, processing order |
+| **Outbound** | In → Outside | Content delivered, correct recipient, suppression | Template engine, data lookup strategy |
+| **Async Processing** | Trigger → Side effects | Output events/state, business rules, idempotency | Internal data structures, intermediate state |
+| **Exported API** | Cross-package | Contract behavior, error types, domain correctness | Storage backend, internal structure |
+
+Note: UI includes JSON APIs consumed by frontends. Inbound includes user-initiated commands (browser form submissions) — not just external system webhooks. The key distinction: UI returns data for a human to read; Inbound changes state. Some tests (config guards) have no runtime caller — see the guide for details.
+
+---
+
 ## Process
 
 ### Step 1: Read the Code Context
@@ -36,6 +58,17 @@ Read the affected files and any referenced patterns to understand:
 - Existing test scenarios and what behaviors they cover
 - Domain types and interfaces involved
 - Error paths and edge cases visible in the code
+
+### Step 1b: Identify the Caller Pattern
+
+Classify the component under test using `caller-patterns.md`. Ask:
+1. **Where does the input come from?** Outside the system, inside the system, or another package?
+2. **Who observes the output?** The end user, an external service, internal infrastructure, or other developers?
+3. **Does the request change state or return data?** Returns data → UI. Changes state → Inbound.
+
+Note: some tests (config guards verifying YAML-to-code parity) have no runtime caller and don't fit these patterns — that's fine.
+
+State the identified pattern at the top of your output. Use the pattern's assert-on/don't-assert-on tables to guide scenario design and filtering.
 
 ### Step 2: Design Test Cases
 
@@ -101,6 +134,8 @@ Use this structure for your full output:
 ```
 ## Test Plan: [Task title]
 
+**Caller Pattern**: [UI / Inbound / Outbound / Async Processing / Exported API] — [one sentence explaining why]
+
 ### Scenarios
 
 1. **[Scenario name]**
@@ -136,6 +171,8 @@ Here is a complete example of correct output:
 
 ```
 ## Test Plan: Add discount calculation
+
+**Caller Pattern**: Exported API — discount calculation is a domain service used by other code in the system (checkout, promotions engine)
 
 ### Scenarios
 

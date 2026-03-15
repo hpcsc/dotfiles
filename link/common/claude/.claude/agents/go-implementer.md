@@ -15,6 +15,7 @@ You implement Go features by writing tests first, then production code. You foll
 Before writing any code, read ALL of the following:
 
 ```bash
+cat ~/.config/ai/guidelines/testing/caller-patterns.md
 cat ~/.config/ai/guidelines/go/testing-patterns.md
 cat ~/.config/ai/guidelines/go/naming-patterns.md
 cat ~/.config/ai/guidelines/go/architecture-principles.md
@@ -44,6 +45,8 @@ If a test plan was provided (from the test-case-designer), implement each scenar
 1. Write the test
 2. Run it — confirm it fails with the expected error
 3. Only then proceed to Step 3
+
+**Before writing tests**, identify the caller pattern from `caller-patterns.md` (UI for reads, Inbound for state changes, Outbound, Async Processing, Exported API). Use the pattern's assert-on/don't-assert-on tables to choose the right assertions.
 
 **Testing rules** (from `testing-patterns.md`):
 - Use `_test` package for black-box testing

@@ -26,6 +26,7 @@ Detect the project language. Check for marker files (first match wins):
 | **Implementation agent** | `go-implementer` | `general-purpose` |
 | **Semantic reviewer** | `go-semantic-reviewer` | `semantic-reviewer` |
 | **Concurrency reviewer** | `go-concurrency-reviewer` | `concurrency-reviewer` |
+| **Performance reviewer** | `go-performance-reviewer` | `performance-reviewer` |
 | **Guidelines reviewer** | `go-guidelines-reviewer` | _(skip)_ |
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
@@ -154,6 +155,7 @@ Decide which reviewers to spawn based on the diff content:
 | **Semantic** (resolved agent) | ALWAYS | — |
 | **Guidelines** (`go-guidelines-reviewer`) | ALWAYS for Go projects | non-Go projects |
 | **Concurrency** (resolved agent) | Diff touches: goroutines/threads/async, channels/locks/mutexes, shared mutable state, database transactions, sync primitives | Single-threaded code, no shared state, test-only, docs |
+| **Performance** (resolved agent) | Diff touches: HTTP clients, database queries, file/resource operations, slice/map creation in loops, `io.ReadAll`, retry/polling loops | Test-only, docs, pure domain logic with no I/O |
 
 When in doubt, spawn the reviewer — false negatives are worse than an extra agent.
 

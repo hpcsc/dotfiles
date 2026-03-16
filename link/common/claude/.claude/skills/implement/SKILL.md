@@ -24,8 +24,8 @@ Detect the project language. Check for marker files (first match wins):
 | | Go | Generic (all others) |
 |---|---|---|
 | **Implementation agent** | `go-implementer` | `general-purpose` |
-| **Semantic reviewer** | `semantic-go-reviewer` | `semantic-reviewer` |
-| **Concurrency reviewer** | `concurrency-go-reviewer` | `concurrency-reviewer` |
+| **Semantic reviewer** | `go-semantic-reviewer` | `semantic-reviewer` |
+| **Concurrency reviewer** | `go-concurrency-reviewer` | `concurrency-reviewer` |
 | **Guidelines reviewer** | `go-guidelines-reviewer` | _(skip)_ |
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.

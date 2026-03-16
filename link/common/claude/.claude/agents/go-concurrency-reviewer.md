@@ -1,5 +1,5 @@
 ---
-name: concurrency-go-reviewer
+name: go-concurrency-reviewer
 description: Reviews Go code changes for concurrency issues using project Go concurrency guidelines. Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read
 model: sonnet

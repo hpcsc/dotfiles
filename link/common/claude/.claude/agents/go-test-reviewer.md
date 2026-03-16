@@ -1,5 +1,5 @@
 ---
-name: test-go-reviewer
+name: go-test-reviewer
 description: Reviews Go tests for adherence to behavior-driven testing principles. Checks tests against comprehensive Go testing guidelines including public API testing, test clarity, anti-patterns, and proper mocking. Suggests valuable missing tests for uncovered behaviors.
 tools: Bash, Glob, Grep, Read, TodoWrite
 model: inherit

@@ -110,7 +110,7 @@ git diff --staged
 
 Spawn these review agents **in parallel**:
 
-1. **Go test reviewer** -- `test-go-reviewer` agent:
+1. **Go test reviewer** -- `go-test-reviewer` agent:
 
    ```
    Review the following staged changes for: [refactoring description]

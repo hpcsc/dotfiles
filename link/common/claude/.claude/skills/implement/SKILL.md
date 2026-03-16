@@ -1,4 +1,5 @@
 ---
+description: Implement a feature with quality gates including planning, test design, code review, and human approval at each step.
 disable-model-invocation: true
 ---
 

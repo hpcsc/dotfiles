@@ -1,4 +1,5 @@
 ---
+description: Create Go interface test doubles (blank, memory, broken, fake) for a given interface, or review an existing implementation package and fill in missing pieces.
 disable-model-invocation: true
 ---
 

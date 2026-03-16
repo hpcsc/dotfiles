@@ -59,13 +59,32 @@ This is essential for identifying missing test coverage in step 5.
 
 ### 4. Check Against Guidelines
 
-Review tests against three sources:
+#### 4a. Disqualifier Gate
+
+Check every test against these four conditions first. Any hit means the test is fundamentally broken — flag it immediately and skip further evaluation of that test.
+
+| Disqualifier | What to look for |
+|---|---|
+| **Tautology** | Expected value is derived from the code under test at runtime (e.g., `expected := Func(); require.Equal(t, expected, Func())`) |
+| **No behavioral assertion** | Test only asserts `require.NotNil` or `require.NoError` with no other assertion on an observable outcome |
+| **Call-count-only** | Test only asserts a function was called (spy call count) without verifying any outcome (return value, side effect, state change) |
+| **Trivial test** | Test covers a simple getter/setter or constructor-returns-non-nil with no business logic involved |
+
+#### 4b. Quality Evaluation
+
+For tests that pass the disqualifier gate, review against three sources:
 
 1. **Caller patterns** (`~/.config/ai/guidelines/testing/caller-patterns.md`) — use the identified pattern's assert-on/don't-assert-on tables and litmus test to evaluate whether assertions target the right things for this component type.
 2. **Go testing guidelines** (`~/.config/ai/guidelines/go/testing-patterns.md`) — the authoritative reference covering anti-patterns with examples, detecting implementation details, independent verification, and assertion strictness.
 3. **Go testing rules** (automatically loaded for `*_test.go` files) — universal principles covering public API testing, outcome-based assertions, mocking boundaries, trivial tests, test independence, value visibility, independent verification, and naming.
 
-Flag any test that violates criteria from any source. For each violation, note the specific principle broken and why it matters.
+For each violation, classify it using the three test qualities:
+
+| Quality | Meaning | Example violations |
+|---|---|---|
+| **Fidelity** | Test won't catch a real defect | Weak independence (expected values copied from production), missing assertions, no error path coverage, `require.NoError` as sole meaningful check |
+| **Resilience** | Test will break on a harmless refactor | Mocks internal dependencies, asserts on call order/count rather than outcome, tests implementation details, accesses unexported fields |
+| **Precision** | Test failure won't pinpoint the problem | One giant test covering multiple behaviors, vague test name, multiple reasons to fail in a single test |
 
 ### 5. Identify Missing Tests
 
@@ -116,15 +135,15 @@ Structure your review as follows:
 
 ### Violations Found
 
-#### 1. [Violation Category] - [Severity: Critical/Major/Minor]
+#### 1. [Violation Category] - [Severity: Disqualifier/Fidelity/Resilience/Precision]
 
 **Location**: `path/to/file_test.go:42-50`
 
 **Issue**: [Describe what the test is doing wrong]
 
-**Guideline**: [Which Go testing principle is violated]
+**Quality**: [Which quality is compromised — Disqualifier, Fidelity, Resilience, or Precision]
 
-**Why it matters**: [Impact - e.g., "Test will break during refactoring", "Doesn't catch real bugs"]
+**Why it matters**: [Explain the failure mode using quality vocabulary — e.g., "Resilience: test would break if internal helper is extracted because it asserts on mock call order, not the output event"]
 
 **Recommendation**:
 ```go
@@ -173,9 +192,10 @@ If no valuable tests are missing, state: "No significant gaps found. The existin
 ### Summary Statistics
 
 - **Total test functions**: [count]
-- **Critical violations**: [count]
-- **Major violations**: [count]
-- **Minor violations**: [count]
+- **Disqualified tests**: [count] (fundamentally broken — tautology, no behavioral assertion, call-count-only, trivial)
+- **Fidelity violations**: [count] (won't catch real defects)
+- **Resilience violations**: [count] (will break on harmless refactor)
+- **Precision violations**: [count] (failure won't pinpoint problem)
 - **Tests following guidelines**: [count]/[total] ([percentage])
 - **Missing tests suggested**: [count]
 
@@ -187,7 +207,7 @@ If no valuable tests are missing, state: "No significant gaps found. The existin
 
 [If APPROVED]: Tests follow the Go testing guidelines. Ready for commit.
 
-[If NEEDS REVISION]: Please address the [count] violation(s) above. Focus on [most important issues].
+[If NEEDS REVISION]: Please address the [count] violation(s) above. Any Disqualifier, Fidelity, or Resilience finding must be fixed. Focus on [most important issues].
 
 ---
 
@@ -196,20 +216,18 @@ If no valuable tests are missing, state: "No significant gaps found. The existin
 [Ordered list of concrete next steps, highest priority first.]
 ```
 
-## Confidence and Precision
+## Severity Classification
 
-Use confidence scoring for violations:
+Classify every violation using the quality framework:
 
-- **Critical (80-100%)**: Clear violation of core principle. Will cause problems. Must fix.
-  - Example: Mocking internal methods, testing trivial getters
+| Severity | Meaning | Verdict impact | Examples |
+|---|---|---|---|
+| **Disqualifier** | Test is fundamentally broken — provides zero value | Always NEEDS REVISION | Tautology, no behavioral assertion, call-count-only, trivial getter/setter test |
+| **Fidelity** | Test won't catch a real defect | Always NEEDS REVISION | Expected values copied from production (change detector), missing assertions on outcomes, no error path coverage |
+| **Resilience** | Test will break on a harmless refactor | Always NEEDS REVISION | Mocks internal dependencies, asserts on call order/count, tests implementation details, accesses unexported fields |
+| **Precision** | Test failure won't pinpoint the problem | NEEDS REVISION if severe (5+ behaviors in one test); otherwise note in Recommendations | Vague test name, multiple behaviors in one test, unclear relationship between input and assertion |
 
-- **Major (60-79%)**: Violates guideline but might be acceptable in rare cases.
-  - Example: Loose assertion where exact match is usually better
-
-- **Minor (40-59%)**: Style preference or minor improvement opportunity.
-  - Example: Test name could be more descriptive
-
-**Only report violations with confidence >= 60%**. Focus on issues that truly matter.
+**Only report Disqualifier, Fidelity, and Resilience violations.** Report Precision only when it significantly hinders debugging. Do not report style-only observations.
 
 ## Anti-Patterns to Avoid in Your Review
 

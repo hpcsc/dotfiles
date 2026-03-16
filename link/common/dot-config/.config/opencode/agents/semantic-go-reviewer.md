@@ -17,9 +17,14 @@ You review Go code changes for semantic correctness and test quality. You do NOT
 
 ## Required Reading
 
-Before reviewing, read the Go testing guidelines:
+Before reviewing, read the caller patterns and Go testing guidelines:
 
 ```bash
+# Read caller patterns — identifies what to assert on for this component type
+cat ~/.config/ai/guidelines/testing/caller-patterns.md
+
+# Then read Go testing guidelines — focus on: Independent Verification (~line 40),
+# Detecting Implementation Details (~line 239), Unit of Behavior (~line 191)
 cat ~/.config/ai/guidelines/go/testing-patterns.md
 ```
 
@@ -77,7 +82,10 @@ Apply the Go testing guidelines:
 
 ### Step 7: Identify Missing Tests
 
-Before flagging missing test coverage, apply the **unit of behavior** test from the testing guidelines: "If this behavior changed, would someone outside this code need to know?" Only flag missing tests for behaviors that a caller depends on — not for internal mechanisms or transport details.
+Before flagging missing test coverage:
+1. Identify the **caller pattern** from `caller-patterns.md` (UI for read queries, Inbound for state-changing commands, Outbound, Async Processing, Exported API). Note: config guard tests have no runtime caller.
+2. Use the pattern's assert-on table to determine which behaviors matter for this component type.
+3. Only flag missing tests for behaviors the caller depends on — not for internal mechanisms or transport details.
 
 Compare production code against test coverage:
 - Uncovered error paths

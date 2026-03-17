@@ -194,9 +194,12 @@ Present to the user:
 
 ### Step 6: Commit
 
-Spawn the `commit` agent:
+Use the Skill tool to commit staged changes. Choose the skill based on availability:
 
-> Commit staged changes for: [step description]
+1. **If a project-level `commit` skill exists** (listed in available skills from `.claude/skills/`): invoke `/commit` with the appropriate arguments for that skill.
+2. **Otherwise**: invoke `/pcommit` with a description of the changes.
+
+Pass the step description (and any ticket context from `$ARGUMENTS`) as arguments to whichever skill is invoked.
 
 ### Step 7: Update Progress
 

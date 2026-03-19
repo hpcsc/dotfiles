@@ -1,0 +1,48 @@
+version: '3'
+
+vars:
+  SETTINGS: "{{.HOME}}/.claude/settings.json"
+  HOOKS_DIR: "{{.HOME}}/.claude/hooks"
+
+tasks:
+  test:
+    desc: Run steering hook unit tests
+    dir: "{{.HOOKS_DIR}}"
+    cmds:
+      - uv run --with pytest pytest steering/ -v
+
+  setup:
+    desc: Register steering hooks in ~/.claude/settings.json (idempotent)
+    cmds:
+      - task: upsert-hook
+        vars:
+          EVENT: SubagentStart
+          MATCHER: ""
+          COMMAND: "python3 -m steering.reviewer_guidelines"
+      - task: upsert-hook
+        vars:
+          EVENT: PostToolUse
+          MATCHER: Bash
+          COMMAND: "python3 -m steering.commit_message"
+
+  upsert-hook:
+    desc: Insert or update a single hook entry in settings.json
+    internal: true
+    requires:
+      vars: [EVENT, COMMAND]
+    cmds:
+      - |
+        jq --arg event "{{.EVENT}}" \
+           --arg matcher "{{.MATCHER}}" \
+           --arg cmd "{{.COMMAND}}" \
+           --arg wd "{{.HOOKS_DIR}}" \
+        '
+          .hooks //= {} |
+          .hooks[$event] //= [] |
+          .hooks[$event] |= map(select(.hooks | all(.command != $cmd))) |
+          .hooks[$event] += [{
+            matcher: $matcher,
+            hooks: [{type: "command", command: $cmd, working_directory: $wd}]
+          }]
+        ' "{{.SETTINGS}}" > "{{.SETTINGS}}.tmp" && mv -f "{{.SETTINGS}}.tmp" "{{.SETTINGS}}"
+      - echo "Registered {{.EVENT}} -> {{.COMMAND}}"

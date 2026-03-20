@@ -219,5 +219,15 @@
 		"key": "k",
 		"when": "neovim.mode == insert && editorTextFocus",
 		"args": "k"
+	},
+	{
+		"key": "ctrl+cmd+space",
+		"command": "workbench.action.terminal.triggerSuggest",
+		"when": "config.terminal.integrated.suggest.enabled && terminalFocus && terminalProcessSupported && !terminalSuggestWidgetVisible"
+	},
+	{
+		"key": "ctrl+space",
+		"command": "-workbench.action.terminal.triggerSuggest",
+		"when": "config.terminal.integrated.suggest.enabled && terminalFocus && terminalProcessSupported && !terminalSuggestWidgetVisible"
 	}
 ]

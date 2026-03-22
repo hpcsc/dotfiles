@@ -105,7 +105,7 @@ If the task is marked `Testable: Yes`:
 
    Checks:
    - Contains ALL required sections: `## Test Plan`, `**Caller Pattern**`, `### Scenarios`, `### Existing Test Impact`, `### Filtered Out`, `### Test Location`
-   - Every scenario is a numbered item with a bold name, followed by exactly four bullet fields on separate lines: `- Caller:`, `- Behavior under test:`, `- Expected:`, `- Breaks when:`
+   - Every scenario is a numbered item with a bold name, followed by exactly five bullet fields on separate lines: `- Caller:`, `- Behavior under test:`, `- Expected:`, `- Independence:`, `- Breaks when:`
    - Scenarios are NOT in a table
    - No bullet field has an empty or placeholder value
 

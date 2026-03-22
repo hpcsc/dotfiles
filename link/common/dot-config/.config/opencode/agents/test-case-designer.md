@@ -31,17 +31,7 @@ Before designing test cases, read the caller patterns guide:
 cat ~/.config/ai/guidelines/testing/caller-patterns.md
 ```
 
-This tells you **what to assert on vs. ignore** based on who the caller is. The five patterns are:
-
-| Pattern | Direction | Assert on | Don't assert on |
-|---|---|---|---|
-| **UI** | User → Page/JSON | Visible content, JSON data, error messages, redirects | HTML structure, CSS, view models, serialization format |
-| **Inbound** | Outside → In | Acceptance/rejection, side effects (events, state), validation errors, parsing | Internal routing, processing order |
-| **Outbound** | In → Outside | Content delivered, correct recipient, suppression | Template engine, data lookup strategy |
-| **Async Processing** | Trigger → Side effects | Output events/state, business rules, idempotency | Internal data structures, intermediate state |
-| **Exported API** | Cross-package | Contract behavior, error types, domain correctness | Storage backend, internal structure |
-
-Note: UI includes JSON APIs consumed by frontends. Inbound includes user-initiated commands (browser form submissions) — not just external system webhooks. The key distinction: UI returns data for a human to read; Inbound changes state. Some tests (config guards) have no runtime caller — see the guide for details.
+This tells you **what to assert on vs. ignore** based on who the caller is.
 
 ---
 
@@ -76,6 +66,17 @@ For each acceptance criterion, design one or more test scenarios. Use these ques
 - Is the expected outcome grounded in domain knowledge or the behavioral contract, not derived from reading the current implementation?
 - Would a harmless refactor break this test? If yes, the test is coupled to implementation — redesign it.
 
+For each scenario that passes the above filter, assess its **independent verification degree** (see `~/.config/ai/guidelines/go/testing-patterns.md` § Independent Verification):
+
+| Degree | Expected value source | Action |
+|---|---|---|
+| **Strong** | Domain knowledge / spec — failure is self-evidently wrong | Keep |
+| **Moderate** | Externally verified lookup — failure requires checking an external source | Keep |
+| **Weak** | Copied from production code — detects change but not correctness (change detector) | Drop or redesign into a higher-level behavioral test |
+| **None** | Computed from production code at runtime (tautology) | Drop |
+
+The key question: **if this test fails, is the failure self-evidently wrong — or would you just update the expected value to match the new code?** If the latter, the scenario has weak independence and is a change detector.
+
 Also consider scenarios NOT in the acceptance criteria but visible from the code context:
 - Error paths (dependency failures, invalid inputs)
 - Boundary conditions (empty collections, zero values, nil)
@@ -99,32 +100,15 @@ Remove any scenario where:
 - It duplicates an existing test in the codebase
 - It tests framework behavior rather than a behavioral contract
 - It would never catch a real bug
+- It has weak or no independent verification — the expected value was copied from production code (change detector) or computed from the code under test (tautology). If a higher-level behavioral test with strong independence can cover the same ground, prefer that instead.
 
 ---
 
 ## Output Format
 
-Your output MUST use the exact structure below. Every scenario MUST have exactly four bullet fields on separate lines. No exceptions. No abbreviations. Do NOT compress a scenario into a single line or omit any field.
+Your output MUST use the exact structure below. Every scenario MUST have exactly five bullet fields on separate lines. No exceptions. No abbreviations. Do NOT compress a scenario into a single line or omit any field.
 
-If you cannot fill all four fields for a scenario, it should have been filtered out in Step 4.
-
-WRONG — this is a format violation:
-
-```
-1. **Percentage discount** — Verifies that 20% off $100 returns $80
-
-2. **Discount cap** — Verifies discount cannot exceed order total
-```
-
-RIGHT — every scenario has all four fields on separate lines:
-
-```
-1. **Percentage discount reduces total**
-   - Caller: Checkout page displaying order total
-   - Behavior under test: Applying a percentage discount to an order
-   - Expected: 20% discount on a $100 order yields $80.00 total
-   - Breaks when: Discount calculation logic is removed or percentage is misapplied
-```
+If you cannot fill all five fields for a scenario, it should have been filtered out in Step 4.
 
 Use this structure for your full output:
 
@@ -139,12 +123,14 @@ Use this structure for your full output:
    - Caller: [who depends on this behavior]
    - Behavior under test: [what observable behavior through the public API]
    - Expected: [outcome, from domain knowledge or behavioral contract]
+   - Independence: [Strong / Moderate] — [one sentence: where the expected value comes from and why failure is self-evidently wrong]
    - Breaks when: [what behavioral change would cause this to fail]
 
 2. **[Scenario name]**
    - Caller: [who depends on this behavior]
    - Behavior under test: [what observable behavior]
    - Expected: [outcome]
+   - Independence: [Strong / Moderate] — [source of expected value]
    - Breaks when: [what behavioral change would cause failure]
 
 ### Existing Test Impact
@@ -177,24 +163,28 @@ Here is a complete example of correct output:
    - Caller: Checkout page displaying order total
    - Behavior under test: Applying a percentage discount to an order
    - Expected: 20% discount on a $100 order yields $80.00 total
+   - Independence: Strong — 20% of $100 = $20 off is arithmetic, failure is self-evidently wrong
    - Breaks when: Discount calculation logic is removed or percentage is misapplied
 
 2. **Discount cannot exceed order total**
    - Caller: Payment service receiving the final amount
    - Behavior under test: Applying a discount larger than the order total
    - Expected: Order total floors at $0.00, never goes negative
+   - Independence: Strong — a negative payment amount is a domain invariant violation
    - Breaks when: Floor/clamp at zero is removed from discount calculation
 
 3. **Stacking multiple discounts**
    - Caller: Promotions engine applying coupon + loyalty discount
    - Behavior under test: Applying two discounts sequentially to the same order
    - Expected: Both discounts apply — 10% coupon + $5 loyalty on $100 yields $85.00
+   - Independence: Strong — sequential arithmetic ($100 × 0.9 = $90, $90 − $5 = $85) is independently verifiable
    - Breaks when: Only the first or last discount is applied instead of both
 
 4. **Expired discount code is rejected**
    - Caller: End user entering a coupon code at checkout
    - Behavior under test: Submitting a discount code past its expiration date
    - Expected: Error indicating the code is expired; order total unchanged
+   - Independence: Strong — business rule from requirements: expired codes must not apply
    - Breaks when: Expiration check is removed or bypassed
 
 ### Existing Test Impact
@@ -210,6 +200,7 @@ Here is a complete example of correct output:
 |----------|--------|
 | Discount struct can be created | Tests type construction — compiler guarantees this |
 | ApplyDiscount returns no error for valid input | Sole assertion is "no error" — no meaningful behavioral outcome |
+| Discount has correct label text | Weak independence — expected label copied from production code; failure just means the label changed, not that it's wrong |
 
 ### Test Location
 - File: `order/discount_test.go`

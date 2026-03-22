@@ -122,10 +122,22 @@ If someone changes `DefaultDecimalPlaces("USD")` to `3`, both fail. But the form
 
 ### Identifying the Degree
 
-Two questions, applied in order:
+Three checks, applied in order:
 
-1. **Can the test fail at all?** If the expected value is derived from the code under test at runtime, it's a tautology. Remove it or replace it with a hardcoded expected value.
-2. **If it fails, is the failure self-evidently wrong?** If yes, the test has strong independence. If you'd just update the test to match the new production value, it has weak independence.
+1. **Can the test fail at all?** If the expected value is derived from the code under test at runtime, it's a tautology (**None**). Remove it or replace it with a hardcoded expected value.
+2. **Is the expected value an arbitrary label, constant, enum name, dropdown option, field name, or error message wording?** If yes, it's **Weak** at best — regardless of whether it appears in acceptance criteria. Changing "No payment history" to "No payments" isn't self-evidently wrong — you'd need to check the spec. AC that defines configuration choices does not elevate the degree.
+3. **If the test fails, is the failure self-evidently wrong without consulting any spec, AC, or task description?**
+   - Yes → **Strong** (e.g., `$10.50 = 1050 cents` — arithmetic fact; at least 2 distinct values from 50 random picks of 5 options — probability argument)
+   - No, but an external source can confirm correctness → **Moderate** (e.g., ISO country code lookup)
+   - No, you'd just update the expected value to match the new code → **Weak** (change detector)
+
+| Expected value | Self-evidently wrong if changed? | Rating |
+|---|---|---|
+| `1050` cents for `$10.50` | Yes — arithmetic | **Strong** |
+| At least 2 distinct values from 50 random picks of 5 options | Yes — probability (1/5)^49 ≈ 0 | **Strong** |
+| Dropdown has option text "No payment history" | No — could be "No payments" | **Weak** |
+| A `<select>` element exists for each customer | No — just restates requirement | **Weak** |
+| Error message contains "insufficient funds" | No — wording could improve | **Weak** |
 
 ---
 

@@ -55,9 +55,16 @@ Note: UI includes JSON APIs consumed by frontends. Inbound includes user-initiat
 Read the affected files and any referenced patterns to understand:
 - The current behavior and public API surface
 - Existing test files and conventions for the affected code
-- Existing test scenarios and what behaviors they cover
 - Domain types and interfaces involved
 - Error paths and edge cases visible in the code
+
+Then build an **existing coverage inventory** — a flat list of every behavior already tested in the affected test files. For each existing test, write one line:
+
+```
+- [test name]: [behavior it verifies]
+```
+
+Keep this inventory in your working memory. You will cross-reference it in Steps 2 and 3.
 
 ### Step 1b: Identify the Caller Pattern
 
@@ -72,7 +79,9 @@ State the identified pattern at the top of your output. Use the pattern's assert
 
 ### Step 2: Design Test Cases
 
-For each acceptance criterion, design one or more test scenarios. Use these questions to decide whether a scenario is worth keeping — if you can't answer all four, the scenario is incomplete or not worth testing:
+For each acceptance criterion, design one or more test scenarios. Before adding a scenario, check your existing coverage inventory — if an existing test already verifies the same behavior, do not propose a new scenario. Instead, note the existing test in Step 3 (as Update if it needs adjustment, or skip it entirely if it already covers the behavior as-is).
+
+Use these questions to decide whether a scenario is worth keeping — if you can't answer all four, the scenario is incomplete or not worth testing:
 
 - Who depends on this behavior? If you can't name a caller, this is likely an implementation detail — drop it.
 - Can the behavior be expressed through the public API? If the only way to test it is through internals, drop it or redesign.

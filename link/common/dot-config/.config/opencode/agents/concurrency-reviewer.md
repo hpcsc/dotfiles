@@ -83,6 +83,7 @@ Return ONLY this JSON structure:
     {
       "file": "path/to/file",
       "line": 42,
+      "confidence": "high | medium | low",
       "issue": "Description of the concurrency issue",
       "why": "What failure mode this creates (e.g., 'data race on map access from concurrent HTTP handlers')"
     }
@@ -99,6 +100,10 @@ Return ONLY this JSON structure:
 
 Each finding must:
 - Reference a specific file and line
+- Include a confidence level:
+  - **high**: Clear race/deadlock with a mechanical fix (e.g., missing lock, unguarded map)
+  - **medium**: Concurrency pattern present, but whether it's exploitable depends on call graph
+  - **low**: Requires human judgment on concurrency design tradeoffs
 - Describe the concurrency hazard class (data race, deadlock, TOCTOU, etc.)
 - Explain the failure mode -- what concurrent scenario triggers the bug
 

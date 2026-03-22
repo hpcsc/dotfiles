@@ -103,6 +103,7 @@ Return ONLY this JSON structure:
     {
       "file": "path/to/file.go",
       "line": 42,
+      "confidence": "high | medium | low",
       "issue": "Description of the performance issue",
       "why": "What failure mode this creates (e.g., 'HTTP client without timeout will block goroutine indefinitely if upstream is slow')"
     }
@@ -119,6 +120,10 @@ Return ONLY this JSON structure:
 
 Each finding must:
 - Reference a specific file and line
+- Include a confidence level:
+  - **high**: Clear leak or missing timeout with a mechanical fix
+  - **medium**: Performance pattern present, but impact depends on expected load/data size
+  - **low**: Requires human judgment on performance tradeoffs
 - Describe the concrete performance risk
 - Explain the failure mode with a realistic scenario (load level, data size, timing)
 

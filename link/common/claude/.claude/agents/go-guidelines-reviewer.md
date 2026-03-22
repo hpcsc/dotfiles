@@ -89,6 +89,7 @@ Return ONLY this JSON structure:
     {
       "file": "path/to/file.go",
       "line": 42,
+      "confidence": "high | medium | low",
       "issue": "Description of the guideline violation",
       "why": "Which guideline this violates and what problem it creates"
     }
@@ -105,6 +106,10 @@ Return ONLY this JSON structure:
 
 Each finding must:
 - Reference a specific file and line
+- Include a confidence level:
+  - **high**: Clear violation with a mechanical fix (e.g., wrong constructor return type, missing compliance check)
+  - **medium**: Violation present, but naming/structure choice may be justified by context
+  - **low**: Requires human judgment on whether the guideline applies in this case
 - Describe the concrete violation
 - Name the guideline being violated and explain why it matters
 

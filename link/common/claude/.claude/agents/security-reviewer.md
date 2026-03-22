@@ -101,6 +101,7 @@ Return ONLY this JSON structure:
     {
       "file": "path/to/file",
       "line": 42,
+      "confidence": "high | medium | low",
       "issue": "Description of the security vulnerability",
       "why": "What attack vector this creates (e.g., 'attacker can inject SQL via unsanitized username parameter')"
     }
@@ -117,6 +118,10 @@ Return ONLY this JSON structure:
 
 Each finding must:
 - Reference a specific file and line
+- Include a confidence level:
+  - **high**: Clear vulnerability with a known fix
+  - **medium**: Vulnerability pattern present, but exploitability depends on context
+  - **low**: Requires human judgment on threat model or design tradeoffs
 - Describe the vulnerability class (injection, auth gap, etc.)
 - Explain the attack vector -- how an attacker would exploit this
 - Be a real security concern, not a theoretical possibility with no practical attack path

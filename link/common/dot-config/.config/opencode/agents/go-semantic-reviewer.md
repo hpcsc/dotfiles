@@ -136,6 +136,7 @@ Return ONLY this JSON structure:
       "file": "path/to/file.go",
       "line": 42,
       "severity": "disqualifier | fidelity | resilience | precision | logic | intent",
+      "confidence": "high | medium | low",
       "issue": "Description of the semantic or test quality issue",
       "why": "What failure mode this creates"
     }
@@ -164,6 +165,10 @@ Return ONLY this JSON structure:
 Each finding must:
 - Reference a specific file and line
 - Include a severity label
+- Include a confidence level:
+  - **high**: Clear bug or violation with a mechanical fix
+  - **medium**: Pattern suggests a problem, but fix depends on context
+  - **low**: Requires human judgment on intent or design tradeoffs
 - Describe a concrete problem
 - Explain the failure mode using the quality vocabulary (e.g., "Resilience: test would break if internal helper is extracted because it asserts on mock call order, not the output event")
 

@@ -119,6 +119,7 @@ Return ONLY this JSON structure:
     {
       "file": "path/to/file.go",
       "line": 42,
+      "confidence": "high | medium | low",
       "issue": "Mutation survived: changed `amount > 0` to `amount >= 0`. No test covers the boundary case where amount is exactly 0.",
       "why": "Add a test case with amount=0 to verify it is rejected"
     }
@@ -135,6 +136,10 @@ Return ONLY this JSON structure:
 
 Each finding must:
 - Reference the specific production file and line (not the test file)
+- Include a confidence level:
+  - **high**: Mutation exposes a clear, actionable test gap (e.g., missing boundary test)
+  - **medium**: Mutation likely indicates a gap, but may be acceptable depending on domain rules
+  - **low**: Mutation survived but the untested path may be intentionally uncovered
 - Describe the exact mutation that survived
 - Explain what behavior is untested
 - Suggest a concrete test scenario (describe the case, not the code)

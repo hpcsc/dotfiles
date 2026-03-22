@@ -97,6 +97,7 @@ Return ONLY this JSON structure:
     {
       "file": "path/to/file",
       "line": 42,
+      "confidence": "high | medium | low",
       "issue": "Description of the semantic issue",
       "why": "What failure mode this creates (e.g., 'nil pointer panic when input is empty')"
     }
@@ -113,6 +114,10 @@ Return ONLY this JSON structure:
 
 Each finding must:
 - Reference a specific file and line
+- Include a confidence level:
+  - **high**: Clear bug or violation with a mechanical fix
+  - **medium**: Pattern suggests a problem, but fix depends on context
+  - **low**: Requires human judgment on intent or design tradeoffs
 - Describe a concrete problem, not a style preference
 - Explain the failure mode -- what breaks, when, and how
 

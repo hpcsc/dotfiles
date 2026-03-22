@@ -210,6 +210,19 @@ old: - [ ] Task N: [title]
 new: - [x] Task N: [title]
 ```
 
+#### Context checkpoint
+
+After marking the task complete, write a brief summary to maintain context quality across cycles:
+
+```
+## Task N: [title] — DONE
+- Files changed: [list]
+- Commit: [hash] [subject]
+- Key decisions: [any non-obvious choices made during implementation]
+```
+
+Append this to `tasks/.checkpoint` (create if it doesn't exist). This file is disposable — it exists only to keep the orchestrator's context sharp across many cycles. Delete it in Phase 3 Completion.
+
 Show remaining tasks and proceed to the next task (back to Step 1).
 
 ---
@@ -220,7 +233,7 @@ After all tasks complete:
 
 1. **Run full test suite** (detected test command)
 
-2. **Archive task file** — move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist).
+2. **Clean up** — delete `tasks/.checkpoint` if it exists. Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist).
 
 3. **Summarize**
    ```markdown

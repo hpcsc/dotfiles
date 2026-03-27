@@ -1,5 +1,5 @@
 ---
-description: Refactor Go code with investigation, planning, test-first updates, implementation, and review by Go test reviewer and Go guidelines agents.
+description: Refactor Go code with investigation, planning, implementation via go-refactorer agent, and review by Go test reviewer and Go guidelines agents.
 disable-model-invocation: true
 ---
 
@@ -61,44 +61,23 @@ Present the plan to the user.
 
 ---
 
-## Phase 3: Test Updates
+## Phase 3: Implementation
 
-Update tests first, before touching production code.
+Spawn the `go-refactorer` agent with:
 
-### Step 1: Update Existing Tests
+```
+Refactoring: [description from approved plan]
+Affected Files: [production files from investigation]
+Impacted Tests: [test files from investigation]
+Plan:
+[approved refactoring plan from Phase 2]
+```
 
-For each test file affected by the refactoring:
-1. Read the current test file
-2. Update tests to reflect the new structure/API/naming
-3. Add new test cases if the refactoring introduces new behavior boundaries
-
-### Step 2: Run Impacted Tests
-
-Run only the tests affected by the refactoring (identified during investigation). Tests may fail at this point (since production code hasn't changed yet) -- that is expected for structural changes. For rename-only refactors, tests should still compile.
-
-Note which failures are expected (will be fixed by the production code changes) vs unexpected.
+**GATE**: Do NOT proceed until the agent reports back and all tests pass. If the agent reports failures after max retries, escalate to the user.
 
 ---
 
-## Phase 4: Implementation
-
-### Step 1: Implement the Refactoring
-
-Apply the refactoring to production code, following the approved plan step by step.
-
-### Step 2: Run Impacted Tests
-
-Run only the tests affected by the refactoring (identified during investigation).
-
-**GATE**: Do NOT proceed until all impacted tests pass. If tests fail:
-- Analyze the failure
-- Fix the issue
-- Re-run tests
-- Max 3 fix iterations before escalating to the user
-
----
-
-## Phase 5: Review
+## Phase 4: Review
 
 Stage all changes and collect the diff:
 
@@ -136,12 +115,12 @@ Spawn these review agents **in parallel**:
 
 **Aggregate results**: if ANY reviewer returns `block` or `NEEDS REVISION`, the aggregate verdict is `block`. Collect all findings with file:line references.
 
-- If aggregate verdict is `pass` / `APPROVED` -> proceed to Phase 6
+- If aggregate verdict is `pass` / `APPROVED` -> proceed to Phase 5
 - If aggregate verdict is `block` -> fix the findings, re-run tests, then re-review. Max 3 revision iterations before escalating to the user.
 
 ---
 
-## Phase 6: Present Results
+## Phase 5: Present Results
 
 Present to the user:
 - Summary of all changes made

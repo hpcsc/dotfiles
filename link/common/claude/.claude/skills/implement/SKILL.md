@@ -1,6 +1,5 @@
 ---
 description: Implement a feature with quality gates including planning, test design, code review, and human approval at each step.
-disable-model-invocation: true
 ---
 
 Implement a feature with quality gates: $ARGUMENTS
@@ -25,6 +24,7 @@ Detect the project language. Check for marker files (first match wins):
 | | Go | Generic (all others) |
 |---|---|---|
 | **Implementation agent** | `go-implementer` | `general-purpose` |
+| **Refactoring agent** | `go-refactorer` | `refactorer` |
 | **Semantic reviewer** | `go-semantic-reviewer` | `semantic-reviewer` |
 | **Concurrency reviewer** | `go-concurrency-reviewer` | `concurrency-reviewer` |
 | **Performance reviewer** | `go-performance-reviewer` | `performance-reviewer` |
@@ -77,7 +77,7 @@ Show the user the task list. Each task maps to one cycle in Phase 2.
 
 ## Phase 2: Implementation Cycles
 
-For each task in the approved plan, execute Steps 1–7 in order. **Do NOT skip or reorder steps.**
+For each task in the approved plan, execute Steps 1–8 in order. **Do NOT skip or reorder steps.**
 
 ### Step 1: Assemble Context
 
@@ -143,7 +143,71 @@ Write failing tests first, then implement to make them pass.
 
 **GATE**: Do NOT proceed until the agent reports back and tests pass (or compilation succeeds for non-testable tasks).
 
-### Step 4: Review
+### Step 4: Refactor (human-gated)
+
+#### Automated analysis
+
+Spawn the resolved refactoring agent in **analysis-only** mode:
+
+```
+Analyze the following changes for refactoring opportunities. Do NOT make any changes — only report your findings.
+
+Task: [imperative description from task list]
+Affected Files: [files changed during implementation]
+
+Examine:
+- Code duplication introduced by this task
+- Naming clarity (variables, functions, types)
+- Extraction opportunities (long functions, repeated logic)
+- Structural improvements (parameter objects, interface alignment)
+
+Output format:
+- If refactoring is needed: a numbered list of proposed changes, each with file, what to change, and why.
+- If no refactoring is needed: state "No refactoring needed" with a brief rationale.
+```
+
+#### Present findings to user
+
+**If the agent found refactoring opportunities:**
+
+Present the refactoring plan to the user.
+
+**GATE — approval loop**:
+- Ask the user to **approve the refactoring plan**, **modify it**, or **skip refactoring**.
+- If the user approves the plan, spawn the resolved refactoring agent with:
+
+  ```
+  Refactoring guidance: [approved refactoring plan]
+  Task: [imperative description from task list]
+  Affected Files: [files changed during implementation]
+  ```
+
+  **GATE**: Do NOT proceed until the agent reports back and tests pass.
+
+  After the refactoring agent completes, present the updated summary to the user and repeat this gate.
+- If the user modifies the plan, spawn the refactoring agent with the modified guidance instead, then present results and repeat this gate.
+- If the user skips, proceed to Step 5.
+- Continue looping until the user explicitly approves or skips.
+- Do NOT proceed to Step 5 until approved.
+
+**If the agent found no refactoring needed:**
+
+Present the "no refactoring needed" assessment to the user. Ask if they have any refactoring they'd like done before proceeding.
+
+- If the user has refactoring feedback, spawn the resolved refactoring agent with:
+
+  ```
+  Refactoring guidance: [user's feedback]
+  Task: [imperative description from task list]
+  Affected Files: [files changed during implementation]
+  ```
+
+  **GATE**: Do NOT proceed until the agent reports back and tests pass.
+
+  After the refactoring agent completes, present the updated summary to the user and repeat this gate.
+- If the user approves (no refactoring wanted), proceed to Step 5.
+
+### Step 5: Review
 
 Collect staged changes (`git diff --staged`) and changed file list (`git diff --staged --name-only`).
 
@@ -176,10 +240,10 @@ Diff:
 
 **Aggregate results**: if ANY reviewer returns `block`, the aggregate verdict is `block`. Collect all findings with file:line references.
 
-- If aggregate verdict is `pass` → proceed to Step 5
+- If aggregate verdict is `pass` → proceed to Step 6
 - If aggregate verdict is `block` → send findings back to the implementation agent (Step 3) for revision, then re-review. Max 3 revision iterations before escalating to user.
 
-### Step 5: Human Approval
+### Step 6: Human Approval
 
 Present to the user:
 - Implementation summary and files changed
@@ -188,20 +252,20 @@ Present to the user:
 
 **GATE — approval loop**:
 - Ask the user to approve or reject.
-- If the user rejects, understand the concern, spawn the implementation agent (Step 3) with the feedback to revise, then run review (Step 4) again, present the **revised** summary to the user, and repeat this gate.
+- If the user rejects, understand the concern, spawn the implementation agent (Step 3) with the feedback to revise, then run review (Step 5) again, present the **revised** summary to the user, and repeat this gate.
 - Continue looping until the user explicitly approves.
-- Do NOT proceed to Step 6 until approved.
+- Do NOT proceed to Step 7 until approved.
 
-### Step 6: Commit
+### Step 7: Commit
 
-Use the Skill tool to commit staged changes. Choose the skill based on availability:
+**CRITICAL**: Do NOT run `git commit` via Bash. You MUST use the Skill tool to invoke a commit skill.
 
-1. **If a project-level `commit` skill exists** (listed in available skills from `.claude/skills/`): invoke `/commit` with the appropriate arguments for that skill.
-2. **Otherwise**: invoke `/pcommit` with a description of the changes.
+**Detect which skill to use**: Run `test -f .claude/skills/commit/SKILL.md && echo exists || echo missing` (relative to the project root) to check whether a project-level `commit` skill exists. Do NOT speculatively invoke `commit` to see if it works — you must confirm the file exists first.
 
-Pass the step description (and any ticket context from `$ARGUMENTS`) as arguments to whichever skill is invoked.
+- **If the output is `exists`**: use the Skill tool to invoke `commit` with the step description and any ticket context from `$ARGUMENTS`.
+- **If the output is `missing`**: use the Skill tool to invoke `pcommit` with the step description and any ticket context from `$ARGUMENTS`.
 
-### Step 7: Update Progress
+### Step 8: Update Progress
 
 Update the task file checkbox:
 
@@ -278,4 +342,4 @@ After all tasks complete:
 | Malformed reviewer output | Treat as `block`, record a finding noting the reviewer failed |
 | User rejects step | Understand concern, adjust, re-spawn implementation agent |
 
-Never skip quality gates. Never proceed without user approval at gates (Steps 2 and 5).
+Never skip quality gates. Never proceed without user approval at gates (Steps 2, 4, and 6).

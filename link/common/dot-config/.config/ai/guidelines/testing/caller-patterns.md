@@ -8,14 +8,14 @@ The existing testing guidelines cover **how** to write good tests (public API, b
 
 | Section | Line | Use when... |
 |---|---|---|
-| [How to Identify the Caller](#how-to-identify-the-caller) | ~25 | Deciding what to assert on for a given component |
-| [UI](#1-ui-user--page) | ~48 | Testing pages, JSON APIs for frontends, rendered output |
-| [Inbound](#2-inbound-external-system--handler) | ~100 | Testing webhooks, uploads, commands from browsers or external systems |
-| [Outbound](#3-outbound-our-system--external-service) | ~152 | Testing email sends, API calls to providers, file delivery |
-| [Async Processing](#4-async-processing-trigger--side-effects) | ~210 | Testing message consumers, event reactors, scheduled jobs |
-| [Exported API](#5-exported-api-other-code--this-interface) | ~271 | Testing packages used by other code in the system |
-| [Not Every Test Has a Caller](#not-every-test-has-a-caller) | ~340 | Config guard tests, deployment parity checks |
-| [Quick Reference](#quick-reference) | ~370 | Lookup table for all five patterns |
+| [How to Identify the Caller](#how-to-identify-the-caller) | ~22 | Deciding what to assert on for a given component |
+| [UI](#1-ui-user--page) | ~41 | Testing pages, JSON APIs for frontends, rendered output |
+| [Inbound](#2-inbound-external-system--handler) | ~125 | Testing webhooks, uploads, commands from browsers or external systems |
+| [Outbound](#3-outbound-our-system--external-service) | ~215 | Testing email sends, API calls to providers, file delivery |
+| [Async Processing](#4-async-processing-trigger--side-effects) | ~289 | Testing message consumers, event reactors, scheduled jobs |
+| [Exported API](#5-exported-api-other-code--this-interface) | ~375 | Testing packages used by other code in the system |
+| [Not Every Test Has a Caller](#not-every-test-has-a-caller) | ~452 | Config guard tests, deployment parity checks |
+| [Quick Reference](#quick-reference) | ~473 | Lookup table for all five patterns |
 
 ---
 

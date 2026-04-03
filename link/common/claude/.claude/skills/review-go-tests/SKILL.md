@@ -78,6 +78,11 @@ For tests that pass the disqualifier gate, review against three sources:
 2. **Go testing guidelines** (`~/.config/ai/guidelines/go/testing-patterns.md`) — the authoritative reference covering anti-patterns with examples, detecting implementation details, independent verification, and assertion strictness.
 3. **Go testing rules** (automatically loaded for `*_test.go` files) — universal principles covering public API testing, outcome-based assertions, mocking boundaries, trivial tests, test independence, value visibility, independent verification, and naming.
 
+Additionally, check for these structural issues:
+
+- **Consolidation candidates**: Tests that share the same input setup (same HTTP request, same function arguments, same form values) but assert on outputs that cannot break independently of each other — e.g., different fields/sections on the same rendered response. These should be merged into one test with multiple assertions. The root question is **independent breakability**: can one output change without the other? If not, separate tests add noise without value.
+- **Data-through-tested-function**: Tests that pass new data (constants, config values, prompt text, static strings) through an already-tested function just to verify the function still works. If the function's valid/invalid input paths are already fully tested, exercising it with new data is testing the framework, not new behavior — flag as a Fidelity issue.
+
 For each violation, classify it using the three test qualities:
 
 | Quality | Meaning | Example violations |
@@ -223,9 +228,9 @@ Classify every violation using the quality framework:
 | Severity | Meaning | Verdict impact | Examples |
 |---|---|---|---|
 | **Disqualifier** | Test is fundamentally broken — provides zero value | Always NEEDS REVISION | Tautology, no behavioral assertion, call-count-only, trivial getter/setter test |
-| **Fidelity** | Test won't catch a real defect | Always NEEDS REVISION | Expected values copied from production (change detector), missing assertions on outcomes, no error path coverage |
+| **Fidelity** | Test won't catch a real defect | Always NEEDS REVISION | Expected values copied from production (change detector), missing assertions on outcomes, no error path coverage, new data through already-tested function |
 | **Resilience** | Test will break on a harmless refactor | Always NEEDS REVISION | Mocks internal dependencies, asserts on call order/count, tests implementation details, accesses unexported fields |
-| **Precision** | Test failure won't pinpoint the problem | NEEDS REVISION if severe (5+ behaviors in one test); otherwise note in Recommendations | Vague test name, multiple behaviors in one test, unclear relationship between input and assertion |
+| **Precision** | Test failure won't pinpoint the problem | NEEDS REVISION if severe (5+ behaviors in one test); otherwise note in Recommendations | Vague test name, multiple behaviors in one test, unclear relationship between input and assertion, separate tests for non-independently-breakable outputs from the same input |
 
 **Only report Disqualifier, Fidelity, and Resilience violations.** Report Precision only when it significantly hinders debugging. Do not report style-only observations.
 

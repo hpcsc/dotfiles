@@ -4,23 +4,24 @@
 
 | Section | Line | Use when... |
 |---|---|---|
-| [Core Principle](#core-principle-test-behavior-through-public-api-only) | ~27 | Foundation — all consumers |
-| [Independent Verification](#independent-verification) | ~40 | Reviewing test quality, judging expected values |
-| [Three Essential Qualities](#three-essential-qualities-of-effective-tests) | ~132 | Designing or reviewing tests |
-| [What to Test](#what-to-test) | ~179 | Deciding whether something is worth testing |
-| [Unit of Behavior](#what-is-a-unit-of-behavior) | ~191 | Deciding test boundaries, filtering worthless tests |
-| [Detecting Implementation Detail Tests](#detecting-implementation-detail-tests) | ~239 | Evaluating whether any test asserts on implementation vs behavior |
-| [HTTP Handlers](#http-handlers-the-component-is-the-endpoint) | ~321 | Testing HTTP endpoints (HTML, JSON, streaming) |
-| [Test Structure](#test-structure) | ~401 | Writing new tests (templates, build tags) |
-| [Test Double Patterns](#test-double-patterns) | ~443 | Writing or reviewing fakes, broken, recording, memory |
-| [Never Expose Internals](#principle-never-expose-internals-just-for-testing) | ~559 | When tempted to export private state for tests |
-| [Test Clarity](#test-clarity-include-only-relevant-details) | ~692 | Balancing helper abstraction vs inline detail |
-| [Assertion Strictness](#assertion-strictness-match-to-what-youre-testing) | ~832 | Choosing strict vs loose assertions |
-| [Test Helper Patterns](#test-helper-patterns) | ~886 | Writing var blocks, deterministic data, table-driven tests |
-| [Anti-Patterns](#common-anti-patterns) | ~966 | Reviewing tests for common mistakes (0–8) |
-| [Detection Checklist](#anti-pattern-detection-checklist) | ~1194 | Quick scan for red flags in test reviews |
-| [Quick Testing Checklist](#quick-testing-checklist) | ~1212 | Pre-flight check before writing or approving tests |
-| [Summary](#summary) | ~1243 | Reference table of practices |
+| [Core Principle](#core-principle-test-behavior-through-public-api-only) | ~28 | Foundation — all consumers |
+| [Independent Verification](#independent-verification) | ~41 | Reviewing test quality, judging expected values |
+| [Coupling-Based Assertion Levels](#coupling-based-assertion-levels) | ~145 | Choosing what interface to assert through |
+| [Three Essential Qualities](#three-essential-qualities-of-effective-tests) | ~171 | Designing or reviewing tests |
+| [What to Test](#what-to-test) | ~218 | Deciding whether something is worth testing |
+| [Unit of Behavior](#what-is-a-unit-of-behavior) | ~230 | Deciding test boundaries, filtering worthless tests |
+| [Detecting Implementation Detail Tests](#detecting-implementation-detail-tests) | ~280 | Evaluating whether any test asserts on implementation vs behavior |
+| [HTTP Handlers](#http-handlers-the-component-is-the-endpoint) | ~362 | Testing HTTP endpoints (HTML, JSON, streaming) |
+| [Test Structure](#test-structure) | ~442 | Writing new tests (templates, build tags) |
+| [Test Double Patterns](#test-double-patterns) | ~484 | Writing or reviewing fakes, broken, recording, memory |
+| [Never Expose Internals](#principle-never-expose-internals-just-for-testing) | ~600 | When tempted to export private state for tests |
+| [Test Clarity](#test-clarity-include-only-relevant-details) | ~733 | Balancing helper abstraction vs inline detail |
+| [Assertion Strictness](#assertion-strictness-match-to-what-youre-testing) | ~873 | Choosing strict vs loose assertions |
+| [Test Helper Patterns](#test-helper-patterns) | ~927 | Writing var blocks, deterministic data, table-driven tests |
+| [Anti-Patterns](#common-anti-patterns) | ~1007 | Reviewing tests for common mistakes (0–8) |
+| [Detection Checklist](#anti-pattern-detection-checklist) | ~1235 | Quick scan for red flags in test reviews |
+| [Quick Testing Checklist](#quick-testing-checklist) | ~1253 | Pre-flight check before writing or approving tests |
+| [Summary](#summary) | ~1284 | Reference table of practices |
 
 ---
 
@@ -138,6 +139,32 @@ Three checks, applied in order:
 | Dropdown has option text "No payment history" | No — could be "No payments" | **Weak** |
 | A `<select>` element exists for each customer | No — just restates requirement | **Weak** |
 | Error message contains "insufficient funds" | No — wording could improve | **Weak** |
+
+---
+
+## Coupling-Based Assertion Levels
+
+Integration strength classifies how much a test knows about the system under test:
+
+| Level | What the test knows | Assertion target | Behavioral? |
+|---|---|---|---|
+| **Contract** | Public interface only | HTTP response, return value, API output | Yes |
+| **Model** | Shared domain types | Domain object state after operation | Yes |
+| **Functional** | Business logic details | Duplicated formula in test | No — change detector |
+| **Intrusive** | Internal implementation | Private fields, call counts | No — breaks on refactors |
+
+### Design Rule
+
+Design every test at **contract or model** level. Start at contract — can you assert on the output visible through the public interface? If not, move to model — can you assert on domain object state? If you reach functional level (re-implementing the production formula in the test), redesign or drop.
+
+### Volatility as Test Investment Signal
+
+| Volatility | Domain type | Test investment |
+|---|---|---|
+| **High** | Core domain — competitive advantage | More scenarios at contract level |
+| **Low** | Supporting/generic — stable, solved | Fewer scenarios suffice |
+
+High volatility + contract-level assertions = maximum value. Low volatility + many tests = maintenance drag.
 
 ---
 

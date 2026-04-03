@@ -97,7 +97,11 @@ If the task is marked `Testable: Yes`:
    Patterns to Follow: [from task list]
    ```
 
-2. **Format validation** — before presenting to the user, check the returned output for ALL of the following. If any check fails, re-spawn `test-case-designer` with the original task bundle plus this feedback (max 2 retries, then escalate to user):
+2. **Check for "no testable behavior" verdict** — if the returned output contains `**Verdict: No testable behavior in this task.**`, the test-case-designer determined that all candidate scenarios were filtered out (e.g., the task only adds data to an already-tested function, or has no public API entry point yet). In this case:
+   - Present the verdict, reason, and recommendation to the user.
+   - **GATE**: Ask the user to confirm skipping tests or request changes. If confirmed, skip to Step 3 (implement without tests). If the user disagrees, re-spawn `test-case-designer` with their feedback.
+
+3. **Format validation** (only if the output contains scenarios) — before presenting to the user, check the returned output for ALL of the following. If any check fails, re-spawn `test-case-designer` with the original task bundle plus this feedback (max 2 retries, then escalate to user):
 
    > Your output does not conform to the required format. Fix these issues:
    > [list each failed check]
@@ -109,11 +113,11 @@ If the task is marked `Testable: Yes`:
    - Scenarios are NOT in a table
    - No bullet field has an empty or placeholder value
 
-3. Present the validated test plan to the user.
+4. Present the validated test plan to the user.
 
-4. **GATE — approval loop**:
+5. **GATE — approval loop**:
    - Ask the user to approve or request changes.
-   - If the user requests changes, spawn `test-case-designer` again with the feedback, then validate (step 2) and present the **revised** test plan to the user and repeat this gate.
+   - If the user requests changes, spawn `test-case-designer` again with the feedback, then validate (step 3) and present the **revised** test plan to the user and repeat this gate.
    - Continue looping until the user explicitly approves.
    - Do NOT proceed to Step 3 until the test plan is approved.
 

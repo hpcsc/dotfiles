@@ -191,6 +191,32 @@ These qualities often conflict:
 
 ---
 
+## Coupling-Based Assertion Levels
+
+Integration strength classifies how much a test knows about the system under test:
+
+| Level | What the test knows | Assertion target | Behavioral? |
+|---|---|---|---|
+| **Contract** | Public interface only | Response shape, status codes, returned values, API output | Yes |
+| **Model** | Shared domain types | Domain object state after an operation | Yes |
+| **Functional** | Business logic details | Duplicated calculation or formula in the test | No — change detector |
+| **Intrusive** | Internal implementation | Private fields, call counts, internal state | No — breaks on refactors |
+
+### Design Rule
+
+Design every test scenario at **contract or model** level. Start at contract — can you assert on the output visible through the public interface? If not, move to model — can you assert on domain object state? If you reach functional level (re-implementing the production formula in the test), redesign or drop.
+
+### Volatility as Test Investment Signal
+
+| Volatility | Domain type | Test investment |
+|---|---|---|
+| **High** | Core domain — competitive advantage | More scenarios at contract level |
+| **Low** | Supporting/generic — stable, solved | Fewer scenarios suffice |
+
+High volatility + contract-level assertions = maximum value. Low volatility + many tests = maintenance drag.
+
+---
+
 ## What to Test
 
 ✅ **Observable behavior**: outputs, return values, state changes, side effects

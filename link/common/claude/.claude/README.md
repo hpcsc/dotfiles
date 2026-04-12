@@ -13,20 +13,26 @@ Skills (user-facing)              Agents (autonomous workers)
 /implement ────────────────┬────> decompose-to-tasks (planning)
                            ├────> test-case-designer (test design)
                            ├────> go-implementer or general-purpose (impl)
-                           ├────> semantic-go-reviewer or semantic-reviewer
-                           ├────> concurrency-go-reviewer or concurrency-reviewer
+                           ├────> go-refactorer or refactorer (refactoring)
+                           ├────> go-semantic-reviewer or semantic-reviewer
+                           ├────> go-concurrency-reviewer or concurrency-reviewer
+                           ├────> go-performance-reviewer or performance-reviewer
                            ├────> go-guidelines-reviewer (Go only)
-                           ├────> mutation-go-reviewer (Go only)
+                           ├────> go-mutation-reviewer (Go only)
                            └────> commit (committing)
 /tdd ──────────────────────┬────> decompose-to-tasks (planning)
                            ├────> tdd-test-writer (red)
                            ├────> tdd-implementer (green)
                            ├────> tdd-refactorer (refactor)
                            └────> commit (committing)
+/refactor-go ──────────────┬────> go-refactorer (impl)
+                           ├────> go-test-reviewer (review)
+                           └────> go-guidelines-reviewer (review)
 /commit ───────────────────────> commit
+/pcommit ──────────────────────> commit
+/model-events ─────────────────> (standalone, no agent)
 /review-go-tests ──────────────> (standalone, no agent)
 /review-go ────────────────────> (standalone, no agent)
-/refactor-go ──────────────────> (standalone, no agent)
 /test-go ──────────────────────> (standalone, no agent)
 /implement-go-interface ───────> (standalone, no agent)
 ```
@@ -62,7 +68,8 @@ Each stage produces artifacts the next stage consumes:
 | **implement** | `/implement <feature>` | Unified implementation pipeline: planning, test design, implementation (language-aware), parallel reviewers, human approval gates, and commit. |
 | **tdd** | `/tdd <feature>` | Test-driven development with Red-Green-Refactor cycles. Supports hands-off and ping-pong modes. |
 | **commit** | `/commit` | Delegate to the commit agent for staged changes. |
-| **refactor-go** | `/refactor-go <target>` | Go refactoring with investigation, planning, test-first updates, implementation, and review. |
+| **pcommit** | `/pcommit` | Delegate to the commit agent (alias for projects without a project-level commit skill). |
+| **refactor-go** | `/refactor-go <target>` | Go refactoring with investigation, planning, implementation via go-refactorer, and review by go-test-reviewer and go-guidelines-reviewer. |
 
 ### Planning Skills
 
@@ -75,7 +82,7 @@ Each stage produces artifacts the next stage consumes:
 
 | Skill | Invocation | Description |
 |-------|------------|-------------|
-| **event-modeling** | Auto-triggers | Design event-driven systems using Event Modeling methodology. |
+| **model-events** | `/model-events <requirements or codebase>` | Interactive event modeling: discovers business processes, identifies events in timeline order, storyboards, autonomous components, and message processing patterns. Gated feedback loops at every phase. |
 | **domain-design-review** | Auto-triggers | Review designs against 8 architectural anti-patterns. |
 | **solution-architect** | Auto-triggers | Guidance on Saga, Process Manager, Choreography, and Outbox patterns. |
 
@@ -118,6 +125,13 @@ Agents run in isolated sub-processes, delegated to by skills or spawned directly
 | **go-implementer** | `/implement` (Go projects) | Writes tests first, then production code. Follows project Go guidelines. |
 | **go-expert** | (direct use) | Senior Go engineer with clean architecture and DDD expertise. |
 
+### Refactoring Agents
+
+| Agent | Used By | Description |
+|-------|---------|-------------|
+| **go-refactorer** | `/implement` (Go), `/refactor-go` | Improves Go code structure while keeping tests green. Follows project Go guidelines. |
+| **refactorer** | `/implement` (non-Go) | Language-agnostic refactoring agent. Improves code structure while keeping tests green. |
+
 ### Review Agents
 
 All review agents output structured JSON: `{decision: "pass|block", findings: [{file, line, issue, why}]}`.
@@ -125,12 +139,15 @@ All review agents output structured JSON: `{decision: "pass|block", findings: [{
 | Agent | Used By | Scope |
 |-------|---------|-------|
 | **semantic-reviewer** | `/implement` | Logic correctness, edge cases, intent alignment, test quality. |
-| **semantic-go-reviewer** | `/implement` (Go) | Same as semantic reviewer, with Go-specific testing guidelines. |
+| **go-semantic-reviewer** | `/implement` (Go) | Same as semantic reviewer, with Go-specific testing guidelines. |
 | **concurrency-reviewer** | `/implement` | Shared state synchronization, race conditions, idempotency, deadlocks. |
-| **concurrency-go-reviewer** | `/implement` (Go) | Same as concurrency reviewer, with Go concurrency guidelines (goroutine lifecycle, channel discipline, sync primitives). |
+| **go-concurrency-reviewer** | `/implement` (Go) | Same as concurrency reviewer, with Go concurrency guidelines (goroutine lifecycle, channel discipline, sync primitives). |
+| **performance-reviewer** | `/implement` | Missing timeouts, resource leaks, lack of graceful degradation. |
+| **go-performance-reviewer** | `/implement` (Go) | Same as performance reviewer, with Go-specific performance guidelines. |
 | **go-guidelines-reviewer** | `/implement` (Go) | Naming patterns, architecture principles, development workflow conventions. |
-| **mutation-go-reviewer** | `/implement` (Go) | Runs go-gremlins mutation testing, interprets survived mutants, surfaces actionable test gaps. |
-| **test-go-reviewer** | (direct use) | Reviews Go tests against behavior-driven testing guidelines. |
+| **go-mutation-reviewer** | `/implement` (Go) | Runs go-gremlins mutation testing, interprets survived mutants, surfaces actionable test gaps. |
+| **security-reviewer** | `/implement` | Injection patterns, authorization gaps, audit trail verification. |
+| **go-test-reviewer** | `/refactor-go`, (direct use) | Reviews Go tests against behavior-driven testing guidelines. |
 | **test-reviewer** | (direct use) | Reviews tests across all languages against testing guidelines. |
 
 ### TDD Agents
@@ -145,14 +162,13 @@ All review agents output structured JSON: `{decision: "pass|block", findings: [{
 
 | Agent | Used By | Description |
 |-------|---------|-------------|
-| **commit** | `/tdd`, `/implement`, `/commit` | Creates commits with well-crafted messages and user approval. |
+| **commit** | `/tdd`, `/implement`, `/commit`, `/pcommit` | Creates commits with well-crafted messages and user approval. |
 
 ### Domain Agents
 
 | Agent | Used By | Description |
 |-------|---------|-------------|
 | **domain-modeler** | (direct use) | Domain modeling: aggregates, bounded contexts, boundaries. |
-| **event-modeling-expert** | (direct use) | Event-driven system design and visual modeling. |
 | **solution-architect** | (direct use) | Event sourcing, distributed processes, and integration patterns. |
 | **cue-expert** | (direct use) | CUE schema validation, testing, and configuration. |
 

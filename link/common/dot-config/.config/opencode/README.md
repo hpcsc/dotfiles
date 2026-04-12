@@ -47,13 +47,19 @@ Both tools read shared guidelines from `~/.config/ai/guidelines/`. No duplicatio
 
 | Command | Description | Wraps |
 |---|---|---|
-| `/commit` | Commit staged changes | `~/.claude/skills/commit/SKILL.md` |
+| `/commit` | Commit staged changes | `~/.claude/skills/pcommit/SKILL.md` |
+| `/pcommit` | Commit via commit agent (alias) | `~/.claude/skills/pcommit/SKILL.md` |
 | `/implement` | Implement a feature with quality gates | `~/.claude/skills/implement/SKILL.md` |
 | `/tdd` | Test-driven development | `~/.claude/skills/tdd/SKILL.md` |
 | `/refactor-go` | Go refactoring with review | `~/.claude/skills/refactor-go/SKILL.md` |
+| `/model-events` | Interactive event modeling | `~/.claude/skills/model-events/SKILL.md` |
+| `/write-user-story` | Generate user stories for a feature | `~/.claude/skills/write-user-story/SKILL.md` |
+| `/decompose-to-tasks` | Decompose story into implementation tasks | `~/.claude/skills/decompose-to-tasks/SKILL.md` |
 | `/review-go-tests` | Review Go tests | `~/.claude/skills/review-go-tests/SKILL.md` |
+| `/review-go` | Review a Go package against guidelines | `~/.claude/skills/review-go/SKILL.md` |
 | `/implement-go-interface` | Create Go interface test doubles | `~/.claude/skills/implement-go-interface/SKILL.md` |
 | `/test-go` | Write Go tests | `~/.claude/skills/test-go/SKILL.md` |
+| `/write` | Write or edit articles/notes | `~/.claude/skills/write/SKILL.md` |
 
 ## Agents
 
@@ -64,19 +70,23 @@ Both tools read shared guidelines from `~/.config/ai/guidelines/`. No duplicatio
 | **test-case-designer** | Designs test cases from acceptance criteria |
 | **go-implementer** | Writes Go tests first, then production code |
 | **go-expert** | Senior Go engineer for direct use |
+| **go-refactorer** | Improves Go code structure while keeping tests green |
+| **refactorer** | Language-agnostic refactoring agent |
 | **semantic-reviewer** | Logic correctness, edge cases, test quality |
-| **semantic-go-reviewer** | Same + Go testing guidelines |
+| **go-semantic-reviewer** | Same + Go testing guidelines |
 | **concurrency-reviewer** | Shared state, races, deadlocks |
-| **concurrency-go-reviewer** | Same + Go concurrency guidelines |
+| **go-concurrency-reviewer** | Same + Go concurrency guidelines |
+| **performance-reviewer** | Missing timeouts, resource leaks, graceful degradation |
+| **go-performance-reviewer** | Same + Go performance guidelines |
 | **go-guidelines-reviewer** | Go naming, architecture, workflow conventions |
-| **mutation-go-reviewer** | Runs go-gremlins mutation testing, surfaces actionable test gaps |
+| **go-mutation-reviewer** | Runs go-gremlins mutation testing, surfaces actionable test gaps |
+| **security-reviewer** | Injection patterns, authorization gaps, audit trails |
 | **go-test-reviewer** | Go tests against testing guidelines |
 | **test-reviewer** | Tests across all languages |
 | **tdd-test-writer** | TDD red phase |
 | **tdd-implementer** | TDD green phase |
 | **tdd-refactorer** | TDD refactor phase |
 | **domain-modeler** | Domain modeling and bounded contexts |
-| **event-modeling-expert** | Event-driven system design |
 | **solution-architect** | Event sourcing, distributed patterns |
 | **cue-expert** | CUE schema validation and testing |
 

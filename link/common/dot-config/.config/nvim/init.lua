@@ -1,6 +1,6 @@
 vim.g.mapleader = " "
 
-require("init")
+require("init").setup()
 
 -- filetype plugin indent on (load filetype-specific indent files at ~/.vim/indent/*.vim)
 vim.cmd("filetype plugin indent on")

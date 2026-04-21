@@ -3,8 +3,11 @@ return {
 	branch = "main",
 	build = ":TSUpdate",
 	lazy = false,
-	config = function()
-		require("nvim-treesitter").install({ "bash", "javascript", "typescript", "lua" })
+	opts = {
+		languages = { "bash", "javascript", "typescript", "lua" },
+	},
+	config = function(_, opts)
+		require("nvim-treesitter").install(opts.languages)
 
 		vim.api.nvim_create_autocmd("FileType", {
 			callback = function()

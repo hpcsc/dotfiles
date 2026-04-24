@@ -2,26 +2,28 @@
 
 ## Section Index
 
-| Section | Line | Use when... |
-|---|---|---|
-| [Core Principle](#core-principle-test-behavior-through-public-api-only) | ~28 | Foundation — all consumers |
-| [Independent Verification](#independent-verification) | ~41 | Reviewing test quality, judging expected values |
-| [Coupling-Based Assertion Levels](#coupling-based-assertion-levels) | ~145 | Choosing what interface to assert through |
-| [Three Essential Qualities](#three-essential-qualities-of-effective-tests) | ~171 | Designing or reviewing tests |
-| [What to Test](#what-to-test) | ~218 | Deciding whether something is worth testing |
-| [Unit of Behavior](#what-is-a-unit-of-behavior) | ~230 | Deciding test boundaries, filtering worthless tests |
-| [Detecting Implementation Detail Tests](#detecting-implementation-detail-tests) | ~280 | Evaluating whether any test asserts on implementation vs behavior |
-| [HTTP Handlers](#http-handlers-the-component-is-the-endpoint) | ~362 | Testing HTTP endpoints (HTML, JSON, streaming) |
-| [Test Structure](#test-structure) | ~442 | Writing new tests (templates, build tags) |
-| [Test Double Patterns](#test-double-patterns) | ~484 | Writing or reviewing fakes, broken, recording, memory |
-| [Never Expose Internals](#principle-never-expose-internals-just-for-testing) | ~600 | When tempted to export private state for tests |
-| [Test Clarity](#test-clarity-include-only-relevant-details) | ~733 | Balancing helper abstraction vs inline detail |
-| [Assertion Strictness](#assertion-strictness-match-to-what-youre-testing) | ~873 | Choosing strict vs loose assertions |
-| [Test Helper Patterns](#test-helper-patterns) | ~927 | Writing var blocks, deterministic data, table-driven tests |
-| [Anti-Patterns](#common-anti-patterns) | ~1007 | Reviewing tests for common mistakes (0–8) |
-| [Detection Checklist](#anti-pattern-detection-checklist) | ~1235 | Quick scan for red flags in test reviews |
-| [Quick Testing Checklist](#quick-testing-checklist) | ~1253 | Pre-flight check before writing or approving tests |
-| [Summary](#summary) | ~1284 | Reference table of practices |
+Read only the section(s) that match your task. To locate a section in the file, grep for its heading (e.g., `rg -n '^## Unit of Behavior'`).
+
+| Section | Use when... |
+|---|---|
+| [Core Principle](#core-principle-test-behavior-through-public-api-only) | Foundation — all consumers |
+| [Independent Verification](#independent-verification) | Reviewing test quality, judging expected values |
+| [Coupling-Based Assertion Levels](#coupling-based-assertion-levels) | Choosing what interface to assert through |
+| [Three Essential Qualities](#three-essential-qualities-of-effective-tests) | Designing or reviewing tests |
+| [What to Test](#what-to-test) | Deciding whether something is worth testing |
+| [Unit of Behavior](#what-is-a-unit-of-behavior) | Deciding test boundaries, filtering worthless tests |
+| [Detecting Implementation Detail Tests](#detecting-implementation-detail-tests) | Evaluating whether any test asserts on implementation vs behavior |
+| [HTTP Handlers](#http-handlers-the-component-is-the-endpoint) | Testing HTTP endpoints (HTML, JSON, streaming) |
+| [Test Structure](#test-structure) | Writing new tests (templates, build tags) |
+| [Test Double Patterns](#test-double-patterns) | Writing or reviewing fakes, broken, recording, memory |
+| [Never Expose Internals](#principle-never-expose-internals-just-for-testing) | When tempted to export private state for tests |
+| [Test Clarity](#test-clarity-include-only-relevant-details) | Balancing helper abstraction vs inline detail |
+| [Assertion Strictness](#assertion-strictness-match-to-what-youre-testing) | Choosing strict vs loose assertions |
+| [Test Helper Patterns](#test-helper-patterns) | Writing var blocks, deterministic data, table-driven tests |
+| [Anti-Patterns](#common-anti-patterns) | Reviewing tests for common mistakes (0–8) |
+| [Detection Checklist](#anti-pattern-detection-checklist) | Quick scan for red flags in test reviews |
+| [Quick Testing Checklist](#quick-testing-checklist) | Pre-flight check before writing or approving tests |
+| [Summary](#summary) | Reference table of practices |
 
 ---
 

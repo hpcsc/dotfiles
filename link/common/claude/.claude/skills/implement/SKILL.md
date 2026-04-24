@@ -40,9 +40,11 @@ Detect the project language. Check for marker files (first match wins):
 | Go | `~/.config/ai/guidelines/go/testing-patterns.md` |
 | (others) | _(none beyond caller-patterns)_ |
 
-When passing testing guidelines to the `test-case-designer` agent, always include `caller-patterns.md` with the instruction: "Read this first. Identify the caller pattern (UI for reads, Inbound for state changes, Outbound, Async Processing, Exported API) before designing test cases. Use the pattern's assert-on/don't-assert-on tables to guide scenario design."
+These guidelines are long. Instruct subagents to use progressive disclosure — read the Section Index first, then only the sections relevant to the task. Do NOT ask them to read the full file.
 
-When a language-specific testing guideline also exists (see table above), include it as additional `Required Reading` with the instruction: "Apply the 'What is a Unit of Behavior?' section when deciding whether a scenario is worth testing."
+When passing testing guidelines to the `test-case-designer` agent, always include `caller-patterns.md` with the instruction: "Read the Section Index at the top of this file first. Identify the caller pattern for this task (UI for reads, Inbound for state changes, Outbound, Async Processing, or Exported API), then read only that section plus the Quick Reference. Use the pattern's assert-on/don't-assert-on tables to guide scenario design."
+
+When a language-specific testing guideline also exists (see table above), include it as additional `Required Reading` with the instruction: "Read the Section Index first. Load only the sections relevant to this task — at minimum 'What to Test' and 'Unit of Behavior' to decide whether a scenario is worth testing, plus 'Assertion Strictness' and any anti-patterns that apply. Skip sections unrelated to the current task."
 
 ---
 
@@ -61,7 +63,7 @@ Spawn the `decompose-to-tasks` agent:
 
 > Decompose the following user story into implementation tasks: [user story from $ARGUMENTS]
 
-When a testing guideline exists for the detected language (see Testing Guidelines table above), pass both `caller-patterns.md` and the language-specific guideline as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Read caller-patterns.md to understand which caller patterns lead to testable behavior. Apply the 'What is a Unit of Behavior?' section from the language-specific guideline when deciding whether a task delivers independently testable behavior or is only meaningful through a downstream consumer."
+When a testing guideline exists for the detected language (see Testing Guidelines table above), pass both `caller-patterns.md` and the language-specific guideline as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Both files open with a Section Index — read the indexes first and load only the sections you need. From `caller-patterns.md`, read 'How to Identify the Caller' and the Quick Reference to understand which caller patterns lead to testable behavior. From the language-specific guideline, read the 'Unit of Behavior' section to decide whether a task delivers independently testable behavior or is only meaningful through a downstream consumer. Do not read either file end-to-end."
 
 ### Present the Plan
 

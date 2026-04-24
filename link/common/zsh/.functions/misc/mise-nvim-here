@@ -1,0 +1,46 @@
+if [[ -z "$1" ]]; then
+  printf "\033[0;31m%s\033[0m\n" "usage: mise-nvim-here <go|elixir>"
+  return 1
+fi
+
+local profile="$1"
+local -a tools
+local appname
+
+case "$profile" in
+  go)
+    appname="nvim-go"
+    tools=(
+      "go"
+      "go:golang.org/x/tools/gopls"
+      "go:github.com/go-delve/delve/cmd/dlv"
+    )
+    ;;
+  elixir)
+    appname="nvim-elixir"
+    tools=(
+      "erlang"
+      "elixir"
+    )
+    ;;
+  *)
+    printf "\033[0;31m%s\033[0m\n" "unknown profile '$profile' (expected: go, elixir)"
+    return 1
+    ;;
+esac
+
+local tool version
+for tool in "${tools[@]}"; do
+  version=$(mise latest "$tool" 2>/dev/null)
+  if [[ -z "$version" ]]; then
+    printf "\033[0;31m%s\033[0m\n" "failed to resolve latest version for $tool"
+    return 1
+  fi
+  printf "\033[0;36m%s\033[0m\n" "adding $tool@$version to mise.local.toml"
+  mise use -e local "${tool}@${version}" || return 1
+done
+
+printf "\033[0;36m%s\033[0m\n" "setting NVIM_APPNAME=$appname in mise.local.toml"
+mise set -E local "NVIM_APPNAME=$appname" || return 1
+
+printf "\033[0;32m%s\033[0m\n" "mise.local.toml configured for $profile profile"

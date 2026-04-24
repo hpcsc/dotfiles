@@ -45,6 +45,7 @@ Available profiles:
 | Profile | `NVIM_APPNAME` | Config path | Includes |
 |---------|----------------|-------------|----------|
 | Elixir | `nvim-elixir` | `nvim-elixir/` | Next LS (elixir-tools.nvim), treesitter for elixir/heex/eex |
+| Go | `nvim-go` | `nvim-go/` | gopls via go.nvim (ray-x), treesitter for go/gomod/gosum/gowork, auto goimports on save |
 
 ### Adding a new profile
 

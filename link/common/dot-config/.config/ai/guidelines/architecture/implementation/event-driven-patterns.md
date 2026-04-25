@@ -34,41 +34,44 @@ Break operations into small local transactions that communicate through events. 
 
 ## Pattern Selection
 
-| Pattern | Best For | State |
-|---------|----------|-------|
-| **Saga** | Simple workflows, most common | Stateless |
-| **Process Manager** | Complex workflows, wait for multiple events | Stateful (state machine) |
-| **Choreography** | Maximum decoupling, no coordinator | Distributed |
+| Pattern | Coordination Style | Best For | State |
+|---------|-------------------|----------|-------|
+| **Saga** | Choreography (distributed) | Linear workflows with clear per-step compensations | Per-step local state; no central coordinator |
+| **Process Manager** | Orchestration (centralized) | Branching, timeouts, state-dependent routing | Stateful (state machine) |
+
+Saga and Process Manager are the two coordination patterns; **Choreography** and **Orchestration** are the styles they embody (not a third alternative).
 
 ### Decision Tree
 ```
-Simple workflow (linear, few branches)?
-├── Yes → Saga
-└── No → Need to wait for multiple events?
-    ├── Yes → Process Manager
-    └── No → Want to avoid single coordinator?
-        ├── Yes → Choreography
-        └── No → Saga or Process Manager
+Does the workflow have conditional branches, timeouts,
+or routing that depends on accumulated state?
+├── Yes → Process Manager (orchestration)
+└── No  → Linear flow with clear compensations?
+         ├── Yes → Saga (choreography)
+         └── No  → Reactor (single stateless event→command hop)
 ```
+
+Heuristic: if the whiteboard diagram shows branches or "wait until X or timeout Y", you need a Process Manager. If it's a straight line with well-defined undos, a Saga fits.
 
 ---
 
 ## Pattern Summaries
 
 ### Saga
-Stateless coordinator reacting to events, dispatching commands. All decisions from event data alone.
-- Handles: `CartFinalized` → send `InitializeOrder`
-- Compensation: `PaymentFailed` → send `CancelOrder`
+A set of local transactions coordinated through events, each paired with a **compensating action** that semantically undoes it if a later step fails. Workflow knowledge is distributed — each participant knows only its own step and its own compensation.
+- Happy path: `PaymentCompleted` → `RequestShipment`
+- Compensation: `ShipmentFailed` → `RefundPayment`
+
+**Compensation ≠ rollback.** Compensations are new forward-moving events that add to the history. Never emit events that pretend prior facts didn't happen.
 
 ### Process Manager
-Maintains state, makes decisions from accumulated state. State machine model.
-- Use when: Waiting for N of M events before proceeding
-- Example: Group checkout waiting for all guests to complete
+A stateful orchestrator that holds the workflow plan, accumulates state from incoming events, and dispatches commands based on its current position. Centralizes workflow knowledge.
+- Use when: branching, timeouts, or waiting for N of M events before proceeding
+- Example: Group checkout waiting for all guests to complete, with a deadline
 
-### Choreography
-Services react to each other's events. No central coordinator.
-- Payment service publishes `PaymentCompleted`
-- Shipment service listens and ships
+### Choreography vs Orchestration (coordination styles)
+- **Choreography** — services react to each other's events; no central coordinator. Sagas are the canonical implementation.
+- **Orchestration** — a central component directs participants via commands. Process Managers are the canonical implementation.
 
 ### Event Enrichment
 Transform internal events to external events. Add context, hide internals.
@@ -97,9 +100,11 @@ Store events + state in same transaction. Publish separately.
 ## Key Implementation Notes
 
 ### Saga Compensation Flow
-For every happy-path handler, define the compensation:
+For every happy-path handler, define the compensation as a new forward event (not an erasure):
 - `PaymentCompleted` → `RequestShipment`
 - `ShipmentFailed` → `RefundPayment` → `CancelOrder`
+
+Compensations preserve history. `PaymentRefunded` records a real business fact; a hypothetical `PaymentUndone` that tries to nullify `PaymentCompleted` does not.
 
 ### Outbox Critical Path
 ```

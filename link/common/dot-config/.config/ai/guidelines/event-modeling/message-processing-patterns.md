@@ -92,9 +92,33 @@ OrderPlaced → [PaymentReactor] → ProcessPayment
 
 ---
 
-### 4. Process Manager / Saga (Event(s) → State → Command)
+### 4a. Saga (Event → Command, with Compensation)
 
-A stateful automation that coordinates a multi-step process across aggregates or bounded contexts. Maintains its own state to track progress.
+A coordination pattern for long-lived processes composed of local transactions, each paired with a **compensating action** that semantically undoes its effect if a later step fails. Sagas distribute workflow knowledge — each participant knows only its own step and its own compensation.
+
+```
+Event → [Saga step] → Command
+(on failure) Event → [Saga step] → Compensating Command
+```
+
+**Characteristics:**
+- Originally a compensation strategy for long-lived transactions (Garcia-Molina & Salem, 1987)
+- Aligns with **choreography**: no central coordinator; each participant reacts to events
+- Compensations are new forward-moving events — they *add to* the history, never erase it ("compensation adds to the story; rollback pretends part of the story never happened")
+- Best fit: simple, stable, largely linear workflows with well-defined compensations
+
+**Example:**
+```
+OrderPlaced      → [Payment step]  → ChargePayment
+PaymentSucceeded → [Shipping step] → ShipOrder
+ShipmentFailed   → [Payment step]  → RefundPayment   (compensating command)
+```
+
+---
+
+### 4b. Process Manager (Event(s) → State → Command(s))
+
+A **stateful orchestrator** that holds the workflow plan, accumulates state from incoming events, and dispatches commands based on its current position in the plan. Process managers centralize workflow knowledge.
 
 ```
 Event → [Process Manager (stateful)] → Command(s)
@@ -102,15 +126,22 @@ Event → [Process Manager (stateful)] → Command(s)
 
 **Characteristics:**
 - Maintains internal state tracking which steps have completed
-- Reacts to multiple event types over time
-- Can handle timeouts and compensating actions
-- More complex than a reactor — use only when statefulness is required
+- Aligns with **orchestration**: a single component directs all participants
+- Reacts to multiple event types over time; handles timeouts, branching, and dynamic routing
+- Chooses the next command based on accumulated state, not just the triggering event
+
+**When to reach for a Process Manager instead of a Saga:**
+- The workflow diagram has conditional branches
+- Steps depend on timeouts or scheduled deadlines
+- Routing changes based on data accumulated across events
+- You need to wait for N of M events before proceeding
 
 **Example:**
 ```
-OrderPlaced → [OrderFulfillmentProcess] → (tracks state)
-PaymentSucceeded → [OrderFulfillmentProcess] → ShipOrder
-ShipmentFailed → [OrderFulfillmentProcess] → RefundPayment
+OrderPlaced       → [OrderFulfillmentPM] → (tracks state: awaiting payment)
+PaymentSucceeded  → [OrderFulfillmentPM] → ShipOrder
+ShipmentFailed    → [OrderFulfillmentPM] → RefundPayment
+PaymentTimeout    → [OrderFulfillmentPM] → CancelOrder
 ```
 
 ---
@@ -233,7 +264,8 @@ Who/what initiates the transition?
 ├─ An event occurred
 │   ├─ Need to update a read model? → Projection (#2)
 │   ├─ Need to trigger a single command (stateless)? → Reactor (#3)
-│   ├─ Need to coordinate multiple steps over time? → Process Manager (#4)
+│   ├─ Need to coordinate a linear multi-step flow with compensations? → Saga (#4a)
+│   ├─ Need branching, timeouts, or state-dependent routing? → Process Manager (#4b)
 │   ├─ Need to evaluate a business rule first? → Policy (#7)
 │   └─ Need to publish to another context? → Stream Processing (#9)
 │

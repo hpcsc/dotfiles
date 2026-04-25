@@ -1,5 +1,5 @@
 ---
-description: Create a git commit for staged changes using the commit agent
+description: Create a git commit for staged changes
 ---
 
 @~/.claude/skills/pcommit/SKILL.md

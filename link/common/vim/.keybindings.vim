@@ -61,6 +61,9 @@ nnoremap <CR> :nohlsearch<CR>
 " toggle folding
 nnoremap <leader>z za 
 
+" copy relative path of current file
+nnoremap <leader>cp :let @+ = expand("%") <Bar> echo "Copied: " . @+<CR>
+
 " }}}
 
 " Insert Mode Mappings {{{

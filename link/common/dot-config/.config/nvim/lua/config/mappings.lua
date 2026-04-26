@@ -36,6 +36,11 @@ map("n", "<C-u>", "<C-u>zz", silent)
 map("n", "H", "Hzz", silent)
 map("n", "M", "Mzz", silent)
 map("n", "L", "Lzz", silent)
+map("n", "<leader>cp", function()
+  local path = vim.fn.expand("%")
+  vim.fn.setreg("+", path)
+  print("Copied: " .. path)
+end, silent)
 
 -- insert newline in normal mode
 map("n", "<leader><space>", "o<Esc>", silent)

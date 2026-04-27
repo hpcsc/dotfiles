@@ -399,12 +399,19 @@ assert eventStream.lastEvent.campaignId == "camp-1"
 | Internal caching or optimization strategies | Performance is separate from correctness |
 | Private helper functions or internal structure | Could be refactored freely |
 | Constructor success (non-null checks) | Other tests would fail if construction broke |
+| Values passed across an internal seam between two collaborators, when no caller observes the seam | The caller observes the downstream output, not the handoff — test that instead |
 
 ### Litmus test
 
 > If I swap the implementation behind the interface (in-memory to PostgreSQL, one algorithm to another) — but the contract is preserved — should any test break?
 >
 > If yes, the test is asserting on implementation.
+
+### Watch out for seam tests
+
+A seam test asserts that component `A` passes a specific value to component `B` via a fake of `B`. Even when you own the fake, the test is an implementation detail if no external caller observes the `A → B` handoff directly. The caller sees the downstream output of `B`, not the value on the wire.
+
+Delete the seam test when both the upstream side (how `A` derives the value) and the downstream side (how `B` uses it) are already covered end-to-end. Keep it only when the downstream cannot be exercised in the same test (cross-repo, external service, prohibitive cost). See `~/.config/ai/guidelines/go/testing-patterns.md` — "Applying to Common Gray Areas" — for the full rule.
 
 ### Test shape: Contract test
 

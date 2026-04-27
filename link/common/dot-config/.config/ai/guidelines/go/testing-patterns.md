@@ -362,6 +362,37 @@ result2, _ := service.GetUser("123")
 require.Equal(t, result1, result2)
 ```
 
+**Asserting on a seam between two collaborating components:**
+
+A tempting pattern is to test that component `A` passes a specific value to component `B` via a fake of `B`. If no external caller observes the `A → B` handoff directly — only the downstream output of `B` — then this test is asserting on a **private wiring detail**, even when the fake is owned by your code.
+
+```go
+// BAD — asserts on the internal seam. The caller of Compose never observes
+// CustomerContext; they observe ComposeResult. If the next test down
+// ("given an RTL customer, rendered HTML has dir=rtl") exists, this test
+// only catches a broken wire one layer sooner — at the cost of fragility.
+func TestEditor_Compose_PassesIsRTLToPrompt(t *testing.T) {
+    p := prompts.NewFakePrompt(...)
+    editor.Compose(ctx, arabicCustomer)
+    require.True(t, p.ReceivedContext().IsRTL)
+}
+
+// GOOD — assert on what the caller actually observes.
+func TestEditor_Compose_RendersRTL(t *testing.T) {
+    result, _ := editor.Compose(ctx, arabicCustomer)
+    require.Contains(t, result.HTML, `dir="rtl"`)
+}
+```
+
+**The seam test is an implementation detail when all three are true:**
+1. No caller of the code under test observes the seam directly.
+2. The upstream side of the seam (here: `IsRTL` derivation) is tested against the boundary it actually serves (here: prompt rendering).
+3. The downstream side of the seam (here: how `IsRTL` affects the output) is tested end-to-end.
+
+If conditions 2 and 3 are already covered, the seam test adds cost (scaffolding, refactor fragility) without adding fidelity. Delete it and rely on the end-to-end test — a regression of the wire still fails that test, one stack frame further out.
+
+**Write the seam test only when** the upstream and downstream cannot be covered together — e.g., the downstream is in another repo, behind a network call, or expensive to exercise. Then the seam is the closest available contract.
+
 ---
 
 ## HTTP Handlers: The Component Is the Endpoint

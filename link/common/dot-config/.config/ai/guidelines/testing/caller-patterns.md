@@ -1,3 +1,4 @@
+<!-- index: 1-22 -->
 # Caller Patterns: Who Is the Test Written For?
 
 Every test implicitly has a **caller** — the actor whose expectations define what "correct" means. Identifying the caller determines what to assert on and what to ignore.

@@ -1,3 +1,4 @@
+<!-- index: 1-29 -->
 # Go Testing Patterns
 
 ## Section Index
@@ -16,6 +17,8 @@ Read only the section(s) that match your task. To locate a section in the file, 
 | [HTTP Handlers](#http-handlers-the-component-is-the-endpoint) | Testing HTTP endpoints (HTML, JSON, streaming) |
 | [Test Structure](#test-structure) | Writing new tests (templates, build tags) |
 | [Test Double Patterns](#test-double-patterns) | Writing or reviewing fakes, broken, recording, memory |
+| [Shared Contract Tests](#shared-contract-tests-across-implementations) | An interface has multiple real implementations |
+| [Negative-Path Invariants](#negative-path-invariants) | Testing error paths — ensuring rejected operations leave state unchanged |
 | [Never Expose Internals](#principle-never-expose-internals-just-for-testing) | When tempted to export private state for tests |
 | [Test Clarity](#test-clarity-include-only-relevant-details) | Balancing helper abstraction vs inline detail |
 | [Assertion Strictness](#assertion-strictness-match-to-what-youre-testing) | Choosing strict vs loose assertions |
@@ -596,6 +599,162 @@ var _ event.Stream = (*esdb)(nil)
 var _ event.Stream = (*memory)(nil)
 var _ event.Stream = (*broken)(nil)
 ```
+
+---
+
+## Shared Contract Tests Across Implementations
+
+**When an interface has multiple real implementations (e.g. in-memory and SQL), extract one behavioral test suite that takes a constructor and run it against each implementation.**
+
+An interface is a promise. Any type that satisfies it must behave the same way from the caller's perspective. The only way to enforce that promise is to run the same behavioral suite against every implementation — not a duplicated copy per type.
+
+This is the practical mechanism that operationalises [refactor invariance](#the-definitive-test-refactor-invariance): a correct implementation passes the contract suite; an incorrect one fails. The suite becomes a machine-checkable specification of the interface.
+
+### Shape
+
+```go
+// testRepositoryContract exercises the Repository interface contract.
+// Any implementation (in-memory, SQL, etc.) is expected to pass it.
+func testRepositoryContract(t *testing.T, newRepo func() collection.Repository) {
+    t.Helper()
+
+    t.Run("create then list returns the created collection", func(t *testing.T) {
+        repo := newRepo()
+
+        created, err := repo.Create("vim", "editor shortcuts")
+        require.NoError(t, err)
+
+        collections, err := repo.List()
+        require.NoError(t, err)
+        require.Len(t, collections, 1)
+        require.Equal(t, created.ID, collections[0].ID)
+    })
+
+    // ... more scenarios
+}
+
+func TestMemoryRepository(t *testing.T) {
+    testRepositoryContract(t, func() collection.Repository {
+        return collection.NewMemory()
+    })
+}
+
+func TestSQLRepository(t *testing.T) {
+    testRepositoryContract(t, func() collection.Repository {
+        return newSQLRepoForTest(t)
+    })
+}
+```
+
+### Why a Constructor, Not a Shared Instance
+
+Each subtest calls `newRepo()` at the top. Fresh state, every time.
+
+- **Independence:** no subtest can depend on state left behind by another. `t.Run` ordering isn't guaranteed under `-run` filters or parallelism.
+- **Parallel-friendly:** nothing blocks adding `t.Parallel()` later.
+- **SQL-friendly:** the constructor can spin up a clean schema or a transaction per test without changing a single subtest.
+
+A shared instance would force every scenario to clean up after itself — exactly the kind of bookkeeping that breeds order-dependent flakes.
+
+### What the Contract Test Catches
+
+Divergence between implementations that a single-implementation suite cannot see:
+
+- Case-sensitive SQL collation violating case-insensitive uniqueness that the in-memory version enforces in Go.
+- Naive "delete then insert" rename in one implementation that leaks a missing row on collision.
+- Timezone or timestamp precision mismatches between storage backends.
+
+If `TestSQLRepository` fails where `TestMemoryRepository` passes, the contract suite caught a genuine divergence — not an implementation quirk.
+
+### Design Rules
+
+- **Assertions use the public interface only.** No reaching into the in-memory map, no checking mutex state, no asserting on SQL rows. If an assertion can't go through the interface, it isn't part of the contract.
+- **Error identity, not error strings.** Use `errors.Is` against sentinel errors so implementations can wrap with context (`fmt.Errorf("inserting row: %w", ErrDuplicateName)`) without breaking the check.
+- **Scenarios describe behavior, not methods.** `"after deleting, the name is free for Create again"` — not `"TestDelete_Success"`. Cross-operation scenarios are exactly the bugs single-method tests miss.
+
+---
+
+## Negative-Path Invariants
+
+**When asserting that an operation is rejected, also assert that state is unchanged — but only through the interface's existing public API. "Rejected and inert" is one behavior, not two.**
+
+A common mistake is to check only the error on a failed operation:
+
+```go
+// WEAK: passes even if the failed rename corrupted both records.
+err = repo.Rename(b.ID, "alpha")
+require.ErrorIs(t, err, collection.ErrDuplicateName)
+```
+
+A naive implementation (e.g. delete-then-insert rename, or SQL without a transaction) can return the right error *and* leave the store in an inconsistent state. The error-identity check alone doesn't catch it.
+
+### The Constraint: Observe Through the Existing Public API
+
+This pattern is only legitimate when the interface already exposes a way to observe the state — typically a read method that real callers use (`List`, `Get`, `Find`). If your interface has such a method, use it:
+
+```go
+t.Run("renaming to an existing name returns ErrDuplicateName and leaves both unchanged", func(t *testing.T) {
+    repo := newRepo()
+
+    a, err := repo.Create("alpha", "a")
+    require.NoError(t, err)
+    b, err := repo.Create("beta", "b")
+    require.NoError(t, err)
+
+    err = repo.Rename(b.ID, "alpha")
+    require.ErrorIs(t, err, collection.ErrDuplicateName)
+
+    collections, err := repo.List()
+    require.NoError(t, err)
+    require.Len(t, collections, 2)
+
+    byID := map[string]collection.Instance{}
+    for _, c := range collections {
+        byID[c.ID] = c
+    }
+    require.Equal(t, "alpha", byID[a.ID].Name)
+    require.Equal(t, "beta", byID[b.ID].Name)
+})
+```
+
+### If There's No Public Read Method
+
+**Never add a getter, export a field, or reach into internals just to verify "state unchanged."** That's [test-induced design damage](#principle-never-expose-internals-just-for-testing) and turns an implementation detail into part of the public contract.
+
+Instead, observe the invariant indirectly through the next legitimate operation whose correctness depends on that state:
+
+```go
+// The interface has no List/Get. Probe via the next operation.
+t.Run("failed withdrawal leaves balance available for a later successful withdrawal", func(t *testing.T) {
+    account := newAccountWithBalance(t, 100)
+
+    err := account.Withdraw(150)
+    require.ErrorIs(t, err, ErrInsufficientFunds)
+
+    // If the failed withdrawal had mutated balance, this would fail.
+    require.NoError(t, account.Withdraw(100))
+    require.ErrorIs(t, account.Withdraw(1), ErrInsufficientFunds)
+})
+```
+
+The indirect probe works because a subsequent operation whose outcome depends on the pre-rejection state is itself public behavior — and it's exactly what a real caller would do next.
+
+### When Neither Is Possible
+
+If the invariant can be neither read nor probed through any public operation, that's a signal the invariant isn't actually part of the observable contract — skip it. No test is better than a test that mandates exposing internals.
+
+### When to Apply
+
+Any time the system under test accepts an operation that might be rejected *and* the invariant is observable through existing public behavior:
+
+- Rejected writes leave prior state intact (validation failures, uniqueness collisions, optimistic-concurrency losses).
+- Rejected deletes leave the target present (observable via a later read or a later operation that targets it).
+- Rejected renames leave both the target and any collision victim unchanged.
+- Partial failures in multi-step operations leave the store in a pre-operation state.
+
+### Why This Counts as One Behavior, Not Two
+
+The contract is "rejection is inert." Splitting it into two tests ("returns the error" and "leaves state unchanged") creates two ways for a single bug to be reported and two tests that must be kept in sync. One scenario covering both halves of the invariant is clearer and stricter.
 
 ---
 

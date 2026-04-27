@@ -42,9 +42,17 @@ Detect the project language. Check for marker files (first match wins):
 
 These guidelines are long. Instruct subagents to use progressive disclosure — read the Section Index first, then only the sections relevant to the task. Do NOT ask them to read the full file.
 
-When passing testing guidelines to the `test-case-designer` agent, always include `caller-patterns.md` with the instruction: "Read the Section Index at the top of this file first. Identify the caller pattern for this task (UI for reads, Inbound for state changes, Outbound, Async Processing, or Exported API), then read only that section plus the Quick Reference. Use the pattern's assert-on/don't-assert-on tables to guide scenario design."
+**How to read a Section Index efficiently.** Each guideline starts with an HTML comment on line 1 of the form `<!-- index: 1-N -->` giving the exact line range of the Section Index. Agents should:
 
-When a language-specific testing guideline also exists (see table above), include it as additional `Required Reading` with the instruction: "Read the Section Index first. Load only the sections relevant to this task — at minimum 'What to Test' and 'Unit of Behavior' to decide whether a scenario is worth testing, plus 'Assertion Strictness' and any anti-patterns that apply. Skip sections unrelated to the current task."
+1. Read line 1 only (`offset=1, limit=1`) to learn the index range.
+2. Read the index range (`offset=1, limit=N`) to see all section names and "Use when..." descriptions.
+3. For each relevant section, `rg -n '^## <heading>'` to resolve its starting line, then `Read` from that offset.
+
+Pass this instruction to subagents verbatim so they don't read the full file.
+
+When passing testing guidelines to the `test-case-designer` agent, always include `caller-patterns.md` with the instruction: "Read line 1 to find the Section Index range, read the index, then identify the caller pattern for this task (UI for reads, Inbound for state changes, Outbound, Async Processing, or Exported API) and read only that section plus the Quick Reference. Use the pattern's assert-on/don't-assert-on tables to guide scenario design."
+
+When a language-specific testing guideline also exists (see table above), include it as additional `Required Reading` with the instruction: "Read line 1 to find the Section Index range, read the index, then load only the sections relevant to this task — at minimum 'What to Test' and 'Unit of Behavior' to decide whether a scenario is worth testing, plus 'Assertion Strictness' and any anti-patterns that apply. Skip sections unrelated to the current task."
 
 ---
 

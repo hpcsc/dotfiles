@@ -15,6 +15,29 @@ map("n", "<leader>l", "<C-w>l", silent)
 map("n", "<leader>ws", "<C-w>s", silent)
 map("n", "<leader>wv", "<C-w>v", silent)
 map("n", "<leader>wc", "<C-w>c", silent)
+local saved_layout = nil
+local function maximize_window()
+	saved_layout = vim.fn.winrestcmd()
+	vim.cmd("wincmd _ | wincmd |")
+end
+local function restore_window()
+	if saved_layout then
+		vim.cmd(saved_layout)
+		saved_layout = nil
+	else
+		vim.cmd("wincmd =")
+	end
+end
+map("n", "<leader>wm", maximize_window, silent)
+map("n", "<leader>w=", restore_window, silent)
+map("t", "<leader>wm", function()
+	vim.cmd("stopinsert")
+	maximize_window()
+end, silent)
+map("t", "<leader>w=", function()
+	vim.cmd("stopinsert")
+	restore_window()
+end, silent)
 
 -- OverCommandLine then start %s/
 map("n", "<leader>s", ":OverCommandLine<CR>%s/", {})
@@ -66,6 +89,9 @@ map("n", "<c-y>", ":BTags<cr>", {})
 
 -- Insert mode mappings
 map("i", "jk", "<Esc>")
+
+-- Terminal mode mappings
+map("t", "<C-space>", [[<C-\><C-n>]], silent)
 
 -- Visual mode mappings
 map("v", "<CR>", "<Esc>")

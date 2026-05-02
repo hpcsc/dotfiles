@@ -1,5 +1,9 @@
+-- Enabled only when NVIM_CLAUDECODE=1 is set in the environment.
 return {
 	"coder/claudecode.nvim",
+	enabled = function()
+		return vim.env.NVIM_CLAUDECODE == "1"
+	end,
 	dependencies = { "folke/snacks.nvim" },
 	opts = {
 		diff_opts = {

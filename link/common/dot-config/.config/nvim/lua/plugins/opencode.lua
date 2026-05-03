@@ -12,49 +12,64 @@ return {
 		vim.o.autoread = true
 	end,
 	keys = {
-		{ "<leader>o", nil, desc = "AI/opencode" },
+		{ "<leader>a", nil, desc = "AI" },
 		{
-			"<leader>oo",
+			"<leader>ao",
 			function()
 				require("opencode").toggle()
 			end,
-			desc = "Toggle opencode",
+			desc = "Toggle AI panel",
 		},
 		{
-			"<leader>oa",
+			"<C-\\>",
+			function()
+				require("opencode").toggle()
+			end,
+			mode = { "n", "t" },
+			desc = "Toggle AI panel",
+		},
+		{
+			"<leader>af",
+			function()
+				require("opencode").toggle()
+			end,
+			desc = "Focus AI panel",
+		},
+		{
+			"<leader>aa",
 			function()
 				require("opencode").ask()
 			end,
-			desc = "Ask opencode",
+			desc = "Ask AI",
 		},
 		{
-			"<leader>oA",
+			"<leader>as",
 			function()
 				require("opencode").ask("@this: ", { submit = true })
 			end,
 			mode = { "n", "v" },
-			desc = "Ask opencode about this",
+			desc = "Send selection to AI",
 		},
 		{
-			"<leader>op",
+			"<leader>ap",
 			function()
 				require("opencode").prompt()
 			end,
-			desc = "Prompt opencode (with context)",
+			desc = "Prompt AI (with context)",
 		},
 		{
-			"<leader>os",
+			"<leader>aS",
 			function()
 				require("opencode").select()
 			end,
-			desc = "Select opencode prompt/command",
+			desc = "Select AI prompt/command",
 		},
 		{
-			"<leader>on",
+			"<leader>an",
 			function()
 				require("opencode").command("session.new")
 			end,
-			desc = "New opencode session",
+			desc = "New AI session",
 		},
 	},
 }

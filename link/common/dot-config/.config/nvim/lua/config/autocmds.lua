@@ -45,16 +45,3 @@ vim.api.nvim_create_autocmd("BufLeave", {
 		end
 	end,
 })
-
--- git-diff style colors for :diff / vimdiff (applies to claudecode.nvim diff views too)
-local function git_diff_colors()
-	vim.api.nvim_set_hl(0, "DiffAdd", { bg = "#1d3a1d", fg = "NONE" })
-	vim.api.nvim_set_hl(0, "DiffDelete", { bg = "#3a1d1d", fg = "#ff6b6b" })
-	vim.api.nvim_set_hl(0, "DiffChange", { bg = "#2a2a1d", fg = "NONE" })
-	vim.api.nvim_set_hl(0, "DiffText", { bg = "#5c5c1d", fg = "NONE", bold = true })
-end
-
-vim.api.nvim_create_autocmd("ColorScheme", {
-	callback = git_diff_colors,
-})
-git_diff_colors()

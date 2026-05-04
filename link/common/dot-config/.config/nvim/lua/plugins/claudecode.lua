@@ -10,6 +10,13 @@ return {
 			open_in_new_tab = true,
 			keep_terminal_focus = true,
 		},
+		terminal = {
+			snacks_win_opts = {
+				keys = {
+					term_normal = false,
+				},
+			},
+		},
 	},
 	cmd = {
 		"ClaudeCode",

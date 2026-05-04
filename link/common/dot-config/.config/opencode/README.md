@@ -50,6 +50,7 @@ Both tools read shared guidelines from `~/.config/ai/guidelines/`. No duplicatio
 | `/commit` | Commit staged changes | `~/.claude/skills/pcommit/SKILL.md` |
 | `/pcommit` | Commit via commit agent (alias) | `~/.claude/skills/pcommit/SKILL.md` |
 | `/implement` | Implement a feature with quality gates | `~/.claude/skills/implement/SKILL.md` |
+| `/implement-auto` | Implement a feature autonomously (fresh context per task) | `~/.claude/skills/implement-auto/SKILL.md` |
 | `/tdd` | Test-driven development | `~/.claude/skills/tdd/SKILL.md` |
 | `/refactor-go` | Go refactoring with review | `~/.claude/skills/refactor-go/SKILL.md` |
 | `/model-events` | Interactive event modeling | `~/.claude/skills/model-events/SKILL.md` |
@@ -67,6 +68,7 @@ Both tools read shared guidelines from `~/.config/ai/guidelines/`. No duplicatio
 |---|---|
 | **commit** | Creates commits with well-crafted messages |
 | **decompose-to-tasks** | Decomposes stories into ordered tasks |
+| **task-implementer** | Implements one task end-to-end in a fresh context (used by `/implement-auto`) |
 | **test-case-designer** | Designs test cases from acceptance criteria |
 | **go-implementer** | Writes Go tests first, then production code |
 | **go-expert** | Senior Go engineer for direct use |

@@ -21,14 +21,6 @@ return {
 			desc = "Toggle AI panel",
 		},
 		{
-			"<C-\\>",
-			function()
-				require("opencode").toggle()
-			end,
-			mode = { "n", "t" },
-			desc = "Toggle AI panel",
-		},
-		{
 			"<leader>af",
 			function()
 				require("opencode").toggle()

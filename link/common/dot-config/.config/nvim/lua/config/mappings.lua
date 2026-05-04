@@ -90,9 +90,6 @@ map("n", "<c-y>", ":BTags<cr>", {})
 -- Insert mode mappings
 map("i", "jk", "<Esc>")
 
--- Terminal mode mappings
-map("t", "<Esc><Esc>", [[<C-\><C-n>]], silent)
-
 -- Visual mode mappings
 map("v", "<CR>", "<Esc>")
 map("v", "y", "ygv<Esc>")

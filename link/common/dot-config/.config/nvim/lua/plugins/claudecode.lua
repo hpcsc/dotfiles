@@ -28,7 +28,6 @@ return {
 	keys = {
 		{ "<leader>a", nil, desc = "AI" },
 		{ "<leader>ao", "<cmd>ClaudeCode<cr>", desc = "Toggle AI panel" },
-		{ "<C-\\>", "<cmd>ClaudeCode<cr>", mode = { "n", "t" }, desc = "Toggle AI panel" },
 		{ "<leader>af", "<cmd>ClaudeCodeFocus<cr>", desc = "Focus AI panel" },
 		{ "<leader>aa", "<cmd>ClaudeCode<cr>", desc = "Ask AI" },
 		{ "<leader>as", "<cmd>ClaudeCodeSend<cr>", mode = "v", desc = "Send selection to AI" },

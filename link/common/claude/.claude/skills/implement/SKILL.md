@@ -301,6 +301,29 @@ After marking the task complete, write a brief summary to maintain context quali
 
 Append this to `tasks/.checkpoint` (create if it doesn't exist). This file is disposable — it exists only to keep the orchestrator's context sharp across many cycles. Delete it in Phase 3 Completion.
 
+#### Plan validity check
+
+Before proceeding to the next task, evaluate whether what was learned in this task invalidates the remaining plan. Consider:
+
+- **Interface drift** — did the shape of a function/type/API change in a way that breaks assumptions in later tasks?
+- **Proven-wrong assumption** — did an assumption the plan rested on turn out to be incorrect?
+- **Missing task** — did implementation surface work that must happen but isn't in the plan?
+- **Redundant task** — did this task (or a refactor within it) make a later task unnecessary?
+- **Reordering** — does a later task now need to happen sooner (e.g., a dependency flipped)?
+
+If none apply → continue silently to the next task.
+
+If any apply → halt and spawn `decompose-to-tasks` with:
+
+```
+Original story: [user story from $ARGUMENTS]
+Completed tasks: [tasks 1..N with checkpoint summaries]
+Trigger for revision: [which condition above applied, and what was learned]
+Revise only the remaining tasks (N+1 onward). Keep completed tasks unchanged.
+```
+
+Present the **revised remaining plan** to the user and re-enter the Phase 1 approval loop. On approval, resume Phase 2 at the next task. Do NOT silently adjust tasks yourself — the plan is the only shared contract with the user, and goal drift must surface.
+
 Show remaining tasks and proceed to the next task (back to Step 1).
 
 ---

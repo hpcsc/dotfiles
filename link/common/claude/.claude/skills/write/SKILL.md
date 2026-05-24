@@ -1,4 +1,5 @@
 ---
+name: write
 description: Write or edit an article or note. Follows writing style guidelines for clarity and consistency.
 argument-hint: Topic or file path to write/edit
 ---

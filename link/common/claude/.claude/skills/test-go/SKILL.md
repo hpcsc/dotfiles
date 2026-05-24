@@ -1,4 +1,5 @@
 ---
+name: test-go
 description: Write Go tests following behavior-driven testing principles. Tests behavior through public APIs, not implementation details.
 ---
 

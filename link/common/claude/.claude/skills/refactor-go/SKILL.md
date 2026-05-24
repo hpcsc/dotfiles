@@ -1,4 +1,5 @@
 ---
+name: refactor-go
 description: Refactor Go code with investigation, planning, implementation via go-refactorer agent, and review by Go test reviewer and Go guidelines agents.
 disable-model-invocation: true
 ---

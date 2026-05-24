@@ -1,4 +1,5 @@
 ---
+name: review-go-tests
 description: Review Go tests for adherence to behavior-driven testing principles. Checks tests against Go testing guidelines and rules covering public API testing, test clarity, anti-patterns, and proper mocking. Suggests valuable missing tests for uncovered behaviors.
 disable-model-invocation: true
 ---

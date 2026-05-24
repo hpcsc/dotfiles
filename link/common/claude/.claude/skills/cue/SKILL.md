@@ -1,4 +1,5 @@
 ---
+name: cue
 description: Work with CUE configuration files. Handles creating, validating, testing, and debugging CUE schemas and configurations.
 ---
 

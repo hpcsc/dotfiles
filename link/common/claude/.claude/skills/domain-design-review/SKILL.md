@@ -1,4 +1,5 @@
 ---
+name: domain-design-review
 description: Review domain designs for architectural anti-patterns before implementation. Auto-triggers when designing new features, aggregates, or bounded contexts.
 ---
 

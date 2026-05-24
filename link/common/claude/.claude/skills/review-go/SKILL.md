@@ -1,4 +1,5 @@
 ---
+name: review-go
 description: Review a Go package for adherence to project Go guidelines (naming, architecture, structure, workflow). Takes a package path and reports violations.
 disable-model-invocation: true
 ---

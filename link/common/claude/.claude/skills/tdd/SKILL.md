@@ -1,4 +1,5 @@
 ---
+name: tdd
 description: Implement a feature using Test-Driven Development with Red-Green-Refactor cycles. Supports hands-off and interactive ping-pong modes.
 disable-model-invocation: true
 ---

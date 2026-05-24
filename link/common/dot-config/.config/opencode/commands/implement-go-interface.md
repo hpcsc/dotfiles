@@ -2,4 +2,4 @@
 description: Implement Go interface test doubles
 ---
 
-@~/.claude/skills/implement-go-interface/SKILL.md
+Read ~/.claude/skills/implement-go-interface/SKILL.md and follow its instructions using $ARGUMENTS.

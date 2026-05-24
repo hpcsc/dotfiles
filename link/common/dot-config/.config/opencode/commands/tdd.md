@@ -2,4 +2,4 @@
 description: Implement a feature using Test-Driven Development
 ---
 
-@~/.claude/skills/tdd/SKILL.md
+Read ~/.claude/skills/tdd/SKILL.md and follow its instructions using $ARGUMENTS.

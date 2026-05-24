@@ -2,4 +2,4 @@
 description: Write or edit an article or note
 ---
 
-@~/.claude/skills/write/SKILL.md
+Read ~/.claude/skills/write/SKILL.md and follow its instructions using $ARGUMENTS.

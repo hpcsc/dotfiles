@@ -2,4 +2,4 @@
 description: Generate user stories for a new feature
 ---
 
-@~/.claude/skills/write-user-story/SKILL.md
+Read ~/.claude/skills/write-user-story/SKILL.md and follow its instructions using $ARGUMENTS.

@@ -2,4 +2,4 @@
 description: Decompose a user story into ordered implementation tasks
 ---
 
-@~/.claude/skills/decompose-to-tasks/SKILL.md
+Read ~/.claude/skills/decompose-to-tasks/SKILL.md and follow its instructions using $ARGUMENTS.

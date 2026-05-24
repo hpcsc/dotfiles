@@ -2,4 +2,4 @@
 description: Implement a feature with quality-assured testing
 ---
 
-@~/.claude/skills/implement/SKILL.md
+Read ~/.claude/skills/implement/SKILL.md and follow its instructions using $ARGUMENTS.

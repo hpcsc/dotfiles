@@ -154,6 +154,8 @@ Remaining questions, areas needing clarification, and any assumptions made if cl
 - Each story should be small enough for a single focused session (3-7 acceptance criteria)
 - Stories should build incrementally toward the full solution
 - Avoid technical tasks disguised as user stories — every story should deliver value a user or operator can observe
+- Cross-cutting constraints (backward compatibility, performance, security) are not stories. They are properties every story must satisfy. Evaluate each story against these constraints instead of making them standalone items.
+- Validation, error handling, and correctness are implementation mechanisms, not user-facing features. Express them as acceptance criteria within the relevant feature story (e.g. "Invalid input produces a clear error message" under an authoring story), not as separate stories.
 - Include edge cases and error scenarios as separate stories when significant
 - Consider different user personas and their unique needs
 - The complete set of stories must address the original problem without gaps or overlaps

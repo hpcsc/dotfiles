@@ -2,9 +2,14 @@
   "$schema": "https://opencode.ai/config.json",
   "permission": {
     "external_directory": {
-      "~/.config/ai/**": "allow"
+      "~/.config/ai/**": "allow",
+      "~/dotfiles/link/common/dot-config/.config/ai/**": "allow"
     },
-    "edit": "ask",
+    "edit": {
+      "*": "ask",
+      "tasks/.cycles/**": "allow",
+      "tasks/.checkpoint": "allow"
+    },
     "bash": {
       "*": "ask",
       "cat*": "allow",
@@ -29,7 +34,9 @@
       "wc*": "allow",
       "awk*": "allow",
       "tree*": "allow",
-      "ls*": "allow"
+      "ls*": "allow",
+      "mkdir*tasks/.cycles*": "allow",
+      "rm*tasks/.cycles*": "allow"
     }
   },
   "theme": "gruvbox"

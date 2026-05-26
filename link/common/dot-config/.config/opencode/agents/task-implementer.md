@@ -135,6 +135,7 @@ Examine:
 - Naming clarity (variables, functions, types)
 - Extraction opportunities (long functions, repeated logic)
 - Structural improvements (parameter objects, interface alignment)
+- Comment usage — read `~/.config/ai/guidelines/comments.md` and flag any new or modified comment that restates the code, narrates the task/fix/PR, references callers or ticket IDs as its sole content, applies godoc to unexported symbols without subtle logic, or could be removed without losing meaning.
 
 Output:
 - If refactoring is needed: a numbered list, each with file, what to change, and why.

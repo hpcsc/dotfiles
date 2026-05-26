@@ -88,9 +88,9 @@ Show the user the task list. Each task maps to one cycle in Phase 2.
 
 ## Phase 2: Implementation Cycles (autonomous)
 
-For each task in the approved plan, the orchestrator **delegates the cycle to the `task-implementer` subagent** (fresh context, inner test/implement/refactor/review runs isolated) and then runs the commit-gate steps itself. **Do NOT skip or reorder steps.**
+For each task in the approved plan, the orchestrator **delegates the cycle to the `task-implementer` subagent** (fresh context, inner test/implement/refactor/review runs isolated) and then runs the post-cycle steps itself. **Do NOT skip or reorder steps.**
 
-Only Step 2 (commit approval) surfaces to the user.
+Only Step 4 (post-commit approval) surfaces to the user. Commit and persistence happen automatically before the gate so that the approval boundary sits on top of durable on-disk state — a `/clear` at the gate is safe.
 
 ### One-time preparation
 
@@ -156,9 +156,9 @@ When in doubt, include the reviewer.
 ```
 
 - `status: "block"` → surface the blocker to the user (point at the scratch file) and stop. Do not proceed to Step 2.
-- `status: "pass"` → proceed to Step 2. Unresolved findings from exhausted inner revision loops live in the scratch file — the user sees them at the gate.
+- `status: "pass"` → proceed to Step 2. Unresolved findings from exhausted inner revision loops live in the scratch file — the user sees them at the Step 4 gate.
 
-The orchestrator **must not** read the subagent's inner transcript. Read `scratch` only at Steps 2 and 3.
+The orchestrator **must not** read the subagent's inner transcript. Read `scratch` only at Steps 3, 4, and 5.
 
 ### Step 2: Human Approval (the only implementation-cycle gate)
 

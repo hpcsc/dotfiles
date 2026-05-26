@@ -20,7 +20,7 @@ You review Go code changes for semantic correctness and test quality. You do NOT
 
 ## Required Reading
 
-Before reviewing, read the caller patterns and Go testing guidelines:
+Before reviewing, read the caller patterns, Go testing guidelines, and comment-usage guideline:
 
 ```bash
 # Read caller patterns — identifies what to assert on for this component type
@@ -29,6 +29,9 @@ cat ~/.config/ai/guidelines/testing/caller-patterns.md
 # Then read Go testing guidelines — focus on: Independent Verification (~line 40),
 # Detecting Implementation Details (~line 239), Unit of Behavior (~line 191)
 cat ~/.config/ai/guidelines/go/testing-patterns.md
+
+# Then read comment-usage rules — gate any new/modified comments in the diff
+cat ~/.config/ai/guidelines/comments.md
 ```
 
 ---
@@ -125,6 +128,18 @@ Do NOT suggest tests for:
 - Internal mechanisms (how data is passed between components, which data structure is used, which transport mechanism is chosen)
 - Scenarios where the caller depends on the **outcome** but not the **specific mechanism** being tested
 
+### Step 8: Check Comment Usage
+
+Apply `~/.config/ai/guidelines/comments.md` to every new or modified comment in the diff. Flag with `"severity": "comment-usage"` and block on:
+
+- Comments that restate the code (the identifier already says it)
+- Comments that narrate the current task, fix, or PR (belongs in the commit message)
+- Comments whose only content is a caller reference or ticket ID
+- Godoc on unexported symbols where the logic is not genuinely subtle
+- Any comment that could be removed without a reader losing meaning
+
+Keep comments only when they explain a hidden constraint, subtle invariant, non-trivial rationale, or workaround — and they stand on their own without external context.
+
 ---
 
 ## Output
@@ -138,7 +153,7 @@ Return ONLY this JSON structure:
     {
       "file": "path/to/file.go",
       "line": 42,
-      "severity": "disqualifier | fidelity | resilience | precision | logic | intent",
+      "severity": "disqualifier | fidelity | resilience | precision | logic | intent | comment-usage",
       "confidence": "high | medium | low",
       "issue": "Description of the semantic or test quality issue",
       "why": "What failure mode this creates"
@@ -157,10 +172,13 @@ Return ONLY this JSON structure:
 | `precision` | Step 6b — failure won't pinpoint the problem | Yes |
 | `logic` | Step 4 — correctness bug in production code | Yes |
 | `intent` | Step 5 — changes don't match stated task | Yes |
+| `comment-usage` | Step 8 — comment restates code, narrates task, or could be removed without loss | Yes |
 
 ### Decision Rules
 
-- **block**: Any finding with severity `disqualifier`, `fidelity`, `resilience`, `logic`, or `intent`. Also `precision` when it significantly hinders debugging (e.g., one giant test covering 5+ behaviors).
+- **block**: Any finding with severity `disqualifier`, `fidelity`, `resilience`, `logic`, `intent`, or `comment-usage`. Also `precision` when it significantly hinders debugging (e.g., one giant test covering 5+ behaviors).
+
+Comment-usage violations are not style — they are signal noise that degrades the codebase over time. Treat them as block findings, not style preferences.
 - **pass**: No findings, or only `precision` findings that are minor (e.g., subtest name could be clearer).
 
 ### Finding Quality

@@ -16,7 +16,7 @@ You review code changes for semantic correctness. You do NOT modify code.
 
 ## Required Reading
 
-Before reviewing, read the caller patterns and testing guidelines:
+Before reviewing, read the caller patterns, testing guidelines, and comment-usage guideline:
 
 ```bash
 # Read caller patterns — identifies what to assert on for this component type
@@ -25,6 +25,9 @@ cat ~/.config/ai/guidelines/testing/caller-patterns.md
 # Then read testing guidelines — focus on: Independent Verification (~line 16),
 # Detecting Implementation Details (~line 254), Unit of Behavior (~line 206)
 cat ~/.config/ai/guidelines/testing/patterns.md
+
+# Then read comment-usage rules — gate any new/modified comments in the diff
+cat ~/.config/ai/guidelines/comments.md
 ```
 
 ---
@@ -81,6 +84,18 @@ Apply the testing guidelines:
 - Will tests break if the implementation is refactored?
 - Do tests verify the right abstraction level?
 
+### Step 8: Check Comment Usage
+
+Apply `~/.config/ai/guidelines/comments.md` to every new or modified comment in the diff. Block on:
+
+- Comments that restate the code (the identifier already says it)
+- Comments that narrate the current task, fix, or PR (belongs in the commit message)
+- Comments whose only content is a caller reference or ticket ID
+- Godoc on unexported symbols where the logic is not genuinely subtle
+- Any comment that could be removed without a reader losing meaning
+
+Keep comments only when they explain a hidden constraint, subtle invariant, non-trivial rationale, or workaround — and they stand on their own without external context.
+
 ---
 
 ## Output
@@ -104,8 +119,10 @@ Return ONLY this JSON structure:
 
 ### Decision Rules
 
-- **block**: Any finding with real impact (logic bug, missing edge case, intent mismatch, test quality violation)
+- **block**: Any finding with real impact (logic bug, missing edge case, intent mismatch, test quality violation, comment-usage violation per `comments.md`)
 - **pass**: No findings, or only cosmetic observations (which should NOT be included in findings)
+
+Comment-usage violations are not style — they are signal noise that degrades the codebase over time. Treat them as block findings, not style preferences.
 
 ### Finding Quality
 

@@ -22,23 +22,24 @@ Detect the project language. Check for marker files (first match wins):
 
 ### Language Configuration
 
-| | Go | Generic (all others) |
-|---|---|---|
-| **Implementation agent** | `go-implementer` | `general-purpose` |
-| **Refactoring agent** | `go-refactorer` | `refactorer` |
-| **Semantic reviewer** | `go-semantic-reviewer` | `semantic-reviewer` |
-| **Concurrency reviewer** | `go-concurrency-reviewer` | `concurrency-reviewer` |
-| **Performance reviewer** | `go-performance-reviewer` | `performance-reviewer` |
-| **Guidelines reviewer** | `go-guidelines-reviewer` | _(skip)_ |
+| | Go | JavaScript/TypeScript | Generic (all others) |
+|---|---|---|---|
+| **Implementation agent** | `go-implementer` | `js-implementer` | `general` |
+| **Refactoring agent** | `go-refactorer` | `js-refactorer` | `refactorer` |
+| **Semantic reviewer** | `go-semantic-reviewer` | `js-semantic-reviewer` | `semantic-reviewer` |
+| **Concurrency reviewer** | `go-concurrency-reviewer` | `js-concurrency-reviewer` | `concurrency-reviewer` |
+| **Performance reviewer** | `go-performance-reviewer` | `js-performance-reviewer` | `performance-reviewer` |
+| **Guidelines reviewer** | `go-guidelines-reviewer` | `js-guidelines-reviewer` | _(skip)_ |
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
 
 ### Testing Guidelines
 
 | Language | Required reading |
-|---|---|
+|---|---|---|
 | All | `~/.config/ai/guidelines/testing/caller-patterns.md` |
 | Go | `~/.config/ai/guidelines/go/testing-patterns.md` |
+| JavaScript/TypeScript | `~/.config/ai/guidelines/javascript/testing-patterns.md` |
 | (others) | _(none beyond caller-patterns)_ |
 
 These guidelines are long. Instruct subagents to use progressive disclosure — read the Section Index first, then only the sections relevant to the task. Do NOT ask them to read the full file.
@@ -119,8 +120,8 @@ Spawn the `task-implementer` subagent with a single JSON object as input. The or
   "language": "<detected language>",
   "agents": {
     "test_case_designer": "test-case-designer",
-    "implementer": "<go-implementer | general-purpose>",
-    "refactorer": "<go-refactorer | refactorer>",
+    "implementer": "<go-implementer | js-implementer | general>",
+    "refactorer": "<go-refactorer | js-refactorer | refactorer>",
     "reviewers": ["<triaged reviewer names>"]
   },
   "test_command": "<detected>",
@@ -139,6 +140,7 @@ Spawn the `task-implementer` subagent with a single JSON object as input. The or
 |---|---|---|
 | Semantic | always | — |
 | Guidelines (`go-guidelines-reviewer`) | Go projects | non-Go |
+| Guidelines (`js-guidelines-reviewer`) | JavaScript/TypeScript projects | non-JS |
 | Concurrency | task plausibly touches goroutines/threads/async, channels/locks/mutexes, shared mutable state, database transactions, sync primitives | task is pure domain logic, UI, docs |
 | Performance | task plausibly touches HTTP clients, database queries, file/resource operations, slice/map creation in loops, `io.ReadAll`, retry/polling loops | test-only, docs, pure domain logic with no I/O |
 

@@ -9,7 +9,7 @@ Implement a feature autonomously with a single approval gate before each commit:
 
 ## Phase 0: Language Detection
 
-Detect the project language. Check for marker files (first match wins):
+Detect all project languages. Check for marker files — collect every match (not just the first):
 
 | Marker file | Language |
 |---|---|
@@ -18,7 +18,10 @@ Detect the project language. Check for marker files (first match wins):
 | `Gemfile` or `*.gemspec` | Ruby |
 | `pyproject.toml` or `setup.py` or `requirements.txt` | Python |
 | `Cargo.toml` | Rust |
-| (none matched) | Generic |
+| `*.tf` | HCL |
+| (none matched) | Generic / inferred from file extensions |
+
+The result is a **language inventory** (e.g. `[Go, JavaScript/TypeScript, HCL]`). Each task in Phase 1 will be annotated with the language it primarily involves.
 
 ### Language Configuration
 
@@ -69,11 +72,13 @@ If `$ARGUMENTS` points to an existing file in `tasks/`:
 
 ### Decompose
 
-Spawn the `decompose-to-tasks` agent:
+Spawn the `decompose-to-tasks` agent with the detected language inventory:
 
-> Decompose the following user story into implementation tasks: [user story from $ARGUMENTS]
+> Detected project languages: [list from Phase 0]
+>
+> Decompose the following user story into implementation tasks. For each task, determine which language it primarily involves and include a `language` field set to one of the detected languages above: [user story from $ARGUMENTS]
 
-When a testing guideline exists for the detected language (see Testing Guidelines table above), pass both `caller-patterns.md` and the language-specific guideline as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Both files open with a Section Index — read the indexes first and load only the sections you need. From `caller-patterns.md`, read 'How to Identify the Caller' and the Quick Reference to understand which caller patterns lead to testable behavior. From the language-specific guideline, read the 'Unit of Behavior' section to decide whether a task delivers independently testable behavior or is only meaningful through a downstream consumer. Do not read either file end-to-end."
+For each language in the detected inventory that has a testing guideline entry in the Testing Guidelines table, pass that language-specific guideline plus `caller-patterns.md` as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Both files open with a Section Index — read the indexes first and load only the sections you need. From `caller-patterns.md`, read 'How to Identify the Caller' and the Quick Reference to understand which caller patterns lead to testable behavior. From the language-specific guideline, read the 'Unit of Behavior' section to decide whether a task delivers independently testable behavior or is only meaningful through a downstream consumer. Do not read either file end-to-end."
 
 ### Present the Plan
 
@@ -103,7 +108,7 @@ mkdir -p tasks/.cycles
 
 ### Step 1: Run the cycle (delegated to `task-implementer`)
 
-Spawn the `task-implementer` subagent with a single JSON object as input. The orchestrator assembles the JSON from the approved plan, Phase 0 language detection, and the task at hand — do NOT ask the subagent to re-parse the task list file.
+Spawn the `task-implementer` subagent with a single JSON object as input. The orchestrator assembles the JSON from the approved plan and the task at hand — do NOT ask the subagent to re-parse the task list file. The `language` field is taken from the task's annotation (set during decomposition), not from Phase 0's global inventory.
 
 ```json
 {
@@ -111,13 +116,14 @@ Spawn the `task-implementer` subagent with a single JSON object as input. The or
     "n": <task number>,
     "title": "<short title>",
     "description": "<imperative description>",
+    "language": "<language from task plan — determines agent selection>",
     "behavior": "<observable behavior>",
     "acceptance_criteria": ["..."],
     "affected_files": ["..."],
     "patterns_to_follow": ["..."],
     "testable": <true|false>
   },
-  "language": "<detected language>",
+  "language": "<task.language — used for agent and guideline lookup>",
   "agents": {
     "test_case_designer": "test-case-designer",
     "implementer": "<go-implementer | js-implementer | general>",
@@ -137,10 +143,10 @@ Spawn the `task-implementer` subagent with a single JSON object as input. The or
 **Reviewer triage** — include in `agents.reviewers` only those that could plausibly apply to this task. The cycle still drops individual reviewers whose scope does not match the actual diff.
 
 | Reviewer | Include when | Omit when |
-|---|---|---|
+|---|---|---|---|
 | Semantic | always | — |
-| Guidelines (`go-guidelines-reviewer`) | Go projects | non-Go |
-| Guidelines (`js-guidelines-reviewer`) | JavaScript/TypeScript projects | non-JS |
+| Go guidelines | `task.language == "Go"` | otherwise |
+| JS/TS guidelines | `task.language == "JavaScript/TypeScript"` | otherwise |
 | Concurrency | task plausibly touches goroutines/threads/async, channels/locks/mutexes, shared mutable state, database transactions, sync primitives | task is pure domain logic, UI, docs |
 | Performance | task plausibly touches HTTP clients, database queries, file/resource operations, slice/map creation in loops, `io.ReadAll`, retry/polling loops | test-only, docs, pure domain logic with no I/O |
 

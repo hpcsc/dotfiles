@@ -15,6 +15,7 @@ Detect all project languages. Check for marker files — collect every match (no
 |---|---|
 | `go.mod` | Go |
 | `package.json` | JavaScript/TypeScript |
+| `mix.exs` | Elixir |
 | `Gemfile` or `*.gemspec` | Ruby |
 | `pyproject.toml` or `setup.py` or `requirements.txt` | Python |
 | `Cargo.toml` | Rust |
@@ -25,14 +26,14 @@ The result is a **language inventory** (e.g. `[Go, JavaScript/TypeScript, HCL]`)
 
 ### Language Configuration
 
-| | Go | JavaScript/TypeScript | Generic (all others) |
-|---|---|---|---|
-| **Implementation agent** | `go-implementer` | `js-implementer` | `general` |
-| **Refactoring agent** | `go-refactorer` | `js-refactorer` | `refactorer` |
-| **Semantic reviewer** | `go-semantic-reviewer` | `js-semantic-reviewer` | `semantic-reviewer` |
-| **Concurrency reviewer** | `go-concurrency-reviewer` | `js-concurrency-reviewer` | `concurrency-reviewer` |
-| **Performance reviewer** | `go-performance-reviewer` | `js-performance-reviewer` | `performance-reviewer` |
-| **Guidelines reviewer** | `go-guidelines-reviewer` | `js-guidelines-reviewer` | _(skip)_ |
+| | Go | JavaScript/TypeScript | Elixir | Generic (all others) |
+|---|---|---|---|---|
+| **Implementation agent** | `go-implementer` | `js-implementer` | `elixir-implementer` | `general` |
+| **Refactoring agent** | `go-refactorer` | `js-refactorer` | `elixir-refactorer` | `refactorer` |
+| **Semantic reviewer** | `go-semantic-reviewer` | `js-semantic-reviewer` | `elixir-semantic-reviewer` | `semantic-reviewer` |
+| **Concurrency reviewer** | `go-concurrency-reviewer` | `js-concurrency-reviewer` | `elixir-concurrency-reviewer` | `concurrency-reviewer` |
+| **Performance reviewer** | `go-performance-reviewer` | `js-performance-reviewer` | `elixir-performance-reviewer` | `performance-reviewer` |
+| **Guidelines reviewer** | `go-guidelines-reviewer` | `js-guidelines-reviewer` | `elixir-guidelines-reviewer` | _(skip)_ |
 
 **Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
 
@@ -43,6 +44,7 @@ The result is a **language inventory** (e.g. `[Go, JavaScript/TypeScript, HCL]`)
 | All | `~/.config/ai/guidelines/testing/caller-patterns.md` |
 | Go | `~/.config/ai/guidelines/go/testing-patterns.md` |
 | JavaScript/TypeScript | `~/.config/ai/guidelines/javascript/testing-patterns.md` |
+| Elixir | `~/.config/ai/guidelines/elixir/testing-patterns.md` |
 | (others) | _(none beyond caller-patterns)_ |
 
 These guidelines are long. Instruct subagents to use progressive disclosure — read the Section Index first, then only the sections relevant to the task. Do NOT ask them to read the full file.
@@ -126,8 +128,8 @@ Spawn the `task-implementer` subagent with a single JSON object as input. The or
   "language": "<task.language — used for agent and guideline lookup>",
   "agents": {
     "test_case_designer": "test-case-designer",
-    "implementer": "<go-implementer | js-implementer | general>",
-    "refactorer": "<go-refactorer | js-refactorer | refactorer>",
+    "implementer": "<go-implementer | js-implementer | elixir-implementer | general>",
+    "refactorer": "<go-refactorer | js-refactorer | elixir-refactorer | refactorer>",
     "reviewers": ["<triaged reviewer names>"]
   },
   "test_command": "<detected>",
@@ -147,7 +149,8 @@ Spawn the `task-implementer` subagent with a single JSON object as input. The or
 | Semantic | always | — |
 | Go guidelines | `task.language == "Go"` | otherwise |
 | JS/TS guidelines | `task.language == "JavaScript/TypeScript"` | otherwise |
-| Concurrency | task plausibly touches goroutines/threads/async, channels/locks/mutexes, shared mutable state, database transactions, sync primitives | task is pure domain logic, UI, docs |
+| Elixir guidelines | `task.language == "Elixir"` | otherwise |
+| Concurrency | task plausibly touches goroutines/threads/async, channels/locks/mutexes, processes/GenServers/ETS, shared mutable state, database transactions, sync primitives | task is pure domain logic, UI, docs |
 | Performance | task plausibly touches HTTP clients, database queries, file/resource operations, slice/map creation in loops, `io.ReadAll`, retry/polling loops | test-only, docs, pure domain logic with no I/O |
 
 When in doubt, include the reviewer.

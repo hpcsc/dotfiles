@@ -14,6 +14,18 @@ return {
 			snacks_win_opts = {
 				keys = {
 					term_normal = false,
+					-- vim-tmux-navigator's global tnoremap <C-j> swallows Claude
+					-- Code's newline key; this buffer-local expr map shadows it and
+					-- sends the key through to the terminal instead.
+					claude_newline = {
+						"<C-j>",
+						function()
+							return "<C-j>"
+						end,
+						mode = "t",
+						expr = true,
+						desc = "Insert newline (passthrough)",
+					},
 				},
 			},
 		},

@@ -10,6 +10,19 @@ return {
 		vim.g.opencode_opts = {}
 		-- opencode writes to disk; let Neovim pick up external changes
 		vim.o.autoread = true
+
+		-- vim-tmux-navigator's global tnoremap <C-j> swallows opencode's
+		-- newline key; this buffer-local map shadows it and sends the key
+		-- through to the terminal instead.
+		vim.api.nvim_create_autocmd("TermOpen", {
+			pattern = "term://*:opencode*",
+			callback = function(ev)
+				vim.keymap.set("t", "<C-j>", "<C-j>", {
+					buffer = ev.buf,
+					desc = "Insert newline (passthrough)",
+				})
+			end,
+		})
 	end,
 	keys = {
 		{ "<leader>a", nil, desc = "AI" },

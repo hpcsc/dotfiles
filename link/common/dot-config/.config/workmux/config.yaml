@@ -1,0 +1,15 @@
+# workmux global configuration — applies to every repo.
+# Per-repo .workmux.yaml overrides these. Full reference: `workmux config reference`.
+
+agent: claude
+
+worktree_dir: .worktrees
+
+# Each worktree window: full claude pane + small shell pane below.
+# Live status icons (🤖 working / 💬 waiting / ✅ done) show in the window list.
+panes:
+  - command: <agent>
+    focus: true
+  - split: vertical
+    size: 20
+nerdfont: true

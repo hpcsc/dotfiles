@@ -4,14 +4,15 @@
 # one). Bound to Prefix + S in ~/.tmux.conf. The top-level menu lets you jump to,
 # create, or delete a session. "Sessions" here are one of two kinds:
 #
-#   worktree  a workmux worktree. In session mode (see ~/.config/workmux) each
-#             open worktree is a tmux session named after its handle. Created as
-#             "<repo>-<name>" so handles stay unique and readable across repos.
+#   worktree  a workmux worktree. The menu opens each worktree as a tmux window
+#             in the current session (overriding workmux's global session mode),
+#             with the window named "<repo>-<name>" so handles stay unique and
+#             readable across repos.
 #   nvim      a plain tmux session opened on a repo's main checkout with no
 #             worktree behind it, tagged with @wmm_kind so this menu can find it.
 #
-# Creating a session prompts for a repo, a name, and whether to start it with
-# the agent, neovim-in-a-worktree, or neovim-only.
+# Creating a session prompts for a repo, a name, and whether to open neovim in a
+# new worktree or in the repo's main checkout.
 
 # A tmux key binding runs this with the server's environment, which lacks the
 # interactive shell's mise activation — add the shim dir so workmux/fzf/jq/git
@@ -110,12 +111,21 @@ default_branch() {
     printf '%s' "$b"
 }
 
-# Build a worktree off the latest default branch. $3 selects the pane runner:
-# "agent" uses the configured panes (agent + shell); "nvim" opens plain shells
-# and types `nvim .` into the editor pane so quitting nvim drops to a shell.
+# Build a worktree off the latest default branch and open it as a single-pane
+# nvim window in the current session.
 add_worktree() {
-    local branch="$1" session="$2" runner="$3"
-    local add_args=( "$branch" --name "$session" --session )
+    local branch="$1" session="$2"
+    # The session that hosts the new window. Resolve it from tmux rather than
+    # passing --parent-session to workmux: workmux lowercases that value, so a
+    # capitalised session like "Work" would spawn a detached "work" holder
+    # session instead of reusing the attached one. With no --parent-session,
+    # workmux adds the window to the current session, which resolves correctly
+    # from both this popup and the run-shell jump path.
+    local parent
+    parent="$(tmux display-message -p '#{session_name}')"
+    # Open the worktree as a window in the current session (overriding workmux's
+    # global session mode) with plain shells (-C) rather than the agent panes.
+    local add_args=( "$branch" --name "$session" --mode window -C )
 
     local base base_commit
     base="$(default_branch)"
@@ -129,19 +139,16 @@ add_worktree() {
         [[ -n "$base_commit" ]] && add_args+=( --base "$base_commit" )
     fi
 
-    [[ "$runner" == "nvim" ]] && add_args+=( -C )
-
     if ! workmux add "${add_args[@]}"; then
         echo; read -rn1 -p "workmux add failed — press any key…"
         return
     fi
 
-    if [[ "$runner" == "nvim" ]]; then
-        # focus: true is unreliable under -C, so target the top-left pane
-        # explicitly — that is the large editor pane in the agent layout.
-        tmux select-pane -t "${session}:.{top-left}" 2>/dev/null
-        tmux send-keys -t "${session}:.{top-left}" 'nvim .' Enter
-    fi
+    # Collapse the configured split to a single pane, then type `nvim .` into it
+    # so quitting nvim drops to a shell instead of killing the window.
+    local target="${parent}:${session}.{top-left}"
+    tmux kill-pane -a -t "$target" 2>/dev/null
+    tmux send-keys -t "$target" 'nvim .' Enter
 }
 
 create_nvim_only() {
@@ -174,7 +181,10 @@ case "$1" in
             tmux switch-client -c "$client" -t "=$session"
         else
             cd "$path" 2>/dev/null || cd "$root" 2>/dev/null || exit 0
-            exec workmux open "$session" --session
+            # No --parent-session: workmux lowercases it and would spawn a
+            # detached holder session. With just --mode window it reopens the
+            # window in the current session and switches the client to it.
+            exec workmux open "$session" --mode window
         fi
         ;;
 
@@ -194,17 +204,15 @@ case "$1" in
         session="${repo_san}-${name_san}"
 
         choice="$(printf '%s\n' \
-            'agent — worktree + AI agent (default)' \
-            'neovim — worktree + nvim' \
-            'neovim — no worktree, nvim at repo root' \
+            'worktree — nvim in a new worktree (default)' \
+            'no worktree — nvim at repo root' \
             | fzf --reverse --no-sort --height=40% --prompt='Start with: ')"
         [[ -z "$choice" ]] && exit 0
 
         cd "$dir" 2>/dev/null || exit 0
         case "$choice" in
-            agent*)               add_worktree "$name_san" "$session" "agent" ;;
-            'neovim — worktree'*) add_worktree "$name_san" "$session" "nvim" ;;
-            'neovim — no'*)       create_nvim_only "$session" "$dir" ;;
+            worktree*)      add_worktree "$name_san" "$session" ;;
+            'no worktree'*) create_nvim_only "$session" "$dir" ;;
         esac
         exit 0
         ;;

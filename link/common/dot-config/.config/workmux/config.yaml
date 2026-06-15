@@ -5,8 +5,15 @@ agent: claude
 
 worktree_dir: .worktrees
 
-# Each worktree window: full claude pane + small shell pane below.
-# Live status icons (🤖 working / 💬 waiting / ✅ done) show in the window list.
+# One tmux session per worktree, not a window inside the current session.
+mode: session
+
+# Drop the default "wm-" prefix so a worktree's tmux session is named exactly
+# after its handle (e.g. handle "dotfiles-test" -> session "dotfiles-test").
+window_prefix: ""
+
+# Each worktree session: full agent pane + small shell pane below.
+# Live status icons (🤖 working / 💬 waiting / ✅ done) show in the dashboard.
 panes:
   - command: <agent>
     focus: true

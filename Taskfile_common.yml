@@ -29,6 +29,7 @@ tasks:
       - vim
       - neovim
       - tmux
+      - workmux-form
 
   langtools:
     desc: Language-specific tools (parallel after common:core)
@@ -124,3 +125,13 @@ tasks:
     interactive: true
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-yazi.sh"
+
+  workmux-form:
+    desc: Build the workmux-new-form TUI helper to ~/.local/bin - requires go (mise)
+    run: once
+    deps:
+      - core
+    dir: ./tools/workmux-new-form
+    cmds:
+      - mkdir -p "$HOME/.local/bin"
+      - go build -o "$HOME/.local/bin/workmux-new-form" .

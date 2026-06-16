@@ -11,13 +11,21 @@
 #   nvim      a plain tmux session opened on a repo's main checkout with no
 #             worktree behind it, tagged with @wmm_kind so this menu can find it.
 #
-# Creating a session prompts for a repo, a name, and whether to open neovim in a
-# new worktree or in the repo's main checkout.
+# Creating a session shows a single-screen form (workmux-new-form, built from
+# tools/workmux-new-form) to pick the repo, name it, choose a worktree vs. the
+# repo's main checkout, and whether to open it as a tmux window (in the current
+# session) or its own tmux session. A no-worktree window is a quick editor
+# window and is not tracked by this menu; the other three are.
 
-# A tmux key binding runs this with the server's environment, which lacks the
-# interactive shell's mise activation — add the shim dir so workmux/fzf/jq/git
-# resolve the same way they do in a normal shell.
-export PATH="$HOME/.local/share/mise/shims:$HOME/.fzf/bin:/opt/homebrew/bin:$PATH"
+# A tmux key binding runs this with the server's environment, which can lack the
+# interactive shell's PATH. The mise shim dir (workmux/jq/fd) and ~/.local/bin
+# (workmux-new-form) are needed on every platform; /opt/homebrew/bin supplies
+# tmux/git on macOS (on Linux they come from /usr/bin, already on PATH), added
+# only when present.
+_prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
+[[ -d /opt/homebrew/bin ]] && _prefix="$_prefix:/opt/homebrew/bin"
+export PATH="$_prefix:$PATH"
+unset _prefix
 
 # Repos live one level under these roots.
 PROJECT_ROOTS=("$HOME/Workspace/Code" "$HOME/Personal/Code")
@@ -79,11 +87,6 @@ list_all() {
 # Shared helpers
 # ----------------------------------------------------------------------------
 
-pick_project() {
-    fd --max-depth 1 --type d . "${PROJECT_ROOTS[@]}" 2>/dev/null \
-        | fzf --reverse --prompt="Repository: "
-}
-
 attach_or_switch() {
     if [[ -n "$TMUX" ]]; then
         tmux switch-client -t "=$1"
@@ -112,20 +115,16 @@ default_branch() {
 }
 
 # Build a worktree off the latest default branch and open it as a single-pane
-# nvim window in the current session.
+# nvim target. $3 is the workmux multiplexer mode: "window" puts it in the
+# current session, "session" gives the worktree its own tmux session.
 add_worktree() {
-    local branch="$1" session="$2"
-    # The session that hosts the new window. Resolve it from tmux rather than
-    # passing --parent-session to workmux: workmux lowercases that value, so a
-    # capitalised session like "Work" would spawn a detached "work" holder
-    # session instead of reusing the attached one. With no --parent-session,
-    # workmux adds the window to the current session, which resolves correctly
-    # from both this popup and the run-shell jump path.
+    local branch="$1" session="$2" mux="$3"
     local parent
     parent="$(tmux display-message -p '#{session_name}')"
-    # Open the worktree as a window in the current session (overriding workmux's
-    # global session mode) with plain shells (-C) rather than the agent panes.
-    local add_args=( "$branch" --name "$session" --mode window -C )
+    # Plain shells (-C) instead of the agent panes. Resolve the host session
+    # from tmux rather than passing --parent-session, which workmux lowercases
+    # (a capitalised "Work" would spawn a detached "work" holder session).
+    local add_args=( "$branch" --name "$session" --mode "$mux" -C )
 
     local base base_commit
     base="$(default_branch)"
@@ -144,11 +143,22 @@ add_worktree() {
         return
     fi
 
-    # Collapse the configured split to a single pane, then type `nvim .` into it
-    # so quitting nvim drops to a shell instead of killing the window.
-    local target="${parent}:${session}.{top-left}"
+    # Collapse the configured split to a single pane and type `nvim .` so
+    # quitting nvim drops to a shell. In window mode the worktree is a window in
+    # the current session; in session mode it is its own session named after the
+    # handle, so the pane target differs.
+    local target
+    if [[ "$mux" == "session" ]]; then
+        target="${session}:.{top-left}"
+    else
+        target="${parent}:${session}.{top-left}"
+    fi
     tmux kill-pane -a -t "$target" 2>/dev/null
     tmux send-keys -t "$target" 'nvim .' Enter
+
+    # workmux switches the client to a new window automatically; for a new
+    # session switch to it so creating lands you inside it.
+    [[ "$mux" == "session" ]] && attach_or_switch "$session"
 }
 
 create_nvim_only() {
@@ -165,6 +175,17 @@ create_nvim_only() {
         tmux send-keys -t "$session" 'nvim .' Enter
     fi
     attach_or_switch "$session"
+}
+
+# A quick nvim window on a repo's main checkout, in the current session. Unlike
+# create_nvim_only there is no @wmm tag and no worktree, so this menu does not
+# track it — close the window to dismiss it.
+create_nvim_window() {
+    local name="$1" dir="$2"
+    local parent
+    parent="$(tmux display-message -p '#{session_name}')"
+    tmux new-window -t "$parent" -n "$name" -c "$dir"
+    tmux send-keys -t "${parent}:${name}" 'nvim .' Enter
 }
 
 # ----------------------------------------------------------------------------
@@ -188,31 +209,33 @@ case "$1" in
         fi
         ;;
 
-    # Create: pick a repo, name it, choose how to start it.
+    # Create: show the single-screen form, then open the selection. The form
+    # prints "<dir>\t<name>\t<worktree:yes|no>\t<mode:window|session>"; an abort
+    # or empty name yields no output.
     --new)
         client="$2"
-        dir="$(pick_project)"
-        [[ -z "$dir" ]] && exit 0
+        repos=()
+        while IFS= read -r r; do repos+=("$r"); done \
+            < <(fd --max-depth 1 --type d . "${PROJECT_ROOTS[@]}" 2>/dev/null)
+        [[ ${#repos[@]} -eq 0 ]] && exit 0
+
+        sel="$(workmux-new-form "${repos[@]}")" || exit 0
+        [[ -z "$sel" ]] && exit 0
+        IFS=$'\t' read -r dir name worktree mux <<< "$sel"
+        [[ -z "$dir" || -z "$name" ]] && exit 0
         dir="${dir%/}"
 
-        # tmux session names cannot contain "." or ":".
+        # tmux session/window names cannot contain "." or ":".
         repo_san="$(basename "$dir" | tr '.:' '__')"
-        # No "read -i" prefill: macOS bash 3.2 doesn't support it.
-        read -e -p "Name (session will be ${repo_san}-…): " name
-        [[ -z "$name" ]] && exit 0
         name_san="$(printf '%s' "$name" | tr ' .:/' '____')"
         session="${repo_san}-${name_san}"
 
-        choice="$(printf '%s\n' \
-            'worktree — nvim in a new worktree (default)' \
-            'no worktree — nvim at repo root' \
-            | fzf --reverse --no-sort --height=40% --prompt='Start with: ')"
-        [[ -z "$choice" ]] && exit 0
-
         cd "$dir" 2>/dev/null || exit 0
-        case "$choice" in
-            worktree*)      add_worktree "$name_san" "$session" ;;
-            'no worktree'*) create_nvim_only "$session" "$dir" ;;
+        case "$worktree/$mux" in
+            yes/window)  add_worktree "$name_san" "$session" window ;;
+            yes/session) add_worktree "$name_san" "$session" session ;;
+            no/window)   create_nvim_window "$session" "$dir" ;;
+            no/session)  create_nvim_only "$session" "$dir" ;;
         esac
         exit 0
         ;;
@@ -283,7 +306,7 @@ have_sessions=$([[ ${#menu[@]} -gt 0 ]] && echo 1)
 # separator as the first item would be misread by display-menu's flag parser.
 [[ -n "$have_sessions" ]] && menu+=( "" )
 
-# A roomy popup so the repo picker, prompt, and workmux's create output fit.
+# A roomy popup so the form and workmux's create output fit.
 menu+=( "#[fg=cyan]+#[default] New session…" "n" \
         "display-popup -E -w 80% -h 70% -T ' New Session ' \"$0 --new '$client'\"" )
 

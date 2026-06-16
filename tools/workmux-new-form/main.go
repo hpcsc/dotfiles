@@ -15,6 +15,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -60,7 +61,111 @@ type repoItem struct{ path string }
 
 func (r repoItem) FilterValue() string { return filepath.Base(r.path) }
 func (r repoItem) Title() string       { return filepath.Base(r.path) }
-func (r repoItem) Description() string { return "" }
+func (r repoItem) Description() string { return displayDir(r.path) }
+
+var homeDir, _ = os.UserHomeDir()
+
+// displayDir returns a repo's parent directory with the home prefix collapsed to
+// "~". It shows beside the repo name so same-named repos rooted in different
+// places (e.g. ~/Workspace/Code/api vs ~/Personal/Code/api) are told apart.
+func displayDir(path string) string {
+	d := filepath.Dir(path)
+	if homeDir != "" {
+		if d == homeDir {
+			return "~"
+		}
+		if strings.HasPrefix(d, homeDir+string(os.PathSeparator)) {
+			return "~" + d[len(homeDir):]
+		}
+	}
+	return d
+}
+
+var (
+	normalName   = lipgloss.NewStyle().Foreground(muted)
+	selectedName = lipgloss.NewStyle().Foreground(accent).Bold(true)
+	matchStyle   = lipgloss.NewStyle().Underline(true)
+	pathStyle    = lipgloss.NewStyle().Foreground(dim)
+	gutterBar    = lipgloss.NewStyle().Foreground(accent)
+)
+
+// repoDelegate renders each repo on a single line — name in a fixed-width column
+// so the dimmed paths align beside it: "▌ api          ~/Workspace/Code". The
+// name column is the widest repo name (capped); the path takes the rest and
+// truncates when the panel is narrow.
+type repoDelegate struct{ nameW int }
+
+func (d repoDelegate) Height() int                         { return 1 }
+func (d repoDelegate) Spacing() int                        { return 0 }
+func (d repoDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
+
+func (d repoDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	it, ok := item.(repoItem)
+	avail := m.Width()
+	if !ok || avail <= 0 {
+		return
+	}
+
+	selected := index == m.Index()
+	var matched []int
+	if m.FilterState() == list.Filtering || m.FilterState() == list.FilterApplied {
+		matched = m.MatchesForItem(index)
+	}
+
+	nameStyle, gutter := normalName, "  "
+	if selected {
+		nameStyle, gutter = selectedName, gutterBar.Render("▌")+" "
+	}
+
+	const (
+		gutterW = 2
+		gap     = 2
+	)
+	// Hold the name column at its natural width so paths line up, but never let
+	// gutter + name spill past the panel when it is squeezed.
+	nameCol := d.nameW
+	if max := avail - gutterW; nameCol > max {
+		nameCol = max
+	}
+	if nameCol < 0 {
+		nameCol = 0
+	}
+
+	name := truncateCells(it.Title(), nameCol)
+	var renderedName string
+	if len(matched) > 0 {
+		unmatched := nameStyle.Inline(true)
+		renderedName = lipgloss.StyleRunes(name, matched, unmatched.Inherit(matchStyle), unmatched)
+	} else {
+		renderedName = nameStyle.Render(name)
+	}
+	pad := nameCol - lipgloss.Width(name)
+	if pad < 0 {
+		pad = 0
+	}
+	line := gutter + renderedName + strings.Repeat(" ", pad)
+
+	if pathW := avail - gutterW - nameCol - gap; pathW > 0 {
+		line += strings.Repeat(" ", gap) + pathStyle.Render(truncateCells(it.Description(), pathW))
+	}
+	fmt.Fprint(w, line)
+}
+
+// truncateCells shortens s to at most w display cells, ending in an ellipsis when
+// it has to cut.
+func truncateCells(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+	r := []rune(s)
+	for len(r) > 0 && lipgloss.Width(string(r))+1 > w {
+		r = r[:len(r)-1]
+	}
+	return string(r) + "…"
+}
 
 // substringFilter replaces the list's default fuzzy matcher. The query is split
 // on whitespace into tokens; an item matches only when it contains every token
@@ -115,24 +220,36 @@ type model struct {
 	width, height int
 	leftW, rightW int
 
+	// Natural panel widths: the left fits the widest "name + path" line, the right
+	// fits the widest radio label. layout() fits these to the popup.
+	leftContentW, rightContentW int
+
 	submitted bool
 	quitting  bool
 }
 
 func initialModel(paths []string) model {
 	items := make([]list.Item, len(paths))
+	nameW, pathW := 0, 0
 	for i, p := range paths {
 		items[i] = repoItem{p}
+		if w := lipgloss.Width(filepath.Base(p)); w > nameW {
+			nameW = w
+		}
+		if w := lipgloss.Width(displayDir(p)); w > pathW {
+			pathW = w
+		}
+	}
+	// Cap the columns so one outlier name or a deep path can't make the form sprawl;
+	// the overflow truncates with an ellipsis instead.
+	if nameW > 28 {
+		nameW = 28
+	}
+	if pathW > 34 {
+		pathW = 34
 	}
 
-	d := list.NewDefaultDelegate()
-	d.ShowDescription = false
-	d.SetHeight(1)
-	d.SetSpacing(0)
-	d.Styles.SelectedTitle = d.Styles.SelectedTitle.Foreground(accent).BorderForeground(accent)
-	d.Styles.NormalTitle = d.Styles.NormalTitle.Foreground(muted)
-
-	l := list.New(items, d, 0, 0)
+	l := list.New(items, repoDelegate{nameW: nameW}, 0, 0)
 	l.SetShowTitle(false)
 	l.SetShowStatusBar(false)
 	l.SetShowHelp(false)
@@ -145,7 +262,21 @@ func initialModel(paths []string) model {
 	ti.Prompt = "> "
 	ti.CharLimit = 80
 
-	return model{repos: l, name: ti, focus: focusRepo}
+	// Right column has to fit its widest radio label (plus the "● " prefix).
+	rightContentW := 0
+	for _, o := range append(append([]string{}, worktreeOpts...), modeOpts...) {
+		if w := lipgloss.Width(o) + 2; w > rightContentW {
+			rightContentW = w
+		}
+	}
+
+	return model{
+		repos:         l,
+		name:          ti,
+		focus:         focusRepo,
+		leftContentW:  2 + nameW + 2 + pathW, // gutter + name + gap + path
+		rightContentW: rightContentW + 2,     // a little breathing room
+	}
 }
 
 func (m model) Init() tea.Cmd { return nil }
@@ -155,31 +286,58 @@ func (m model) Init() tea.Cmd { return nil }
 // compact rather than stretching to fill a wide popup.
 const rightColRows = 4 + 5 + 5
 
+// panelPad is each panel's horizontal padding (1 each side); lipgloss counts it
+// inside the width we hand the panel, so the interior the list/input get is the
+// panel width minus this.
+const panelPad = 2
+
+// chrome is the horizontal cost on top of the two panel widths: a left+right
+// border (2) per panel, plus a single space between the columns.
+const chrome = 2*2 + 1
+
+// Floors (panel widths) for the squeeze on a narrow terminal: keep enough of the
+// name column to be useful, and enough of the right column to keep its radio
+// labels on one line.
+const (
+	minLeftW  = 18
+	minRightW = 37
+)
+
 func (m *model) layout() {
 	if m.width == 0 {
 		return
 	}
-	// Cap the overall width so the form reads as a panel group, not a full-width sprawl.
-	totalW := m.width
-	if totalW > 84 {
-		totalW = 84
+	// The natural size shows every name and path in full. It only sprawls if the
+	// repos do, since the columns are capped — so just fit it to the popup,
+	// shrinking the path column first and the right column only as a last resort.
+	// The +panelPad turns each content width into the panel width lipgloss wants.
+	leftW, rightW := m.leftContentW+panelPad, m.rightContentW+panelPad
+	if over := leftW + rightW + chrome - m.width; over > 0 {
+		leftW -= over
+		if leftW < minLeftW {
+			rightW -= minLeftW - leftW
+			leftW = minLeftW
+		}
 	}
-	m.leftW = 30
-	if m.leftW > totalW-25 {
-		m.leftW = totalW * 40 / 100
+	if rightW < minRightW {
+		rightW = minRightW
 	}
-	// total = leftW + 2 (border) + 1 (gap) + rightW + 2 (border)
-	m.rightW = totalW - m.leftW - 5
-	if m.rightW < 22 {
-		m.rightW = 22
-	}
+	m.leftW, m.rightW = leftW, rightW
 
-	listH := rightColRows - 3 // match the right column minus this panel's border+title
-	if listH < 4 {
-		listH = 4
+	// One row per repo now. Keep the list at least as tall as the right column so
+	// the panels align, grow it to hug the repo count, then cap it at the popup
+	// height so a long list scrolls instead of overflowing.
+	minH := rightColRows - 3
+	listH := len(m.repos.Items())
+	if listH < minH {
+		listH = minH
 	}
-	m.repos.SetSize(m.leftW, listH)
-	m.name.Width = m.rightW - 3
+	if avail := m.height - 5; avail > minH && listH > avail {
+		listH = avail
+	}
+	// The list and input render inside the panel interior (width minus padding).
+	m.repos.SetSize(m.leftW-panelPad, listH)
+	m.name.Width = m.rightW - panelPad - 1
 }
 
 func (m *model) syncFocus() tea.Cmd {

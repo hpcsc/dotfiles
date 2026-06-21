@@ -29,16 +29,9 @@ return {
 		{
 			"<leader>ao",
 			function()
-				require("opencode").toggle()
+				require("opencode").start()
 			end,
-			desc = "Toggle AI panel",
-		},
-		{
-			"<leader>af",
-			function()
-				require("opencode").toggle()
-			end,
-			desc = "Focus AI panel",
+			desc = "Start OpenCode server",
 		},
 		{
 			"<leader>aa",

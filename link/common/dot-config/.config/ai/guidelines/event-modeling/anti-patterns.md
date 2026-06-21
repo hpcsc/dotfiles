@@ -82,7 +82,7 @@ LoyaltyRewardEarned { CartId, LoyaltyProgramId, PointsEarned }
 
 **Detection**: Events with many nullable fields or mutually exclusive field combinations.
 
-**Fix**: Create distinct event types for distinct business scenarios.
+**Fix**: Create distinct event types for distinct business scenarios. See `separate-events-vs-discriminated-field.md` for choosing between a new event type and a discriminator field.
 
 ---
 

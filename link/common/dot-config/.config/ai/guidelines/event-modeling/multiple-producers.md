@@ -267,6 +267,8 @@ Multiple handlers emitting same event?
 
 ## Payload Differentiation vs Event Type Differentiation
 
+> For the general decision (independent of how many producers emit the event), see `separate-events-vs-discriminated-field.md`.
+
 ### Use Payload Fields
 
 When:

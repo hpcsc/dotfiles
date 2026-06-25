@@ -6,9 +6,8 @@ return {
 		return {
 			defaults = {
 				path_display = {
-					shorten = {
-						len = 1,
-						exclude = { -3, -2, -1 }, -- display first character of each directory, except for the last 3
+					filename_first = {
+						reverse_directories = false,
 					},
 				},
 				mappings = {

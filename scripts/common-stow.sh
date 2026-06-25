@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/_utilities.sh"
 common_packages=(
   bash
   claude
+  archon
   git
   vim
   zsh

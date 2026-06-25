@@ -1,0 +1,106 @@
+name: implement
+description: >-
+  Autonomous test-first feature implementation — decompose into tasks, approve the
+  plan, then run gated per-task test/implement/refactor/review cycles. Runtime
+  agnostic: the worker runs on Claude or OpenCode, chosen by the IMPL_RUNTIME env
+  var read by ~/.archon/scripts/implement.
+tags: [Implement, TDD]
+
+# `provider` here drives only the thin orchestration layer (the loop controller,
+# on_reject, and the final summary). The real implementation work is dispatched by
+# the `implement` helper to IMPL_RUNTIME (claude|opencode) and is independent of this.
+provider: claude
+model: sonnet
+interactive: true
+
+# Match the source skill's behavior (shared checkout). Set enabled: true to isolate
+# each run in its own git worktree — a capability the skill does not have.
+worktree:
+  enabled: false
+
+nodes:
+  - id: decompose
+    bash: |
+      mkdir -p tasks/.cycles
+      "$HOME/.archon/scripts/implement" decompose "$USER_MESSAGE" "tasks/$WORKFLOW_ID.md"
+    timeout: 600000
+
+  - id: plan-gate
+    depends_on: [decompose]
+    approval:
+      message: |
+        Proposed task plan: tasks/$WORKFLOW_ID.md
+        Review it, then approve to start implementation or describe changes.
+      capture_response: true
+      on_reject:
+        prompt: |
+          Run this command via Bash, then summarize the revised plan for re-review:
+          "$HOME/.archon/scripts/implement" decompose "$USER_MESSAGE — REVISION: $REJECTION_REASON" "tasks/$WORKFLOW_ID.md"
+        max_attempts: 5
+
+  - id: implement-cycles
+    depends_on: [plan-gate]
+    loop:
+      until: ALL_TASKS_COMPLETE
+      max_iterations: 60
+      fresh_context: true
+      interactive: true
+      allowed_tools: [Bash, Read, Edit, Write]
+      prompt: |
+        You are the gate/dispatch controller for one step of the `implement` cycle.
+        You do NOT write code — the work runs in a subprocess via the `implement`
+        helper. Bind: IMPL=$HOME/.archon/scripts/implement, TASKS=tasks/$WORKFLOW_ID.md,
+        CHECKPOINT=tasks/.checkpoint, CYCLES=tasks/.cycles.
+
+        Human reply to the task presented last iteration: $LOOP_USER_INPUT
+
+        Invariant: a task is "awaiting decision" when its box is unchecked in TASKS
+        AND CYCLES/task-<N>.md exists. There is at most one such task.
+
+        Algorithm:
+        1. Find the awaiting-decision task N (unchecked box with an existing
+           CYCLES/task-<N>.md). If one exists:
+           a. If $LOOP_USER_INPUT requests revisions:
+                "$IMPL" task-cycle "$TASKS" <N> "$LOOP_USER_INPUT"
+              Present the updated "Cycle summary" from CYCLES/task-<N>.md. Stop.
+           b. Otherwise (approval — includes empty input on the first run): commit it:
+                "$IMPL" commit "Task <N>: <title>"
+              Then mark Task <N> [x] in TASKS, append the scratch's "Checkpoint entry"
+              to CHECKPOINT, and delete CYCLES/task-<N>.md.
+              If that scratch's "Learnings affecting remaining plan" was non-"none",
+              re-run `"$IMPL" decompose` for the remaining tasks, present the revised
+              plan, and stop for re-approval. Otherwise continue to step 2.
+        2. Pick the next unchecked task M that has no scratch file. If none remains,
+           output exactly <promise>ALL_TASKS_COMPLETE</promise> and stop.
+        3. Run its cycle:
+             "$IMPL" task-cycle "$TASKS" <M>
+           If the returned status is "block", present the blocker and stop.
+           Otherwise present the "Cycle summary" from CYCLES/task-<M>.md and the list
+           of files changed, then stop and wait for approval.
+
+  - id: full-suite
+    depends_on: [implement-cycles]
+    bash: |
+      make test 2>/dev/null \
+        || npm test 2>/dev/null \
+        || go test ./... 2>/dev/null \
+        || mix test 2>/dev/null \
+        || echo "no test command auto-detected — run the suite manually"
+    timeout: 600000
+
+  - id: cleanup
+    depends_on: [full-suite]
+    bash: |
+      rm -f tasks/.checkpoint
+      rm -rf tasks/.cycles
+      mkdir -p tasks/completed
+      git mv "tasks/$WORKFLOW_ID.md" tasks/completed/ 2>/dev/null \
+        || mv "tasks/$WORKFLOW_ID.md" tasks/completed/ 2>/dev/null || true
+
+  - id: summary
+    depends_on: [cleanup]
+    allowed_tools: [Bash, Read]
+    prompt: |
+      Summarize the completed feature: tasks done, commits created
+      (git log --oneline for this run), and QA/test status. Then ask the user
+      whether to open a pull request.

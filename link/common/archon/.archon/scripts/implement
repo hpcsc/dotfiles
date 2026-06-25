@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# implement — runtime dispatcher for the `implement` Archon workflow.
+#
+# Routes ONE unit of AI work to Claude Code or OpenCode. Both runtimes resolve
+# the same agent names (task-implementer, decompose-to-tasks, commit) from their
+# own registries (~/.claude/agents and ~/.config/opencode/agents), so the calling
+# workflow never names a runtime — it only names the work.
+#
+# Environment:
+#   IMPL_RUNTIME           claude (default) | opencode
+#   IMPL_MODEL             optional model override forwarded to the runtime
+#   IMPL_COMMANDS          command dir (default: ../commands relative to this script)
+#   IMPL_CLAUDE_PERMISSION claude --permission-mode value (default: acceptEdits)
+#
+# Usage:
+#   implement decompose  <story> <task_file>
+#   implement task-cycle <task_file> <task_number> [revision_note]
+#   implement commit     <subject_context>
+set -euo pipefail
+
+runtime="${IMPL_RUNTIME:-claude}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+commands="${IMPL_COMMANDS:-$here/../commands}"
+
+sub="${1:?usage: implement <decompose|task-cycle|commit> ...}"; shift
+
+case "$sub" in
+  decompose)
+    body="$(cat "$commands/implement-decompose.md")"
+    agent="decompose-to-tasks"
+    input="$(printf 'STORY:\n%s\n\nTASK_FILE: %s' "${1:?story required}" "${2:?task_file required}")"
+    ;;
+  task-cycle)
+    body="$(cat "$commands/implement-task-cycle.md")"
+    agent=""   # default agent: it orchestrates, then delegates to the task-implementer subagent
+    input="$(printf 'TASK_FILE: %s\nTASK_NUMBER: %s\nREVISION_NOTE: %s' \
+      "${1:?task_file required}" "${2:?task_number required}" "${3:-}")"
+    ;;
+  commit)
+    body="$(cat "$commands/implement-commit.md")"
+    agent="commit"
+    input="$(printf 'SUBJECT_CONTEXT: %s' "${1:?subject context required}")"
+    ;;
+  *)
+    echo "implement: unknown subcommand '$sub'" >&2; exit 2 ;;
+esac
+
+prompt="$(printf '%s\n\n=== RUNTIME INPUT ===\n%s' "$body" "$input")"
+
+case "$runtime" in
+  claude)
+    set -- --print --permission-mode "${IMPL_CLAUDE_PERMISSION:-acceptEdits}"
+    [ -n "$agent" ]         && set -- "$@" --agent "$agent"
+    [ -n "${IMPL_MODEL:-}" ] && set -- "$@" --model "$IMPL_MODEL"
+    exec claude "$@" "$prompt"
+    ;;
+  opencode)
+    # OpenCode headless. Verify flags against your installed opencode version;
+    # `run` is non-interactive and `--agent` selects the registered agent.
+    set -- run
+    [ -n "$agent" ]         && set -- "$@" --agent "$agent"
+    [ -n "${IMPL_MODEL:-}" ] && set -- "$@" --model "$IMPL_MODEL"
+    exec opencode "$@" "$prompt"
+    ;;
+  *)
+    echo "implement: unknown IMPL_RUNTIME '$runtime' (use claude|opencode)" >&2; exit 2 ;;
+esac

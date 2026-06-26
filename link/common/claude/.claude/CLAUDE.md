@@ -21,7 +21,8 @@
 
 # Comment Usage
 
-- **No obvious comments**: do not restate what the code already says. Well-named identifiers and clear structure are the primary documentation.
-- **Only when necessary**: add a comment only to explain something that is not obvious from the code itself — a hidden constraint, a subtle invariant, a non-trivial rationale, or a workaround.
-- **Self-contained**: a comment should be understandable on its own, without requiring the reader to chase external context (story IDs, ticket numbers, caller names, prior conversations).
+- **Default to none**: code, identifiers, types, and tests are the primary documentation. Do not restate what the code already says.
+- **Justify or delete**: add a comment only when you can name the specific wrong conclusion a reader would draw without it (a hidden constraint, a subtle invariant, a non-trivial rationale, or a workaround). If you cannot state that wrong conclusion in one sentence, do not write the comment.
+- **"Why" is not a license**: if the rationale is recoverable from the code, types, test names, or commit message, put it there, not in a comment.
+- **Self-contained**: a comment must be understandable on its own, without chasing external context (story IDs, ticket numbers, caller names, prior conversations).
 - **External links are optional context only**: a link to a spec, bug, or discussion may be included as *additional* history reference, but the comment must still stand on its own without it.

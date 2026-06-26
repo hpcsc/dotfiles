@@ -107,7 +107,7 @@ mix format
 
 - Do NOT add obvious comments (e.g., `# Create the invoice`, `# Return the result`, `# Check for errors`)
 - Do NOT add comments that restate the code
-- Comments are for **why**, not **what** — only add them when the reasoning is non-obvious
+- Default to **zero comments** — code, identifiers, types, and tests are the documentation. Add a comment only when you can name the specific wrong conclusion a reader would draw without it (a hidden constraint, subtle invariant, non-trivial rationale, or workaround). "Explaining the why" is not a license: if the why is recoverable from the code, types, tests, or commit message, leave it out.
 - Do NOT add `@doc` to private functions; do NOT `@doc` trivial public functions whose name already says everything
 - Keep code self-documenting through clear naming and pattern matching
 

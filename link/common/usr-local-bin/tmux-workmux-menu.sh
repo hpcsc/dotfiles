@@ -198,7 +198,12 @@ case "$1" in
     # or switch to the plain nvim session.
     --open)
         client="$2"; kind="$3"; session="$4"; path="$5"; root="$6"
-        if [[ "$kind" == "nvim" ]]; then
+        # A worktree already living in its own tmux session (it was created in
+        # session mode) is named after its handle, so switch the client to it.
+        # Reopening it instead would make workmux tear that session down and
+        # re-materialize the worktree as a window in the current session. Plain
+        # nvim sessions are always reached the same way.
+        if [[ "$kind" == "nvim" ]] || tmux has-session -t "=$session" 2>/dev/null; then
             tmux switch-client -c "$client" -t "=$session"
         else
             cd "$path" 2>/dev/null || cd "$root" 2>/dev/null || exit 0

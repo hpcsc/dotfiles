@@ -161,12 +161,21 @@ Collect staged changes:
 - `git diff --staged` for the diff
 - `git diff --staged --name-only` for the file list
 
-From `agents.reviewers`, skip individuals whose scope doesn't apply to this specific diff:
+**Non-code short-circuit (check this first).** If EVERY changed file is a non-code file, skip the entire reviewer panel — there is nothing a code reviewer can assess. Record `review: skipped (no code files — docs/config/build-only)` and go straight to writing the scratch file. A file is **non-code** when it is one of:
+
+- Docs: `.md`, `.markdown`, `.txt`, `.rst`, `.adoc`
+- Data/config: `.json`, `.yaml`, `.yml`, `.toml`, `.ini`, `.cfg`, `.conf`, `.csv`, `.lock`
+- Build/task files: `Makefile`, `makefile`, `GNUmakefile`, `Taskfile` (including `Taskfile.yml`/`.yaml`), `*.mk`
+- Assets: `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`
+
+Everything else counts as code — including extension-less files that can carry logic (`Dockerfile`, `Brewfile`) and all source files. If even one changed file is code, run the panel below.
+
+Otherwise, from `agents.reviewers` skip individuals whose scope doesn't apply to this specific diff:
 
 | Reviewer | Skip when |
 |---|---|
-| Semantic | never skip |
-| Guidelines (Go) | never skip on Go projects |
+| Semantic | never skip (once any code file changed) |
+| Guidelines (Go) | never skip on Go projects (once any code file changed) |
 | Concurrency | single-threaded code, no shared state, test-only changes, docs |
 | Performance | test-only changes, docs, pure domain logic with no I/O |
 
@@ -208,7 +217,7 @@ Write the scratch file at `scratch_path` (the orchestrator created `tasks/.cycle
 - Diff stats: [+X/-Y across Z files]
 - Test plan: [one-line summary, or "no testable behavior: <reason>", or "N/A (testable: false)"]
 - Refactoring: [applied: <one-line>, or "none needed", or "reverted: <reason>"]
-- Review verdict: [per reviewer: pass | block with one-line reason]
+- Review verdict: [per reviewer: pass | block with one-line reason; or "skipped (no code files)" when the diff is docs/config/build-only]
 - Test output: [pass | fail with summary]
 - Unresolved findings: [list, or "none"]
 

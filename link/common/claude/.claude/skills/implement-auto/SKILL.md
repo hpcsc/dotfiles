@@ -142,7 +142,7 @@ Spawn the `task-implementer` subagent with a single JSON object as input. The or
 }
 ```
 
-**Reviewer triage** — include in `agents.reviewers` only those that could plausibly apply to this task. The cycle still drops individual reviewers whose scope does not match the actual diff.
+**Reviewer triage** — include in `agents.reviewers` only those that could plausibly apply to this task. The cycle (`task-implementer`) still drops individual reviewers whose scope does not match the actual diff, and **skips the entire panel — Semantic included — when the real diff contains no code files**: a docs/config/build-only change (`.md`/`.txt`/`.rst`, `.json`/`.yaml`/`.toml`/`.ini`/`.lock`, `Makefile`/`Taskfile`/`*.mk`, image assets). So "always" below means "always when a code file changed."
 
 | Reviewer | Include when | Omit when |
 |---|---|---|---|

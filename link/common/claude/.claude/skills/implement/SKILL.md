@@ -160,7 +160,7 @@ Both paths spawn `task-implementer` with this JSON. The orchestrator assembles i
 
 In **parallel** mode, `checkpoint_path` and `scratch_path` MUST be absolute paths into the main checkout (the subagent runs with its cwd inside a throwaway worktree and must still write its scratch where the orchestrator can read it). In **sequential** mode they may be the usual relative `tasks/.checkpoint` / `tasks/.cycles/task-<N>.md`.
 
-**Reviewer triage** — include in `agents.reviewers` only those that could plausibly apply to this task. The cycle still drops individual reviewers whose scope does not match the actual diff.
+**Reviewer triage** — include in `agents.reviewers` only those that could plausibly apply to this task. The cycle (`task-implementer`) still drops individual reviewers whose scope does not match the actual diff, and **skips the entire panel — Semantic included — when the real diff contains no code files**: a docs/config/build-only change (`.md`/`.txt`/`.rst`, `.json`/`.yaml`/`.toml`/`.ini`/`.lock`, `Makefile`/`Taskfile`/`*.mk`, image assets). So "always" below means "always when a code file changed."
 
 | Reviewer | Include when | Omit when |
 |---|---|---|---|

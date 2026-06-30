@@ -80,6 +80,8 @@ Spawn the `decompose-to-tasks` agent with the detected language inventory:
 >
 > Decompose the following user story into implementation tasks. For each task, determine which language it primarily involves and include a `language` field set to one of the detected languages above: [user story from $ARGUMENTS]
 
+**Carry forward prior learnings.** If `tasks/learnings.md` exists, read it and pass its contents to `decompose-to-tasks` as `Accumulated project learnings` with the instruction: "These are durable conventions, recurring review findings, and constraints distilled from earlier implementation runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover." This closes the self-improvement loop — learnings persisted at the end of one run steer the next run's plan.
+
 For each language in the detected inventory that has a testing guideline entry in the Testing Guidelines table, pass that language-specific guideline plus `caller-patterns.md` as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Both files open with a Section Index — read the indexes first and load only the sections you need. From `caller-patterns.md`, read 'How to Identify the Caller' and the Quick Reference to understand which caller patterns lead to testable behavior. From the language-specific guideline, read the 'Unit of Behavior' section to decide whether a task delivers independently testable behavior or is only meaningful through a downstream consumer. Do not read either file end-to-end."
 
 The decompose agent emits a `**Depends on:**` line per task (`[Task N, ...]` or `None`). This is the dependency graph the wave scheduler in Phase 2 consumes — do not discard it.
@@ -277,6 +279,17 @@ Read `tasks/.cycles/task-<N>.md` and lift its "Checkpoint entry" section into `t
 
 `tasks/.checkpoint` is disposable — it exists only to keep the orchestrator's context sharp across many cycles. It is deleted in Phase 3 Completion.
 
+#### Collect durable-learning candidates
+
+From the same scratch file's "Cycle summary" (review verdict, unresolved findings) and "Learnings affecting remaining plan" sections, extract any learning that is **durable and general** — a codebase convention, a recurring review finding, a constraint, or a reusable pattern that would help a *future* task in this repo. Append each to a `## Learning candidates` section in `tasks/.checkpoint`:
+
+```
+## Learning candidates
+- [Task N] (convention|recurring-finding|constraint|pattern) <one-sentence learning> — apply when: <trigger>
+```
+
+**Falsifiable filter** — record a candidate only when you can name the specific future mistake it prevents. If you cannot state that mistake in one sentence, it is task-specific noise, not a durable learning; drop it. (Same test as the comment guidance: justify or delete.) In wave-parallel mode each task appends independently to the shared checkpoint, so the Phase 3 reflect step dedups across the whole run.
+
 ### Step V: Plan-validity check (once per wave, after the whole wave is integrated)
 
 Defer the plan-validity check to the **wave boundary**, not per task: speculatively-run siblings in the same wave must not be invalidated mid-flight by a sibling's learnings. After every task in the wave is committed, inspect the "Learnings affecting remaining plan" section of each wave task's scratch.
@@ -313,9 +326,29 @@ After all tasks complete:
 
 1. **Run full test suite** (detected test command) in the main tree.
 
-2. **Clean up** — `git worktree prune` and remove any lingering `$WT_ROOT` temp dirs. Delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (per-cycle scratch should already be gone; remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist).
+2. **Reflect and persist learnings (human-gated write-back)**
 
-3. **Summarize**
+   The self-improvement step — it turns this run's execution into durable steering for the next one. Do it **before** cleanup, because the candidates live in `tasks/.checkpoint`.
+
+   1. Read the `## Learning candidates` section from `tasks/.checkpoint` (every wave task appended to it).
+   2. **Filter for signal.** Keep a candidate only if it is durable and general — prefer ones observed in ≥2 tasks, or flagged by a reviewer as a project-wide convention. Drop one-off task quirks. (Recurrence plus the falsifiable filter are the noise gate — the analog of a confidence threshold.)
+   3. **Dedup** against existing entries in `tasks/learnings.md` (if it exists). Match on substance, not wording. Propose only genuinely new learnings.
+   4. **GATE — approval loop.** Present the proposed additions to `tasks/learnings.md` as a diff. Ask the user to approve, edit, reject, or select a subset. Do NOT write anything without explicit approval. (The `pending_review` gate — generated steering never goes live unreviewed.)
+   5. On approval, append approved entries to `tasks/learnings.md` (create if missing):
+
+      ```
+      ## <short title>
+      - Type: convention | recurring-finding | constraint | pattern
+      - Observed: task N[, M] — [feature name]
+      - Learning: <the durable fact, 1–2 sentences>
+      - Apply when: <the future situation where this is relevant>
+      ```
+
+   If no candidates survive the filter, say so and skip — a clean run produces no learnings, and that's fine. `tasks/learnings.md` is durable project knowledge; offer to commit it so future runs and teammates inherit it.
+
+3. **Clean up** — `git worktree prune` and remove any lingering `$WT_ROOT` temp dirs. Delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (per-cycle scratch should already be gone; remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist). **Never delete `tasks/learnings.md`** — it persists across runs.
+
+4. **Summarize**
    ```markdown
    ## Feature Complete: [Feature Name]
 
@@ -336,9 +369,8 @@ After all tasks complete:
    - All steps reviewed by applicable reviewers (semantic + security/performance/concurrency as needed)
    - All steps approved by human reviewer at the commit gate
    - Full test suite passing
+   - Durable learnings persisted to tasks/learnings.md: [count, or none]
    ```
-
-4. **Ask user if they want to create a pull request**
 
 ---
 

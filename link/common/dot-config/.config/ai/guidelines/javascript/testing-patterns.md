@@ -28,6 +28,40 @@ The key question: **if the implementation breaks, will this test catch it?**
 | Weak | Copied from production code | Yes, but correctness requires checking production intent | Low (change detector) |
 | None (tautology) | Computed from production code | No | Zero |
 
+### The Substitution Test: Is the Code Under Test Even Exercised?
+
+A change detector restates a value the code produces. Its extreme form is the **vacuous test**: one whose assertions pass no matter what the code under test does, because they never exercise its logic.
+
+> Mentally replace the function under test with a trivial stub — one that returns a hardcoded constant, returns its input unchanged, or forwards a collaborator's value verbatim. If every assertion still passes, the test is not testing that function.
+
+Two shapes fail this test:
+
+- **Constant pin** — the expected value is a literal copied from the production source, and the code performs no transformation to produce it. Any stub returning that constant passes. (This is the weak-independence change detector, seen from the code's side.)
+- **Passthrough** — the function returns a collaborator's output verbatim and the assertion pins that output, so the assertion really tests the collaborator, not the function.
+
+```js
+// Production: getDisplayName just forwards the formatter's output
+function getDisplayName(user, formatter) {
+  return formatter.format(user);
+}
+
+// ❌ Vacuous — the assertion pins the collaborator's output, not getDisplayName's logic
+it('returns the formatted name', () => {
+  const formatter = { format: () => 'Ada L.' };
+  expect(getDisplayName({ first: 'Ada' }, formatter)).toBe('Ada L.');
+  // Same expected value without calling the code under test — it tests the formatter:
+  // expect(formatter.format({ first: 'Ada' })).toBe('Ada L.');
+});
+```
+
+**The tell:** if you can rewrite the assertion to produce the same expected value *without calling the code under test* — by calling the collaborator directly or just writing the constant — the code under test is not on trial.
+
+**What legitimately survives substitution** (and is therefore NOT vacuous):
+- A real transform — stub it and the assertion fails, because the code computes the value.
+- A **golden / contract test** over frozen external input — parsing/decoding frozen input stubbed to a constant no longer reproduces the expected value, so it fails.
+
+A test that survives substitution is exercising the code; a test that survives substitution *and* a behavior-preserving refactor is exercising it at the right altitude.
+
 ---
 
 ## What to Test
@@ -286,6 +320,7 @@ When reviewing a test, check for these red flags:
 - [ ] Test mocks a module internal to the system → mock boundary violation
 - [ ] Test calls multiple functions and doesn't distinguish which one is under test → unclear scope
 - [ ] Expected values are copied from production code without domain justification → weak independence
+- [ ] Assertion still passes when the code under test is replaced by a constant or passthrough stub → vacuous test (substitution test)
 - [ ] Test checks `innerHTML` or DOM structure for elements that don't carry behavioral content → structural coupling
 - [ ] Test doesn't `await` an async operation → flaky test
 

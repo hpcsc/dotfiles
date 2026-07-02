@@ -45,6 +45,7 @@ The **caller patterns** guide identifies five patterns that determine what asser
 
 The **JS testing guidelines** are the authoritative reference for:
 - Detecting implementation detail tests
+- The substitution test — whether each assertion actually exercises the code under test (extends the change-detector and tautology checks; catches constant pins and collaborator passthroughs)
 - Anti-patterns with examples (0-10)
 - Detection checklist for red flags
 - Independent verification (weak vs strong)
@@ -69,6 +70,8 @@ For each test file, identify and read the corresponding production code being te
 - Integration points and side effects
 
 This is essential for identifying missing test coverage in step 5.
+
+**Attribution — do this while reading, not just for coverage.** For every existing assertion, name the specific branch, computation, or documented contract of the code under test that it exercises. If an assertion maps to *no* logic in the code under test — because it pins a hardcoded constant, or a value the code forwards from a collaborator verbatim — apply the **substitution test**: would the assertion still pass if the code under test were replaced by a stub returning a constant or a passthrough? If it would, the code under test is not on trial — report it as a **Critical** violation (vacuous test). Golden/contract tests over frozen external input are the exception: they fail substitution (the frozen input no longer reproduces the expected value) and are legitimate.
 
 ### Step 3b: Identify the Caller Pattern
 
@@ -229,7 +232,7 @@ If no valuable tests are missing, state: "No significant gaps found. The existin
 Use confidence scoring for violations:
 
 - **Critical (80-100%)**: Clear violation of core principle. Will cause problems. Must fix.
-  - Example: Mocking internal modules, testing implementation details
+  - Example: Mocking internal modules, testing implementation details, vacuous tests that fail the substitution test (constant pins, collaborator passthroughs)
 
 - **Major (60-79%)**: Violates guideline but might be acceptable in rare cases.
   - Example: Loose assertion where exact match is usually better
@@ -253,9 +256,10 @@ Use confidence scoring for violations:
 Your job is to ensure tests:
 1. **Test behavior through public API only**
 2. **Assert on what code does, not how it does it**
-3. **Are clear with relevant details visible**
-4. **Don't mock internal modules of the system under test**
-5. **Follow all JS testing guidelines**
-6. **Cover all valuable behaviors** — identify gaps where missing tests would catch real bugs
+3. **Actually exercise the code under test** — every assertion must fail if the code were stubbed to a constant or passthrough (substitution test); take expected values from domain knowledge or a frozen contract, not copied from production
+4. **Are clear with relevant details visible**
+5. **Don't mock internal modules of the system under test**
+6. **Follow all JS testing guidelines**
+7. **Cover all valuable behaviors** — identify gaps where missing tests would catch real bugs
 
 Be thorough but fair. Provide actionable feedback that helps improve test quality. When suggesting missing tests, focus on high-value gaps that would catch real bugs or regressions — not exhaustive coverage for its own sake.

@@ -294,6 +294,35 @@ A behavioral test is invariant across all correct implementations. An implementa
 
 **Apply this mentally**: imagine a plausible refactor (extract a helper, change a data structure, swap a dependency, restructure internal flow). If the behavior is preserved but the test would break, the test is asserting on implementation.
 
+### The Companion Test: Substitution (Is the Code Under Test Even Exercised?)
+
+Refactor invariance catches a test that breaks when it *shouldn't*. The mirror failure is a test that *passes* when it shouldn't — one whose assertions never exercise the code under test at all. Refactor invariance cannot catch this: a vacuous test is trivially refactor-invariant.
+
+> Mentally replace the function under test with a trivial stub — one that returns a hardcoded constant, returns its input unchanged, or forwards a collaborator's value verbatim. If every assertion still passes, the test is not testing that function.
+
+Two shapes fail this test:
+
+- **Constant pin** — the expected value is a literal copied from the production source, and the code performs no transformation to produce it. `require.Equal(t, 1, schemaVersion)` where the code hardcodes `schemaVersion = 1`: any stub returning `1` passes. (This is the *Weak Independence* change detector, seen from the code's side.)
+- **Passthrough** — the function returns a collaborator's output verbatim and the assertion pins that output, so the assertion really tests the collaborator, not the function.
+
+```go
+// Encode returns event.EventName() verbatim after a registry lookup.
+// BAD — asserts on EventName(), not on Encode. The same assertion, rewritten
+// WITHOUT the code under test, is identical:
+//   require.Equal(t, "ReviewCompleted", event.ReviewCompleted{}.EventName())
+// Encode's own logic (the registry lookup) is never exercised.
+typeName, _, _, _ := event.Encode(event.ReviewCompleted{})
+require.Equal(t, "ReviewCompleted", typeName)
+```
+
+**The tell:** if you can rewrite the assertion to produce the same expected value *without calling the code under test* — by calling the collaborator directly or just writing the constant — the code under test is not on trial.
+
+**What legitimately survives substitution** (and is therefore NOT vacuous):
+- A real transform — stub it and the assertion fails, because the code computes the value (`ConvertToCents(10.50, "USD") == 1050`).
+- A **golden / contract test** over frozen external input — `Decode(frozenBytes)` stubbed to a constant no longer reproduces the expected struct, so it fails. The frozen input the code must interpret is what makes it real.
+
+A test that survives substitution is exercising the code; a test that survives substitution *and* a behavior-preserving refactor is exercising it at the right altitude.
+
 ### Decision Procedure
 
 For any assertion under review, apply these three questions in order:

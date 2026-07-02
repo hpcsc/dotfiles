@@ -25,6 +25,7 @@ The **caller patterns** guide identifies five patterns that determine what asser
 
 The **Go testing guidelines** are your authoritative reference, including:
 - Detecting implementation detail tests and the decision procedure
+- The substitution test — whether the code under test is actually exercised (companion to refactor invariance; catches constant pins and collaborator passthroughs)
 - Anti-patterns with examples (0-8)
 - Detection checklist for red flags
 - Independent verification (strong vs weak vs tautology)
@@ -58,15 +59,18 @@ For each test file, identify and read the corresponding production code being te
 
 This is essential for identifying missing test coverage in step 5.
 
+**Attribution — do this while reading, not just for coverage.** For every existing assertion, name the specific branch, computation, or documented contract of the code under test that it exercises. If an assertion maps to *no* logic in the code under test — because it pins a hardcoded constant, or a value the code forwards from a collaborator verbatim — it is a candidate Disqualifier (**Vacuous**; see the substitution test in the Disqualifier Gate). The question is not "is this value correct?" but "would this assertion fail if the code under test were replaced by a stub returning a constant or a passthrough?" If it would still pass, the code under test is not on trial.
+
 ### 4. Check Against Guidelines
 
 #### 4a. Disqualifier Gate
 
-Check every test against these four conditions first. Any hit means the test is fundamentally broken — flag it immediately and skip further evaluation of that test.
+Check every test against these five conditions first. Any hit means the test is fundamentally broken — flag it immediately and skip further evaluation of that test.
 
 | Disqualifier | What to look for |
 |---|---|
 | **Tautology** | Expected value is derived from the code under test at runtime (e.g., `expected := Func(); require.Equal(t, expected, Func())`) |
+| **Vacuous (passthrough / constant pin)** | The assertion still passes if the code under test is replaced by a stub that returns a constant or forwards a collaborator's value verbatim (the substitution test) — i.e. you could produce the same expected value *without calling the code under test*. Covers constants copied from production (`require.Equal(t, 1, schemaVersion)` for a hardcoded `1`) and verbatim passthroughs (`Encode` returning `EventName()`). Does NOT cover golden/contract tests over frozen input, which fail substitution and are legitimate. |
 | **No behavioral assertion** | Test only asserts `require.NotNil` or `require.NoError` with no other assertion on an observable outcome |
 | **Call-count-only** | Test only asserts a function was called (spy call count) without verifying any outcome (return value, side effect, state change) |
 | **Trivial test** | Test covers a simple getter/setter or constructor-returns-non-nil with no business logic involved |
@@ -198,7 +202,7 @@ If no valuable tests are missing, state: "No significant gaps found. The existin
 ### Summary Statistics
 
 - **Total test functions**: [count]
-- **Disqualified tests**: [count] (fundamentally broken — tautology, no behavioral assertion, call-count-only, trivial)
+- **Disqualified tests**: [count] (fundamentally broken — tautology, vacuous passthrough/constant-pin, no behavioral assertion, call-count-only, trivial)
 - **Fidelity violations**: [count] (won't catch real defects)
 - **Resilience violations**: [count] (will break on harmless refactor)
 - **Precision violations**: [count] (failure won't pinpoint problem)
@@ -228,7 +232,7 @@ Classify every violation using the quality framework:
 
 | Severity | Meaning | Verdict impact | Examples |
 |---|---|---|---|
-| **Disqualifier** | Test is fundamentally broken — provides zero value | Always NEEDS REVISION | Tautology, no behavioral assertion, call-count-only, trivial getter/setter test |
+| **Disqualifier** | Test is fundamentally broken — provides zero value | Always NEEDS REVISION | Tautology, vacuous passthrough/constant-pin (fails the substitution test), no behavioral assertion, call-count-only, trivial getter/setter test |
 | **Fidelity** | Test won't catch a real defect | Always NEEDS REVISION | Expected values copied from production (change detector), missing assertions on outcomes, no error path coverage, new data through already-tested function |
 | **Resilience** | Test will break on a harmless refactor | Always NEEDS REVISION | Mocks internal dependencies, asserts on call order/count, tests implementation details, accesses unexported fields |
 | **Precision** | Test failure won't pinpoint the problem | NEEDS REVISION if severe (5+ behaviors in one test); otherwise note in Recommendations | Vague test name, multiple behaviors in one test, unclear relationship between input and assertion, separate tests for non-independently-breakable outputs from the same input |

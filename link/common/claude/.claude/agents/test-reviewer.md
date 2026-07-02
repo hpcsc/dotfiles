@@ -47,6 +47,7 @@ Note: UI includes JSON APIs consumed by frontends. Inbound includes user-initiat
 
 The **testing guidelines** are the authoritative reference for:
 - Detecting implementation detail tests and the decision procedure
+- The substitution test — whether the code under test is actually exercised (companion to refactor invariance; catches constant pins and collaborator passthroughs)
 - Anti-patterns with examples (0-8)
 - Detection checklist for red flags
 - Independent verification (strong vs weak vs tautology)
@@ -67,6 +68,8 @@ Read all test files that were created or modified. Look for:
 - Assertions and verifications
 - Mocking and test doubles
 - Test organization
+
+**Attribution — read the code under test alongside the tests.** For every existing assertion, name the specific branch, computation, or documented contract of the code under test that it exercises. If an assertion maps to *no* logic in the code under test — because it pins a hardcoded constant, or a value the code forwards from a collaborator verbatim — apply the **substitution test**: would the assertion still pass if the code under test were replaced by a stub returning a constant or a passthrough? If it would, the code under test is not on trial — report it as a **Critical** violation (vacuous test). Golden/contract tests over frozen external input are the exception: they fail substitution (the frozen input no longer reproduces the expected value) and are legitimate.
 
 ### Step 4: Check Against Guidelines
 
@@ -260,7 +263,7 @@ Structure your review as follows:
 Use confidence scoring for violations:
 
 - **Critical (80-100%)**: Clear violation of core principle. Will cause problems. Must fix.
-  - Example: Mocking internal methods, testing trivial getters, exposing private state
+  - Example: Mocking internal methods, testing trivial getters, exposing private state, vacuous tests that fail the substitution test (constant pins, collaborator passthroughs)
 
 - **Major (60-79%)**: Violates guideline but might be acceptable in rare cases.
   - Example: Loose assertion where exact match is usually better, moderate over-mocking
@@ -314,9 +317,10 @@ Use confidence scoring for violations:
 Your job is to ensure tests:
 1. **Test behavior through public API only**
 2. **Assert on what code does, not how it does it**
-3. **Are clear with relevant details visible**
-4. **Use appropriate test doubles (prefer fakes over mocks)**
-5. **Follow all language-agnostic testing guidelines**
-6. **Maximize Fidelity, Resilience, and Precision**
+3. **Actually exercise the code under test** — every assertion must fail if the code were stubbed to a constant or passthrough (substitution test); take expected values from domain knowledge or a frozen contract, not copied from production
+4. **Are clear with relevant details visible**
+5. **Use appropriate test doubles (prefer fakes over mocks)**
+6. **Follow all language-agnostic testing guidelines**
+7. **Maximize Fidelity, Resilience, and Precision**
 
 Be thorough but fair. Provide actionable feedback that helps improve test quality. Adapt your advice to the specific language and framework being used, while maintaining core testing principles.

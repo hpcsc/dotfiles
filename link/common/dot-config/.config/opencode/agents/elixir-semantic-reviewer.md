@@ -23,8 +23,10 @@ Before reviewing, read the caller patterns, Elixir testing guidelines, and comme
 # Read caller patterns — identifies what to assert on for this component type
 cat ~/.config/ai/guidelines/testing/caller-patterns.md
 
-# Then read Elixir testing guidelines — focus on: Independent Verification,
-# Unit of Behavior, Anti-Patterns, Detection Checklist
+# Then read Elixir testing guidelines — focus on: Independent Verification
+# (including the substitution test — extends change detectors; catches constant
+# pins and collaborator passthroughs), Unit of Behavior, Anti-Patterns,
+# Detection Checklist
 cat ~/.config/ai/guidelines/elixir/testing-patterns.md
 
 # Then read comment-usage rules — gate any new/modified comments in the diff
@@ -74,9 +76,11 @@ Read the full files to understand context:
 
 ### Step 6: Check Test Quality (Elixir-Specific)
 
+**Attribution (do this for every assertion).** Name the specific branch, computation, or contract of the code under test that the assertion exercises. If an assertion maps to no logic in the function under test — the expected value is a constant the source hardcodes (**constant pin**) or a collaborator's value the function forwards verbatim (**passthrough**) — apply the **substitution test**: mentally replace the function with a stub that returns a constant, its input, or the collaborator's value. If every assertion still passes, the code under test is not on trial — flag it as a **vacuous test** (`"severity": "disqualifier"`). Carve-out: a real transform or a golden/contract test over frozen external input FAILS substitution (its assertion breaks when the code is stubbed) and is legitimate.
+
 #### 6a. Disqualifier Gate (auto-block)
 
-Check these four conditions first. Any hit is an **automatic block** — the test is fundamentally broken regardless of other qualities.
+Check these five conditions first. Any hit is an **automatic block** — the test is fundamentally broken regardless of other qualities.
 
 | Disqualifier | What to look for |
 |---|---|
@@ -84,6 +88,7 @@ Check these four conditions first. Any hit is an **automatic block** — the tes
 | **No behavioral assertion** | Test only asserts `assert {:ok, _} = ...`, `assert result`, or `refute is_nil(...)` with no assertion on an observable outcome's values |
 | **Call-count-only** | Test only verifies a Mox expectation fired (call count) without asserting on arguments or any outcome (return value, side effect, state change) |
 | **Trivial test** | Test covers struct defaults, a `defdelegate` pass-through, or constructor-returns-struct with no business logic involved |
+| **Vacuous test** | Every assertion still passes when the function under test is replaced by a stub returning a constant, its input, or a collaborator's value verbatim — a constant pin (expected value hardcoded in the source) or a passthrough (forwards a collaborator's output). Carve-out: real transforms and golden/contract tests over frozen input FAIL substitution and are legitimate |
 
 If any disqualifier matches, report it as `"severity": "disqualifier"` and stop evaluating that test.
 
@@ -170,7 +175,7 @@ Return ONLY this JSON structure:
 
 | Label | Source | Auto-block? |
 |---|---|---|
-| `disqualifier` | Step 6a — tautology, no behavioral assertion, call-count-only, trivial test | Yes |
+| `disqualifier` | Step 6a — tautology, no behavioral assertion, call-count-only, trivial test, vacuous test | Yes |
 | `fidelity` | Step 6b — test won't catch a real defect | Yes |
 | `resilience` | Step 6b — test will break on harmless refactor | Yes |
 | `precision` | Step 6b — failure won't pinpoint the problem | Yes |

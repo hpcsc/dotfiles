@@ -66,6 +66,40 @@ expected = Discount.calculate(1000, :premium)
 assert Discount.calculate(1000, :premium) == expected
 ```
 
+### The Substitution Test: Is the Code Under Test Even Exercised?
+
+A change detector restates a value the code produces. Its extreme form is the **vacuous test**: one whose assertions pass no matter what the code under test does, because they never exercise its logic. (The tautology in the table above computes the expected value from the code; a vacuous test is subtler — its expected value can look independent, yet no stubbed version of the code would fail the assertion.)
+
+> Mentally replace the function under test with a trivial stub — one that returns a hardcoded constant, returns its input unchanged, or forwards a collaborator's value verbatim. If every assertion still passes, the test is not testing that function.
+
+Two shapes fail this test:
+
+- **Constant pin** — the expected value is a literal copied from the production source, and the code performs no transformation to produce it. Any stub returning that constant passes. (This is the weak-independence change detector, seen from the code's side.)
+- **Passthrough** — the function returns a collaborator's output verbatim and the assertion pins that output, so the assertion really tests the collaborator, not the function.
+
+```elixir
+# ❌ Constant pin — default_currency/0 hardcodes :usd, so the assertion holds
+#    for any implementation that returns :usd; it never exercises the function.
+assert Config.default_currency() == :usd
+# ...same expected value, without calling the code under test:
+assert :usd == :usd
+
+# ❌ Passthrough — current_rate/1 forwards the gateway's reply verbatim, so the
+#    assertion is really testing the stub, not current_rate/1.
+gateway = fn :eur -> Decimal.new("1.09") end
+assert Rates.current_rate(:eur, gateway: gateway) == Decimal.new("1.09")
+# ...same expected value, straight from the collaborator:
+assert gateway.(:eur) == Decimal.new("1.09")
+```
+
+**The tell:** if you can rewrite the assertion to produce the same expected value *without calling the code under test* — by calling the collaborator directly or just writing the constant — the code under test is not on trial.
+
+**What legitimately survives substitution** (and is therefore NOT vacuous):
+- A real transform — stub it and the assertion fails, because the code computes the value (e.g. `assert Discount.calculate(1000, :premium) == 100`).
+- A **golden / contract test** over frozen external input — decoding frozen input stubbed to a constant no longer reproduces the expected struct, so it fails.
+
+A test that survives substitution is exercising the code; a test that survives substitution *and* a behavior-preserving refactor is exercising it at the right altitude.
+
 ---
 
 ## What to Test
@@ -343,6 +377,7 @@ When reviewing a test, check for these red flags:
 - [ ] `Process.sleep` used to wait for an outcome → flaky test
 - [ ] Mox `expect` whose function body asserts nothing and whose result is never checked → call-count-only
 - [ ] Expected values copied from production code without domain justification → weak independence
+- [ ] Assertion still passes when the code under test is replaced by a constant/passthrough stub (substitution test) → vacuous test
 - [ ] `async: false` with no shared-state reason, or `async: true` with global state → wrong concurrency mode
 - [ ] Error-path test doesn't confirm state is unchanged → missing negative-path invariant
 

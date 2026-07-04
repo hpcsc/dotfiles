@@ -4,7 +4,7 @@ return {
 	build = ":TSUpdate",
 	lazy = false,
 	opts = {
-		languages = { "bash", "javascript", "typescript", "lua" },
+		languages = { "bash", "javascript", "typescript", "lua", "markdown", "markdown_inline" },
 	},
 	config = function(_, opts)
 		require("nvim-treesitter").install(opts.languages)

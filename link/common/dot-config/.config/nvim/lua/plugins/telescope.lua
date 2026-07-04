@@ -23,14 +23,25 @@ return {
 					additional_args = { "--hidden", "-g", "!**/.git/*" },
 				},
 			},
+			extensions = {
+				live_grep_args = {
+					mappings = {
+						i = {
+							["<C-k>"] = require("telescope-live-grep-args.actions").quote_prompt(),
+						},
+					},
+				},
+			},
 		}
 	end,
 	config = function(_, opts)
 		require("telescope").setup(opts)
 		require("telescope").load_extension("zf-native")
+		require("telescope").load_extension("live_grep_args")
 	end,
 	dependencies = {
 		{ "nvim-lua/plenary.nvim", lazy = true },
+		{ "nvim-telescope/telescope-live-grep-args.nvim", lazy = true },
 	},
 	keys = function()
 		local lazy_telescope = function(builtin)
@@ -41,9 +52,12 @@ return {
 
 		return {
 			{ "<leader>ff", lazy_telescope("find_files"), desc = "Telescope find files" },
-			{ "<leader>fg", lazy_telescope("live_grep"), desc = "Telescope find files by content" },
+			{ "<leader>fg", function()
+				require("telescope").extensions.live_grep_args.live_grep_args()
+			end, desc = "Telescope live grep (args)" },
 			{ "<leader>fb", lazy_telescope("buffers"), desc = "Telescope find buffers" },
 			{ "<leader>fh", lazy_telescope("help_tags"), desc = "Telescope find help tags" },
+			{ "<leader>fc", lazy_telescope("git_bcommits"), desc = "Telescope git commits for buffer" },
 		}
 	end,
 }

@@ -151,6 +151,7 @@ Remove any scenario where:
 - It would never catch a real bug
 - It has weak or no independent verification — the expected value was copied from production code (change detector) or computed from the code under test (tautology). If a higher-level behavioral test with strong independence can cover the same ground, prefer that instead.
 - It passes new data (constants, config values, prompt text, static strings) through an already-tested function just to verify the function still works. If the function's valid/invalid input paths are already fully tested, exercising it with new data is testing the framework, not new behavior. The scenario should be deferred to the task that wires this data through a new public API entry point.
+- It only adds a **data point** to a behavior another surviving scenario (or an existing test) already covers — the new case would fail for the *same reason* (same branch/outcome), differing only in input value, **even when this very task is what wires that data**. Fold it into that scenario (an extra assertion or a table row), don't list it separately. A separate scenario is warranted only when it has a *different reason to fail*: a new branch, equivalence class, boundary, or observable outcome. (See "Additional Data Point vs. New Behavior" in `testing-patterns.md`.)
 
 ### Step 4b: Re-validate Independence Ratings Before Output
 

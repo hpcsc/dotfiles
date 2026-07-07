@@ -182,6 +182,8 @@ Changed files:
 
 Diff:
 [staged diff]
+
+When the diff adds or changes tests, do NOT judge them from the diff alone — read the WHOLE test file and weigh each new/changed test against the tests already there. A behaviorally-valid test still fails review if it is REDUNDANT: a new data point (enum value, field, config entry, allow-list token) exercising a behavior an existing test already covers belongs FOLDED into that test, not cloned as a parallel one; a change-detector already covered by a behavioral test should be dropped. This is test-quality scope — the semantic reviewer owns it (guideline: "Additional Data Point vs. New Behavior" / "Prefer Higher-Level Behavioral Tests Over Change Detectors"). Raise such a case as a finding to fold-or-drop.
 ```
 
 **Aggregate**: if any reviewer returns `block`, aggregate is `block`.

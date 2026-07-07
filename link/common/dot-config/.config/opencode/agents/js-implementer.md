@@ -57,6 +57,7 @@ If a test plan was provided (from the test-case-designer), implement each scenar
 - `await` all async operations
 - Skip trivial tests (constructors returning non-null, getters/setters)
 - Cover both happy path and error paths
+- A new case with the *same reason to fail* as an existing test is a data point → fold it in (an extra assertion or an `it.each` case), don't add a parallel `it`; a separate `it` needs a *different* reason to fail (new branch, equivalence class, boundary, or outcome)
 
 ### Step 3: Write Production Code
 

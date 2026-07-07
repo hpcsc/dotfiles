@@ -128,6 +128,24 @@ describe('calculateDiscount', () => {
 ### One Behavior Per Test
 Each `it` block tests exactly one behavior. If a scenario has multiple assertions about the same outcome (e.g., a returned object has the right shape and values), group them in one block. If they test different outcomes, split.
 
+### Additional Data Point vs. New Behavior
+Adding an `it` for a *new data point* — a new enum value, field, config entry, or allow-list token driven through a path an existing test already covers — is redundant. A new `it` earns its place only if it has a **different reason to fail** than every existing test.
+
+Ask: **would this case fail for a reason no current test already covers?**
+
+- **Same reason to fail** — same branch/outcome; the input differs only within an already-covered equivalence class → **data point**. Fold it into the existing `it` (another assertion) or add a `it.each` case; don't clone the block.
+- **New reason to fail** — a different branch, a new equivalence class, a boundary, or a new observable outcome → **new behavior**. Give it its own `it`.
+
+```js
+// Redundant: same "selected fact → sent in payload" behavior as the existing selected-facts test
+it('submits payment_portal_link when selected', ...)      // ❌ fold in, or make the existing test it.each
+
+// Earns its place: a different outcome — the resolved link rendered in the reply — a new reason to fail
+it('renders the resolved payment link into the draft', ...) // ✅ own it
+```
+
+Rule of thumb (equivalence partitioning): one representative per class, plus the boundaries.
+
 ---
 
 ## Assertion Patterns
@@ -323,6 +341,7 @@ When reviewing a test, check for these red flags:
 - [ ] Assertion still passes when the code under test is replaced by a constant or passthrough stub → vacuous test (substitution test)
 - [ ] Test checks `innerHTML` or DOM structure for elements that don't carry behavioral content → structural coupling
 - [ ] Test doesn't `await` an async operation → flaky test
+- [ ] A new `it` duplicates a behavior an existing test already covers — same reason to fail (a new data point / field / token) → fold it in or use `it.each`, don't clone
 
 ---
 

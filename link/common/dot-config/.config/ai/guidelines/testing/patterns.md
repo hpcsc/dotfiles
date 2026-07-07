@@ -97,6 +97,22 @@ Two questions, applied in order:
 1. **Can the test fail at all?** If the expected value is derived from the code under test at runtime, it's a tautology. Remove it or replace it with a hardcoded expected value.
 2. **If it fails, is the failure self-evidently wrong?** If yes, the test has strong independence. If you'd just update the test to match the new production value, it has weak independence.
 
+### Additional Data Point vs. New Behavior
+
+Change detectors aside, the commonest redundant test is a *new data point* dressed up as a *new test*: a new enum value, field, config entry, or allow-list token driven through a path an existing test already covers. A behaviorally-valid test still earns its place only if it has a **different reason to fail** than every existing test.
+
+Ask: **would this case fail for a reason no current test already covers?**
+
+- **Same reason to fail** — same branch, same outcome class, same failure mode; the input differs only within an equivalence class an existing test already exercises → **data point**. Fold it into that test (another assertion, or a parameterised case). A second test buys only a second thing to keep in sync.
+- **New reason to fail** — a different branch, a new equivalence class, a boundary, or a new observable outcome → **new behavior**. Give it its own test.
+
+| New case | Reason to fail vs. existing tests | Verdict |
+|---|---|---|
+| The 4th enum value routed through a branch 3 others already cover | Same branch | Data point → fold |
+| An enum value that triggers a different branch or outcome | New branch | New behavior → own test |
+
+Rule of thumb (equivalence partitioning): one representative per class, plus the boundaries. A new input inside an already-covered class is redundant; one that crosses into an untested class or sits on a boundary is a new behavior.
+
 ---
 
 ## Three Essential Qualities of Effective Tests
@@ -1203,6 +1219,7 @@ When reviewing tests, check for these red flags:
 - [ ] Tests break when refactoring without behavior changes
 - [ ] Expected values copied from production code without domain justification (change detector)
 - [ ] Expected values computed from the code under test at runtime (tautology)
+- [ ] A new test duplicates a behavior an existing test already covers — same reason to fail (a new data point / enum / field / token) → fold it in, don't clone
 
 ---
 

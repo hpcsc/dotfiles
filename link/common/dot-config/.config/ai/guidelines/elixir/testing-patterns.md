@@ -174,6 +174,17 @@ end
 - **Tag slow/external tests** — `@tag :integration` with `ExUnit.configure(exclude: [:integration])` in `test_helper.exs`
 - **Doctests** for pure functions with stable, illustrative examples — not as a substitute for edge-case tests
 
+### Additional Data Point vs. New Behavior
+
+A new `test` for a *new data point* — a new enum value, field, config entry, or allow-list token driven through a path an existing test already covers — is redundant. A `test` earns its place only if it has a **different reason to fail** than every existing test.
+
+Ask: **would this case fail for a reason no current test already covers?**
+
+- **Same reason to fail** — same branch/outcome; the input differs only within an already-covered equivalence class → **data point**. Fold it into the existing test (another assertion) or add a case to a parameterised list; don't clone the `test`.
+- **New reason to fail** — a different branch, a new equivalence class, a boundary, or a new observable outcome → **new behavior**. Give it its own `test`.
+
+Rule of thumb (equivalence partitioning): one representative per class, plus the boundaries. A new input inside an already-covered class is redundant; one that crosses into an untested class or sits on a boundary is a new behavior.
+
 ---
 
 ## Assertion Strictness
@@ -380,6 +391,7 @@ When reviewing a test, check for these red flags:
 - [ ] Assertion still passes when the code under test is replaced by a constant/passthrough stub (substitution test) → vacuous test
 - [ ] `async: false` with no shared-state reason, or `async: true` with global state → wrong concurrency mode
 - [ ] Error-path test doesn't confirm state is unchanged → missing negative-path invariant
+- [ ] A new `test` duplicates a behavior an existing test already covers — same reason to fail (a new data point / field / token) → fold it in, don't clone
 
 ---
 

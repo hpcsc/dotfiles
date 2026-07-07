@@ -145,6 +145,24 @@ Three checks, applied in order:
 | A `<select>` element exists for each customer | No — just restates requirement | **Weak** |
 | Error message contains "insufficient funds" | No — wording could improve | **Weak** |
 
+### Additional Data Point vs. New Behavior
+
+Change detectors aside, the commonest redundant test is a *new data point* dressed up as a *new test*: a new enum value, field, config entry, or allow-list token driven through a path an existing test already covers. A behaviorally-valid test still earns its place only if it has a **different reason to fail** than every existing test.
+
+Ask: **would this case fail for a reason no current test already covers?**
+
+- **Same reason to fail** — same branch, same outcome class, same failure mode; the input differs only within an equivalence class an existing test already exercises → **data point**. Fold it into that test (another assertion, or a row in its table). A second test buys only a second thing to keep in sync.
+- **New reason to fail** — a different branch, a new equivalence class, a boundary, or a new observable outcome → **new behavior**. Give it its own test.
+
+| New case | Reason to fail vs. existing tests | Verdict |
+|---|---|---|
+| A new fact field is offered as a prompt placeholder when selected | Same as other fields → offered (one offering mechanism) | Data point → fold |
+| That field's resolved value renders into the output through the reviewer | New: the resolve→render→guardrail path no offering test exercises | New behavior → own test |
+| The 4th currency added to a formatter already covering 3 | Same formatting branch | Data point → table row |
+| A currency whose rounding rule differs (JPY, 0 decimals) | New: a distinct rounding branch | New behavior → own row/test |
+
+Rule of thumb (equivalence partitioning): one representative per class, plus the boundaries. A new input inside an already-covered class is redundant; one that crosses into an untested class or sits on a boundary is a new behavior.
+
 ---
 
 ## Coupling-Based Assertion Levels
@@ -1468,6 +1486,7 @@ When reviewing tests, check for these red flags:
 - [ ] Tests break when refactoring without behavior changes
 - [ ] Expected values copied from production code without domain justification (change detector)
 - [ ] Expected values computed from the code under test at runtime (tautology)
+- [ ] A new test duplicates a behavior an existing test already covers — same reason to fail (a new data point / enum / field / token) → fold it in, don't clone
 
 ---
 

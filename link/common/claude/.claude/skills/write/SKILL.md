@@ -33,6 +33,7 @@ These guidelines define punctuation rules you must follow.
 - Use concrete examples over abstract explanations.
 - Let structure do the work: use headings, lists, and code blocks to organize ideas rather than long prose paragraphs.
 - Do not pad with filler words or unnecessary qualifiers.
+- When editing existing content, the result must read as the first version ever written: no "previously/updated/this replaces" framing about the document itself, no references to earlier drafts. Descriptions of the subject matter's past or current state (before/after, legacy systems, migrations) are content and stay. Summarize what changed in your reply, not in the document.
 
 ### 3. Structure
 
@@ -50,3 +51,4 @@ After writing, review the output for:
 - Sentences that can be split or shortened
 - Filler that can be removed without losing meaning
 - Sections that repeat the same point in different words
+- Edit-history framing ("previously", "updated", "no longer") — the document must read as its first version

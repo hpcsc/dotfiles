@@ -39,7 +39,7 @@ echo "$HOME/.claude/skills/implement-flow/implement-flow.workflow.js"   # -> use
 ```
 Workflow({
   scriptPath: "<resolved absolute path from the echo above>",
-  args: { story: "<the user story, verbatim, as data>", testCommand: "<detected>", maxResolve: 3, maxReplans: 2 }
+  args: { story: "<the user story, verbatim, as data>", testCommand: "<detected>", maxResolve: 3, maxReplans: 2, integrate: false }
 })
 ```
 
@@ -47,7 +47,8 @@ Workflow({
 - `args.testCommand` — the detected command; the implement, refactor, audit, and finalize stages all re-run it.
 - `args.maxResolve` — bounded revision attempts per task before a task is left **open** (default 3).
 - `args.maxReplans` — bounded autonomous re-decomposes of the remaining plan before it is frozen (default 2).
-- `args.tasksFile` — optional path to an existing `tasks/*.md` breakdown to **adopt** instead of decomposing from scratch. Still pass `args.story` (the feature description) so re-decompose has an anchor.
+- `args.integrate` — `true` to finish a fully-closed run by rebasing the implementation branch onto the default branch (`main`/`master`), fast-forwarding the default branch to it, and deleting the implementation branch. Local only — never pushes. Runs only when **every** task closed AND the full-suite receipt passed; a rebase conflict aborts (`git rebase --abort`) and leaves the branch untouched, and if the rebase replayed onto a moved base the tests are re-run before the fast-forward. Default `false`: everything stays on the implementation branch (current behavior).
+- `args.tasksFile` — optional path to an existing `tasks/*.md` breakdown to **adopt** instead of decomposing from scratch. Tasks whose checklist entry is already checked (`- [x]`) are treated as done and skipped. Still pass `args.story` (the feature description) so re-decompose has an anchor.
 - `args.ticket` — optional ticket/issue context to weave into commit messages per the repo's commit conventions.
 
 **If `$ARGUMENTS` names an existing `tasks/*.md`** (a prior decomposition), pass its absolute path as `args.tasksFile`: the workflow adopts that breakdown verbatim (no re-planning) rather than decomposing the story. The script can't read files itself, so an agent reads it — the gated siblings present this list for approval, but this skill adopts and runs it, with the file's correctness surfaced in your post-run branch review.
@@ -56,11 +57,13 @@ The Workflow runs in the background and notifies you on completion. Do not poll 
 
 To iterate on the workflow itself, edit `implement-flow.workflow.js` and relaunch with the same `scriptPath` (add `resumeFromRunId` to reuse cached agent results from a prior run).
 
+**Restart midway:** progress is persisted in-repo — each task's commit also flips its `- [x]` entry in the `tasks/*.md` checklist. If a run dies partway, either resume with `resumeFromRunId` (cached agent results replay), or simply relaunch with `args.tasksFile` pointing at the same breakdown: adopt mode skips checked-off tasks and continues from the first unchecked one.
+
 ---
 
 ## What the workflow does (the evidence-closed loop)
 
-1. **Decompose** (`decompose-to-tasks`) → dependency-ordered task list with `language`, `acceptance_criteria`, `depends_on`. Reads `tasks/learnings.md` if present and folds prior durable learnings into each task's `patterns_to_follow`. With `args.tasksFile` set, **adopts** that existing breakdown verbatim instead (no re-planning).
+1. **Decompose** (`decompose-to-tasks`) → dependency-ordered task list with `language`, `acceptance_criteria`, `depends_on`, saved to `tasks/[story-name].md` with an unchecked `- [ ] Task N` checklist (the run's durable progress record). Reads `tasks/learnings.md` if present and folds prior durable learnings into each task's `patterns_to_follow`. With `args.tasksFile` set, **adopts** that existing breakdown verbatim instead (no re-planning), skipping tasks already checked `- [x]` — the checklist is the resume point.
 2. **Per task, in dependency order** (parallelism lives *inside* a task — reviewers and finding-reproductions fan out concurrently):
    - **Design** test cases (`test-case-designer`), unless `testable: false`.
    - **Implement** (language implementer) — must return a raw `test_receipt` (verbatim command + raw output tail + pass bool) and a `criteria_evidence` entry per acceptance criterion. Narrated "tests pass" is rejected by the schema.
@@ -68,9 +71,9 @@ To iterate on the workflow itself, edit `implement-flow.workflow.js` and relaunc
    - **Review** — content-aware triage from the *real* changed files: a docs/config-only change (README, JSON, YAML, …) gets **no** code reviewers; for code, concurrency/performance run only when the change signals their concern. Selected reviewers run in parallel; each finding carries a reproducible `claim`. (Triage is static, so no classifier agent is spawned. Evidence closure is unaffected — the audit still verifies.)
    - **Verify (the gate replacement)** — for each finding an *independent* agent tries to **reproduce** it (failing test / `-race` / benchmark / direct run); reproduced → `real`, otherwise → `speculative`. A separate **audit** agent **re-runs the test command itself** and checks each acceptance criterion has executed evidence.
    - **Close or loop** — a task closes only when the independent re-run passed, every criterion has executed evidence, and no finding reproduced as real. Otherwise the concrete gaps are fed back and it retries up to `maxResolve`.
-3. **Commit** each closed task via the `commit` agent (one commit; it applies the repo's own commit conventions — reading CLAUDE.md / committing guidelines, reusing a cached trailer like a Linear initiative trailer, and weaving in `args.ticket` if given — and the commit-message hook validates the subject). If a task can't close, the chain **stops** there (a later task likely builds on it) and the task is left uncommitted for human review.
+3. **Commit** each closed task via the `commit` agent (one commit; it applies the repo's own commit conventions — reading CLAUDE.md / committing guidelines, reusing a cached trailer like a Linear initiative trailer, and weaving in `args.ticket` if given — and the commit-message hook validates the subject). The same commit checks the task off in the `tasks/*.md` checklist, so per-task progress is recorded in-repo, not just in the workflow's resume cache. If a task can't close, the chain **stops** there (a later task likely builds on it) and the task is left uncommitted for human review — with its checklist entry still unchecked.
 4. **Re-decompose if the plan shifted** — after each commit, an independent assessor checks whether the just-completed task changed the premises of the *remaining* plan (a planned task now unnecessary, missing, mis-scoped, or with shifted dependencies). If so, the not-yet-started tail is autonomously re-decomposed (completed tasks frozen) and the run continues on the revised plan. Bounded by `args.maxReplans` (default 2) so it can't thrash; the cap is logged. This is the gate-free analog of the siblings' plan-validity check — there's no human to approve the revised plan, so closure stays evidence-gated per task and you review the whole branch afterward.
-5. **Finalize** — run the full suite (raw receipt), then **reflect**: distil durable learnings from the run's reproduced findings and committed diffs, dedup against `tasks/learnings.md`, and append the survivors there (each kept only if it names the specific future mistake it prevents). The file is left **uncommitted** — this skill's gate is your post-run diff review, so persisted steering lands in the review surface rather than behind an inline prompt. Returns the raw receipt, the written `learnings`, and a per-task summary.
+5. **Finalize** — run the full suite (raw receipt). If **every** task closed, the task breakdown file is moved to `tasks/completed/` in its own small commit; with `args.integrate: true` (and a passing full-suite receipt) the implementation branch is then rebased onto the default branch, the default branch fast-forwarded to it, and the implementation branch deleted — local only. A partially-closed run skips both: the task file stays put with its unchecked entries as the human's resume point. Then **reflect**: distil durable learnings from the run's reproduced findings and committed diffs, dedup against `tasks/learnings.md`, and append the survivors there (each kept only if it names the specific future mistake it prevents). The file is left **uncommitted** — this skill's gate is your post-run diff review, so persisted steering lands in the review surface rather than behind an inline prompt. Returns the raw receipt, the written `learnings`, and a per-task summary.
 
 ---
 
@@ -88,7 +91,7 @@ When you review the finished branch, you're auditing receipts, not re-deriving c
 
 ## After it returns
 
-1. Read the returned summary: closed vs. open task counts, the full-suite receipt, and per-task evidence.
+1. Read the returned summary: closed vs. open task counts, the full-suite receipt, `integrated` (whether the branch was landed on the default branch and deleted), and per-task evidence. With `args.integrate` the fully-closed run ends on the default branch — review `git log` there instead of a branch diff; otherwise everything is on the implementation branch as before.
 2. **Open tasks** (evidence didn't close within `maxResolve`) are the human's queue — their `unresolved` list names the concrete gaps. Resume them with `implement-auto` (gated) or fix manually.
 3. **Review `tasks/learnings.md`** — the reflect step left any new durable learnings there as an uncommitted change. Keep, edit, or discard them; commit the file if you want future runs and teammates to inherit them.
 

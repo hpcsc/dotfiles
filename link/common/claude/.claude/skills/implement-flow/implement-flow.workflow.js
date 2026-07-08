@@ -7,7 +7,7 @@ export const meta = {
     { title: 'Implement', detail: 'per task: design tests, implement, refactor, review' },
     { title: 'Verify', detail: 'reproduce findings + audit acceptance criteria against re-executed evidence' },
     { title: 'Replan', detail: 'after a task closes, reassess and re-decompose the remaining plan if its premises changed' },
-    { title: 'Finalize', detail: 'commit closed tasks, full-suite receipt, distil durable learnings, summary' },
+    { title: 'Finalize', detail: 'commit closed tasks, full-suite receipt, archive task file, optional branch integration, distil learnings' },
   ],
 }
 
@@ -72,6 +72,7 @@ const cfgFor = (language) => {
 const TEST_CMD = args?.testCommand ?? '(detect the project test command yourself: Makefile, package.json scripts, or framework convention)'
 const MAX_RESOLVE = args?.maxResolve ?? 3
 const MAX_REPLANS = args?.maxReplans ?? 2
+const INTEGRATE = args?.integrate === true
 
 // ---------------------------------------------------------------------------
 // Reviewer triage — computed from the REAL changed files, not the decompose-time
@@ -139,8 +140,9 @@ const RECEIPT = {
 const TASK_LIST_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['tasks'],
+  required: ['tasks_file', 'tasks'],
   properties: {
+    tasks_file: { type: 'string', description: 'repo-relative path of the saved task breakdown file (tasks/[story-name].md)' },
     tasks: {
       type: 'array',
       items: {
@@ -267,6 +269,18 @@ const COMMIT_SCHEMA = {
   properties: { committed: { type: 'boolean' }, hash: { type: 'string' }, subject: { type: 'string' } },
 }
 
+const FINISH_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['tasks_file_moved_to', 'integrated', 'base_branch', 'note'],
+  properties: {
+    tasks_file_moved_to: { type: ['string', 'null'], description: 'new repo-relative path of the archived task breakdown; null if the move could not be done' },
+    integrated: { type: 'boolean', description: 'true only when rebase + fast-forward + branch delete ALL completed' },
+    base_branch: { type: ['string', 'null'], description: 'the default branch integrated into; null when integration was not attempted' },
+    note: { type: 'string', description: 'what was done, and why anything was skipped or aborted' },
+  },
+}
+
 const REFLECT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -312,6 +326,7 @@ const taskHeader = (t) =>
 
 const decomposePrompt = (story) =>
   `Decompose the following user story into ordered, codebase-aware implementation tasks. For each task set \`language\` to the language it primarily involves, and \`depends_on\` to the task numbers it builds on (\`[]\` if none). Emit tasks in an order where every task's dependencies precede it.\n\n` +
+  `Save the breakdown to \`tasks/[story-name].md\` as usual — including the \`- [ ] Task N: <title>\` checklist — and return its repo-relative path as \`tasks_file\`. The run checks entries off as tasks close, so the file doubles as restartable progress state.\n\n` +
   `If \`tasks/learnings.md\` exists, read it first: its entries are durable conventions, recurring review findings, and constraints distilled from earlier runs in this repo. Fold the relevant ones into each task's \`patterns_to_follow\` and do not re-propose work they already cover.\n\n` +
   `From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
   `<user_story>\n${story}\n</user_story>`
@@ -319,7 +334,9 @@ const decomposePrompt = (story) =>
 const adoptTasksPrompt = (tasksFile) =>
   `Read the existing task breakdown at \`${tasksFile}\` and return its tasks in the required schema — ADOPT it, do not re-plan.\n\n` +
   `- Preserve the file's task order, titles, descriptions, and any stated acceptance criteria and dependencies. Do not invent, merge, split, or drop tasks.\n` +
-  `- For any schema field the file does not state, infer conservatively from its content: \`language\` from the target stack, \`depends_on\` from stated ordering (\`[]\` if none), \`affected_files\` / \`patterns_to_follow\` from what it names (empty arrays if none), \`testable\` true unless the task is pure docs/config. Number \`n\` in file order from 1.\n` +
+  `- The file's checklist is the progress record: a task whose entry is already checked (\`- [x] Task N\`) was completed and committed by an earlier run — OMIT it from \`tasks\` so the run resumes from the first unchecked task.\n` +
+  `- For any schema field the file does not state, infer conservatively from its content: \`language\` from the target stack, \`depends_on\` from stated ordering (\`[]\` if none), \`affected_files\` / \`patterns_to_follow\` from what it names (empty arrays if none), \`testable\` true unless the task is pure docs/config. \`n\` is each task's own number in the file (file order from 1 if unnumbered).\n` +
+  `- Set \`tasks_file\` to \`${tasksFile}\`.\n` +
   `If \`tasks/learnings.md\` exists you may fold relevant durable learnings into \`patterns_to_follow\`, but otherwise leave the breakdown intact.`
 
 const designPrompt = (t, cfg) =>
@@ -360,8 +377,9 @@ const auditPrompt = (t, impl, refactor) =>
   `2. For each acceptance criterion, decide \`has_executed_evidence\` strictly: is there a test or demonstration whose ACTUAL output shows the criterion met? Narration does not count.\n` +
   `3. List in \`unmet\` every criterion with no executed evidence, plus "tests regressed" if your re-run failed.`
 
-const commitPrompt = (t, ticket) =>
+const commitPrompt = (t, ticket, tasksFilePath) =>
   `Commit task ${t.n}: ${t.title}. The changes are STAGED (stage anything missing with \`git add -A\`). Create exactly ONE commit.\n` +
+  `First record progress: in \`${tasksFilePath}\`, flip this task's checklist entry from \`- [ ] Task ${t.n}:\` to \`- [x] Task ${t.n}:\` and stage the file so the progress update rides in this commit. If the file has no such entry or git refuses to stage it (e.g. ignored path), continue without it — never block the commit on the checklist.\n` +
   `Apply the repo's OWN commit conventions — read CLAUDE.md / any committing guideline and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one. ` +
   (ticket ? `Weave in this ticket context per those conventions: ${ticket}. ` : '') +
   `The subject MUST satisfy the repo commit rules regardless: imperative mood, <=50 chars, capitalized, no trailing period, NO mention of AI/Claude, NO Co-Authored-By trailer. ` +
@@ -380,7 +398,7 @@ const planImpactPrompt = (task, result, remaining) =>
   `Return \`impact: "revise"\` ONLY if the remaining plan must change to still deliver the story — a planned task is now unnecessary (already covered), missing (a new one is needed), mis-scoped, or its dependencies shifted because of how this task was actually built. ` +
   `Otherwise return \`impact: "none"\`. Default hard to "none": re-planning is expensive and justified only by a concrete mismatch you can name in \`reason\`. A task merely being large or hard is not a mismatch.`
 
-const redecomposePrompt = (story, completed, remaining, reason) => {
+const redecomposePrompt = (story, completed, remaining, reason, tasksFilePath) => {
   const nextN = (completed[completed.length - 1]?.n ?? 0) + 1
   return (
     `A run is in progress. The tasks below are DONE and committed (frozen) — implementing them revealed that the REMAINING plan needs revision.\n\n` +
@@ -388,6 +406,7 @@ const redecomposePrompt = (story, completed, remaining, reason) => {
     `Completed tasks (do NOT re-emit, do NOT redo):\n${completedDigest(completed)}\n\n` +
     `Current remaining tasks you are revising:\n${remainingDigest(remaining)}\n\n` +
     `Re-decompose ONLY the not-yet-started work so the story still lands. Return \`tasks\` containing just the revised remaining tasks — numbered from ${nextN} upward, dependency-ordered, with \`depends_on\` allowed to reference completed task numbers. Same fields as a normal decomposition. Keep what is still correct, drop what is now unnecessary, add what is missing.\n\n` +
+    `Also update the breakdown file at \`${tasksFilePath}\` in place: leave completed tasks and their checked \`- [x]\` checklist entries untouched, replace the not-yet-started task sections and their unchecked checklist entries with the revised tasks, and return the same path as \`tasks_file\`.\n\n` +
     `If \`tasks/learnings.md\` exists, read it and fold relevant durable learnings into \`patterns_to_follow\`. From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
     `<user_story>\n${story}\n</user_story>`
   )
@@ -395,6 +414,18 @@ const redecomposePrompt = (story, completed, remaining, reason) => {
 
 const finalSuitePrompt = () =>
   `Run the full test suite (\`${TEST_CMD}\`) in the main working tree and return the raw result as a receipt (verbatim command, raw output tail, pass/fail boolean). Do not summarize away the output.`
+
+const finishPrompt = (tasksFilePath, integrate) =>
+  `Every task in this run closed and was committed. Finish the run's bookkeeping in the main working tree:\n\n` +
+  `1. Archive the task breakdown: \`mkdir -p tasks/completed\` then \`git mv ${tasksFilePath} tasks/completed/\` (if the file is untracked, plain \`mv\` and \`git add\` the new path). Commit the move as ONE commit whose subject satisfies the repo commit rules (imperative mood, <=50 chars, capitalized, no trailing period, NO mention of AI/Claude, NO Co-Authored-By). Set \`tasks_file_moved_to\` to the new repo-relative path, or null with the reason in \`note\` if the move could not be done.\n` +
+  (integrate
+    ? `2. Integrate the implementation branch into the default branch, LOCALLY ONLY — never push:\n` +
+      `   a. \`git branch --show-current\` is the implementation branch. The default branch is \`git rev-parse --abbrev-ref origin/HEAD\` if set, else whichever of \`main\`/\`master\` exists locally. If you are already ON the default branch, set integrated=false and stop — nothing to integrate.\n` +
+      `   b. \`git rebase <default>\`. On ANY conflict: \`git rebase --abort\`, set integrated=false, leave the branch exactly as it was, and explain in \`note\`.\n` +
+      `   c. If the rebase actually replayed commits onto a moved base (not a no-op), re-run \`${TEST_CMD}\`; if it fails, STOP — leave the rebased branch checked out for human review, set integrated=false, and put the failing output tail in \`note\`.\n` +
+      `   d. \`git switch <default>\`, \`git merge --ff-only <implementation branch>\`, \`git branch -d <implementation branch>\`. Set integrated=true and \`base_branch\` to the default branch.\n`
+    : `2. Do NOT rebase, merge, switch, or delete any branch — the run ends on the implementation branch as-is. Set integrated=false and base_branch=null.\n`) +
+  `Report what happened in \`note\`.`
 
 const reflectDigest = (results) =>
   results
@@ -539,7 +570,8 @@ if (!story) throw new Error('implement-flow: pass args.story (a user story) and/
 const plan = tasksFile
   ? await agent(adoptTasksPrompt(tasksFile), { agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA })
   : await agent(decomposePrompt(story), { agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA })
-log(tasksFile ? `adopted ${plan.tasks.length} task(s) from ${tasksFile}` : `decomposed into ${plan.tasks.length} tasks`)
+let planFile = plan.tasks_file
+log(tasksFile ? `adopted ${plan.tasks.length} unchecked task(s) from ${tasksFile}` : `decomposed into ${plan.tasks.length} tasks (${planFile})`)
 
 // Tasks arrive dependency-ordered, but `remaining` is a MUTABLE queue, not a
 // fixed list: after a task closes, an independent assessor can autonomously
@@ -565,7 +597,7 @@ while (remaining.length) {
     break
   }
 
-  r.commit = await agent(commitPrompt(task, ticket), { label: `task-${task.n}:commit`, phase: 'Finalize', agentType: 'commit', schema: COMMIT_SCHEMA })
+  r.commit = await agent(commitPrompt(task, ticket, planFile), { label: `task-${task.n}:commit`, phase: 'Finalize', agentType: 'commit', schema: COMMIT_SCHEMA })
   results.push(r)
   completed.push(task)
 
@@ -581,13 +613,32 @@ while (remaining.length) {
 
   replans++
   log(`task ${task.n} triggered re-decompose (${replans}/${MAX_REPLANS}): ${impact.reason}`)
-  const revised = await agent(redecomposePrompt(story, completed, remaining, impact.reason), { label: `replan#${replans}`, phase: 'Replan', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA })
+  const revised = await agent(redecomposePrompt(story, completed, remaining, impact.reason, planFile), { label: `replan#${replans}`, phase: 'Replan', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA })
   remaining = revised.tasks ?? []
+  planFile = revised.tasks_file ?? planFile
   log(`re-decomposed remaining work into ${remaining.length} task(s)`)
 }
 
 phase('Finalize')
 const fullSuite = await agent(finalSuitePrompt(), { label: 'full-suite', phase: 'Finalize', schema: RECEIPT })
+
+// Archive + optional integration run BEFORE reflect: reflect leaves
+// tasks/learnings.md uncommitted by design, and a dirty tracked file would
+// block the rebase. Integration additionally requires a passing full-suite
+// receipt — never land unverified commits on the default branch.
+const allClosed = results.length > 0 && remaining.length === 0 && results.every((r) => r.status === 'closed')
+let finish = null
+if (allClosed && planFile) {
+  const integrate = INTEGRATE && fullSuite?.passed === true
+  if (INTEGRATE && !integrate) log('integrate: skipped — full-suite receipt did not pass; branch left as-is')
+  finish = await agent(finishPrompt(planFile, integrate), { label: 'finish', phase: 'Finalize', schema: FINISH_SCHEMA })
+  if (finish) {
+    log(finish.tasks_file_moved_to ? `task file archived at ${finish.tasks_file_moved_to}` : `task file NOT archived — ${finish.note}`)
+    if (integrate) log(finish.integrated ? `integrated into ${finish.base_branch}, implementation branch deleted` : `integrate aborted — ${finish.note}`)
+  }
+} else if (INTEGRATE) {
+  log('integrate: skipped — not all tasks closed; branch and task file left in place for human review')
+}
 
 // Self-improvement write-back. Learnings are left UNCOMMITTED on purpose: this
 // skill has no inline gate, so its review surface is the human's post-run diff.
@@ -598,10 +649,13 @@ log(`reflect: ${reflection.learnings.length} durable learning(s) written to task
 
 return {
   story,
+  tasks_file: finish?.tasks_file_moved_to ?? planFile,
   closed: results.filter((r) => r.status === 'closed').length,
   open: results.filter((r) => r.status === 'open').length,
   replans,
   full_suite: fullSuite,
+  integrated: finish?.integrated ?? false,
+  finish_note: finish?.note ?? null,
   learnings: reflection.learnings,
   tasks: results.map((r) => ({
     n: r.n,

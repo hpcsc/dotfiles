@@ -1,0 +1,24 @@
+local appname="${1:-nvim-go}"
+
+local current
+current=$(mise env --json 2>/dev/null | jq -r '.NVIM_APPNAME // empty')
+
+if [[ "$current" == "$appname" ]]; then
+  printf "\033[0;32m%s\033[0m\n" "NVIM_APPNAME already set to $appname"
+  return 0
+fi
+
+if [[ -n "$current" ]]; then
+  local source
+  source=$(mise set 2>/dev/null | awk '$1=="NVIM_APPNAME"{print $NF}')
+  if [[ -z "$source" ]]; then
+    printf "\033[0;31m%s\033[0m\n" "could not locate the config file defining NVIM_APPNAME"
+    return 1
+  fi
+  mise set --file "$source" "NVIM_APPNAME=$appname" || return 1
+  printf "\033[0;32m%s\033[0m\n" "NVIM_APPNAME changed from $current to $appname in $source"
+  return 0
+fi
+
+mise set -E local "NVIM_APPNAME=$appname" || return 1
+printf "\033[0;32m%s\033[0m\n" "NVIM_APPNAME set to $appname in mise.local.toml"

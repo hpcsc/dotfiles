@@ -87,6 +87,10 @@ map("n", "<c-p>", ":Files<cr>", {})
 map("n", "<c-g>", ":Rg<cr>", {})
 map("n", "<c-y>", ":BTags<cr>", {})
 
+-- quickfix navigation
+map("n", "]q", ":cnext<cr>", silent)
+map("n", "[q", ":cprev<cr>", silent)
+
 -- Insert mode mappings
 map("i", "jk", "<Esc>")
 

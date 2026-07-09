@@ -45,3 +45,12 @@ vim.api.nvim_create_autocmd("BufLeave", {
 		end
 	end,
 })
+
+-- restore native <CR> (open entry) in quickfix/loclist windows;
+-- the global normal-mode <CR> is remapped to :nohlsearch, which otherwise shadows it
+vim.api.nvim_create_autocmd("FileType", {
+	pattern = "qf",
+	callback = function(args)
+		vim.keymap.set("n", "<CR>", "<CR>", { buffer = args.buf, remap = false, silent = true })
+	end,
+})

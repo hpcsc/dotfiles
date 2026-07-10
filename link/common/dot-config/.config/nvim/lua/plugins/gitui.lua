@@ -2,7 +2,7 @@ return {
 	"aspeddro/gitui.nvim",
 	keys = {
 		{
-			"<leader>g",
+			"<leader>gg",
 			function()
 				require("gitui").open()
 			end,

@@ -41,7 +41,7 @@ end, silent)
 
 -- OverCommandLine then start %s/
 map("n", "<leader>s", ":OverCommandLine<CR>%s/", {})
-map("n", "<leader>w", ":update<CR>", {})
+map("n", "<leader>W", ":update<CR>", {})
 map("n", "<leader>q", ":qa<CR>", {})
 
 -- Command-line mode mappings

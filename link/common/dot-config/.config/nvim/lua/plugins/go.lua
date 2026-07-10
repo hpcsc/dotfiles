@@ -66,31 +66,9 @@ return {
 					return
 				end
 
-				local map = vim.keymap.set
-				local bufopts = { buffer = args.buf }
-				map("n", "gd", vim.lsp.buf.definition, bufopts)
-				map("n", "gr", vim.lsp.buf.references, bufopts)
-				map("n", "gi", vim.lsp.buf.implementation, bufopts)
-				map("n", "K", vim.lsp.buf.hover, bufopts)
-				map("n", "<leader>rn", vim.lsp.buf.rename, bufopts)
-				map("n", "<leader>ca", vim.lsp.buf.code_action, bufopts)
-				map("n", "<leader>f", function()
-					vim.lsp.buf.format({ async = true })
-				end, bufopts)
-				map("n", "[d", vim.diagnostic.goto_prev, bufopts)
-				map("n", "]d", vim.diagnostic.goto_next, bufopts)
-				map("n", "<leader>e", vim.diagnostic.open_float, bufopts)
+				require("config.lsp").on_attach(args.buf)
 
-				map("n", "<leader>gt", ":GoTest<cr>", bufopts)
-				map("n", "<leader>gT", ":GoTestFunc<cr>", bufopts)
-				map("n", "<leader>gc", ":GoCoverage<cr>", bufopts)
-				map("n", "<leader>gr", ":GoRun<cr>", bufopts)
-				map("n", "<leader>gi", ":GoImpl<cr>", bufopts)
-				map("n", "<leader>gfs", ":GoFillStruct<cr>", bufopts)
-				map("n", "<leader>gie", ":GoIfErr<cr>", bufopts)
-				map("n", "<leader>gat", ":GoAddTag<cr>", bufopts)
-				map("n", "<leader>grt", ":GoRmTag<cr>", bufopts)
-				map("n", "<leader>ga", ":GoAlt<cr>", bufopts)
+				vim.keymap.set("n", "<leader>gt", ":GoTestFunc<cr>", { buffer = args.buf })
 			end,
 		})
 	end,

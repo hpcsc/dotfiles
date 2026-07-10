@@ -20,58 +20,23 @@
 
 Neovim configuration lives in `/link/common/dot-config/.config/nvim/` (symlinked to `~/.config/nvim/`).
 
-It uses [lazy.nvim](https://github.com/folke/lazy.nvim) for plugin management and supports multiple profiles via Neovim's `NVIM_APPNAME` feature.
-
-### Base config
+It uses [lazy.nvim](https://github.com/folke/lazy.nvim) for plugin management. A single config serves every language; language-specific plugins load on demand.
 
 ```sh
 nvim
 ```
 
-Loads the default config from `~/.config/nvim/`. Contains general settings, keymaps, and language-agnostic plugins.
+General settings, keymaps, and language-agnostic plugins load at startup. Language tooling is gated on filetype, so a language server and its plugins start only when you open a matching file:
 
-### Profiles
+| Language | Plugin | Trigger | Includes |
+|----------|--------|---------|----------|
+| Go | go.nvim (ray-x) | `go`, `gomod`, `gosum`, `gowork`, `gotmpl` files | gopls, treesitter for go/gomod/gosum/gowork, auto goimports on save |
+| Elixir | elixir-tools.nvim | `elixir`, `eelixir`, `heex` files | ElixirLS, treesitter for elixir/heex/eex |
 
-Profiles extend the base config with language-specific plugins (LSP, treesitter grammars, etc.). Each profile is a separate directory under `~/.config/` that prepends the base config to its runtime path.
+### Adding a language
 
-Launch a profile with:
-
-```sh
-NVIM_APPNAME=nvim-<profile> nvim
-```
-
-Available profiles:
-
-| Profile | `NVIM_APPNAME` | Config path | Includes |
-|---------|----------------|-------------|----------|
-| Elixir | `nvim-elixir` | `nvim-elixir/` | Next LS (elixir-tools.nvim), treesitter for elixir/heex/eex |
-| Go | `nvim-go` | `nvim-go/` | gopls via go.nvim (ray-x), treesitter for go/gomod/gosum/gowork, auto goimports on save |
-
-### Adding a new profile
-
-1. Create `~/.config/nvim-<name>/init.lua` that prepends the base config and passes extra specs:
-
-   ```lua
-   vim.g.mapleader = " "
-
-   local base = vim.fn.expand("~/.config/nvim")
-   vim.opt.rtp:prepend(base)
-   vim.opt.rtp:append(base .. "/after")
-
-   require("init").setup({
-       lazy = {
-           extra_specs = {
-               { import = "profile-plugins" },
-           },
-       }
-   })
-
-   vim.cmd("filetype plugin indent on")
-   vim.cmd("syntax on")
-   vim.cmd("colorscheme gruvbox")
-   ```
-
-2. Add language-specific plugin specs under `lua/profile-plugins/` in the new config directory.
+1. Add a plugin spec under `lua/plugins/<language>.lua`, gated with `ft = { ... }` so it loads only for the relevant filetypes.
+2. Add the treesitter grammars for the language to the `languages` list in `lua/plugins/treesitter.lua`.
 
 ## Setup a new machine
 

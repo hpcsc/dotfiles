@@ -22,10 +22,9 @@ return {
 					require("config.lsp").on_attach(bufnr)
 
 					local map = vim.keymap.set
-					local bufopts = { buffer = bufnr }
-					map("n", "<leader>ef", ":ElixirFromPipe<cr>", bufopts)
-					map("n", "<leader>et", ":ElixirToPipe<cr>", bufopts)
-					map("v", "<leader>em", ":ElixirExpandMacro<cr>", bufopts)
+					map("n", "<leader>ef", ":ElixirFromPipe<cr>", { buffer = bufnr, desc = "Elixir: from pipe" })
+					map("n", "<leader>et", ":ElixirToPipe<cr>", { buffer = bufnr, desc = "Elixir: to pipe" })
+					map("v", "<leader>em", ":ElixirExpandMacro<cr>", { buffer = bufnr, desc = "Elixir: expand macro" })
 				end,
 			},
 		})

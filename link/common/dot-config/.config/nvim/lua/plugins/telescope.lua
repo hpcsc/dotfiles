@@ -58,6 +58,7 @@ return {
 			{ "<leader>fb", lazy_telescope("buffers"), desc = "Telescope find buffers" },
 			{ "<leader>fh", lazy_telescope("help_tags"), desc = "Telescope find help tags" },
 			{ "<leader>fc", lazy_telescope("git_bcommits"), desc = "Telescope git commits for buffer" },
+			{ "<leader>?", lazy_telescope("keymaps"), desc = "Telescope keymaps" },
 		}
 	end,
 }

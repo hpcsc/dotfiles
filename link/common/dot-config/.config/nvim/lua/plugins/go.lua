@@ -68,7 +68,12 @@ return {
 
 				require("config.lsp").on_attach(args.buf)
 
-				vim.keymap.set("n", "<leader>gt", ":GoTestFunc<cr>", { buffer = args.buf })
+				vim.keymap.set(
+					"n",
+					"<leader>gt",
+					":GoTestFunc<cr>",
+					{ buffer = args.buf, desc = "Go test (nearest func)" }
+				)
 			end,
 		})
 	end,

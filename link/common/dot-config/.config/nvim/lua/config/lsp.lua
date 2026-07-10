@@ -22,16 +22,18 @@ end
 -- keys open Telescope pickers instead of the quickfix list.
 function M.on_attach(bufnr)
 	local map = vim.keymap.set
-	local bufopts = { buffer = bufnr }
+	local function opts(desc)
+		return { buffer = bufnr, desc = desc }
+	end
 
-	map("n", "gd", telescope("lsp_definitions"), bufopts)
-	map("n", "grr", telescope("lsp_references"), bufopts)
-	map("n", "gri", telescope("lsp_implementations"), bufopts)
-	map("n", "grt", telescope("lsp_type_definitions"), bufopts)
-	map("n", "gO", telescope("lsp_document_symbols"), bufopts)
-	map("n", "<leader>d", telescope("diagnostics"), bufopts)
+	map("n", "gd", telescope("lsp_definitions"), opts("LSP definitions"))
+	map("n", "grr", telescope("lsp_references"), opts("LSP references"))
+	map("n", "gri", telescope("lsp_implementations"), opts("LSP implementations"))
+	map("n", "grt", telescope("lsp_type_definitions"), opts("LSP type definitions"))
+	map("n", "gO", telescope("lsp_document_symbols"), opts("LSP document symbols"))
+	map("n", "<leader>d", telescope("diagnostics"), opts("LSP diagnostics list"))
 
-	map("n", "<leader>K", vim.lsp.buf.signature_help, bufopts)
+	map("n", "<leader>K", vim.lsp.buf.signature_help, opts("LSP signature help"))
 end
 
 return M

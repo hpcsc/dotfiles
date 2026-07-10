@@ -1,6 +1,5 @@
 # app	keys	description
 tmux	<prefix> + u	Open popup terminal
-tmux	<prefix> + Ctrl + g	Open navi cheatsheet
 tmux	<prefix> + H|J|K|L	Resize panes
 tmux	<prefix> + a	Kill all panes
 tmux	<prefix> + e	Synchronize panes

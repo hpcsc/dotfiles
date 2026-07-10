@@ -40,3 +40,18 @@ tasks:
     interactive: true
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/macos-stow.sh"
+
+  alfred-keymaps:
+    desc: Build the Keymaps Alfred workflow bundle (others/macos/alfred/keymaps)
+    dir: others/macos/alfred/keymaps
+    sources:
+      - info.plist
+      - keymaps.sh
+      - keymaps.tsv
+    generates:
+      - Keymaps.alfredworkflow
+    cmds:
+      - plutil -lint info.plist
+      - rm -f Keymaps.alfredworkflow
+      - zip -X -q Keymaps.alfredworkflow info.plist keymaps.sh keymaps.tsv
+      - 'echo "Built $(pwd)/Keymaps.alfredworkflow - double-click to import into Alfred"'

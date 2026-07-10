@@ -1,0 +1,32 @@
+# app	keys	description
+tmux	<prefix> + u	Open popup terminal
+tmux	<prefix> + Ctrl + g	Open navi cheatsheet
+tmux	<prefix> + H|J|K|L	Resize panes
+tmux	<prefix> + a	Kill all panes
+tmux	<prefix> + e	Synchronize panes
+nvim	<leader> + ;	Open yazi
+nvim	<leader> + gg	Open gitui
+yazi	o	Open selected files
+yazi	O	Open selected files interactively
+yazi	Tab	Show the file information
+yazi	y	Yank selected files (copy)
+yazi	x	Yank selected files (cut)
+yazi	p	Paste yanked files
+yazi	P	Paste yanked files (overwrite if destination exists)
+yazi	Y or X	Cancel the yank status
+yazi	d	Trash selected files
+yazi	D	Permanently delete selected files
+yazi	a	Create a file (ends with / for directories)
+yazi	r	Rename selected file(s)
+yazi	.	Toggle the visibility of hidden files
+yazi	c => c	Copy the file path
+yazi	c => d	Copy the directory path
+yazi	c => f	Copy the filename
+yazi	c => n	Copy the filename without extension
+yazi	s	Search files by name using fd
+yazi	S	Search files by content using ripgrep
+yazi	t	Create a new tab with CWD
+yazi	1, 2, ...	Switch to the N-th tab
+yazi	[	Switch to the previous tab
+yazi	]	Switch to the next tab
+yazi	Ctrl + c	Close the current tab

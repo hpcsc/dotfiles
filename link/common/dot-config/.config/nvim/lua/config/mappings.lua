@@ -77,9 +77,8 @@ map("n", "<CR>", ":nohlsearch<CR>", {})
 -- toggle folding
 map("n", "<leader>z", "za", {})
 
--- NERDTree mappings
-map("n", "<leader>m", ":NERDTreeFind<cr>", {})
-map("n", "<leader>t", ":NERDTreeToggle<cr>", {})
+-- File-tree mappings (<leader>t toggle, <leader>m reveal) live in the
+-- neo-tree spec's `keys`.
 
 -- fzf mappings
 map("n", "<c-n>", ":Buffers<cr>", {})
@@ -113,17 +112,3 @@ map("x", "@", function()
 	execute_macro_over_visual_range()
 end, {})
 
-local function is_nerdtree_open()
-	local bufname = vim.t.NERDTreeBufName
-	return bufname ~= nil and vim.fn.bufwinnr(bufname) ~= -1
-end
-
-local function sync_tree()
-	if vim.bo.modifiable and is_nerdtree_open() and #vim.fn.expand("%") > 0 and not vim.wo.diff then
-		vim.cmd("NERDTreeFind")
-		vim.cmd("wincmd p")
-	end
-end
-map("n", "<leader>/", function()
-	sync_tree()
-end, {})

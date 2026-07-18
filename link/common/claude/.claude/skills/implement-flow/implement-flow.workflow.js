@@ -5,7 +5,7 @@ export const meta = {
   phases: [
     { title: 'Decompose', detail: 'break the story into dependency-ordered tasks' },
     { title: 'Implement', detail: 'per task: design tests, implement, refactor, review' },
-    { title: 'Verify', detail: 'reproduce findings + audit acceptance criteria against re-executed evidence' },
+    { title: 'Verify', detail: 'reproduce runtime findings, honor quality findings directly, audit criteria against re-executed evidence' },
     { title: 'Replan', detail: 'after a task closes, reassess and re-decompose the remaining plan if its premises changed' },
     { title: 'Finalize', detail: 'commit closed tasks, full-suite receipt, archive task file, optional branch integration, distil learnings' },
   ],
@@ -212,10 +212,16 @@ const REVIEW_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'severity', 'file', 'claim'],
+        required: ['id', 'severity', 'nature', 'file', 'claim'],
         properties: {
           id: { type: 'string' },
           severity: { type: 'string', enum: ['low', 'medium', 'high'] },
+          nature: {
+            type: 'string',
+            enum: ['runtime', 'quality'],
+            description:
+              'runtime = a defect with observable runtime behavior an independent agent can reproduce by executing code (a failing test, -race, benchmark, direct run) — correctness, concurrency, performance. quality = a code-quality/convention violation with no runtime symptom (a comments.md comment-usage violation, a redundant / change-detector test, a naming or structure issue). quality findings block on the reviewer judgment; runtime findings block only if independently reproduced.',
+          },
           file: { type: 'string' },
           line: { type: 'integer' },
           claim: { type: 'string' },
@@ -347,6 +353,7 @@ const implementPrompt = (t, cfg, testPlan, feedback) =>
   `${taskHeader(t)}\n\nWrite failing tests first (per the approved plan), then implement until they pass. Test command: \`${TEST_CMD}\`.\n\n` +
   `Approved test plan:\n${testPlan}\n\n` +
   (feedback ? `REVISION REQUIRED — close these concrete gaps from the previous attempt:\n${feedback}\n\n` : '') +
+  `COMMENT DISCIPLINE: keep comments minimal per ${'~/.config/ai/guidelines/comments.md'} — default to none; write one only when you can name the specific wrong conclusion a reader would draw without it. Never name code by its position in the plan ("reactor 1/2", "the decide leg", "the on switch", "PR N", "Task N", "design note X") and never narrate the task/fix/PR — those are plan artifacts a reader of the merged code cannot see. Describe code by its domain role.\n\n` +
   `EVIDENCE CONTRACT (this is non-negotiable):\n` +
   `- Actually RUN \`${TEST_CMD}\` and return its real output tail in \`test_receipt\` — verbatim command, raw output, pass/fail boolean. A narrated "tests pass" is rejected.\n` +
   `- For EACH acceptance criterion, attach \`criteria_evidence\`: a named test (kind:test) or, for behavior a unit test can't express, an executed demonstration (kind:demo) — with the exact command and its raw output tail. Mark \`satisfied\` only from what the output actually shows.\n` +
@@ -361,7 +368,7 @@ const refactorPrompt = (t, cfg, impl) =>
 const reviewPrompt = (t) =>
   `Review the STAGED changes for this task. Use \`git diff --staged\` and \`git diff --staged --name-only\`.\n\n${taskHeader(t)}\n\n` +
   `When the diff adds or changes tests, do NOT judge them from the diff alone — read the WHOLE test file and weigh each new/changed test against the tests already there. A behaviorally-valid test still fails review if it is REDUNDANT: a new data point (enum value, field, config entry, allow-list token) exercising a behavior an existing test already covers belongs FOLDED into that test, not cloned as a parallel one; a change-detector already covered by a behavioral test should be dropped. This is test-quality scope — the semantic reviewer owns it (guideline: "Additional Data Point vs. New Behavior" / "Prefer Higher-Level Behavioral Tests Over Change Detectors"). Raise such a case as a finding to fold-or-drop.\n\n` +
-  `Return a verdict and findings. For every finding give a stable \`id\`, severity, file, and a one-sentence \`claim\` precise enough that another agent could reproduce it. If your scope does not apply to this diff, return verdict "pass" with no findings.`
+  `Return a verdict and findings. For every finding give a stable \`id\`, severity, file, a one-sentence \`claim\`, and its \`nature\`: "runtime" for a defect an independent agent could reproduce by executing code (correctness / concurrency / performance — make the \`claim\` precise enough to reproduce), or "quality" for a code-quality or convention violation with no runtime symptom (a comments.md comment-usage violation, a redundant or change-detector test, a naming / structure issue). "quality" findings are honored on your judgment and MUST be fixed — do not soften them into non-findings because they cannot be executed. If your scope does not apply to this diff, return verdict "pass" with no findings.`
 
 const reproPrompt = (t, f) =>
   `A reviewer claims a problem in the STAGED changes for task ${t.n}. Your job is to ESTABLISH EXECUTED EVIDENCE for or against it — do not take the claim on faith (the reviewer that raised it did not run anything).\n\n` +
@@ -454,10 +461,11 @@ const reflectPrompt = (results) =>
   `   ## <title>\n   - Type: <kind>\n   - Learning: <the durable fact>\n   - Apply when: <future situation>\n` +
   `Leave \`tasks/learnings.md\` as an UNCOMMITTED working-tree change — this skill's gate is the human's post-run diff review, so persisted steering lands in the review surface, not behind an inline prompt. Return the learnings you wrote; empty list if none survive the filter.`
 
-const buildFeedback = (unmet, realFindings) =>
+const buildFeedback = (unmet, realFindings, qualityFindings = []) =>
   [
     ...unmet.map((c) => `- Unmet acceptance criterion (no executed evidence): ${c}`),
     ...realFindings.map((v) => `- Reproduced ${v.finding_id}: ${v.note} (repro: ${v.repro?.command ?? 'see note'})`),
+    ...qualityFindings.map((f) => `- Code-quality finding to fix directly [${f.id}] (${f.file}): ${f.claim}`),
   ].join('\n')
 
 const trimEvidence = (e) =>
@@ -468,6 +476,7 @@ const trimEvidence = (e) =>
     findings: e.findings?.length ?? 0,
     reproduced_real: e.repros?.filter((v) => v.classification === 'real' && v.reproduced).length ?? 0,
     speculative: e.repros?.filter((v) => v.classification === 'speculative').length ?? 0,
+    quality_blocking: e.qualityFindings?.length ?? 0,
   }
 
 // ---------------------------------------------------------------------------
@@ -513,10 +522,17 @@ async function runTask(task) {
         )).filter(Boolean)
       : []
     const findings = reviews.flatMap((rv) => rv.findings ?? [])
+    // A quality/convention finding (comment-usage, redundant test, naming) has no
+    // runtime symptom to reproduce, so the reproduce gate would always downgrade it
+    // to "speculative" and drop it. Honor the reviewer's judgment on those directly;
+    // send only runtime findings through reproduction. Anything not explicitly
+    // "quality" defaults to the conservative reproduce path.
+    const qualityFindings = findings.filter((f) => f.nature === 'quality')
+    const runtimeFindings = findings.filter((f) => f.nature !== 'quality')
 
-    const repros = findings.length
+    const repros = runtimeFindings.length
       ? (await parallel(
-          findings.map((f) => () => agent(reproPrompt(task, f), { label: `${tag}:repro:${f.id}`, phase: 'Verify', schema: VERDICT_SCHEMA })),
+          runtimeFindings.map((f) => () => agent(reproPrompt(task, f), { label: `${tag}:repro:${f.id}`, phase: 'Verify', schema: VERDICT_SCHEMA })),
         )).filter(Boolean)
       : []
     const audit = await agent(auditPrompt(task, impl, refactor), { label: `${tag}:audit#${attempt}`, phase: 'Verify', schema: AUDIT_SCHEMA })
@@ -529,9 +545,9 @@ async function runTask(task) {
     const realFindings = repros.filter((v) => v.reproduced && v.classification === 'real')
     const speculative = repros.filter((v) => v.classification === 'speculative')
     const unmet = audit.unmet ?? []
-    evidence = { impl, refactor, findings, repros, audit }
+    evidence = { impl, refactor, findings, repros, audit, qualityFindings }
 
-    const closed = audit.test_rerun?.passed && unmet.length === 0 && realFindings.length === 0
+    const closed = audit.test_rerun?.passed && unmet.length === 0 && realFindings.length === 0 && qualityFindings.length === 0
     if (closed) {
       return {
         n: task.n,
@@ -543,8 +559,8 @@ async function runTask(task) {
       }
     }
 
-    feedback = buildFeedback(unmet, realFindings)
-    log(`${tag}: attempt ${attempt} did not close — ${unmet.length} unmet criteria, ${realFindings.length} reproduced findings`)
+    feedback = buildFeedback(unmet, realFindings, qualityFindings)
+    log(`${tag}: attempt ${attempt} did not close — ${unmet.length} unmet criteria, ${realFindings.length} reproduced findings, ${qualityFindings.length} quality findings`)
   }
 
   return {

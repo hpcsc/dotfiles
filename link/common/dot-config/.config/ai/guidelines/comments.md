@@ -18,6 +18,7 @@ A comment violates this guideline if any of the following is true:
 |---|---|
 | **Restates the code** — the identifier already says it | `// increment counter` above `counter++`; `// returns the user` above `return user` |
 | **Narrates the current task, fix, or PR** — belongs in the commit message, not the source | `// added for the email-classify flow`; `// fix for ticket APP-1234`; `// removed the old branch` |
+| **Names code by its plan position, not its role** — plan / PR / design-doc artifacts a reader of the merged code cannot see | `// reactor 1 decides, reactor 2 drafts`; `// the decide leg`; `// the on switch`; `// per design note f`; `// PR 5 wiring` |
 | **Explains a why the code, types, tests, or commit already make clear** | `// validate before saving` above an obvious validation call |
 | **References callers or ticket IDs as the only justification** | `// used by EmailReactor`; `// see PROJ-99` (without standalone reasoning) |
 | **Godoc on unexported symbols where the logic isn't subtle** | `// userRepo persists users.` on an obvious type |

@@ -107,6 +107,7 @@ Acceptance Criteria: [task.acceptance_criteria]
 Affected Files: [task.affected_files]
 Patterns to Follow: [task.patterns_to_follow]
 Test Instructions: [language-specific, using test_command]
+Comment discipline: keep comments minimal per ~/.config/ai/guidelines/comments.md — default to none; write one only when you can name the specific wrong conclusion a reader would draw without it. Never name code by its position in the plan ("reactor 1/2", "the decide leg", "the on switch", "PR N", "Task N", "design note X") or narrate the task/fix/PR — those are plan artifacts a reader of the merged code cannot see. Describe code by its domain role.
 ```
 
 If a test plan was accepted, append:
@@ -135,7 +136,7 @@ Examine:
 - Naming clarity (variables, functions, types)
 - Extraction opportunities (long functions, repeated logic)
 - Structural improvements (parameter objects, interface alignment)
-- Comment usage — read `~/.config/ai/guidelines/comments.md` and flag any new or modified comment that restates the code, narrates the task/fix/PR, references callers or ticket IDs as its sole content, applies godoc to unexported symbols without subtle logic, or could be removed without losing meaning.
+- Comment usage — read `~/.config/ai/guidelines/comments.md` and flag any new or modified comment that restates the code, narrates the task/fix/PR, names code by its position in the plan (`reactor 1/2`, `the decide leg`, `the on switch`, `PR N`, `Task N`, `design note X`), references callers or ticket IDs as its sole content, applies godoc to unexported symbols without subtle logic, or could be removed without losing meaning.
 
 Output:
 - If refactoring is needed: a numbered list, each with file, what to change, and why.

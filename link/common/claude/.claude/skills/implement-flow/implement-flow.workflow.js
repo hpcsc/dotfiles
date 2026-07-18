@@ -378,7 +378,7 @@ const auditPrompt = (t, impl, refactor) =>
   `3. List in \`unmet\` every criterion with no executed evidence, plus "tests regressed" if your re-run failed.`
 
 const commitPrompt = (t, ticket, tasksFilePath) =>
-  `Commit task ${t.n}: ${t.title}. The changes are STAGED (stage anything missing with \`git add -A\`). Create exactly ONE commit.\n` +
+  `Commit task ${t.n}: ${t.title}. The changes are already STAGED; if anything is missing, stage it by EXPLICIT path (\`git add -- <file>\` for each file this task changed) — never \`git add -A\`/\`git add .\`, which can sweep in unrelated or prior-task files and trips the individual-file-staging safety check. Create exactly ONE commit.\n` +
   `First record progress: in \`${tasksFilePath}\`, flip this task's checklist entry from \`- [ ] Task ${t.n}:\` to \`- [x] Task ${t.n}:\` and stage the file so the progress update rides in this commit. If the file has no such entry or git refuses to stage it (e.g. ignored path), continue without it — never block the commit on the checklist.\n` +
   `Apply the repo's OWN commit conventions — read CLAUDE.md / any committing guideline and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one. ` +
   (ticket ? `Weave in this ticket context per those conventions: ${ticket}. ` : '') +
@@ -413,7 +413,9 @@ const redecomposePrompt = (story, completed, remaining, reason, tasksFilePath) =
 }
 
 const finalSuitePrompt = () =>
-  `Run the full test suite (\`${TEST_CMD}\`) in the main working tree and return the raw result as a receipt (verbatim command, raw output tail, pass/fail boolean). Do not summarize away the output.`
+  `Run the full test suite (\`${TEST_CMD}\`) in the worktree that holds this run's commits — resolve it with \`git rev-parse --show-toplevel\` from the tree where the tasks were committed; do NOT assume the main checkout, which may be on another branch. ` +
+  `Return the raw result as a receipt (verbatim command, raw output tail, pass/fail boolean). Do not summarize away the output. ` +
+  `A receipt whose output shows zero tests/packages executed (e.g. a change-scoped runner printing "No Go files changed, skip running tests") proves nothing — treat it as NOT passing: set \`passed\` to false and include that line verbatim in \`raw_output_tail\`.`
 
 const finishPrompt = (tasksFilePath, integrate) =>
   `Every task in this run closed and was committed. Finish the run's bookkeeping in the main working tree:\n\n` +

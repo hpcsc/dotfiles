@@ -69,10 +69,30 @@ const cfgFor = (language) => {
   return (canonical && LANG[canonical]) || LANG.Generic
 }
 
-const TEST_CMD = args?.testCommand ?? '(detect the project test command yourself: Makefile, package.json scripts, or framework convention)'
-const MAX_RESOLVE = args?.maxResolve ?? 3
-const MAX_REPLANS = args?.maxReplans ?? 2
-const INTEGRATE = args?.integrate === true
+// The harness can deliver `args` JSON-encoded rather than as a live object —
+// either as a bare string, or as an object whose `story` holds the JSON-encoded
+// original args (which silently collapses testCommand / tasksFile / integrate to
+// undefined). Normalise both shapes back to the intended object so every field
+// is honoured; a genuine object passes through untouched.
+let ARGS = args
+if (typeof ARGS === 'string') {
+  try { const parsed = JSON.parse(ARGS); if (parsed && typeof parsed === 'object') ARGS = parsed } catch {}
+}
+if (
+  ARGS && typeof ARGS === 'object' && typeof ARGS.story === 'string' &&
+  ARGS.tasksFile === undefined && ARGS.testCommand === undefined && ARGS.integrate === undefined &&
+  ARGS.story.trim().startsWith('{')
+) {
+  try {
+    const parsed = JSON.parse(ARGS.story)
+    if (parsed && typeof parsed === 'object' && (parsed.story || parsed.tasksFile)) ARGS = parsed
+  } catch {}
+}
+
+const TEST_CMD = ARGS?.testCommand ?? '(detect the project test command yourself: Makefile, package.json scripts, or framework convention)'
+const MAX_RESOLVE = ARGS?.maxResolve ?? 3
+const MAX_REPLANS = ARGS?.maxReplans ?? 2
+const INTEGRATE = ARGS?.integrate === true
 
 // ---------------------------------------------------------------------------
 // Reviewer triage — computed from the REAL changed files, not the decompose-time
@@ -578,9 +598,9 @@ async function runTask(task) {
 // ---------------------------------------------------------------------------
 
 phase('Decompose')
-const tasksFile = typeof args === 'object' ? args?.tasksFile : undefined
-const ticket = typeof args === 'object' ? args?.ticket : undefined
-const story = (typeof args === 'string' ? args : args?.story) || (tasksFile && `the existing task breakdown at ${tasksFile}`)
+const tasksFile = typeof ARGS === 'object' ? ARGS?.tasksFile : undefined
+const ticket = typeof ARGS === 'object' ? ARGS?.ticket : undefined
+const story = (typeof ARGS === 'string' ? ARGS : ARGS?.story) || (tasksFile && `the existing task breakdown at ${tasksFile}`)
 if (!story) throw new Error('implement-flow: pass args.story (a user story) and/or args.tasksFile (an existing tasks/*.md to adopt)')
 
 // Adopt a prior breakdown verbatim when given a task file; otherwise decompose

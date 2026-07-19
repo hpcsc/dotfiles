@@ -7,7 +7,7 @@ export const meta = {
     { title: 'Implement', detail: 'per task: design tests, implement, refactor, review' },
     { title: 'Verify', detail: 'reproduce runtime findings, honor quality findings directly, audit criteria against re-executed evidence' },
     { title: 'Replan', detail: 'after a task closes, reassess and re-decompose the remaining plan if its premises changed' },
-    { title: 'Finalize', detail: 'commit closed tasks, full-suite receipt, archive task file, optional branch integration, distil learnings' },
+    { title: 'Finalize', detail: 'commit closed tasks, full-suite receipt, run-verifier pass, archive task file, optional branch integration, distil learnings' },
   ],
 }
 
@@ -299,6 +299,29 @@ const COMMIT_SCHEMA = {
   properties: { committed: { type: 'boolean' }, hash: { type: 'string' }, subject: { type: 'string' } },
 }
 
+const VERIFY_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['clean', 'findings'],
+  properties: {
+    clean: { type: 'boolean', description: 'true only when there are no block-severity findings' },
+    findings: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['check', 'severity', 'detail'],
+        properties: {
+          check: { type: 'string', enum: ['staged-tail', 'vacuous-receipt', 'dead-code', 'commit-boundary'] },
+          severity: { type: 'string', enum: ['block', 'warn'] },
+          detail: { type: 'string', description: 'file/symbol/commit + the concrete problem and its fix' },
+        },
+      },
+    },
+    learnings_path: { type: ['string', 'null'], description: "the run's learnings file, surfaced for the human; null if none" },
+  },
+}
+
 const FINISH_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -442,6 +465,13 @@ const redecomposePrompt = (story, completed, remaining, reason, tasksFilePath) =
     `<user_story>\n${story}\n</user_story>`
   )
 }
+
+const verifyBrief = (allClosed) =>
+  `Verify this just-finished implementation run. Work in the tree that holds its commits ` +
+  `(resolve with \`git rev-parse --show-toplevel\` — do NOT assume the main checkout), scoped to the run's commits ` +
+  `(\`git merge-base HEAD <default-branch>\`..HEAD). Run all your checks and return the structured verdict. ` +
+  `This run reports all tasks ${allClosed ? 'CLOSED' : 'NOT all closed'} — treat an uncalled new public symbol as ` +
+  `\`block\` only when all tasks closed; otherwise \`warn\` (a later task may wire it).`
 
 const finalSuitePrompt = () =>
   `Run the full test suite (\`${TEST_CMD}\`) in the worktree that holds this run's commits — resolve it with \`git rev-parse --show-toplevel\` from the tree where the tasks were committed; do NOT assume the main checkout, which may be on another branch. ` +
@@ -663,16 +693,23 @@ while (remaining.length) {
 
 phase('Finalize')
 const fullSuite = await agent(finalSuitePrompt(), { label: 'full-suite', phase: 'Finalize', schema: RECEIPT })
+const allClosed = results.length > 0 && remaining.length === 0 && results.every((r) => r.status === 'closed')
+
+// Independent post-run verification via the run-verifier agent — the same checks the
+// /verify-run command runs: staged-but-uncommitted tails, new public symbols with no
+// live caller (dead code), a vacuous/skipped full-suite, collapsed commit boundaries.
+// A block-severity finding fails verification and, below, blocks landing the branch.
+const verify = await agent(verifyBrief(allClosed), { label: 'verify', phase: 'Finalize', agentType: 'run-verifier', schema: VERIFY_SCHEMA })
+if (verify && !verify.clean) log(`verify: ${verify.findings.filter((f) => f.severity === 'block').length} blocking finding(s) — ${verify.findings.map((f) => f.check).join(', ') || 'none'}`)
 
 // Archive + optional integration run BEFORE reflect: reflect writes the learnings
 // file and, when it is the in-tree tasks/learnings.md, leaves it uncommitted — a
 // dirty tracked file would block the rebase. Integration additionally requires a
-// passing full-suite receipt — never land unverified commits on the default branch.
-const allClosed = results.length > 0 && remaining.length === 0 && results.every((r) => r.status === 'closed')
+// passing full-suite receipt AND a clean verification — never land unverified commits.
 let finish = null
 if (allClosed && planFile) {
-  const integrate = INTEGRATE && fullSuite?.passed === true
-  if (INTEGRATE && !integrate) log('integrate: skipped — full-suite receipt did not pass; branch left as-is')
+  const integrate = INTEGRATE && fullSuite?.passed === true && verify?.clean === true
+  if (INTEGRATE && !integrate) log('integrate: skipped — full-suite or verification did not pass; branch left as-is')
   finish = await agent(finishPrompt(planFile, integrate), { label: 'finish', phase: 'Finalize', schema: FINISH_SCHEMA })
   if (finish) {
     log(finish.tasks_file_moved_to ? `task file archived at ${finish.tasks_file_moved_to}` : `task file NOT archived — ${finish.note}`)
@@ -697,6 +734,7 @@ return {
   open: results.filter((r) => r.status === 'open').length,
   replans,
   full_suite: fullSuite,
+  verification: verify ?? { clean: false, findings: [], learnings_path: null },
   integrated: finish?.integrated ?? false,
   finish_note: finish?.note ?? null,
   learnings: reflection.learnings,

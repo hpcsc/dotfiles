@@ -343,7 +343,9 @@ After all tasks complete:
 
 1. **Run full test suite** (detected test command) in the main tree.
 
-2. **Reflect and persist learnings (human-gated write-back)**
+2. **Verify the run (review by exception).** Spawn the `run-verifier` agent in the main tree — it independently checks the finished run for staged-but-uncommitted tails, new public symbols with no live caller (dead code), a vacuous full-suite, and collapsed commit boundaries, and returns `{ clean, findings }`. If `clean`, note it and move on. If it has findings, surface each (file/symbol + severity) to the user before summarizing — a `block` means the run's "done" does not hold and needs a fix, even though every commit was individually approved.
+
+3. **Reflect and persist learnings (human-gated write-back)**
 
    The self-improvement step — it turns this run's execution into durable steering for the next one. Do it **before** cleanup, because the candidates live in `tasks/.checkpoint`.
 
@@ -363,9 +365,9 @@ After all tasks complete:
 
    If no candidates survive the filter, say so and skip — a clean run produces no learnings, and that's fine. The learnings file is durable project knowledge; if it's the in-tree `tasks/learnings.md`, offer to commit it so teammates inherit it — if it resolved out-of-tree, it's already private steering for the next run, nothing to commit.
 
-3. **Clean up** — `git worktree prune` and remove any lingering `$WT_ROOT` temp dirs. Delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (per-cycle scratch should already be gone; remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist). **Never delete the learnings file** — it persists across runs.
+4. **Clean up** — `git worktree prune` and remove any lingering `$WT_ROOT` temp dirs. Delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (per-cycle scratch should already be gone; remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist). **Never delete the learnings file** — it persists across runs.
 
-4. **Summarize**
+5. **Summarize**
    ```markdown
    ## Feature Complete: [Feature Name]
 
@@ -386,6 +388,7 @@ After all tasks complete:
    - All steps reviewed by applicable reviewers (semantic + security/performance/concurrency as needed)
    - All steps approved by human reviewer at the commit gate
    - Full test suite passing
+   - Independent run-verifier pass: [clean, or N findings surfaced]
    - Durable learnings persisted to the learnings file: [count, or none]
    ```
 

@@ -93,6 +93,10 @@ const TEST_CMD = ARGS?.testCommand ?? '(detect the project test command yourself
 const MAX_RESOLVE = ARGS?.maxResolve ?? 3
 const MAX_REPLANS = ARGS?.maxReplans ?? 2
 const INTEGRATE = ARGS?.integrate === true
+// Default keeps the legacy in-tree path, but that is NOT where a shared repo actually
+// stores learnings — the orchestrator resolves this per project (an out-of-tree private
+// store when the repo gitignores tasks/) and passes it as args.learningsPath.
+const LEARNINGS_PATH = ARGS?.learningsPath ?? 'tasks/learnings.md'
 
 // ---------------------------------------------------------------------------
 // Reviewer triage — computed from the REAL changed files, not the decompose-time
@@ -353,7 +357,7 @@ const taskHeader = (t) =>
 const decomposePrompt = (story) =>
   `Decompose the following user story into ordered, codebase-aware implementation tasks. For each task set \`language\` to the language it primarily involves, and \`depends_on\` to the task numbers it builds on (\`[]\` if none). Emit tasks in an order where every task's dependencies precede it.\n\n` +
   `Save the breakdown to \`tasks/[story-name].md\` as usual — including the \`- [ ] Task N: <title>\` checklist — and return its repo-relative path as \`tasks_file\`. The run checks entries off as tasks close, so the file doubles as restartable progress state.\n\n` +
-  `If \`tasks/learnings.md\` exists, read it first: its entries are durable conventions, recurring review findings, and constraints distilled from earlier runs in this repo. Fold the relevant ones into each task's \`patterns_to_follow\` and do not re-propose work they already cover.\n\n` +
+  `If \`${LEARNINGS_PATH}\` exists, read it first: its entries are durable conventions, recurring review findings, and constraints distilled from earlier runs in this repo. Fold the relevant ones into each task's \`patterns_to_follow\` and do not re-propose work they already cover.\n\n` +
   `From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
   `<user_story>\n${story}\n</user_story>`
 
@@ -363,7 +367,7 @@ const adoptTasksPrompt = (tasksFile) =>
   `- The file's checklist is the progress record: a task whose entry is already checked (\`- [x] Task N\`) was completed and committed by an earlier run — OMIT it from \`tasks\` so the run resumes from the first unchecked task.\n` +
   `- For any schema field the file does not state, infer conservatively from its content: \`language\` from the target stack, \`depends_on\` from stated ordering (\`[]\` if none), \`affected_files\` / \`patterns_to_follow\` from what it names (empty arrays if none), \`testable\` true unless the task is pure docs/config. \`n\` is each task's own number in the file (file order from 1 if unnumbered).\n` +
   `- Set \`tasks_file\` to \`${tasksFile}\`.\n` +
-  `If \`tasks/learnings.md\` exists you may fold relevant durable learnings into \`patterns_to_follow\`, but otherwise leave the breakdown intact.`
+  `If \`${LEARNINGS_PATH}\` exists you may fold relevant durable learnings into \`patterns_to_follow\`, but otherwise leave the breakdown intact.`
 
 const designPrompt = (t, cfg) =>
   `${taskHeader(t)}\n\nDesign the test scenarios for this task. Required reading: ${cfg.guidelines.join(', ')}. ${DISCLOSURE} ` +
@@ -434,7 +438,7 @@ const redecomposePrompt = (story, completed, remaining, reason, tasksFilePath) =
     `Current remaining tasks you are revising:\n${remainingDigest(remaining)}\n\n` +
     `Re-decompose ONLY the not-yet-started work so the story still lands. Return \`tasks\` containing just the revised remaining tasks — numbered from ${nextN} upward, dependency-ordered, with \`depends_on\` allowed to reference completed task numbers. Same fields as a normal decomposition. Keep what is still correct, drop what is now unnecessary, add what is missing.\n\n` +
     `Also update the breakdown file at \`${tasksFilePath}\` in place: leave completed tasks and their checked \`- [x]\` checklist entries untouched, replace the not-yet-started task sections and their unchecked checklist entries with the revised tasks, and return the same path as \`tasks_file\`.\n\n` +
-    `If \`tasks/learnings.md\` exists, read it and fold relevant durable learnings into \`patterns_to_follow\`. From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
+    `If \`${LEARNINGS_PATH}\` exists, read it and fold relevant durable learnings into \`patterns_to_follow\`. From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
     `<user_story>\n${story}\n</user_story>`
   )
 }
@@ -475,11 +479,11 @@ const reflectPrompt = (results) =>
   `Distil DURABLE learnings from this completed run so future runs in this repo start smarter — the self-improvement write-back. A learning is worth persisting only when it generalises beyond the one task that surfaced it.\n\n` +
   `Run digest:\n${reflectDigest(results)}\n\n` +
   `1. Inspect what actually changed: \`git log --oneline\` for this run's commits and \`git diff\` of their contents. The reproduced reviewer findings above are the richest signal — a finding class that recurred is a candidate convention.\n` +
-  `2. Read \`tasks/learnings.md\` if it exists and dedup against it on substance, not wording — propose only genuinely new learnings.\n` +
+  `2. Read \`${LEARNINGS_PATH}\` if it exists and dedup against it on substance, not wording — propose only genuinely new learnings.\n` +
   `3. FALSIFIABLE FILTER: keep a learning only when you can name the specific future mistake it prevents (the \`prevents\` field). If you cannot, it is task-specific noise — drop it. Prefer learnings evidenced across >=2 tasks or flagged by a reviewer as a repo-wide convention.\n` +
-  `4. Append every surviving learning to \`tasks/learnings.md\` (create it if missing), each as:\n` +
+  `4. Append every surviving learning to \`${LEARNINGS_PATH}\` (create it if missing), each as:\n` +
   `   ## <title>\n   - Type: <kind>\n   - Learning: <the durable fact>\n   - Apply when: <future situation>\n` +
-  `Leave \`tasks/learnings.md\` as an UNCOMMITTED working-tree change — this skill's gate is the human's post-run diff review, so persisted steering lands in the review surface, not behind an inline prompt. Return the learnings you wrote; empty list if none survive the filter.`
+  `Write to \`${LEARNINGS_PATH}\` (create if missing) and do NOT commit it: when it is the in-tree \`tasks/learnings.md\` it lands in the post-run diff for your review; when the orchestrator resolved it to the out-of-tree per-project store it is private steering for the next run. Return the learnings you wrote; empty list if none survive the filter.`
 
 const buildFeedback = (unmet, realFindings, qualityFindings = []) =>
   [
@@ -660,10 +664,10 @@ while (remaining.length) {
 phase('Finalize')
 const fullSuite = await agent(finalSuitePrompt(), { label: 'full-suite', phase: 'Finalize', schema: RECEIPT })
 
-// Archive + optional integration run BEFORE reflect: reflect leaves
-// tasks/learnings.md uncommitted by design, and a dirty tracked file would
-// block the rebase. Integration additionally requires a passing full-suite
-// receipt — never land unverified commits on the default branch.
+// Archive + optional integration run BEFORE reflect: reflect writes the learnings
+// file and, when it is the in-tree tasks/learnings.md, leaves it uncommitted — a
+// dirty tracked file would block the rebase. Integration additionally requires a
+// passing full-suite receipt — never land unverified commits on the default branch.
 const allClosed = results.length > 0 && remaining.length === 0 && results.every((r) => r.status === 'closed')
 let finish = null
 if (allClosed && planFile) {
@@ -678,12 +682,13 @@ if (allClosed && planFile) {
   log('integrate: skipped — not all tasks closed; branch and task file left in place for human review')
 }
 
-// Self-improvement write-back. Learnings are left UNCOMMITTED on purpose: this
-// skill has no inline gate, so its review surface is the human's post-run diff.
+// Self-improvement write-back. An in-tree learnings file is left UNCOMMITTED on
+// purpose (review surface = the post-run diff); an out-of-tree one is the private
+// per-project store. Either way the next run reads it back.
 const reflection = results.some((r) => r.status === 'closed')
   ? await agent(reflectPrompt(results), { label: 'reflect', phase: 'Finalize', schema: REFLECT_SCHEMA })
   : { learnings: [] }
-log(`reflect: ${reflection.learnings.length} durable learning(s) written to tasks/learnings.md`)
+log(`reflect: ${reflection.learnings.length} durable learning(s) written to ${LEARNINGS_PATH}`)
 
 return {
   story,

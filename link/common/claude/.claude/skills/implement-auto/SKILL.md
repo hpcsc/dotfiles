@@ -65,6 +65,23 @@ When a language-specific testing guideline also exists (see table above), includ
 
 ## Phase 1: Planning
 
+### Resolve the learnings file
+
+Durable learnings must persist across runs but must NOT be committed into a shared repo that gitignores `tasks/`. Resolve where this project keeps them once, and use that path (the **learnings file**) wherever learnings are read or written below:
+
+```
+if git check-ignore -q tasks/learnings.md 2>/dev/null; then
+  root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")   # main repo root, stable across worktrees
+  slug=$(echo "$root" | sed 's#/#-#g; s#^-##')
+  mkdir -p "$HOME/.claude/implement-learnings/$slug"
+  echo "$HOME/.claude/implement-learnings/$slug/learnings.md"   # shared repo → private per-project store, out of tree
+else
+  echo "tasks/learnings.md"                                     # not ignored → in-tree, shared via the repo
+fi
+```
+
+A repo that gitignores `tasks/` (collaborated with others) gets a private per-project store outside the repo: it still steers the next run but never pollutes the tree, the diff, or teammates' checkouts. A repo that tracks `tasks/learnings.md` keeps it in-tree so teammates inherit it.
+
 ### Check for Existing Task File
 
 If `$ARGUMENTS` points to an existing file in `tasks/`:
@@ -80,7 +97,7 @@ Spawn the `decompose-to-tasks` agent with the detected language inventory:
 >
 > Decompose the following user story into implementation tasks. For each task, determine which language it primarily involves and include a `language` field set to one of the detected languages above: [user story from $ARGUMENTS]
 
-**Carry forward prior learnings.** If `tasks/learnings.md` exists, read it and pass its contents to `decompose-to-tasks` as `Accumulated project learnings` with the instruction: "These are durable conventions, recurring review findings, and constraints distilled from earlier implementation runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover." This closes the self-improvement loop — learnings persisted at the end of one run steer the next run's plan.
+**Carry forward prior learnings.** If the learnings file (resolved in *Resolve the learnings file* above) exists, read it and pass its contents to `decompose-to-tasks` as `Accumulated project learnings` with the instruction: "These are durable conventions, recurring review findings, and constraints distilled from earlier implementation runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover." This closes the self-improvement loop — learnings persisted at the end of one run steer the next run's plan.
 
 For each language in the detected inventory that has a testing guideline entry in the Testing Guidelines table, pass that language-specific guideline plus `caller-patterns.md` as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Both files open with a Section Index — read the indexes first and load only the sections you need. From `caller-patterns.md`, read 'How to Identify the Caller' and the Quick Reference to understand which caller patterns lead to testable behavior. From the language-specific guideline, read the 'Unit of Behavior' section to decide whether a task delivers independently testable behavior or is only meaningful through a downstream consumer. Do not read either file end-to-end."
 
@@ -264,9 +281,9 @@ After all tasks complete:
 
    1. Read the `## Learning candidates` section from `tasks/.checkpoint`.
    2. **Filter for signal.** Keep a candidate only if it is durable and general — prefer ones observed in ≥2 tasks, or flagged by a reviewer as a project-wide convention. Drop one-off task quirks. (Recurrence plus the falsifiable filter are the noise gate — the analog of a confidence threshold.)
-   3. **Dedup** against existing entries in `tasks/learnings.md` (if it exists). Match on substance, not wording. Propose only genuinely new learnings.
-   4. **GATE — approval loop.** Present the proposed additions to `tasks/learnings.md` as a diff. Ask the user to approve, edit, reject, or select a subset. Do NOT write anything without explicit approval. (The `pending_review` gate — generated steering never goes live unreviewed.)
-   5. On approval, append approved entries to `tasks/learnings.md` (create if missing):
+   3. **Dedup** against existing entries in the learnings file (if it exists). Match on substance, not wording. Propose only genuinely new learnings.
+   4. **GATE — approval loop.** Present the proposed additions to the learnings file as a diff. Ask the user to approve, edit, reject, or select a subset. Do NOT write anything without explicit approval. (The `pending_review` gate — generated steering never goes live unreviewed.)
+   5. On approval, append approved entries to the learnings file (create if missing):
 
       ```
       ## <short title>
@@ -276,9 +293,9 @@ After all tasks complete:
       - Apply when: <the future situation where this is relevant>
       ```
 
-   If no candidates survive the filter, say so and skip — a clean run produces no learnings, and that's fine. `tasks/learnings.md` is durable project knowledge; offer to commit it so future runs and teammates inherit it.
+   If no candidates survive the filter, say so and skip — a clean run produces no learnings, and that's fine. The learnings file is durable project knowledge; if it's the in-tree `tasks/learnings.md`, offer to commit it so teammates inherit it — if it resolved out-of-tree, it's already private steering for the next run, nothing to commit.
 
-3. **Clean up** — delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (cycle scratch files are per-cycle; by this point they should all be gone, but remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist). **Never delete `tasks/learnings.md`** — it persists across runs.
+3. **Clean up** — delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (cycle scratch files are per-cycle; by this point they should all be gone, but remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist). **Never delete the learnings file** — it persists across runs.
 
 4. **Summarize**
    ```markdown
@@ -297,7 +314,7 @@ After all tasks complete:
    - All steps reviewed by applicable reviewers (semantic + security/performance/concurrency as needed)
    - All steps approved by human reviewer at the commit gate
    - Full test suite passing
-   - Durable learnings persisted to tasks/learnings.md: [count, or none]
+   - Durable learnings persisted to the learnings file: [count, or none]
    ```
 
 ---

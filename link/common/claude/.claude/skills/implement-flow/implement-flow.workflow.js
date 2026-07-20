@@ -197,6 +197,25 @@ const IMPL_SCHEMA = {
   properties: {
     files_changed: { type: 'array', items: { type: 'string' } },
     test_receipt: RECEIPT,
+    finding_dispositions: {
+      type: 'array',
+      description:
+        'REQUIRED when the revision brief lists outstanding findings: exactly one entry per listed id. An id left out is treated as unaddressed and blocks the task from closing.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'status', 'note'],
+        properties: {
+          id: { type: 'string' },
+          status: { type: 'string', enum: ['fixed', 'rejected'] },
+          note: {
+            type: 'string',
+            description:
+              'fixed = the file and what concretely changed (what was removed/added), specific enough that a reviewer can check it; rejected = why the finding does not hold',
+          },
+        },
+      },
+    },
     criteria_evidence: {
       type: 'array',
       items: {
@@ -396,10 +415,16 @@ const designPrompt = (t, cfg) =>
   `${taskHeader(t)}\n\nDesign the test scenarios for this task. Required reading: ${cfg.guidelines.join(', ')}. ${DISCLOSURE} ` +
   `From caller-patterns identify the caller pattern and read only that section plus the Quick Reference; use its assert-on / don't-assert-on tables to shape scenarios.`
 
-const implementPrompt = (t, cfg, testPlan, feedback) =>
+const implementPrompt = (t, cfg, testPlan, feedback, outstanding = []) =>
   `${taskHeader(t)}\n\nWrite failing tests first (per the approved plan), then implement until they pass. Test command: \`${TEST_CMD}\`.\n\n` +
   `Approved test plan:\n${testPlan}\n\n` +
   (feedback ? `REVISION REQUIRED — close these concrete gaps from the previous attempt:\n${feedback}\n\n` : '') +
+  (outstanding.length
+    ? `OUTSTANDING FINDINGS FROM EARLIER ATTEMPTS — return a \`finding_dispositions\` entry for EVERY id listed here.\n` +
+      outstanding.map((c) => `- [${c.finding.id}] (${c.finding.file}) ${c.finding.claim}`).join('\n') +
+      `\n\nEach entry is either status "fixed", whose note names the file and the concrete change a reviewer can go and check, or status "rejected", whose note says why the finding does not hold. ` +
+      `Leaving an id out of \`finding_dispositions\` blocks this task from closing, and so does claiming "fixed" for something a reviewer then raises again — so do not claim a fix you have not made.\n\n`
+    : '') +
   `COMMENT DISCIPLINE: keep comments minimal per ${'~/.config/ai/guidelines/comments.md'} — default to none; write one only when you can name the specific wrong conclusion a reader would draw without it. Never name code by its position in the plan ("reactor 1/2", "the decide leg", "the on switch", "PR N", "Task N", "design note X") and never narrate the task/fix/PR — those are plan artifacts a reader of the merged code cannot see. Describe code by its domain role.\n\n` +
   `EVIDENCE CONTRACT (this is non-negotiable):\n` +
   `- Actually RUN \`${TEST_CMD}\` and return its real output tail in \`test_receipt\` — verbatim command, raw output, pass/fail boolean. A narrated "tests pass" is rejected.\n` +
@@ -515,11 +540,15 @@ const reflectPrompt = (results) =>
   `   ## <title>\n   - Type: <kind>\n   - Learning: <the durable fact>\n   - Apply when: <future situation>\n` +
   `Write to \`${LEARNINGS_PATH}\` (create if missing) and do NOT commit it: when it is the in-tree \`tasks/learnings.md\` it lands in the post-run diff for your review; when the orchestrator resolved it to the out-of-tree per-project store it is private steering for the next run. Return the learnings you wrote; empty list if none survive the filter.`
 
-const buildFeedback = (unmet, realFindings, qualityFindings = []) =>
+const buildFeedback = (unmet, realFindings, qualityFindings = [], undisposed = [], falseFixed = []) =>
   [
     ...unmet.map((c) => `- Unmet acceptance criterion (no executed evidence): ${c}`),
     ...realFindings.map((v) => `- Reproduced ${v.finding_id}: ${v.note} (repro: ${v.repro?.command ?? 'see note'})`),
     ...qualityFindings.map((f) => `- Code-quality finding to fix directly [${f.id}] (${f.file}): ${f.claim}`),
+    ...undisposed.map((c) => `- Finding [${c.finding.id}] raised earlier is still undisposed — fix it or reject it with a reason`),
+    ...falseFixed.map(
+      (c) => `- Finding [${c.finding.id}] was reported "fixed" ("${c.note}") but a reviewer raised it again — the claimed fix did not land`,
+    ),
   ].join('\n')
 
 const trimEvidence = (e) =>
@@ -531,6 +560,7 @@ const trimEvidence = (e) =>
     reproduced_real: e.repros?.filter((v) => v.classification === 'real' && v.reproduced).length ?? 0,
     speculative: e.repros?.filter((v) => v.classification === 'speculative').length ?? 0,
     quality_blocking: e.qualityFindings?.length ?? 0,
+    quality_advisory: e.advisoryQuality?.length ?? 0,
   }
 
 // ---------------------------------------------------------------------------
@@ -551,12 +581,18 @@ async function runTask(task) {
   let feedback = null
   let evidence = null
   let attemptsUsed = 0
+  // Findings survive the attempt that raised them. Reviewer output is not a
+  // function of the diff — the same untouched code can be flagged, skipped, then
+  // flagged again — so a finding that is merely not re-raised must not read as
+  // resolved. Every id stays here until the implementer says fixed or rejected.
+  const carried = new Map()
 
   for (let attempt = 1; attempt <= MAX_RESOLVE; attempt++) {
     attemptsUsed = attempt
+    const outstanding = [...carried.values()].filter((c) => c.status === 'open')
     // agent() returns null if a subagent dies on a terminal error after retries.
     // Guard the critical stages so one dead agent fails just this task, not the run.
-    const impl = await agent(implementPrompt(task, cfg, testPlan, feedback), {
+    const impl = await agent(implementPrompt(task, cfg, testPlan, feedback, outstanding), {
       label: `${tag}:impl#${attempt}`, phase: 'Implement', agentType: cfg.implementer, schema: IMPL_SCHEMA,
     })
     if (!impl) {
@@ -575,13 +611,30 @@ async function runTask(task) {
           reviewers.map((r) => () => agent(reviewPrompt(task), { label: `${tag}:review:${r}`, phase: 'Implement', agentType: r, schema: REVIEW_SCHEMA })),
         )).filter(Boolean)
       : []
+    for (const d of impl.finding_dispositions ?? []) {
+      const c = carried.get(d.id)
+      if (c) Object.assign(c, { status: d.status, note: d.note, disposedAt: attempt })
+    }
+
     const findings = reviews.flatMap((rv) => rv.findings ?? [])
+    for (const f of findings) {
+      const c = carried.get(f.id)
+      if (!c) carried.set(f.id, { finding: f, status: 'open', raisedAt: attempt })
+      else if (c.status === 'fixed') Object.assign(c, { status: 'open', reraisedAt: attempt })
+    }
     // A quality/convention finding (comment-usage, redundant test, naming) has no
     // runtime symptom to reproduce, so the reproduce gate would always downgrade it
     // to "speculative" and drop it. Honor the reviewer's judgment on those directly;
     // send only runtime findings through reproduction. Anything not explicitly
     // "quality" defaults to the conservative reproduce path.
-    const qualityFindings = findings.filter((f) => f.nature === 'quality')
+    //
+    // Of those, only a high-severity one is worth stalling a task whose suite is
+    // green. Low and medium — a redundant test, a naming nit — ride out on the
+    // closed task's `unresolved` list so they reach the human reviewing the branch
+    // instead of burning the revision budget and stopping the chain behind them.
+    const allQuality = findings.filter((f) => f.nature === 'quality')
+    const qualityFindings = allQuality.filter((f) => f.severity === 'high')
+    const advisoryQuality = allQuality.filter((f) => f.severity !== 'high')
     const runtimeFindings = findings.filter((f) => f.nature !== 'quality')
 
     const repros = runtimeFindings.length
@@ -599,22 +652,57 @@ async function runTask(task) {
     const realFindings = repros.filter((v) => v.reproduced && v.classification === 'real')
     const speculative = repros.filter((v) => v.classification === 'speculative')
     const unmet = audit.unmet ?? []
-    evidence = { impl, refactor, findings, repros, audit, qualityFindings }
 
-    const closed = audit.test_rerun?.passed && unmet.length === 0 && realFindings.length === 0 && qualityFindings.length === 0
+    // Blocking-ness is only knowable once reproduction has run, so stamp it here:
+    // a high-severity quality finding, or a runtime one an independent agent
+    // actually reproduced. Advisory findings are still carried and still reported —
+    // they just never stall the task.
+    const blockingIDs = new Set([...qualityFindings.map((f) => f.id), ...realFindings.map((v) => v.finding_id)])
+    for (const id of blockingIDs) {
+      const c = carried.get(id)
+      if (c) c.blocking = true
+    }
+    // An earlier BLOCKING finding the implementer neither fixed nor rejected, and
+    // one it claimed to have fixed that a reviewer then raised again: the first is
+    // work silently skipped, the second a false report of work done. Neither can be
+    // allowed to pass as resolved just because a later review happened not to
+    // mention it — reviewer output is not a function of the diff.
+    const falseFixed = [...carried.values()].filter((c) => c.reraisedAt === attempt && c.blocking)
+    const undisposed = [...carried.values()].filter(
+      (c) => c.blocking && c.status === 'open' && c.raisedAt < attempt && c.reraisedAt !== attempt,
+    )
+    const carriedOut = [...carried.values()]
+      .filter((c) => c.status !== 'fixed')
+      .map((c) =>
+        c.status === 'rejected'
+          ? `rejected by implementer: [${c.finding.id}] (${c.finding.file}) ${c.finding.claim} — ${c.note}`
+          : `advisory ${c.finding.severity} ${c.finding.nature}: [${c.finding.id}] (${c.finding.file}) ${c.finding.claim}`,
+      )
+    evidence = { impl, refactor, findings, repros, audit, qualityFindings, advisoryQuality }
+
+    const closed =
+      audit.test_rerun?.passed &&
+      unmet.length === 0 &&
+      realFindings.length === 0 &&
+      qualityFindings.length === 0 &&
+      undisposed.length === 0 &&
+      falseFixed.length === 0
     if (closed) {
       return {
         n: task.n,
         title: task.title,
         status: 'closed',
         attempts: attempt,
-        unresolved: speculative.map((s) => `speculative: ${s.finding_id} — ${s.note}`),
+        unresolved: [...speculative.map((s) => `speculative: ${s.finding_id} — ${s.note}`), ...carriedOut],
         evidence,
       }
     }
 
-    feedback = buildFeedback(unmet, realFindings, qualityFindings)
-    log(`${tag}: attempt ${attempt} did not close — ${unmet.length} unmet criteria, ${realFindings.length} reproduced findings, ${qualityFindings.length} quality findings`)
+    feedback = buildFeedback(unmet, realFindings, qualityFindings, undisposed, falseFixed)
+    log(
+      `${tag}: attempt ${attempt} did not close — ${unmet.length} unmet criteria, ${realFindings.length} reproduced findings, ` +
+        `${qualityFindings.length} blocking quality (${advisoryQuality.length} advisory), ${undisposed.length} undisposed, ${falseFixed.length} falsely reported fixed`,
+    )
   }
 
   return {

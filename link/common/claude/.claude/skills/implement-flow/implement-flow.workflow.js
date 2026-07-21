@@ -221,10 +221,15 @@ const IMPL_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['criterion', 'kind', 'command', 'raw_output_tail', 'satisfied'],
+        required: ['criterion', 'kind', 'persisted_test', 'command', 'raw_output_tail', 'satisfied'],
         properties: {
           criterion: { type: 'string' },
           kind: { type: 'string', enum: ['test', 'demo'] },
+          persisted_test: {
+            type: 'string',
+            description:
+              'When kind is "test": "<repo-relative file path>::<test name>" naming the test that proves this criterion AS IT EXISTS IN THE FINAL TREE — the file must still be present and the test still runnable when you finish. A scratch/probe file you delete afterwards is NOT evidence. Empty string ONLY when kind is "demo".',
+          },
           command: { type: 'string' },
           raw_output_tail: { type: 'string' },
           satisfied: { type: 'boolean' },
@@ -303,11 +308,23 @@ const AUDIT_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['criterion', 'has_executed_evidence'],
-        properties: { criterion: { type: 'string' }, has_executed_evidence: { type: 'boolean' } },
+        required: ['criterion', 'has_executed_evidence', 'evidence_persists'],
+        properties: {
+          criterion: { type: 'string' },
+          has_executed_evidence: { type: 'boolean' },
+          evidence_persists: {
+            type: 'boolean',
+            description:
+              'For kind:test evidence — true only when you confirmed the cited file exists in the working tree AND re-ran the named test yourself and it selected and passed. False when the citation names a file or test that does not resolve (a deleted scratch/probe file: the evidence was destroyed). For kind:demo evidence with no persisted test, judge on the demonstration and set true.',
+          },
+        },
       },
     },
-    unmet: { type: 'array', items: { type: 'string' }, description: 'criteria with no executed evidence, or whose evidence shows failure' },
+    unmet: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'criteria with no executed evidence, whose evidence shows failure, or whose cited test no longer resolves (evidence_persists false)',
+    },
   },
 }
 
@@ -429,6 +446,8 @@ const implementPrompt = (t, cfg, testPlan, feedback, outstanding = []) =>
   `EVIDENCE CONTRACT (this is non-negotiable):\n` +
   `- Actually RUN \`${TEST_CMD}\` and return its real output tail in \`test_receipt\` — verbatim command, raw output, pass/fail boolean. A narrated "tests pass" is rejected.\n` +
   `- For EACH acceptance criterion, attach \`criteria_evidence\`: a named test (kind:test) or, for behavior a unit test can't express, an executed demonstration (kind:demo) — with the exact command and its raw output tail. Mark \`satisfied\` only from what the output actually shows.\n` +
+  `- EVIDENCE MUST PERSIST. A test that proves a criterion belongs IN the real test file, written there from the start — never in a scratch file you run once and delete. Before you finish, every \`persisted_test\` you cite must still exist and still run; the auditor re-runs them by name and a citation that no longer resolves is a vacuous receipt that blocks the task.\n` +
+  `  A throwaway probe is legitimate ONLY when it answers a question for YOU (is this branch reachable, is this perf concern real) and NO criterion rests on it. Before deleting any test file, ask: "does an acceptance criterion lose its proof if this goes?" If yes, it was never a scratch file — fold it into the committed test file instead.\n` +
   `Leave all changes STAGED. Do NOT commit.`
 
 const refactorPrompt = (t, cfg, impl) =>
@@ -449,12 +468,20 @@ const reproPrompt = (t, f) =>
   `If you reproduce it, set reproduced=true, classification="real", and put the exact command + raw output in \`repro\`. ` +
   `If you cannot reproduce it after a genuine attempt, set reproduced=false, classification="speculative", and explain what you tried in \`note\`. Default to "speculative" when uncertain — an unreproduced claim is an assertion, not evidence.`
 
+const citedEvidenceDigest = (impl) => {
+  const cited = (impl.criteria_evidence ?? []).filter((e) => e.kind === 'test' && e.persisted_test)
+  if (!cited.length) return 'The implementer cited NO persisted tests — every criterion below therefore rests on a demo or on nothing; scrutinise accordingly.'
+  return cited.map((e) => `  - "${e.criterion}" -> ${e.persisted_test}`).join('\n')
+}
+
 const auditPrompt = (t, impl, refactor) =>
   `Independently audit task ${t.n} against its acceptance criteria. Do NOT trust the implementer's self-report — re-execute.\n\n${taskHeader(t)}\n\n` +
   `The implementer reported these receipts (verify, do not assume): impl test \`${impl.test_receipt.command}\` -> passed=${impl.test_receipt.passed}; refactor outcome "${refactor.outcome}".\n\n` +
+  `It cited these persisted tests as the proof of its criteria:\n${citedEvidenceDigest(impl)}\n\n` +
   `1. RUN \`${TEST_CMD}\` yourself in the working tree and return the raw result as \`test_rerun\` (this is the executed-evidence check against a possibly-fabricated implementer receipt).\n` +
-  `2. For each acceptance criterion, decide \`has_executed_evidence\` strictly: is there a test or demonstration whose ACTUAL output shows the criterion met? Narration does not count.\n` +
-  `3. List in \`unmet\` every criterion with no executed evidence, plus "tests regressed" if your re-run failed.`
+  `2. VERIFY EVERY CITATION RESOLVES. For each cited \`<file>::<test name>\` above: confirm the file exists in the working tree, then re-run that test BY NAME (e.g. \`go test -run 'TestX/sub' ./pkg/\`, \`pytest path::test\`, per this project's runner) and confirm it actually SELECTS a test and passes. A runner that matches nothing exits 0 while running zero tests — "no tests to run"/"0 passed"/"testing: warning: no tests to run" is a FAILED citation, not a pass. Set \`evidence_persists\` false for any citation naming a file or test that does not resolve: that means the implementer produced the evidence and then deleted it, which is a vacuous receipt.\n` +
+  `3. For each acceptance criterion, decide \`has_executed_evidence\` strictly: is there a test or demonstration whose ACTUAL output shows the criterion met? Narration does not count.\n` +
+  `4. List in \`unmet\` every criterion with no executed evidence OR with \`evidence_persists\` false (say which, and name the missing file/test), plus "tests regressed" if your re-run failed.`
 
 const commitPrompt = (t, ticket, tasksFilePath) =>
   `Commit task ${t.n}: ${t.title}. The changes are already STAGED; if anything is missing, stage it by EXPLICIT path (\`git add -- <file>\` for each file this task changed) — never \`git add -A\`/\`git add .\`, which can sweep in unrelated or prior-task files and trips the individual-file-staging safety check. Create exactly ONE commit.\n` +
@@ -651,7 +678,16 @@ async function runTask(task) {
 
     const realFindings = repros.filter((v) => v.reproduced && v.classification === 'real')
     const speculative = repros.filter((v) => v.classification === 'speculative')
-    const unmet = audit.unmet ?? []
+    // A criterion whose cited test no longer resolves is evidence the implementer
+    // produced and then deleted — the exact shape of a scratch/probe file written to
+    // satisfy a receipt and removed before finishing. Fold it into `unmet` here rather
+    // than trusting the auditor to have carried it across from `criteria`, so the
+    // destroyed-evidence case blocks closure structurally.
+    const destroyed = (audit.criteria ?? [])
+      .filter((c) => c.evidence_persists === false)
+      .map((c) => `${c.criterion} — cited test no longer resolves in the tree (evidence was produced then deleted; write it into the real test file)`)
+    const unmet = [...new Set([...(audit.unmet ?? []), ...destroyed])]
+    if (destroyed.length) log(`${tag}: ${destroyed.length} criterion(s) cite a test that no longer resolves`)
 
     // Blocking-ness is only knowable once reproduction has run, so stamp it here:
     // a high-severity quality finding, or a runtime one an independent agent

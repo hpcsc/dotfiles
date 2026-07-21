@@ -38,6 +38,8 @@ Because it is gate-free and auto-commits, the safety boundary is the **branch + 
    ```
    A repo that gitignores `tasks/` (collaborated with others) gets a private per-project store outside the repo: it still steers the next run but never pollutes the tree, the diff, or teammates' checkouts — and, unlike the old gitignored-in-tree file, it survives worktree teardown between runs.
 
+   **If the launch request explicitly names a learnings path, use it verbatim and skip this recipe.** An explicit path lets a caller that runs several worktrees of one repo in parallel — which share a git-common-dir, and would otherwise collapse onto the same repo-keyed default — give each run its own learnings file.
+
 ---
 
 ## How to launch

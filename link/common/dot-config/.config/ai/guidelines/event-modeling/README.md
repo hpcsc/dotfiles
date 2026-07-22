@@ -12,9 +12,9 @@ Guidance for discovering, designing, and diagramming event-driven models — cap
 ### Designing events
 
 - [one-or-many-events.md](one-or-many-events.md) — should one operation record one event or several? Prefer single; split only for distinct business facts, not code reuse.
-- [separate-events-vs-discriminated-field.md](separate-events-vs-discriminated-field.md) — should a variant be its own event type or a field on one event? Decide on the behavior-vs-data axis.
+- [separate-events-vs-discriminated-field.md](separate-events-vs-discriminated-field.md) — should a variant be its own event type or a field on one event? Decide on the behavior-vs-data axis, and re-ask it at each lifecycle stage.
 - [multiple-producers.md](multiple-producers.md) — when may multiple handlers emit the *same* event type? Cohesion (same outcome) vs false equivalence (different scenarios forced into one shape), with coupling tests.
-- [external-communications.md](external-communications.md) — modeling outbound email/SMS/letters/API calls: trigger on meaningful domain events, record delivery facts on confirmation, model your domain not the provider's.
+- [external-communications.md](external-communications.md) — modeling outbound email/SMS/letters/API calls: trigger on meaningful domain events, record delivery facts on confirmation, keep delivery one event across message kinds, model your domain not the provider's.
 
 ### Avoiding mistakes
 
@@ -33,6 +33,7 @@ Guidance for discovering, designing, and diagramming event-driven models — cap
 | Decide between a new event type and a discriminator field | [separate-events-vs-discriminated-field.md](separate-events-vs-discriminated-field.md) |
 | Decide whether two handlers may share an event type | [multiple-producers.md](multiple-producers.md) |
 | Model an email / SMS / external call | [external-communications.md](external-communications.md) |
+| Decide how many delivery events several message kinds need | [external-communications.md](external-communications.md) |
 | Label what implements each arrow in the model | [message-processing-patterns.md](message-processing-patterns.md) |
 | Sanity-check a model for smells | [anti-patterns.md](anti-patterns.md) |
 | Draw the diagram | [diagram-templates.md](diagram-templates.md) |

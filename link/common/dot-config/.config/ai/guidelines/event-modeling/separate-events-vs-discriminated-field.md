@@ -45,6 +45,14 @@ Everything below is a refinement of this one question.
 
 **Lumping too far — false equivalence.** Don't force different business scenarios into one type with a discriminator just because they have similar effects. If handlers must load extra state and switch to react correctly, the discriminator is hiding a real type boundary (see ["False Equivalence"](anti-patterns.md)).
 
+## The answer can differ by lifecycle stage
+
+Ask the question separately at each stage of an entity's life. A distinction that earns separate types at one stage does not automatically carry to the next.
+
+Several kinds of outbound message may differ enough in intent to deserve their own events when composed, yet share one delivery event, because "did it arrive" does not vary by intent. The resulting asymmetry — many events at one stage, one at the next — is a correct model, not an inconsistency to tidy up.
+
+Where consumers plainly branch, the behavioral question already answers it. Where it is less clear, ask about the producer instead: **can whatever records the fact at this stage even see the distinction?** If a provider callback reports delivery and knows nothing about the message's intent, no consumer can ever branch on what was never recorded — the distinction belongs to an earlier stage. That question you can settle by looking; "will these ever diverge?" you cannot. See [external-communications.md](external-communications.md) for the worked example, and for why one type is the cheaper default when the answer stays unclear.
+
 ## Don't discriminate on downstream or derived data
 
 A discriminator must be a fact true **at the moment the event occurred**. Never categorize an upstream event by reaching into a downstream aggregate's state or id (e.g. tagging a detection event with the `caseId` it later produces). That couples the event to a future it cannot yet know and breaks replay. If the only way to set the discriminator is to look downstream, you're modeling the wrong fact.

@@ -263,12 +263,23 @@ const REVIEW_SCHEMA = {
         required: ['id', 'severity', 'nature', 'file', 'claim'],
         properties: {
           id: { type: 'string' },
-          severity: { type: 'string', enum: ['low', 'medium', 'high'] },
+          severity: {
+            type: 'string',
+            enum: ['low', 'medium', 'high'],
+            description:
+              'How bad the finding is, judged honestly — NOT whether it blocks. The block decision is made downstream from (nature, quality_kind, severity); never inflate severity to force a block. low = a genuine nit you would not hold a PR for; medium = you would ask for the change before merge; high = serious.',
+          },
           nature: {
             type: 'string',
             enum: ['runtime', 'quality'],
             description:
-              'runtime = a defect with observable runtime behavior an independent agent can reproduce by executing code (a failing test, -race, benchmark, direct run) — correctness, concurrency, performance. quality = a code-quality/convention violation with no runtime symptom (a comments.md comment-usage violation, a redundant / change-detector test, a naming or structure issue). quality findings block on the reviewer judgment; runtime findings block only if independently reproduced.',
+              'runtime = a defect with observable runtime behavior an independent agent can reproduce by executing code (a failing test, -race, benchmark, direct run) — correctness, concurrency, performance. quality = a code-quality/convention violation with no runtime symptom (a comments.md comment-usage violation, a redundant / change-detector test, a naming or structure issue).',
+          },
+          quality_kind: {
+            type: 'string',
+            enum: ['comment-usage', 'redundant-test', 'broken-test', 'other'],
+            description:
+              'Required when nature="quality"; classify the violation. comment-usage = a ~/.config/ai/guidelines/comments.md violation. redundant-test = a cloned data-point / change-detector test that should fold into an existing test or be dropped. broken-test = a test that provides no value — a tautology, a vacuous passthrough / constant-pin (passes even if the code under test is a stub), a call-count-only assertion, or a test with no behavioral assertion; it must assert real behavior or be deleted. These three are non-negotiable: they block the task at ANY severity. "other" (naming, structure) blocks at medium or above. Classify honestly — the block decision keys off this, not off severity.',
           },
           file: { type: 'string' },
           line: { type: 'integer' },
@@ -458,8 +469,10 @@ const refactorPrompt = (t, cfg, impl) =>
 
 const reviewPrompt = (t) =>
   `Review the STAGED changes for this task. Use \`git diff --staged\` and \`git diff --staged --name-only\`.\n\n${taskHeader(t)}\n\n` +
-  `When the diff adds or changes tests, do NOT judge them from the diff alone — read the WHOLE test file and weigh each new/changed test against the tests already there. A behaviorally-valid test still fails review if it is REDUNDANT: a new data point (enum value, field, config entry, allow-list token) exercising a behavior an existing test already covers belongs FOLDED into that test, not cloned as a parallel one; a change-detector already covered by a behavioral test should be dropped. This is test-quality scope — the semantic reviewer owns it (guideline: "Additional Data Point vs. New Behavior" / "Prefer Higher-Level Behavioral Tests Over Change Detectors"). Raise such a case as a finding to fold-or-drop.\n\n` +
-  `Return a verdict and findings. For every finding give a stable \`id\`, severity, file, a one-sentence \`claim\`, and its \`nature\`: "runtime" for a defect an independent agent could reproduce by executing code (correctness / concurrency / performance — make the \`claim\` precise enough to reproduce), or "quality" for a code-quality or convention violation with no runtime symptom (a comments.md comment-usage violation, a redundant or change-detector test, a naming / structure issue). "quality" findings are honored on your judgment and MUST be fixed — do not soften them into non-findings because they cannot be executed. If your scope does not apply to this diff, return verdict "pass" with no findings.`
+  `When the diff adds or changes tests, do NOT judge them from the diff alone — read the WHOLE test file and weigh each new/changed test against the tests already there. A behaviorally-valid test still fails review if it is REDUNDANT: a new data point (enum value, field, config entry, allow-list token) exercising a behavior an existing test already covers belongs FOLDED into that test, not cloned as a parallel one; a change-detector already covered by a behavioral test should be dropped. This is test-quality scope — the semantic reviewer owns it (guideline: "Additional Data Point vs. New Behavior" / "Prefer Higher-Level Behavioral Tests Over Change Detectors"). Raise such a case as a \`quality\` finding classified \`quality_kind: "redundant-test"\` to fold-or-drop; it is non-negotiable and blocks at any severity, so rate its severity honestly rather than inflating it to force the block.\n\n` +
+  `Separately, a test that provides NO value is not a nit to defer: a tautology (expected value derived from the code under test at runtime), a vacuous passthrough or constant-pin (it still passes if the code under test is replaced by a stub returning a constant or forwarding a collaborator's value verbatim — the substitution test), a call-count-only assertion, or a test with no behavioral assertion at all. Raise it as a \`quality\` finding classified \`quality_kind: "broken-test"\`; it is non-negotiable and blocks at any severity. The fix is to make it assert real behavior or delete it.\n\n` +
+  `Likewise weigh every new or changed comment against ${'~/.config/ai/guidelines/comments.md'}: a comment that only restates what the code already says, or names code by its plan position ("PR/Task N", "reactor 1/2", "the decide leg") rather than its domain role, is a comment-usage violation. Raise it as a \`quality\` finding classified \`quality_kind: "comment-usage"\` — also non-negotiable, also blocks at any severity.\n\n` +
+  `Return a verdict and findings. For every finding give a stable \`id\`, an honest \`severity\`, \`file\`, a one-sentence \`claim\`, and its \`nature\`: "runtime" for a defect an independent agent could reproduce by executing code (correctness / concurrency / performance — make the \`claim\` precise enough to reproduce), or "quality" for a code-quality or convention violation with no runtime symptom. For every "quality" finding also set \`quality_kind\` (comment-usage / redundant-test / broken-test / other). Do NOT drop a quality finding just because it cannot be executed, and do NOT inflate severity to force a block — the block decision is made downstream from nature and quality_kind, where comment-usage, redundant-test and broken-test block at any severity and other quality findings block at medium or above. If your scope does not apply to this diff, return verdict "pass" with no findings.`
 
 const reproPrompt = (t, f) =>
   `A reviewer claims a problem in the STAGED changes for task ${t.n}. Your job is to ESTABLISH EXECUTED EVIDENCE for or against it — do not take the claim on faith (the reviewer that raised it did not run anything).\n\n` +
@@ -649,19 +662,24 @@ async function runTask(task) {
       if (!c) carried.set(f.id, { finding: f, status: 'open', raisedAt: attempt })
       else if (c.status === 'fixed') Object.assign(c, { status: 'open', reraisedAt: attempt })
     }
-    // A quality/convention finding (comment-usage, redundant test, naming) has no
-    // runtime symptom to reproduce, so the reproduce gate would always downgrade it
-    // to "speculative" and drop it. Honor the reviewer's judgment on those directly;
-    // send only runtime findings through reproduction. Anything not explicitly
-    // "quality" defaults to the conservative reproduce path.
+    // A quality/convention finding has no runtime symptom to reproduce, so the
+    // reproduce gate would always downgrade it to "speculative" and drop it. Send only
+    // runtime findings through reproduction; decide quality findings here on the
+    // reviewer's classification. Anything not explicitly "quality" defaults to the
+    // conservative reproduce path.
     //
-    // Of those, only a high-severity one is worth stalling a task whose suite is
-    // green. Low and medium — a redundant test, a naming nit — ride out on the
-    // closed task's `unresolved` list so they reach the human reviewing the branch
-    // instead of burning the revision budget and stopping the chain behind them.
+    // Blocking is a policy decision kept HERE, decoupled from the reviewer's severity —
+    // severity stays an honest "how bad" signal so it is never inflated to force a block.
+    // comment-usage violations and broken or redundant tests are non-negotiable and
+    // block at any severity. Other quality findings (a naming nit, a minor structure quibble)
+    // block only at medium or above; a genuine `low` rides out on the closed task's
+    // `unresolved` list so it reaches the human reviewing the branch instead of burning
+    // the revision budget and stopping the chain behind it.
+    const NON_NEGOTIABLE_QUALITY = new Set(['comment-usage', 'redundant-test', 'broken-test'])
+    const qualityBlocks = (f) => NON_NEGOTIABLE_QUALITY.has(f.quality_kind) || f.severity !== 'low'
     const allQuality = findings.filter((f) => f.nature === 'quality')
-    const qualityFindings = allQuality.filter((f) => f.severity === 'high')
-    const advisoryQuality = allQuality.filter((f) => f.severity !== 'high')
+    const qualityFindings = allQuality.filter(qualityBlocks)
+    const advisoryQuality = allQuality.filter((f) => !qualityBlocks(f))
     const runtimeFindings = findings.filter((f) => f.nature !== 'quality')
 
     const repros = runtimeFindings.length
@@ -849,7 +867,12 @@ if (allClosed && planFile) {
 const reflection = results.some((r) => r.status === 'closed')
   ? await agent(reflectPrompt(results), { label: 'reflect', phase: 'Finalize', schema: REFLECT_SCHEMA })
   : { learnings: [] }
-log(`reflect: ${reflection.learnings.length} durable learning(s) written to ${LEARNINGS_PATH}`)
+// agent() yields null when the subagent dies on a terminal API error, and reflect
+// runs last: without this the whole finalize phase is thrown away by a transient 529.
+const learnings = reflection?.learnings ?? []
+log(reflection
+  ? `reflect: ${learnings.length} durable learning(s) written to ${LEARNINGS_PATH}`
+  : 'reflect: agent returned nothing — no learnings written this run')
 
 return {
   story,
@@ -861,7 +884,7 @@ return {
   verification: verify ?? { clean: false, findings: [], learnings_path: null },
   integrated: finish?.integrated ?? false,
   finish_note: finish?.note ?? null,
-  learnings: reflection.learnings,
+  learnings,
   tasks: results.map((r) => ({
     n: r.n,
     title: r.title,

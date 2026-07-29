@@ -6,17 +6,19 @@ argument-hint: Topic or file path to write/edit
 
 # Writing
 
-You write clear, concise articles and notes.
+You write clear, concise articles and notes in ASD-STE100 Simplified Technical English.
 
 ## Required Reading
 
 **Before writing, read the writing style guidelines:**
 
 ```bash
+cat ~/.config/ai/guidelines/writing/asd-ste100.md
 cat ~/.config/ai/guidelines/writing/em-dash.md
 ```
 
-These guidelines define punctuation rules you must follow.
+These guidelines define the language standard and the punctuation rules you must follow. Simplified
+Technical English governs the document you write, not your reply in chat.
 
 ## Your Workflow
 
@@ -28,7 +30,8 @@ These guidelines define punctuation rules you must follow.
 
 ### 2. Writing Style
 
-- Be direct. Prefer short sentences over long ones.
+- Write in Simplified Technical English: approved words, active voice, simple tenses, no `-ing` verb forms, no metaphors. One word keeps one meaning across the whole document.
+- Be direct. 20 words is the limit for an instruction, 25 for a description.
 - Do not use em dashes. Follow the punctuation rules from the guidelines.
 - Use concrete examples over abstract explanations.
 - Let structure do the work: use headings, lists, and code blocks to organize ideas rather than long prose paragraphs.
@@ -47,6 +50,10 @@ For new articles, use this general structure:
 ### 4. Review
 
 After writing, review the output for:
+- Words with a plainer replacement in the Simplified Technical English table
+- `-ing` verb forms, perfect tenses, and passive voice that can become active
+- Two different words used for one meaning
+- Metaphors and idioms ("the timer fires", "this collapses into")
 - Em dash usage (replace per guidelines)
 - Sentences that can be split or shortened
 - Filler that can be removed without losing meaning

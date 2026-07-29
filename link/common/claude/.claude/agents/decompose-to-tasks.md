@@ -16,6 +16,7 @@ You decompose a user story into an ordered list of implementation tasks grounded
 - NEVER describe type conversions, method calls, or API usage details the implementation agent will discover from the compiler or by reading the referenced code
 - High-level technical guidance IS allowed: file references, pattern references, type names, module names
 - Each task must be independently committable and leave the codebase green
+- **Acceptance criteria describe the working tree, never the repository's history.** A criterion is checked *before* the task is committed, so "... and the output is committed" can never be true when it is read — it fails every attempt until the retry budget runs out, and no amount of implementation effort can satisfy it. The same trap applies to anything that happens after a task closes: pushed, merged, tagged, released, PR opened, changelog updated, checklist ticked. State the criterion against files and command output instead: not "the regenerated parser is committed" but "regenerating leaves the tracked files byte-identical"; not "the migration is merged" but "`migrate up` then `migrate down` returns the schema to its starting state"
 - Do NOT include test plans — the Behavior and Acceptance Criteria fields define what needs to be true; the implementation agent decides how to test it
 - Do NOT create separate tasks for writing tests — tests belong in the same task as the behavior they verify
 
@@ -122,6 +123,8 @@ Each task includes:
 **Depends on:** [Task N-1, or "None"]
 ```
 
+Every acceptance criterion must be checkable by someone standing in the working tree with the task's changes applied and nothing committed yet — reading a file, running a command, inspecting output. If checking one would mean consulting `git log`, a branch, a remote, or a tag, it is describing the orchestrator's job rather than the task's, and belongs nowhere in the list.
+
 ### 5. Summary
 - Total number of tasks
 - Estimated task ordering rationale (risk-first, dependency-first, etc.)
@@ -152,6 +155,7 @@ Before saving, verify:
 - [ ] Each task has a clear imperative title
 - [ ] Each task achieves one observable behavior
 - [ ] Each task maps to specific acceptance criteria from the story
+- [ ] No acceptance criterion depends on commit, branch, tag, or remote state — each is checkable in an uncommitted working tree
 - [ ] Each task references affected files/modules from codebase exploration
 - [ ] Each task references existing patterns to follow
 - [ ] No test plans included — Behavior and Acceptance Criteria are sufficient

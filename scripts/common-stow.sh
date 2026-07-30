@@ -16,6 +16,7 @@ common_packages=(
   zsh
   tmux
   shell
+  task
 )
 
 function backup() {

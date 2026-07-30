@@ -1,0 +1,52 @@
+version: '3'
+
+# Global Taskfile, run with `task -g <name>` from anywhere.
+#
+# Tasks here must work in whatever repo the caller is standing in, so each one
+# sets `dir: '{{.USER_WORKING_DIR}}'`. Without it `task -g` runs in $HOME — the
+# tasks would scan the home directory and report nothing.
+
+tasks:
+  progress:
+    desc: Show delivered/in-flight story counts per story file
+    dir: '{{.USER_WORKING_DIR}}'
+    cmds:
+      - task: report
+        vars: { MODE: summary }
+
+  progress:stories:
+    desc: List every story with its delivery state
+    dir: '{{.USER_WORKING_DIR}}'
+    cmds:
+      - task: report
+        vars: { MODE: stories }
+
+  progress:tasks:
+    desc: Show the task checklist of every breakdown still in flight
+    dir: '{{.USER_WORKING_DIR}}'
+    cmds:
+      - task: report
+        vars: { MODE: tasks }
+
+  report:
+    internal: true
+    dir: '{{.USER_WORKING_DIR}}'
+    # The recipe is a dozen lines of shell; echoing it buries the report it prints.
+    silent: true
+    cmds:
+      # Root story files first, then the nested ones, then the breakdowns, so the
+      # report reads in the same order in every repo. The awk script classifies each
+      # file by its path, so it only needs the list.
+      - |
+        set -- $(find user-stories -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort) \
+               $(find user-stories -mindepth 2 -name '*.md' -type f 2>/dev/null | sort) \
+               $(find tasks -name '*.md' -type f 2>/dev/null | sort)
+        if [ "$#" -eq 0 ]; then
+          echo "progress: no markdown under user-stories/ or tasks/ in $PWD — this repo does not use that layout" >&2
+          exit 1
+        fi
+        # The terminal test belongs out here, not inside a $(...) whose stdout is a
+        # pipe and so never looks like a terminal. NO_COLOR disables, FORCE_COLOR
+        # overrides for a pager or a CI log that renders escapes.
+        if [ -n "$FORCE_COLOR" ] || { [ -t 1 ] && [ -z "$NO_COLOR" ]; }; then color=1; else color=; fi
+        awk -v mode={{.MODE}} -v color="$color" -f "$HOME/.config/task/progress.awk" "$@"

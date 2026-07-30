@@ -66,11 +66,23 @@ Independent slices (wave 1) fire together; dependent slices that aren't ready ar
 
 ## Phase 3: Monitor, then deliver the next wave
 
-**Arm the watcher as soon as a wave launches — don't leave the user to poll.** The driver prints the exact command; run it as a **background** shell command from this session:
+**Arm a watcher as soon as a wave launches — don't leave the user to poll.** Run it as a **background** shell command so the harness re-invokes you when it exits, turning monitoring from a poll into a push.
+
+**`workmux wait --status done` is not a completion signal.** `done` means the slice's agent went *idle*, which happens many times mid-run: between turns, while a background workflow of its own is running, or after it crashed having committed nothing. Waiting on it alone reports a slice as finished while it is still working.
+
+Watch the two facts that actually mean "this slice is deliverable" instead — its branch carries commits, and its task file has no unchecked boxes left:
+```bash
+WT=<worktree path>; TF=<absolute path to that slice's tasks.md>
+deadline=$((SECONDS+5400))
+while [ "$SECONDS" -lt "$deadline" ]; do
+  commits=$(git -C "$WT" rev-list --count origin/<default>..HEAD 2>/dev/null || echo 0)
+  open=$(rg -c '^- \[ \] Task' "$TF" 2>/dev/null || echo 0)
+  [ "${commits:-0}" -gt 0 ] && [ "${open:-1}" -eq 0 ] && { echo "COMPLETE commits=$commits"; exit 0; }
+  sleep 60
+done
+echo "TIMEOUT commits=${commits:-0} open_tasks=${open:-?}"
 ```
-workmux wait <handle> [<handle> ...] --any --status done --timeout 5400
-```
-Backgrounded, it blocks until a slice finishes and the harness re-invokes you when it exits. That turns "go check the dashboard" into a push: on wake, report which slice finished, review its branch, and offer the next wave. `--any` wakes you on the first slice to finish rather than the last, so a fast slice is reviewed while its siblings still run — re-arm on the remaining handles after each wake. Keep the timeout finite so a wedged run wakes you too; on a timeout wake, query status and re-arm rather than assuming it's still healthy.
+Keep the timeout finite so a wedged run wakes you too. On any wake — completion or timeout — read `workmux status --json --git` and the branch before believing it, then re-arm if the slice is still going. `workmux wait --status done` is still useful as a *cheap early wake* when you want to inspect a slice the moment it goes quiet, as long as you verify rather than report it finished.
 
 `workmux` is the cockpit for everything else — no separate manager needed:
 - `workmux status --json --git` — one-shot query: `working` / `waiting` / `done` per slice, elapsed time, pane title, and whether the branch carries staged, unstaged or unmerged work. This is what to read on wake.

@@ -217,9 +217,12 @@ done < <(yq -r '.slices[] | [.id, .branch, .base, (.wave | tostring), (.depends_
 
 say "done: $launched launched, $waiting waiting. Watch with: workmux dashboard"
 
-# The caller is expected to run this in the background: it blocks until a slice
-# finishes, so whatever dispatched the wave is woken instead of having to poll.
+# Run in the background so the dispatcher is woken instead of polling. This is an
+# early wake, not a completion signal: workmux reports "done" whenever the agent
+# goes idle, which happens between turns, while a workflow of its own runs, and
+# after a crash that committed nothing. Verify commits and the task file's
+# checkboxes on wake before calling a slice deliverable.
 if [ -n "$launched_handles" ]; then
-  say "wake on the first finisher (run in the background):"
+  say "wake when a slice goes idle (run in the background, then verify):"
   printf '  workmux wait%s --any --status done --timeout 5400\n' "$launched_handles"
 fi

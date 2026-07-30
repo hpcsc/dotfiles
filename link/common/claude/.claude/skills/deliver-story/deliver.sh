@@ -163,6 +163,7 @@ in_only() {
 LEARN_DIR="$HOME/.claude/implement-learnings/$REPO/$STORY_SLUG"
 launched=0
 waiting=0
+launched_handles=""
 
 while IFS='|' read -r id branch base wave deps tasks status; do
   [ "$status" = "pending" ] || continue
@@ -198,6 +199,7 @@ while IFS='|' read -r id branch base wave deps tasks status; do
       "$branch" "$handle" "$bc" "$MODE" "$prompt"
     printf '  tmux kill-pane -a -t %q\n' "$pane_target"
     set_status "$id" running
+    launched_handles="$launched_handles $handle"
   else
     mkdir -p "$LEARN_DIR"
     # stdin is the slice-list pipe feeding this loop; workmux reads a non-tty stdin as a
@@ -206,6 +208,7 @@ while IFS='|' read -r id branch base wave deps tasks status; do
       tmux kill-pane -a -t "$pane_target" 2>/dev/null || true
       set_status "$id" running
       launched=$((launched + 1))
+      launched_handles="$launched_handles $handle"
     else
       say "workmux add failed for $id — left pending"
     fi
@@ -213,3 +216,10 @@ while IFS='|' read -r id branch base wave deps tasks status; do
 done < <(yq -r '.slices[] | [.id, .branch, .base, (.wave | tostring), (.depends_on | join(",")), .tasks, .status] | join("|")' "$PLAN")
 
 say "done: $launched launched, $waiting waiting. Watch with: workmux dashboard"
+
+# The caller is expected to run this in the background: it blocks until a slice
+# finishes, so whatever dispatched the wave is woken instead of having to poll.
+if [ -n "$launched_handles" ]; then
+  say "wake on the first finisher (run in the background):"
+  printf '  workmux wait%s --any --status done --timeout 5400\n' "$launched_handles"
+fi

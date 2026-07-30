@@ -66,10 +66,20 @@ Independent slices (wave 1) fire together; dependent slices that aren't ready ar
 
 ## Phase 3: Monitor, then deliver the next wave
 
-`workmux` is the cockpit — no separate manager needed:
-- `workmux dashboard` — live status of every slice's run (🤖 working / 💬 waiting / ✅ done).
+**Arm the watcher as soon as a wave launches — don't leave the user to poll.** The driver prints the exact command; run it as a **background** shell command from this session:
+```
+workmux wait <handle> [<handle> ...] --any --status done --timeout 5400
+```
+Backgrounded, it blocks until a slice finishes and the harness re-invokes you when it exits. That turns "go check the dashboard" into a push: on wake, report which slice finished, review its branch, and offer the next wave. `--any` wakes you on the first slice to finish rather than the last, so a fast slice is reviewed while its siblings still run — re-arm on the remaining handles after each wake. Keep the timeout finite so a wedged run wakes you too; on a timeout wake, query status and re-arm rather than assuming it's still healthy.
+
+`workmux` is the cockpit for everything else — no separate manager needed:
+- `workmux status --json --git` — one-shot query: `working` / `waiting` / `done` per slice, elapsed time, pane title, and whether the branch carries staged, unstaged or unmerged work. This is what to read on wake.
+- `workmux dashboard` — live TUI across every slice.
 - `workmux sidebar` — the same status pinned in tmux.
 - `workmux send <handle> "<text>"` — push a follow-up prompt into any running slice. The handle is `<story-slug>-<slice-id>`.
+- With `status_format: true` in the workmux config, each slice's status icon (🤖 working / 💬 waiting / ✅ done) renders in its tmux window name, so a wave's state is readable straight from the status bar.
+
+A slice sitting at `waiting` is usually blocked on a permission prompt, not thinking — `workmux capture <handle>` shows the pane, and the run makes no progress until it is answered.
 
 When a slice finishes, review its branch and open its PR as usual (its `tasks.md` and commits describe it by domain behavior — no "PR N" leaks in). Once its PR merges, **just run `/deliver-story` again** — it finds the existing plan, skips planning, reconciles the merge, and delivers the next ready wave. (Stacked slices don't wait for a merge; they fire as soon as their prerequisite's branch carries commits of its own, so an earlier wave may already have launched them.) Mark a slice `merged` in `plan.yaml` yourself only if the reconcile can't see it (e.g. it merged under a different branch name).
 

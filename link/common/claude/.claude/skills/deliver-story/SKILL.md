@@ -70,19 +70,28 @@ Independent slices (wave 1) fire together; dependent slices that aren't ready ar
 
 **`workmux wait --status done` is not a completion signal.** `done` means the slice's agent went *idle*, which happens many times mid-run: between turns, while a background workflow of its own is running, or after it crashed having committed nothing. Waiting on it alone reports a slice as finished while it is still working.
 
-Watch the two facts that actually mean "this slice is deliverable" instead — its branch carries commits, and its task file has no unchecked boxes left:
+**Do not watch the task file's checkboxes either.** A run can commit all of its tasks and leave every box in `tasks.md` unticked, so an unchecked list is not evidence of unfinished work.
+
+Count commits on the branch instead — a slice's run commits once per task, so `N` commits with no agent still working is the signal. Wake on *each* commit rather than only the last, so a long slice reports progress instead of going dark:
 ```bash
-WT=<worktree path>; TF=<absolute path to that slice's tasks.md>
-deadline=$((SECONDS+5400))
+WT=<worktree path>; N=<task count for this slice>
+deadline=$((SECONDS+10800)); prev=<commits already on the branch>; stable=0
 while [ "$SECONDS" -lt "$deadline" ]; do
   commits=$(git -C "$WT" rev-list --count origin/<default>..HEAD 2>/dev/null || echo 0)
-  open=$(rg -c '^- \[ \] Task' "$TF" 2>/dev/null || echo 0)
-  [ "${commits:-0}" -gt 0 ] && [ "${open:-1}" -eq 0 ] && { echo "COMPLETE commits=$commits"; exit 0; }
+  # EVERY agent in the worktree must be idle. Several can share one worktree, and
+  # reading whichever one answers first reports a working run as finished.
+  working=$(workmux status --json 2>/dev/null \
+    | jq -r --arg h "<handle>" '[.[]|select(.worktree==$h)|select(.status=="working")]|length')
+  [ "$commits" != "$prev" ] && { echo "PROGRESS commits=$commits"; exit 0; }
+  if [ "${working:-1}" -eq 0 ]; then stable=$((stable+1)); else stable=0; fi
+  [ "$stable" -ge 5 ] && { echo "STOPPED commits=$commits"; exit 0; }
   sleep 60
 done
-echo "TIMEOUT commits=${commits:-0} open_tasks=${open:-?}"
+echo "TIMEOUT commits=${commits:-0} working=${working:-?}"
 ```
-Keep the timeout finite so a wedged run wakes you too. On any wake — completion or timeout — read `workmux status --json --git` and the branch before believing it, then re-arm if the slice is still going. `workmux wait --status done` is still useful as a *cheap early wake* when you want to inspect a slice the moment it goes quiet, as long as you verify rather than report it finished.
+`STOPPED` with fewer than `N` commits is a run that died, not one that finished. Keep the timeout finite so a wedged run wakes you too, and on every wake read the branch before believing anything. `workmux wait --status done` is still useful as a *cheap early wake* when you want to inspect a slice the moment it goes quiet, as long as you verify rather than report it finished.
+
+**Verify a finished slice yourself** — re-run its scoped tests, `go vet`, and `git status --porcelain` in the worktree rather than trusting the run's own receipts. Expect `go build ./...` to fail there on packages whose generated files (swagger docs and the like) exist only in the main checkout; confirm the slice does not touch that package before dismissing it.
 
 `workmux` is the cockpit for everything else — no separate manager needed:
 - `workmux status --json --git` — one-shot query: `working` / `waiting` / `done` per slice, elapsed time, pane title, and whether the branch carries staged, unstaged or unmerged work. This is what to read on wake.

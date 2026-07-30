@@ -14,20 +14,26 @@
 #   PLAN        path to plan.yaml (auto-discovered under tasks/ if a single one exists)
 #   --wave N    only fire slices in wave N (default: every ready slice)
 #   --only ids  comma-separated slice ids to restrict to
-#   --mode      workmux target mode (default: session)
+#   --mode      workmux target mode (default: window, falls back to session
+#               when not running inside tmux)
 #   --dry-run   print the workmux commands and status changes without running them
 #
 # Ready = status pending AND either (base is the default branch and every
-# depends_on slice is merged) OR (base is a sibling slice whose branch exists).
+# depends_on slice is merged) OR (base is a sibling slice whose branch carries
+# commits of its own).
 # A ready slice is launched and its status set to running. Before launching,
 # running/in-review slices whose branch has merged into the default branch are
 # advanced to merged (best-effort, no gh dependency), so the next wave unlocks.
+#
+# Each slice gets a single agent pane. The shared workmux config asks for an
+# agent pane plus a shell pane below it; the extra pane is collapsed here rather
+# than in that config, which every other workmux entry point still relies on.
 set -euo pipefail
 
 die() { printf 'deliver-story: %s\n' "$1" >&2; exit 1; }
 say() { printf 'deliver-story: %s\n' "$1"; }
 
-MODE=session
+MODE=window
 WAVE=""
 ONLY=""
 DRY=0
@@ -48,6 +54,19 @@ done
 command -v workmux >/dev/null 2>&1 || die "workmux not found on PATH"
 command -v yq      >/dev/null 2>&1 || die "yq not found on PATH"
 command -v git     >/dev/null 2>&1 || die "git not found on PATH"
+
+# Window mode puts each slice in a window of the session this runs from, so it
+# needs a session to attach to. Resolve it from tmux rather than passing
+# --parent-session, which workmux lowercases (a capitalised "Work" would spawn a
+# detached "work" holder session).
+PARENT=""
+if [ "$MODE" = "window" ]; then
+  PARENT=$(tmux display-message -p '#{session_name}' 2>/dev/null || true)
+  if [ -z "$PARENT" ]; then
+    say "not inside tmux — falling back to --mode session"
+    MODE=session
+  fi
+fi
 
 # Locate the plan: explicit arg, else the single tasks/**/plan.yaml under cwd.
 if [ -z "$PLAN" ]; then
@@ -164,16 +183,27 @@ while IFS='|' read -r id branch base wave deps tasks status; do
   handle="$STORY_SLUG-$id"
   prompt="/implement-flow $tasks_abs (adopt this task file; persist run learnings to $learnings; leave the branch for review, do not integrate)"
 
+  # The agent pane workmux focuses; killing every other pane in that window
+  # leaves the slice with a single pane. In window mode the slice is a window of
+  # the session this runs from; in session mode it is its own session.
+  if [ "$MODE" = "window" ]; then
+    pane_target="$PARENT:$handle.{top-left}"
+  else
+    pane_target="$handle:.{top-left}"
+  fi
+
   say "launch: $id  branch=$branch  base=$base@${bc%${bc#??????????}}  handle=$handle"
   if [ "$DRY" -eq 1 ]; then
     printf '  workmux add %q --name %q --base %q --mode %q --background --prompt %q\n' \
       "$branch" "$handle" "$bc" "$MODE" "$prompt"
+    printf '  tmux kill-pane -a -t %q\n' "$pane_target"
     set_status "$id" running
   else
     mkdir -p "$LEARN_DIR"
     # stdin is the slice-list pipe feeding this loop; workmux reads a non-tty stdin as a
     # worktree list and then rejects --name as multi-worktree generation.
     if workmux add "$branch" --name "$handle" --base "$bc" --mode "$MODE" --background --prompt "$prompt" </dev/null; then
+      tmux kill-pane -a -t "$pane_target" 2>/dev/null || true
       set_status "$id" running
       launched=$((launched + 1))
     else

@@ -5,7 +5,7 @@ description: Deliver a large user story as multiple parallel PRs. On first run i
 
 Deliver a story that is too large for one PR as several reviewable PRs, some in parallel: $ARGUMENTS
 
-This is the multi-PR layer above `implement-flow`. `implement-flow` delivers one story on one branch; `deliver-story` cuts the story into PR slices and runs an `implement-flow` per slice, each in its own git worktree + tmux session, dispatched from here. It is the automated form of the `workmux-new-form` you fill in by hand — the plan fills the fields the TUI used to.
+This is the multi-PR layer above `implement-flow`. `implement-flow` delivers one story on one branch; `deliver-story` cuts the story into PR slices and runs an `implement-flow` per slice, each in its own git worktree + single-pane tmux window, dispatched from here. It is the automated form of the `workmux-new-form` you fill in by hand — the plan fills the fields the TUI used to.
 
 **It is the single entry point for every wave.** The first run plans (with a review gate) and delivers the first wave; each later run adopts the existing plan and delivers the next ready wave. You never drop down to the raw driver.
 
@@ -58,7 +58,7 @@ bash "<resolved path>" tasks/<story-slug>/plan.yaml            # fire every read
 
 The driver, in one pass:
 1. **Reconciles** — any `running`/`in-review` slice whose branch has merged into the default branch is advanced to `merged` (best-effort local ancestor check against `origin/<default>`; no `gh` needed), which unlocks its dependents.
-2. **Launches every ready slice** — for each, `workmux add` creates a worktree + tmux session and starts `implement-flow` in it against that slice's task file, in the background. Ready = status `pending` and either its `base` is the default branch with all `depends_on` merged, or its `base` is a sibling slice whose branch already carries commits of its own (stacked). A prerequisite branch that exists but is still empty is not ready: branching off it would silently branch off the default branch, leaving the prerequisite's code absent. It sets each launched slice's `status` to `running`.
+2. **Launches every ready slice** — for each, `workmux add` creates a worktree and a tmux window in the session the driver runs from, then starts `implement-flow` in it against that slice's task file, in the background. The window is collapsed to the single agent pane; the shared workmux config's extra shell pane is dropped here rather than in that config, which every other workmux entry point still relies on. Outside tmux the driver falls back to one session per slice. Ready = status `pending` and either its `base` is the default branch with all `depends_on` merged, or its `base` is a sibling slice whose branch already carries commits of its own (stacked). A prerequisite branch that exists but is still empty is not ready: branching off it would silently branch off the default branch, leaving the prerequisite's code absent. It sets each launched slice's `status` to `running`.
 
 Independent slices (wave 1) fire together; dependent slices that aren't ready are reported as waiting.
 

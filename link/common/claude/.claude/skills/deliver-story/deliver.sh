@@ -83,6 +83,9 @@ set_status() {
 while IFS='|' read -r id branch status; do
   case "$status" in running|in-review) ;; *) continue ;; esac
   git rev-parse --verify --quiet "$branch" >/dev/null 2>&1 || continue
+  # A branch that has not committed anything yet is trivially an ancestor of the default branch.
+  # Without this guard a slice still being worked on reconciles to merged and unlocks dependents.
+  [ -n "$(git rev-list -n1 "origin/$DEFAULT..$branch" 2>/dev/null)" ] || continue
   if git merge-base --is-ancestor "$branch" "origin/$DEFAULT" 2>/dev/null; then
     say "reconcile: $id merged into $DEFAULT"
     set_status "$id" merged
@@ -105,8 +108,19 @@ base_commit() {
 ready() {
   local base="$1" deps="$2"
   if is_slice "$base"; then
-    # stacked: ready once the prerequisite branch exists
-    git rev-parse --verify --quiet "$(branch_of "$base")" >/dev/null 2>&1
+    # stacked: the prerequisite branch must exist AND carry work of its own. A branch created
+    # earlier in this same pass still points at the default branch, so stacking on it would
+    # branch off the default branch and the prerequisite's code would be absent.
+    local bb ref
+    bb=$(branch_of "$base")
+    git rev-parse --verify --quiet "$bb" >/dev/null 2>&1 || return 1
+    # Compare against the same ref base_commit() branches from — origin/DEFAULT when it exists.
+    # Local and origin DEFAULT can diverge, and comparing against the wrong one reports work
+    # that is really just the gap between them.
+    ref=$(git rev-parse --verify --quiet "origin/$DEFAULT^{commit}" 2>/dev/null) \
+      || ref=$(git rev-parse --verify --quiet "$DEFAULT^{commit}" 2>/dev/null) \
+      || return 1
+    [ -n "$(git rev-list -n1 "$ref..$bb" 2>/dev/null)" ]
     return
   fi
   # off the default branch: ready once every dependency has merged
@@ -157,7 +171,9 @@ while IFS='|' read -r id branch base wave deps tasks status; do
     set_status "$id" running
   else
     mkdir -p "$LEARN_DIR"
-    if workmux add "$branch" --name "$handle" --base "$bc" --mode "$MODE" --background --prompt "$prompt"; then
+    # stdin is the slice-list pipe feeding this loop; workmux reads a non-tty stdin as a
+    # worktree list and then rejects --name as multi-worktree generation.
+    if workmux add "$branch" --name "$handle" --base "$bc" --mode "$MODE" --background --prompt "$prompt" </dev/null; then
       set_status "$id" running
       launched=$((launched + 1))
     else

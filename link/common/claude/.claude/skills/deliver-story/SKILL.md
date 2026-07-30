@@ -58,7 +58,7 @@ bash "<resolved path>" tasks/<story-slug>/plan.yaml            # fire every read
 
 The driver, in one pass:
 1. **Reconciles** — any `running`/`in-review` slice whose branch has merged into the default branch is advanced to `merged` (best-effort local ancestor check against `origin/<default>`; no `gh` needed), which unlocks its dependents.
-2. **Launches every ready slice** — for each, `workmux add` creates a worktree + tmux session and starts `implement-flow` in it against that slice's task file, in the background. Ready = status `pending` and either its `base` is the default branch with all `depends_on` merged, or its `base` is a sibling slice whose branch already exists (stacked). It sets each launched slice's `status` to `running`.
+2. **Launches every ready slice** — for each, `workmux add` creates a worktree + tmux session and starts `implement-flow` in it against that slice's task file, in the background. Ready = status `pending` and either its `base` is the default branch with all `depends_on` merged, or its `base` is a sibling slice whose branch already carries commits of its own (stacked). A prerequisite branch that exists but is still empty is not ready: branching off it would silently branch off the default branch, leaving the prerequisite's code absent. It sets each launched slice's `status` to `running`.
 
 Independent slices (wave 1) fire together; dependent slices that aren't ready are reported as waiting.
 
@@ -71,7 +71,7 @@ Independent slices (wave 1) fire together; dependent slices that aren't ready ar
 - `workmux sidebar` — the same status pinned in tmux.
 - `workmux send <handle> "<text>"` — push a follow-up prompt into any running slice. The handle is `<story-slug>-<slice-id>`.
 
-When a slice finishes, review its branch and open its PR as usual (its `tasks.md` and commits describe it by domain behavior — no "PR N" leaks in). Once its PR merges, **just run `/deliver-story` again** — it finds the existing plan, skips planning, reconciles the merge, and delivers the next ready wave. (Stacked slices don't wait for a merge; they fire as soon as their prerequisite's branch exists, so an earlier wave may already have launched them.) Mark a slice `merged` in `plan.yaml` yourself only if the reconcile can't see it (e.g. it merged under a different branch name).
+When a slice finishes, review its branch and open its PR as usual (its `tasks.md` and commits describe it by domain behavior — no "PR N" leaks in). Once its PR merges, **just run `/deliver-story` again** — it finds the existing plan, skips planning, reconciles the merge, and delivers the next ready wave. (Stacked slices don't wait for a merge; they fire as soon as their prerequisite's branch carries commits of its own, so an earlier wave may already have launched them.) Mark a slice `merged` in `plan.yaml` yourself only if the reconcile can't see it (e.g. it merged under a different branch name).
 
 ---
 

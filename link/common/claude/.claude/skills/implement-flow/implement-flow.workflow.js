@@ -830,20 +830,73 @@ const ticket = typeof ARGS === 'object' ? ARGS?.ticket : undefined
 const story = (typeof ARGS === 'string' ? ARGS : ARGS?.story) || (tasksFile && `the existing task breakdown at ${tasksFile}`)
 if (!story) throw new Error('implement-flow: pass args.story (a user story) and/or args.tasksFile (an existing tasks/*.md to adopt)')
 
-// Adopt a prior breakdown verbatim when given a task file; otherwise decompose
-// the story. `story` still anchors any later re-decompose, even in adopt mode.
-const plan = tasksFile
-  ? await agentOrRetry(adoptTasksPrompt(tasksFile), { label: 'adopt', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA }, 'adopt')
-  : await agentOrRetry(decomposePrompt(story), { label: 'decompose', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA }, 'decompose')
+// A caller holding the breakdown already can hand it over as args.plan and skip the
+// adopt agent. Adopting is deterministic work — read a checklist, drop the ticked
+// entries — but running it as a model call put the most fragile step in the system at
+// the front of the most-used path: resuming a partly-done story began by asking an
+// agent to parse markdown, so one 529 there ended the run before any work started.
+// The caller has a filesystem; this script does not. Let whoever can just read the
+// file do it.
+//
+// tasks must contain only the work still OUTSTANDING — the same contract adopt mode
+// honours by skipping `- [x]` entries. tasks_file still points at the breakdown, so
+// closing a task keeps checking its box off there.
+const suppliedPlan = typeof ARGS === 'object' ? ARGS?.plan : undefined
+
+// args.plan arrives as caller data, so it never passed through a schema the way agent
+// output does. Normalise it here: fill the fields the prompts interpolate, and reject
+// what cannot be defaulted, rather than failing later inside a prompt builder.
+const normalisePlan = (p) => {
+  if (!p || typeof p !== 'object' || !Array.isArray(p.tasks)) {
+    throw new Error('implement-flow: args.plan must be an object with a `tasks` array, and `tasks_file` when the breakdown lives on disk')
+  }
+  const tasks = p.tasks.map((t, i) => {
+    if (!t || typeof t.title !== 'string' || !t.title.trim()) {
+      throw new Error(`implement-flow: args.plan.tasks[${i}] needs a non-empty title`)
+    }
+    return {
+      n: Number.isInteger(t.n) ? t.n : i + 1,
+      title: t.title,
+      description: t.description ?? t.title,
+      language: t.language ?? 'unknown',
+      behavior: t.behavior ?? t.description ?? t.title,
+      acceptance_criteria: Array.isArray(t.acceptance_criteria) ? t.acceptance_criteria : [],
+      affected_files: Array.isArray(t.affected_files) ? t.affected_files : [],
+      patterns_to_follow: Array.isArray(t.patterns_to_follow) ? t.patterns_to_follow : [],
+      // Absent means testable: only an explicit false opts a task out of test design.
+      testable: t.testable !== false,
+      depends_on: Array.isArray(t.depends_on) ? t.depends_on : [],
+    }
+  })
+  if (!tasks.length) throw new Error('implement-flow: args.plan.tasks is empty — nothing left to do')
+  return { tasks_file: typeof p.tasks_file === 'string' ? p.tasks_file : (tasksFile ?? null), tasks }
+}
+
+// Take the caller's plan when given one; otherwise adopt a prior breakdown verbatim
+// when given a task file; otherwise decompose the story. `story` still anchors any
+// later re-decompose in all three cases.
+const plan = suppliedPlan
+  ? normalisePlan(suppliedPlan)
+  : tasksFile
+    ? await agentOrRetry(adoptTasksPrompt(tasksFile), { label: 'adopt', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA }, 'adopt')
+    : await agentOrRetry(decomposePrompt(story), { label: 'decompose', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA }, 'decompose')
 if (!plan) {
   throw new Error(
     `implement-flow: ${tasksFile ? 'adopting the breakdown' : 'decomposing the story'} produced no plan after ${INFRA_RETRIES} retries — ` +
       'the agent died on a terminal API error rather than returning a bad plan. Nothing was changed; relaunch when the API recovers' +
-      (tasksFile ? ' (adopt mode skips tasks already checked off, so no work is repeated).' : '.'),
+      (tasksFile
+        ? ' (adopt mode skips tasks already checked off, so no work is repeated). To skip this agent entirely, pass the outstanding tasks as args.plan.'
+        : '.'),
   )
 }
 let planFile = plan.tasks_file
-log(tasksFile ? `adopted ${plan.tasks.length} unchecked task(s) from ${tasksFile}` : `decomposed into ${plan.tasks.length} tasks (${planFile})`)
+log(
+  suppliedPlan
+    ? `took ${plan.tasks.length} outstanding task(s) from args.plan — no adopt agent spawned${planFile ? ` (checklist: ${planFile})` : ''}`
+    : tasksFile
+      ? `adopted ${plan.tasks.length} unchecked task(s) from ${tasksFile}`
+      : `decomposed into ${plan.tasks.length} tasks (${planFile})`,
+)
 
 // Tasks arrive dependency-ordered, but `remaining` is a MUTABLE queue, not a
 // fixed list: after a task closes, an independent assessor can autonomously

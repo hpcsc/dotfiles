@@ -15,8 +15,9 @@ Create detailed, actionable user stories suitable for implementation by a develo
 1. Receive a feature description from the user
 2. Ask clarifying questions if the description is ambiguous (with lettered options)
 3. Generate structured user stories based on answers
-4. Save to `user-stories/[feature-name].md`
-5. Ask if any stories need splitting, merging, reprioritizing, or if new stories are needed
+4. Draw the dependency diagram from the stories' **Depends on** fields
+5. Save to `user-stories/[feature-name].md`
+6. Ask if any stories need splitting, merging, reprioritizing, or if new stories are needed
 
 **Important:** Do NOT start implementing. Just create the user stories.
 
@@ -114,7 +115,44 @@ Brief description of the feature and the problem it solves.
 ### 2. Goals
 Specific, measurable objectives (bullet list).
 
-### 3. User Stories
+### 3. Delivery Order
+
+A Mermaid diagram of the dependency graph, followed by two or three sentences reading it. Place it before the stories so it orients the reader.
+
+Build it from the **Depends on** fields, with arrows pointing from prerequisite to dependent — the reverse of how each story states it. The edges and the **Depends on** fields must agree exactly; a diagram that has drifted from the stories is worse than none.
+
+**Format:**
+
+````markdown
+## Delivery Order
+
+```mermaid
+flowchart LR
+    A["US-001<br/>Per-tenant limits"]
+    B["US-002<br/>Reject over-limit"]
+    C["US-003<br/>Per-tenant overrides"]
+
+    A --> B
+    A --> C
+    B -- ships together --> C
+
+    classDef critical fill:#fde68a,stroke:#b45309,stroke-width:2px,color:#1f2937
+    class A,B critical
+```
+
+[Two or three sentences: what everything blocks on, how deep the critical path runs, which stories must ship as one increment.]
+````
+
+Rules:
+
+- **`flowchart LR`**, so dependency depth reads as columns left to right
+- **One node per story**, labelled with its ID and a title short enough to stay legible — abbreviate the story title rather than wrapping it over three lines
+- **Shade the critical path** (the longest chain) with the `classDef`, and say how deep it runs. That number is the floor on delivery time no amount of parallelism removes
+- **Label an edge only when the relationship is stronger than ordering** — "ships together" for two stories that must land as one increment because the first alone leaves the product worse. Leave plain ordering edges unlabelled; labelling every edge makes the strong ones invisible
+- **Name the bottleneck in prose.** A story that many others depend on is the one to start, and saying so is the diagram's main job
+- **When no story depends on another**, write one line saying they can be built in any order and skip the diagram
+
+### 4. User Stories
 
 Each story needs:
 - **Title:** Short descriptive name
@@ -141,10 +179,10 @@ Each story needs:
 - Acceptance criteria must be verifiable, not vague. "Works correctly" is bad. "Consumer receives a 429 response with retry timing when their request rate exceeds the configured limit" is good.
 - Acceptance criteria describe observable behavior — what the user sees, what the system responds with, what state changes. They are not implementation instructions.
 
-### 4. Non-Goals (Out of Scope)
+### 5. Non-Goals (Out of Scope)
 What this feature will NOT include. Critical for managing scope.
 
-### 5. Open Questions
+### 6. Open Questions
 Remaining questions, areas needing clarification, and any assumptions made if clarifying questions were skipped.
 
 ---
@@ -189,13 +227,13 @@ After generating the initial set of stories, ask the user:
 - Should any stories be reprioritized?
 - Are there missing stories or edge cases to add?
 
-Update the file in place based on feedback.
+Update the file in place based on feedback. Any change to the story set — splitting, merging, adding, reordering, or a new **Depends on** — means redrawing the diagram and rechecking the critical path in the same edit. A stale diagram misdirects the reader who trusts it over the stories.
 
 ---
 
 ## Example
 
-```markdown
+````markdown
 # API Rate Limiting
 
 ## Overview
@@ -208,6 +246,29 @@ Add rate limiting to the public API to prevent abuse and ensure fair usage acros
 - Return clear, standards-compliant responses when limits are hit
 - Make rate limits configurable per tenant without redeployment
 - Provide visibility into rate limit events via monitoring
+
+## Delivery Order
+
+```mermaid
+flowchart LR
+    A["US-001<br/>Per-tenant limits"]
+    B["US-002<br/>Reject over-limit"]
+    C["US-003<br/>Per-tenant overrides"]
+    D["US-004<br/>Monitor limit events"]
+    E["US-005<br/>Burst tolerance"]
+
+    A --> B
+    A --> C
+    A --> E
+    B --> D
+
+    classDef critical fill:#fde68a,stroke:#b45309,stroke-width:2px,color:#1f2937
+    class A,B,D critical
+```
+
+Everything blocks on counting requests: until requests are tracked against a limit, no other story has anything to act on. Once it lands, three stories open at once.
+
+The shaded chain — count, reject, then monitor the rejections — is the critical path at three deep. Nothing else exceeds two.
 
 ## User Stories
 
@@ -275,7 +336,7 @@ Add rate limiting to the public API to prevent abuse and ensure fair usage acros
 
 - Should rate limit usage headers be included on every response, not just 429s?
 - What is the right burst allowance — a fixed number of extra requests or a percentage of the limit?
-```
+````
 
 ---
 
@@ -290,5 +351,6 @@ Before saving:
 - [ ] No implementation details or technical solutions included
 - [ ] Non-goals section defines clear boundaries
 - [ ] Stories are listed in recommended implementation order with dependencies noted
+- [ ] Dependency diagram's edges match the **Depends on** fields exactly, with the critical path shaded and read out in prose
 - [ ] Saved to `user-stories/[feature-name].md`
 - [ ] Asked user if stories need splitting, merging, or reprioritizing

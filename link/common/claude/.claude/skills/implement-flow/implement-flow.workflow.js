@@ -99,6 +99,35 @@ const INTEGRATE = ARGS?.integrate === true
 const LEARNINGS_PATH = ARGS?.learningsPath ?? 'tasks/learnings.md'
 
 // ---------------------------------------------------------------------------
+// Infrastructure failures are not evidence.
+//
+// agent() yields null when a subagent dies on a terminal API error — a 529, a
+// server error mid-response. Nothing was learned and there is no feedback to act
+// on, which makes it categorically different from an agent that ran and returned
+// a failing receipt. Spending an evidence attempt on it, or letting the null
+// reach a property access, throws away work the outage had nothing to do with:
+// a 529 on the first call has ended a run at second zero, and a null at the
+// plan-impact stage would crash *after* task commits had already landed.
+//
+// So every critical call retries on its own budget, separate from MAX_RESOLVE.
+// The retry varies the label because a resumed run replays cached results by
+// (prompt, opts) and a cached null would otherwise replay as another null.
+// ---------------------------------------------------------------------------
+
+const INFRA_RETRIES = 2
+
+const agentOrRetry = async (prompt, opts, what) => {
+  for (let i = 0; i <= INFRA_RETRIES; i++) {
+    const attemptOpts = i === 0 || !opts?.label ? opts : { ...opts, label: `${opts.label}~infra${i}` }
+    const result = await agent(prompt, attemptOpts)
+    if (result) return result
+    if (i < INFRA_RETRIES) log(`${what}: no result (infrastructure error) — retrying ${i + 1}/${INFRA_RETRIES}`)
+  }
+  log(`${what}: no result after ${INFRA_RETRIES} infrastructure retries`)
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Reviewer triage — computed from the REAL changed files, not the decompose-time
 // estimate. A docs/config-only change (README, JSON, YAML, ...) gets NO code
 // reviewers; for code, concurrency/performance run only when the change signals
@@ -459,6 +488,9 @@ const implementPrompt = (t, cfg, testPlan, feedback, outstanding = []) =>
   `- For EACH acceptance criterion, attach \`criteria_evidence\`: a named test (kind:test) or, for behavior a unit test can't express, an executed demonstration (kind:demo) — with the exact command and its raw output tail. Mark \`satisfied\` only from what the output actually shows.\n` +
   `- EVIDENCE MUST PERSIST. A test that proves a criterion belongs IN the real test file, written there from the start — never in a scratch file you run once and delete. Before you finish, every \`persisted_test\` you cite must still exist and still run; the auditor re-runs them by name and a citation that no longer resolves is a vacuous receipt that blocks the task.\n` +
   `  A throwaway probe is legitimate ONLY when it answers a question for YOU (is this branch reachable, is this perf concern real) and NO criterion rests on it. Before deleting any test file, ask: "does an acceptance criterion lose its proof if this goes?" If yes, it was never a scratch file — fold it into the committed test file instead.\n` +
+  `- A TEST THAT CANNOT FAIL IS NOT EVIDENCE. Before citing any test, apply the substitution test: if the code under test were reverted, stubbed, or had this branch deleted, would this test fail? If it would still pass, it proves nothing and will block the task as a \`broken-test\`.\n` +
+  `  Criteria phrased as an ABSENCE — "without X", "behaves exactly as before", "produces no diagnostic", "is unchanged" — are where this goes wrong most, because asserting a zero value on input that omits the feature passes with the feature deleted. Prove those against input that DOES exercise the new handling: assert the with-X and without-X cases together (sibling elements, a table with both rows, a before/after of the same document), so deleting or misrouting the handling breaks the assertion. Where a criterion rests on such a claim, actually run the mutation once — break the handling, watch the test fail, restore it — and cite the test only after it has demonstrably failed for the right reason.\n` +
+  `- Leave NO build artifacts in the tree. Build to a temp path or \`-o /dev/null\`; a compiler invoked without an output flag drops a binary in the repo root, where it reads as untracked source and can be swept into a commit.\n` +
   `Leave all changes STAGED. Do NOT commit.`
 
 const refactorPrompt = (t, cfg, impl) =>
@@ -615,12 +647,21 @@ async function runTask(task) {
 
   let testPlan = 'N/A (testable: false) — verify via demonstration receipts instead of unit tests.'
   if (task.testable) {
-    testPlan = await agent(designPrompt(task, cfg), { label: `${tag}:design`, phase: 'Implement', agentType: 'test-case-designer' })
+    // Interpolated into the implementer's prompt, so a null would reach it as the
+    // literal "null" and read as a test plan saying nothing.
+    testPlan = (await agentOrRetry(designPrompt(task, cfg), { label: `${tag}:design`, phase: 'Implement', agentType: 'test-case-designer' }, `${tag} test-design`))
+      ?? 'No test plan was produced (the design agent died on an API error). Derive the cases from the acceptance criteria yourself.'
   }
 
   let feedback = null
   let evidence = null
   let attemptsUsed = 0
+  // An open task leaves its work in the tree uncommitted, and this script has no
+  // shell to run `git status` with. Carrying the last implementer's file list out
+  // is the one record available in-script of what is sitting loose — without it an
+  // open task reports only that evidence did not close, and a finished-but-
+  // uncommitted change is invisible to anything except the run-verifier.
+  let lastFilesChanged = []
   // Findings survive the attempt that raised them. Reviewer output is not a
   // function of the diff — the same untouched code can be flagged, skipped, then
   // flagged again — so a finding that is merely not re-raised must not read as
@@ -630,16 +671,17 @@ async function runTask(task) {
   for (let attempt = 1; attempt <= MAX_RESOLVE; attempt++) {
     attemptsUsed = attempt
     const outstanding = [...carried.values()].filter((c) => c.status === 'open')
-    // agent() returns null if a subagent dies on a terminal error after retries.
-    // Guard the critical stages so one dead agent fails just this task, not the run.
-    const impl = await agent(implementPrompt(task, cfg, testPlan, feedback, outstanding), {
+    // A dead agent must not cost an evidence attempt: agentOrRetry exhausts its own
+    // infrastructure budget first, and only a still-null result opens the task.
+    const impl = await agentOrRetry(implementPrompt(task, cfg, testPlan, feedback, outstanding), {
       label: `${tag}:impl#${attempt}`, phase: 'Implement', agentType: cfg.implementer, schema: IMPL_SCHEMA,
-    })
+    }, `${tag} implement (attempt ${attempt})`)
     if (!impl) {
-      feedback = 'implementer agent returned no result (terminal error after retries)'
+      feedback = `implementer returned no result after ${INFRA_RETRIES} infrastructure retries — an API outage, not a failed change. Any work already written to the tree is uncommitted.`
       log(`${tag}: attempt ${attempt} aborted — implementer returned no result`)
       break
     }
+    lastFilesChanged = impl.files_changed ?? lastFilesChanged
     const refactor = (await agent(refactorPrompt(task, cfg, impl), {
       label: `${tag}:refactor#${attempt}`, phase: 'Implement', agentType: cfg.refactorer, schema: REFACTOR_SCHEMA,
     })) ?? { outcome: 'skipped (refactor agent returned no result)', test_receipt: impl.test_receipt }
@@ -687,9 +729,9 @@ async function runTask(task) {
           runtimeFindings.map((f) => () => agent(reproPrompt(task, f), { label: `${tag}:repro:${f.id}`, phase: 'Verify', schema: VERDICT_SCHEMA })),
         )).filter(Boolean)
       : []
-    const audit = await agent(auditPrompt(task, impl, refactor), { label: `${tag}:audit#${attempt}`, phase: 'Verify', schema: AUDIT_SCHEMA })
+    const audit = await agentOrRetry(auditPrompt(task, impl, refactor), { label: `${tag}:audit#${attempt}`, phase: 'Verify', schema: AUDIT_SCHEMA }, `${tag} audit (attempt ${attempt})`)
     if (!audit) {
-      feedback = 'audit agent returned no result (terminal error after retries)'
+      feedback = `audit returned no result after ${INFRA_RETRIES} infrastructure retries — an API outage, not a failed change. Any work already written to the tree is uncommitted.`
       log(`${tag}: attempt ${attempt} aborted — audit returned no result`)
       break
     }
@@ -748,6 +790,9 @@ async function runTask(task) {
         status: 'closed',
         attempts: attempt,
         unresolved: [...speculative.map((s) => `speculative: ${s.finding_id} — ${s.note}`), ...carriedOut],
+        // Carried so the caller can name the staged files if the commit agent dies
+        // between closing this task and committing it.
+        files_changed: lastFilesChanged,
         evidence,
       }
     }
@@ -764,7 +809,13 @@ async function runTask(task) {
     title: task.title,
     status: 'open',
     attempts: attemptsUsed,
-    unresolved: [feedback ?? 'evidence did not close'],
+    unresolved: [
+      feedback ?? 'evidence did not close',
+      ...(lastFilesChanged.length
+        ? [`uncommitted in the working tree: ${lastFilesChanged.join(', ')} — review or discard these before relaunching, and note that anything else committing in this tree could absorb them`]
+        : []),
+    ],
+    uncommitted: lastFilesChanged,
     evidence,
   }
 }
@@ -782,8 +833,15 @@ if (!story) throw new Error('implement-flow: pass args.story (a user story) and/
 // Adopt a prior breakdown verbatim when given a task file; otherwise decompose
 // the story. `story` still anchors any later re-decompose, even in adopt mode.
 const plan = tasksFile
-  ? await agent(adoptTasksPrompt(tasksFile), { agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA })
-  : await agent(decomposePrompt(story), { agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA })
+  ? await agentOrRetry(adoptTasksPrompt(tasksFile), { label: 'adopt', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA }, 'adopt')
+  : await agentOrRetry(decomposePrompt(story), { label: 'decompose', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA }, 'decompose')
+if (!plan) {
+  throw new Error(
+    `implement-flow: ${tasksFile ? 'adopting the breakdown' : 'decomposing the story'} produced no plan after ${INFRA_RETRIES} retries — ` +
+      'the agent died on a terminal API error rather than returning a bad plan. Nothing was changed; relaunch when the API recovers' +
+      (tasksFile ? ' (adopt mode skips tasks already checked off, so no work is repeated).' : '.'),
+  )
+}
 let planFile = plan.tasks_file
 log(tasksFile ? `adopted ${plan.tasks.length} unchecked task(s) from ${tasksFile}` : `decomposed into ${plan.tasks.length} tasks (${planFile})`)
 
@@ -811,13 +869,29 @@ while (remaining.length) {
     break
   }
 
-  r.commit = await agent(commitPrompt(task, ticket, planFile), { label: `task-${task.n}:commit`, phase: 'Finalize', agentType: 'commit', schema: COMMIT_SCHEMA })
+  // Retry this one hardest: the task has already CLOSED on evidence, so a dead commit
+  // agent is the one failure that strands proven work as a staged tail — the very
+  // shape the run-verifier reports as a block.
+  r.commit = await agentOrRetry(commitPrompt(task, ticket, planFile), { label: `task-${task.n}:commit`, phase: 'Finalize', agentType: 'commit', schema: COMMIT_SCHEMA }, `task ${task.n} commit`)
+  if (!r.commit) {
+    r.unresolved = [...(r.unresolved ?? []), 'closed on evidence but the commit agent returned no result — the work is STAGED and uncommitted; commit it by hand before relaunching']
+    r.uncommitted = r.uncommitted?.length ? r.uncommitted : (r.files_changed ?? [])
+    log(`task ${task.n} closed but was NOT committed — stopping the chain so the staged work is not buried under the next task`)
+    results.push(r)
+    break
+  }
   results.push(r)
   completed.push(task)
 
   if (!remaining.length) continue
 
-  const impact = await agent(planImpactPrompt(task, r, remaining), { label: `task-${task.n}:plan-impact`, phase: 'Replan', schema: PLAN_IMPACT_SCHEMA })
+  const impact = await agentOrRetry(planImpactPrompt(task, r, remaining), { label: `task-${task.n}:plan-impact`, phase: 'Replan', schema: PLAN_IMPACT_SCHEMA }, `task ${task.n} plan-impact`)
+  // No assessment is not a verdict to revise. Keep the plan and carry on: the
+  // committed task stands either way, and the human reviews the branch.
+  if (!impact) {
+    log(`task ${task.n}: plan-impact returned no result — keeping the current plan`)
+    continue
+  }
   if (impact.impact !== 'revise') continue
 
   if (replans >= MAX_REPLANS) {
@@ -827,14 +901,20 @@ while (remaining.length) {
 
   replans++
   log(`task ${task.n} triggered re-decompose (${replans}/${MAX_REPLANS}): ${impact.reason}`)
-  const revised = await agent(redecomposePrompt(story, completed, remaining, impact.reason, planFile), { label: `replan#${replans}`, phase: 'Replan', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA })
+  const revised = await agentOrRetry(redecomposePrompt(story, completed, remaining, impact.reason, planFile), { label: `replan#${replans}`, phase: 'Replan', agentType: 'decompose-to-tasks', schema: TASK_LIST_SCHEMA }, `replan#${replans}`)
+  if (!revised) {
+    log(`replan#${replans} returned no result — keeping the current plan of ${remaining.length} task(s)`)
+    continue
+  }
   remaining = revised.tasks ?? []
   planFile = revised.tasks_file ?? planFile
   log(`re-decomposed remaining work into ${remaining.length} task(s)`)
 }
 
 phase('Finalize')
-const fullSuite = await agent(finalSuitePrompt(), { label: 'full-suite', phase: 'Finalize', schema: RECEIPT })
+// The run's headline receipt, and integration gates on it — a transient null here
+// would report a completed run as unverified and silently skip landing it.
+const fullSuite = await agentOrRetry(finalSuitePrompt(), { label: 'full-suite', phase: 'Finalize', schema: RECEIPT }, 'full-suite')
 const allClosed = results.length > 0 && remaining.length === 0 && results.every((r) => r.status === 'closed')
 
 // Independent post-run verification via the run-verifier agent — the same checks the
@@ -883,7 +963,20 @@ return {
   full_suite: fullSuite,
   verification: verify ?? { clean: false, findings: [], learnings_path: null },
   integrated: finish?.integrated ?? false,
-  finish_note: finish?.note ?? null,
+  // finish only runs on a fully-closed run, so on a partial one its note is null and
+  // nothing at the top level said that finished work was left loose in the tree. State
+  // it here, where the caller reads the summary, rather than only inside a task entry.
+  finish_note:
+    finish?.note ??
+    (() => {
+      const stranded = results.filter((r) => r.status === 'open' && r.uncommitted?.length)
+      if (!stranded.length) return null
+      return (
+        `Run did not complete. Uncommitted work remains in the working tree from ${stranded.length} open task(s): ` +
+        stranded.map((r) => `task ${r.n} (${r.uncommitted.join(', ')})`).join('; ') +
+        '. Commit, stash or discard it before relaunching — a concurrent commit in this tree would absorb it.'
+      )
+    })(),
   learnings,
   tasks: results.map((r) => ({
     n: r.n,

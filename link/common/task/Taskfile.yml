@@ -34,15 +34,49 @@ tasks:
     # The recipe is a dozen lines of shell; echoing it buries the report it prints.
     silent: true
     cmds:
-      # Root story files first, then the nested ones, then the breakdowns, so the
-      # report reads in the same order in every repo. The awk script classifies each
-      # file by its path, so it only needs the list.
       - |
+        # Where the story files live is not always where you are standing. Two cases:
+        # a subdirectory of the repo, and a git worktree — and in a repo that keeps
+        # user-stories/ and tasks/ untracked (a local .git/info/exclude is the usual
+        # reason) a worktree carries neither directory at all, so the report has to
+        # come from the main checkout. --git-common-dir points there from inside a
+        # worktree and at the repo itself everywhere else, making this a no-op in the
+        # ordinary case. First directory that has either folder wins, so a worktree
+        # that does carry its own stories still reports on its own.
+        # `|| true` on each: task runs a recipe under `set -e`, and outside a repo
+        # git exits 128, which would kill the recipe before it could say anything
+        # useful about a directory that simply has no stories in it.
+        orig=$PWD
+        top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+        common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+        main=""
+        if [ -n "$common" ]; then main=$(dirname "$common"); fi
+
+        base=""
+        for d in "$orig" "$top" "$main"; do
+          [ -n "$d" ] || continue
+          if [ -d "$d/user-stories" ] || [ -d "$d/tasks" ]; then base=$d; break; fi
+        done
+
+        if [ -z "$base" ]; then
+          searched=""
+          if [ -n "$main" ] && [ "$main" != "$orig" ]; then searched=", nor in $main"; fi
+          echo "progress: no user-stories/ or tasks/ in $orig$searched" >&2
+          exit 1
+        fi
+        # Say so when the report is not about the directory you are in, so a worktree
+        # never looks like it has the progress its parent has.
+        [ "$base" = "$orig" ] || echo "progress: reporting on $base" >&2
+        cd "$base" || exit 1
+
+        # Root story files first, then the nested ones, then the breakdowns, so the
+        # report reads in the same order in every repo. The awk script classifies each
+        # file by its path, so it only needs the list.
         set -- $(find user-stories -maxdepth 1 -name '*.md' -type f 2>/dev/null | sort) \
                $(find user-stories -mindepth 2 -name '*.md' -type f 2>/dev/null | sort) \
                $(find tasks -name '*.md' -type f 2>/dev/null | sort)
         if [ "$#" -eq 0 ]; then
-          echo "progress: no markdown under user-stories/ or tasks/ in $PWD — this repo does not use that layout" >&2
+          echo "progress: user-stories/ or tasks/ exists in $base but holds no markdown" >&2
           exit 1
         fi
         # The terminal test belongs out here, not inside a $(...) whose stdout is a

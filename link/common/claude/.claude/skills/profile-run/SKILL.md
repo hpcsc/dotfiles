@@ -29,12 +29,19 @@ first. Measure before recommending.
 ## Step 1 — Measure
 
 ```
-python3 ~/.claude/skills/profile-run/profile-run.py [transcript_dir] [--top=N] [--type=AGENT]
+python3 ~/.claude/skills/profile-run/profile-run.py [transcript_dir] [--top N] [--type AGENT] [--list]
 ```
 
-With no directory it profiles the most recently modified workflow run. The workflow tool
-prints its transcript dir when it launches; otherwise they live under
-`~/.claude/projects/<project>/<session>/subagents/workflows/wf_*`.
+| Argument | Meaning |
+|---|---|
+| `transcript_dir` | A `wf_*` run directory. Omit it to profile the most recently modified run. |
+| `--top N` | Drill into the N slowest agents (default 2; `0` for the table only). |
+| `--type AGENT` | Drill into one agent type — `go-implementer`, `go-semantic-reviewer`, … |
+| `--list` | List every run found, oldest first, with its agent count and path. |
+
+`--top N` and `--top=N` both work. The workflow tool prints its transcript dir when it
+launches; otherwise they live under
+`~/.claude/projects/<project>/<session>/subagents/workflows/wf_*`, and `--list` finds them.
 
 It prints a per-stage table (runs, median, slowest, share of total), a concurrency
 verdict, and a drill-down on the slowest agent: model turns, seconds per turn, transcript

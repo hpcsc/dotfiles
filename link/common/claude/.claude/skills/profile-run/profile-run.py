@@ -7,12 +7,13 @@ the .meta.json is written when an agent starts and its .jsonl keeps growing
 until it returns, so their difference is that agent's wall time. The journal
 carries no timestamps, which is why mtimes are the clock here.
 
-  profile-run.py [transcript_dir] [--top N] [--type AGENT_TYPE]
+  profile-run.py [transcript_dir] [--top N] [--type AGENT] [--list]
 
 With no directory it profiles the most recently modified workflow run under
 ~/.claude/projects.
 """
 
+import argparse
 import collections
 import glob
 import json
@@ -99,11 +100,24 @@ def invocation(cmd):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    flags = {a.split("=")[0]: a.split("=")[-1] for a in sys.argv[1:] if a.startswith("--")}
-    d = args[0] if args else newest_run()
+    p = argparse.ArgumentParser(
+        description="Profile a finished agentic run: where its wall-clock went, per stage.",
+        epilog="With no directory, profiles the most recently modified workflow run.",
+    )
+    p.add_argument("transcript_dir", nargs="?", help="a wf_* run directory (default: newest)")
+    p.add_argument("--top", type=int, default=2, metavar="N", help="drill into the N slowest agents (default: 2, 0 for none)")
+    p.add_argument("--type", metavar="AGENT", help="drill into this agent type only, e.g. go-implementer")
+    p.add_argument("--list", action="store_true", help="list available runs and exit")
+    opts = p.parse_args()
+
+    if opts.list:
+        for r in sorted(glob.glob(os.path.expanduser("~/.claude/projects/*/*/subagents/workflows/wf_*")), key=os.path.getmtime):
+            print(f"{os.path.basename(r)}  {len(glob.glob(os.path.join(r, '*.meta.json'))):>3} agents  {r}")
+        return
+
+    d = opts.transcript_dir or newest_run()
     if not d or not os.path.isdir(d):
-        sys.exit("no transcript directory found — pass one explicitly")
+        sys.exit("no transcript directory found — pass one explicitly, or --list to see them")
 
     rows = agents(d)
     if not rows:
@@ -134,13 +148,12 @@ def main():
              else f"{overlap:.1f}x overlap — stages genuinely run in parallel")
     print(f"\n  Concurrency: {shape}")
 
-    target = flags.get("--type")
-    top = int(flags.get("--top", 2))
+    target, top = opts.type, opts.top
     pool = [r for r in rows if r[0] == target] if target else rows
     for t, secs, path in sorted(pool, key=lambda r: -r[1])[:top]:
         turns, tools, cmds, size = transcript_stats(path)
         per_turn = secs / turns if turns else 0
-        print(f"\n\nTHE SLOWEST STEP: {t} — {secs/60:.1f} minutes")
+        print(f"\n\nSLOWEST {t if target else 'STEP: ' + t} — {secs/60:.1f} minutes")
         print(f"  {turns} model turns at ~{per_turn:.0f}s each · transcript grew to {size/1024:.0f}KB")
         print(f"  {sum(tools.values())} tool calls: " + ", ".join(f"{k} {v}" for k, v in tools.most_common(5)))
         if not cmds:

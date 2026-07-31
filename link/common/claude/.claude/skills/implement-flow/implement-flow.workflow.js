@@ -26,6 +26,15 @@ const CALLER_PATTERNS = '~/.config/ai/guidelines/testing/caller-patterns.md'
 // shapes have done exactly that, both of which read perfectly natural when written:
 // a criterion reaching for state that only exists after the commit, and one phrased
 // as an absence that any deletion of the feature also satisfies.
+// What makes a stage slow is round-trips, not tokens. Measured on one story: an
+// 18-minute implementer spent it across ~150 model turns and 96 shell calls, 55% of
+// them `rg`/`sed`/`head` reading code a few lines at a time, against a transcript
+// that grew to 640KB — while the whole test suite runs in 7 seconds. Every extra
+// turn also re-sends a bigger context, so narrow probing compounds. Reading wide and
+// early costs input tokens once; probing costs a turn each time, forever.
+const FRONT_LOAD_READING =
+  'FRONT-LOAD YOUR READING. Each tool call is a full model round-trip against a context that keeps growing, so fifty narrow `rg`/`sed -n`/`head` probes cost far more than reading the same files whole. Open every file you already know you need in ONE message with parallel Read calls, and read each one whole rather than slicing it — the task names its files, so most of that list is known before you start. Search only for what the reading did not answer, and batch independent searches into one message too.'
+
 const CRITERIA_RULE =
   'WRITING ACCEPTANCE CRITERIA — two shapes to avoid, both of which have cost real runs their entire revision budget:\n' +
   '1. A criterion must be checkable against the WORKING TREE while the task is still in progress. A task is committed only AFTER it closes, so a criterion reaching for commit state — "and the output is committed", "state the diff in the commit message", "git log shows ...", "git status is clean" — has no evidence available at any point in the loop and can never close. Phrase the same intent against the tree instead: "git diff moves exactly one line in each golden", "regenerating leaves the tracked files byte-identical", "the file exists and contains X". Where the repo asks for a receipt in the commit message, that belongs to the commit step, not to the criterion list.\n' +
@@ -490,6 +499,7 @@ const designPrompt = (t, cfg) =>
 
 const implementPrompt = (t, cfg, testPlan, feedback, outstanding = []) =>
   `${taskHeader(t)}\n\nWrite failing tests first (per the approved plan), then implement until they pass. Test command: \`${TEST_CMD}\`.\n\n` +
+  `${FRONT_LOAD_READING} The task's affected-file list above is that starting set; read those files whole before your first edit, together with the one or two the patterns-to-follow name as precedent. While iterating, prefer the narrowest test selector that still covers what you changed — the full suite belongs to the receipt at the end, not to every loop.\n\n` +
   `Approved test plan:\n${testPlan}\n\n` +
   (feedback ? `REVISION REQUIRED — close these concrete gaps from the previous attempt:\n${feedback}\n\n` : '') +
   (outstanding.length
@@ -515,8 +525,13 @@ const refactorPrompt = (t, cfg, impl) =>
   `Keep tests green: after refactoring, RUN \`${TEST_CMD}\` and return the post-refactor \`test_receipt\` (verbatim). ` +
   `If refactoring breaks tests and you cannot fix it, revert and set outcome to "reverted: <reason>". If nothing is worth changing, set outcome "none needed" and still return a passing receipt. Leave changes STAGED.`
 
-const reviewPrompt = (t) =>
-  `Review the STAGED changes for this task. Use \`git diff --staged\` and \`git diff --staged --name-only\`.\n\n${taskHeader(t)}\n\n` +
+const reviewPrompt = (t, changedFiles = []) =>
+  `Review the STAGED changes for this task. Use \`git diff --staged\` for the diff.\n\n${taskHeader(t)}\n\n` +
+  (changedFiles.length
+    ? `The implementer changed these files — you do not need to discover them:\n${changedFiles.map((f) => `  ${f}`).join('\n')}\n\n`
+    : '') +
+  `${FRONT_LOAD_READING} For a review that means: the diff, plus the WHOLE post-image of each changed file, read together at the start. You are judging new code against the code already there, which the diff alone never shows.\n\n` +
+  `Do NOT run the test suite. The implementer returned a receipt for it and an independent audit re-runs it after you, so repeating it adds nothing to your verdict and costs minutes of every review. Run a scoped command only to demonstrate a specific finding you are raising.\n\n` +
   `When the diff adds or changes tests, do NOT judge them from the diff alone — read the WHOLE test file and weigh each new/changed test against the tests already there. A behaviorally-valid test still fails review if it is REDUNDANT: a new data point (enum value, field, config entry, allow-list token) exercising a behavior an existing test already covers belongs FOLDED into that test, not cloned as a parallel one; a change-detector already covered by a behavioral test should be dropped. This is test-quality scope — the semantic reviewer owns it (guideline: "Additional Data Point vs. New Behavior" / "Prefer Higher-Level Behavioral Tests Over Change Detectors"). Raise such a case as a \`quality\` finding classified \`quality_kind: "redundant-test"\` to fold-or-drop; it is non-negotiable and blocks at any severity, so rate its severity honestly rather than inflating it to force the block.\n\n` +
   `Separately, a test that provides NO value is not a nit to defer: a tautology (expected value derived from the code under test at runtime), a vacuous passthrough or constant-pin (it still passes if the code under test is replaced by a stub returning a constant or forwarding a collaborator's value verbatim — the substitution test), a call-count-only assertion, or a test with no behavioral assertion at all. Raise it as a \`quality\` finding classified \`quality_kind: "broken-test"\`; it is non-negotiable and blocks at any severity. The fix is to make it assert real behavior or delete it.\n\n` +
   `Likewise weigh every new or changed comment against ${'~/.config/ai/guidelines/comments.md'}: a comment that only restates what the code already says, or names code by its plan position ("PR/Task N", "reactor 1/2", "the decide leg") rather than its domain role, is a comment-usage violation. Raise it as a \`quality\` finding classified \`quality_kind: "comment-usage"\` — also non-negotiable, also blocks at any severity.\n\n` +
@@ -709,7 +724,7 @@ async function runTask(task) {
     if (reason) log(`${tag}: skipping code reviewers — ${reason}`)
     const reviews = reviewers.length
       ? (await parallel(
-          reviewers.map((r) => () => agent(reviewPrompt(task), { label: `${tag}:review:${r}`, phase: 'Implement', agentType: r, schema: REVIEW_SCHEMA })),
+          reviewers.map((r) => () => agent(reviewPrompt(task, impl.files_changed ?? []), { label: `${tag}:review:${r}`, phase: 'Implement', agentType: r, schema: REVIEW_SCHEMA })),
         )).filter(Boolean)
       : []
     for (const d of impl.finding_dispositions ?? []) {

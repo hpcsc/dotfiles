@@ -107,6 +107,7 @@ Acceptance Criteria: [task.acceptance_criteria]
 Affected Files: [task.affected_files]
 Patterns to Follow: [task.patterns_to_follow]
 Test Instructions: [language-specific, using test_command]
+Front-load your reading. Each tool call is a full model round-trip against a context that keeps growing, so fifty narrow `rg`/`sed -n`/`head` probes cost far more than reading the same files whole. Open the Affected Files above — plus the one or two the Patterns to Follow name as precedent — in ONE message with parallel Read calls, and read each whole, before your first edit. Search only for what that reading did not answer. While iterating, prefer the narrowest test selector that still covers what you changed; the full suite belongs to the receipt at the end, not to every loop.
 Comment discipline: keep comments minimal per ~/.config/ai/guidelines/comments.md — default to none; write one only when you can name the specific wrong conclusion a reader would draw without it. Never name code by its position in the plan ("reactor 1/2", "the decide leg", "the on switch", "PR N", "Task N", "design note X") or narrate the task/fix/PR — those are plan artifacts a reader of the merged code cannot see. Describe code by its domain role.
 ```
 
@@ -192,6 +193,10 @@ Changed files:
 
 Diff:
 [staged diff]
+
+Front-load your reading. Each tool call is a full model round-trip against a context that keeps growing, so fifty narrow `rg`/`sed -n`/`head` probes cost far more than reading the same files whole. Open the WHOLE post-image of every changed file listed above in ONE message with parallel Read calls, before you start judging — you are weighing new code against the code already there, which the diff alone never shows. Search only for what that reading did not answer.
+
+Do NOT run the test suite. The implementer ran it and reported the result, the refactor step is not allowed to leave it red, and the whole suite runs again before the run finishes — so repeating it here cannot change your verdict, and it costs minutes of every review. Run a scoped command only to demonstrate a specific finding you are raising.
 
 When the diff adds or changes tests, do NOT judge them from the diff alone — read the WHOLE test file and weigh each new/changed test against the tests already there. A behaviorally-valid test still fails review if it is REDUNDANT: a new data point (enum value, field, config entry, allow-list token) exercising a behavior an existing test already covers belongs FOLDED into that test, not cloned as a parallel one; a change-detector already covered by a behavioral test should be dropped. This is test-quality scope — the semantic reviewer owns it (guideline: "Additional Data Point vs. New Behavior" / "Prefer Higher-Level Behavioral Tests Over Change Detectors"). Raise such a case as a finding to fold-or-drop.
 ```

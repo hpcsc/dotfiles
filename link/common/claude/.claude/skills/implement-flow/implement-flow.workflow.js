@@ -21,6 +21,16 @@ const DISCLOSURE =
 
 const CALLER_PATTERNS = '~/.config/ai/guidelines/testing/caller-patterns.md'
 
+// Criteria are written once and then checked on every attempt, so a badly-shaped
+// one costs the whole revision budget and leaves finished work uncommitted. Two
+// shapes have done exactly that, both of which read perfectly natural when written:
+// a criterion reaching for state that only exists after the commit, and one phrased
+// as an absence that any deletion of the feature also satisfies.
+const CRITERIA_RULE =
+  'WRITING ACCEPTANCE CRITERIA — two shapes to avoid, both of which have cost real runs their entire revision budget:\n' +
+  '1. A criterion must be checkable against the WORKING TREE while the task is still in progress. A task is committed only AFTER it closes, so a criterion reaching for commit state — "and the output is committed", "state the diff in the commit message", "git log shows ...", "git status is clean" — has no evidence available at any point in the loop and can never close. Phrase the same intent against the tree instead: "git diff moves exactly one line in each golden", "regenerating leaves the tracked files byte-identical", "the file exists and contains X". Where the repo asks for a receipt in the commit message, that belongs to the commit step, not to the criterion list.\n' +
+  '2. A criterion must be falsifiable by the change it describes. "An X without the new entry behaves exactly as before", checked on input that omits the entry, is satisfied by deleting the feature outright, and invites a test that cannot fail. Phrase it against input that DOES exercise the change, so the with- and without- cases are asserted together: "a model declaring the entry and a sibling omitting it both format to their canonical bytes".'
+
 const LANG = {
   Go: {
     implementer: 'go-implementer',
@@ -357,6 +367,11 @@ const AUDIT_SCHEMA = {
             description:
               'For kind:test evidence — true only when you confirmed the cited file exists in the working tree AND re-ran the named test yourself and it selected and passed. False when the citation names a file or test that does not resolve (a deleted scratch/probe file: the evidence was destroyed). For kind:demo evidence with no persisted test, judge on the demonstration and set true.',
           },
+          note: {
+            type: 'string',
+            description:
+              'Optional. Use it to record a clause you judged on the working tree because the clause itself concerns state that does not exist during a task — commit message, git log, clean git status. Say which clause was deferred, so the human reviewing the branch can confirm it after the commit lands.',
+          },
         },
       },
     },
@@ -457,6 +472,7 @@ const decomposePrompt = (story) =>
   `Decompose the following user story into ordered, codebase-aware implementation tasks. For each task set \`language\` to the language it primarily involves, and \`depends_on\` to the task numbers it builds on (\`[]\` if none). Emit tasks in an order where every task's dependencies precede it.\n\n` +
   `Save the breakdown to \`tasks/[story-name].md\` as usual — including the \`- [ ] Task N: <title>\` checklist — and return its repo-relative path as \`tasks_file\`. The run checks entries off as tasks close, so the file doubles as restartable progress state.\n\n` +
   `If \`${LEARNINGS_PATH}\` exists, read it first: its entries are durable conventions, recurring review findings, and constraints distilled from earlier runs in this repo. Fold the relevant ones into each task's \`patterns_to_follow\` and do not re-propose work they already cover.\n\n` +
+  `${CRITERIA_RULE}\n\n` +
   `From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
   `<user_story>\n${story}\n</user_story>`
 
@@ -526,6 +542,7 @@ const auditPrompt = (t, impl, refactor) =>
   `1. RUN \`${TEST_CMD}\` yourself in the working tree and return the raw result as \`test_rerun\` (this is the executed-evidence check against a possibly-fabricated implementer receipt).\n` +
   `2. VERIFY EVERY CITATION RESOLVES. For each cited \`<file>::<test name>\` above: confirm the file exists in the working tree, then re-run that test BY NAME (e.g. \`go test -run 'TestX/sub' ./pkg/\`, \`pytest path::test\`, per this project's runner) and confirm it actually SELECTS a test and passes. A runner that matches nothing exits 0 while running zero tests — "no tests to run"/"0 passed"/"testing: warning: no tests to run" is a FAILED citation, not a pass. Set \`evidence_persists\` false for any citation naming a file or test that does not resolve: that means the implementer produced the evidence and then deleted it, which is a vacuous receipt.\n` +
   `3. For each acceptance criterion, decide \`has_executed_evidence\` strictly: is there a test or demonstration whose ACTUAL output shows the criterion met? Narration does not count.\n` +
+  `   ONE EXEMPTION, applied narrowly. A criterion may carry a clause about state that does not exist yet during a task — the commit message, \`git log\`, a clean \`git status\` — because this task is committed only AFTER it closes. No evidence for such a clause can exist at any point in this loop, so judge the criterion on the part that IS checkable in the working tree, and record the deferred clause in that criterion's \`note\` rather than listing the criterion as unmet. This exemption covers ONLY clauses about commit or branch state; a criterion whose substance is simply unproven stays unmet.\n` +
   `4. List in \`unmet\` every criterion with no executed evidence OR with \`evidence_persists\` false (say which, and name the missing file/test), plus "tests regressed" if your re-run failed.`
 
 const commitPrompt = (t, ticket, tasksFilePath) =>
@@ -558,7 +575,9 @@ const redecomposePrompt = (story, completed, remaining, reason, tasksFilePath) =
     `Current remaining tasks you are revising:\n${remainingDigest(remaining)}\n\n` +
     `Re-decompose ONLY the not-yet-started work so the story still lands. Return \`tasks\` containing just the revised remaining tasks — numbered from ${nextN} upward, dependency-ordered, with \`depends_on\` allowed to reference completed task numbers. Same fields as a normal decomposition. Keep what is still correct, drop what is now unnecessary, add what is missing.\n\n` +
     `Also update the breakdown file at \`${tasksFilePath}\` in place: leave completed tasks and their checked \`- [x]\` checklist entries untouched, replace the not-yet-started task sections and their unchecked checklist entries with the revised tasks, and return the same path as \`tasks_file\`.\n\n` +
-    `If \`${LEARNINGS_PATH}\` exists, read it and fold relevant durable learnings into \`patterns_to_follow\`. From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
+    `If \`${LEARNINGS_PATH}\` exists, read it and fold relevant durable learnings into \`patterns_to_follow\`.\n\n` +
+    `${CRITERIA_RULE}\n\n` +
+    `From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
     `<user_story>\n${story}\n</user_story>`
   )
 }

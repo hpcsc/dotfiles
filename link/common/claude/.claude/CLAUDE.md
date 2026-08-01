@@ -10,6 +10,7 @@
 - Selecting from results: pipe to `fzf`
 - JSON manipulation: `jq`
 - YAML/XML manipulation: `yq`
+- Copying/restoring: never bare `cp`/`mv` onto a path that already exists — prezto's `safe-ops` aliases `cp`, `mv`, `rm` and `ln` to `-i`, and the overwrite prompt has no reader in a non-interactive shell, so the call hangs until the tool timeout kills it and the operation silently never happens. To put back a file you mutated, use `git checkout -- <file>` — it needs no backup copy at all. When a real copy or move is needed, use `/bin/cp -f` / `/bin/mv -f`.
 
 # Go Test Organization
 

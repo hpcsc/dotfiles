@@ -10,6 +10,7 @@
 - Selecting from results: pipe to `fzf`
 - JSON manipulation: `jq`
 - YAML/XML manipulation: `yq`
+- Copying/restoring: never bare `cp`/`mv` onto a path that already exists — prezto's `safe-ops` aliases `cp`, `mv`, `rm` and `ln` to `-i`, and the overwrite prompt has no reader in a non-interactive shell, so the call hangs until the tool timeout kills it and the operation silently never happens. To put back a file you mutated, use `git checkout -- <file>` — it needs no backup copy at all. When a real copy or move is needed, use `/bin/cp -f` / `/bin/mv -f`.
 
 # Go Test Organization
 
@@ -21,7 +22,4 @@
 
 # Comment Usage
 
-- **No obvious comments**: do not restate what the code already says. Well-named identifiers and clear structure are the primary documentation.
-- **Only when necessary**: add a comment only to explain something that is not obvious from the code itself — a hidden constraint, a subtle invariant, a non-trivial rationale, or a workaround.
-- **Self-contained**: a comment should be understandable on its own, without requiring the reader to chase external context (story IDs, ticket numbers, caller names, prior conversations).
-- **External links are optional context only**: a link to a spec, bug, or discussion may be included as *additional* history reference, but the comment must still stand on its own without it.
+- When writing or editing code, follow `~/.config/ai/guidelines/comments.md`: default to no comments; add one only when you can name the specific wrong conclusion a reader would draw without it. Read that guideline (it's short) before adding any non-trivial comment.

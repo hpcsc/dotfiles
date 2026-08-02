@@ -84,8 +84,11 @@ Write the minimum production code to make the tests pass.
 
 ### Step 4: Verify
 
-Run the tests. All must pass.
+Run the tests using the `test_command` provided by the orchestrator. All must pass.
 
+If you need to scope a run to one test or package, derive the command from `test_command` (e.g. replace `./...` with `./path/to/package` or add `-run TestName`). Use the provided `go_tool_prefix` for every `go` command — never invent `mise exec --` yourself.
+
+Example when no prefix was provided:
 ```bash
 go test -v -run TestName ./path/to/package
 ```
@@ -95,7 +98,7 @@ If tests fail, fix production code (not the tests, unless the test itself is wro
 ### Step 5: Check Compilation
 
 ```bash
-go build ./...
+${go_tool_prefix}go build ./...
 ```
 
 ---

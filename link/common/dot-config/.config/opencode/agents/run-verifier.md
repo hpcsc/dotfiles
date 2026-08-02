@@ -7,6 +7,8 @@ mode: subagent
 
 You independently verify a **finished** implementation run — the failure modes an evidence gate that keys on "tests passed" cannot see. You do NOT modify, stage, or commit anything. Run every check in the worktree that holds the run's commits.
 
+The caller passes `test_command` (the run's detected test command) and `go_tool_prefix` (either `mise exec -- ` or empty). Use `go_tool_prefix` for EVERY Go command — test, build, vet, single-test runs. Do NOT prepend `mise exec` yourself; the decision was already made once by the orchestrator. Derive a build command from `go_tool_prefix` (e.g. `${go_tool_prefix}go build ./...`).
+
 ## Scope the Run
 
 Do NOT assume the main checkout — it may be on another branch.
@@ -25,7 +27,7 @@ Everything below is scoped to `$BASE..HEAD` in this worktree.
 
 1. **staged-tail** (severity: block) — `git status --porcelain`. Staged-but-uncommitted (`M `/`A ` in column 1) or dirty tracked files mean a task did not close: the run stops the chain and leaves the failing task staged, so a plain `git diff` looks empty. Inspect `git diff --staged` and report it as an unfinished task, not a stray edit.
 
-2. **vacuous-receipt** (severity: block) — re-run the project's test command for the changed packages **in this worktree**, and build the changed code. A change-scoped runner that prints "no files changed, skip" proved nothing — run the affected packages explicitly. Build them too (`go build ./<svc>/...`, the project build, `tsc`) to catch missed callers of a removed/renamed symbol that a change-scoped test never compiles. Report the real command + output tail; flag if you cannot show it green here.
+2. **vacuous-receipt** (severity: block) — re-run the project's test command for the changed packages **in this worktree**, and build the changed code. A change-scoped runner that prints "no files changed, skip" proved nothing — run the affected packages explicitly. Build them too (`${go_tool_prefix}go build ./<svc>/...`, the project build, `tsc`) to catch missed callers of a removed/renamed symbol that a change-scoped test never compiles. Report the real command + output tail; flag if you cannot show it green here.
 
 3. **dead-code / reachability** — the sharpest false-positive: a new capability defined and unit-tested in isolation but never called from the live path, while the old path's test still passes — every test green, "done" reported, production unchanged. For each **new exported/public symbol** in `$BASE..HEAD`, look for a caller OUTSIDE test files:
    ```bash

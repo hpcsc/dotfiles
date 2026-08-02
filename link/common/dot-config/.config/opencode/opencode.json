@@ -3,7 +3,9 @@
   "permission": {
     "external_directory": {
       "~/.config/ai/**": "allow",
-      "~/dotfiles/link/common/dot-config/.config/ai/**": "allow"
+      "~/dotfiles/link/common/dot-config/.config/ai/**": "allow",
+      "~/.claude/implement-learnings/**": "allow",
+      "~/.config/opencode/skills/**": "allow"
     },
     "edit": {
       "*": "ask",
@@ -36,7 +38,16 @@
       "tree*": "allow",
       "ls*": "allow",
       "mkdir*tasks/.cycles*": "allow",
-      "rm*tasks/.cycles*": "allow"
+      "rm*tasks/.cycles*": "allow",
+      "true*": "allow",
+      "test*": "allow",
+      "git check-ignore*": "allow",
+      "git add*": "allow",
+      "git commit*": "allow",
+      "git switch*": "allow",
+      "git checkout*": "allow",
+      "git branch*": "allow",
+      "git rebase*": "allow"
     }
   },
   "theme": "gruvbox"

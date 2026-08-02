@@ -50,17 +50,19 @@ Update tests BEFORE touching production code:
 1. Read each affected test file
 2. Update tests to reflect the new structure/API/naming
 3. Add new test cases if the refactoring introduces new behavior boundaries
-4. Run impacted tests — failures are expected at this point for structural changes
+4. Run impacted tests using the `test_command` provided by the orchestrator — failures are expected at this point for structural changes
 
 ```bash
 go test -v ./path/to/package
 ```
 
+If `test_command` is `mise exec -- go test ./...`, scope it by replacing the package path, not by dropping the `mise exec --` prefix.
+
 ### Step 4: Apply Refactoring
 
 Apply the refactoring to production code:
 - Make ONE structural change at a time
-- Run tests after EACH change
+- Run tests after EACH change using the provided `test_command`
 - Keep changes purely structural (no behavior change)
 
 ```bash
@@ -75,8 +77,10 @@ If tests fail:
 
 ### Step 5: Verify Full Compilation
 
+Use the `go_tool_prefix` provided by the orchestrator (never invent `mise exec --` yourself):
+
 ```bash
-go build ./...
+${go_tool_prefix}go build ./...
 ```
 
 ### Step 6: Stage and Report Results

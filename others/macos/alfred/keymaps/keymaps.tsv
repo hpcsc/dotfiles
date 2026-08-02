@@ -3,6 +3,7 @@ tmux	<prefix> + u	Open popup terminal
 tmux	<prefix> + H|J|K|L	Resize panes
 tmux	<prefix> + a	Kill all panes
 tmux	<prefix> + e	Synchronize panes
+tmux	<prefix> + b	Type current git branch at cursor
 nvim	<leader> + ;	Open yazi
 nvim	<leader> + gg	Open gitui
 yazi	o	Open selected files

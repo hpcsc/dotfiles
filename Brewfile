@@ -1,5 +1,6 @@
 tap "beeftornado/rmtree"
 tap "tomanthony/brews"
+brew "chafa"
 brew "colima"
 brew "coreutils"
 brew "diffutils"

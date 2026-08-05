@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+# tmux-snapshot — save/restore tmux layout on demand.
+#
+#   tmux-snapshot save [name]      capture all sessions to a file (default: "last")
+#   tmux-snapshot restore [name]   recreate them
+#   tmux-snapshot list             show saved snapshots
+#   tmux-snapshot show [name]      print a snapshot
+#
+# Captures: sessions, windows, pane splits + layout, per-pane cwd, and the
+# foreground program of each pane. Claude Code panes are resolved to their
+# actual conversation id so they come back as `claude --resume <id>` rather
+# than a fresh session.
+
+set -o pipefail
+
+DIR="${TMUX_SNAPSHOT_DIR:-$HOME/.local/share/tmux-snapshot}"
+
+# Programs worth relaunching. A pane running anything else comes back as a bare
+# shell in the right directory.
+RESTORABLE='claude|nvim|vim|hx|emacs|less|man|top|htop|btop|tail|ssh|psql|mysql|sqlite3|k9s|lazygit|lazydocker|caffeinate|watch|journalctl'
+
+die() { printf 'tmux-snapshot: %s\n' "$*" >&2; exit 1; }
+
+# ---- claude session resolution ------------------------------------------------
+# Claude Code stores each conversation at
+#   ~/.claude/projects/<cwd with / and . replaced by ->/<session-id>.jsonl
+# The newest transcript in that directory is the pane's live conversation.
+claude_session_for_dir() {
+  local dir="$1" slug pdir newest
+  slug="${dir//[\/.]/-}"
+  pdir="$HOME/.claude/projects/$slug"
+  [ -d "$pdir" ] || return 1
+  newest=$(ls -t "$pdir"/*.jsonl 2>/dev/null | head -1)
+  [ -n "$newest" ] || return 1
+  basename "$newest" .jsonl
+}
+
+# ---- pane program detection ---------------------------------------------------
+# tmux's #{pane_current_command} is unreliable: a program that rewrites its
+# process title (Claude Code reports its version, e.g. "2.1.222") hides behind
+# it, so the pane looks like it is running nothing restorable.
+#
+# pgrep is unusable here too — on macOS it omits its own ancestors, which is
+# exactly the claude process when this script runs inside a Claude Code pane.
+# Take one ps snapshot and walk parent links in awk instead.
+PS_SNAPSHOT=''
+
+pane_program() {
+  local root="$1"
+  printf '%s\n' "$PS_SNAPSHOT" | awk -v root="$root" -v re="^($RESTORABLE)$" '
+    {
+      pid = $1; ppid = $2
+      cmd = $0
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+[0-9]+[[:space:]]+/, "", cmd)
+      parent[pid] = ppid
+      command[pid] = cmd
+      pids[n++] = pid
+    }
+    function depth_below_root(p,   cur, hops) {
+      cur = parent[p]; hops = 1
+      while (cur != "" && cur != "0" && hops < 64) {
+        if (cur == root) return hops
+        cur = parent[cur]; hops++
+      }
+      return -1
+    }
+    END {
+      best = -1
+      for (i = 0; i < n; i++) {
+        p = pids[i]
+        if (p == root) continue
+        d = depth_below_root(p)
+        if (d < 0) continue
+
+        argv0 = command[p]
+        sub(/[[:space:]].*$/, "", argv0)
+        sub(/^.*\//, "", argv0)
+        sub(/^-/, "", argv0)
+        if (argv0 !~ re) continue
+
+        if (best < 0 || d < best) { best = d; found = command[p] }
+      }
+      if (best >= 0) printf "%s", found
+    }
+  '
+}
+
+restore_command_for_pane() {
+  local pid="$1" cwd="$2" cmd base sid
+  cmd=$(pane_program "$pid")
+  [ -n "$cmd" ] || return 1
+  base=$(basename -- "${cmd%% *}")
+
+  if [ "$base" = "claude" ]; then
+    if sid=$(claude_session_for_dir "$cwd"); then
+      printf 'claude --resume %s' "$sid"
+    else
+      printf 'claude'
+    fi
+    return 0
+  fi
+
+  printf '%s' "$cmd"
+}
+
+# ---- save ---------------------------------------------------------------------
+cmd_save() {
+  local name="${1:-last}" out stamp
+  [ -n "$TMUX" ] || tmux has-session 2>/dev/null || die 'no tmux server running'
+  mkdir -p "$DIR" || die "cannot create $DIR"
+
+  stamp=$(date +%Y%m%dT%H%M%S)
+  out="$DIR/$name.snapshot"
+  PS_SNAPSHOT=$(ps -axo pid=,ppid=,command=)
+
+  {
+    printf '# tmux-snapshot %s\n' "$stamp"
+    printf 'OPT\t%s\t%s\n' \
+      "$(tmux show-options -gv base-index 2>/dev/null || echo 0)" \
+      "$(tmux show-options -gqv pane-base-index 2>/dev/null || echo 0)"
+
+    tmux list-windows -a -F 'WIN'$'\t''#{session_name}'$'\t''#{window_index}'$'\t''#{window_name}'$'\t''#{window_active}'$'\t''#{window_layout}'
+
+    local sess win pane active cwd pid rcmd
+    while IFS='|' read -r sess win pane active cwd pid; do
+      rcmd=$(restore_command_for_pane "$pid" "$cwd") || rcmd=''
+      printf 'PANE\t%s\t%s\t%s\t%s\t%s\t%s\n' "$sess" "$win" "$pane" "$active" "$cwd" "$rcmd"
+    done < <(tmux list-panes -a -F '#{session_name}|#{window_index}|#{pane_index}|#{pane_active}|#{pane_current_path}|#{pane_pid}')
+  } > "$out" || die "write failed: $out"
+
+  cp -f "$out" "$DIR/$name-$stamp.snapshot" 2>/dev/null
+  printf 'saved %s panes to %s\n' \
+    "$(grep -c '^PANE' "$out")" "$out"
+}
+
+# ---- restore ------------------------------------------------------------------
+cmd_restore() {
+  local name="${1:-last}" file="$DIR/${1:-last}.snapshot"
+  [ -f "$file" ] || die "no snapshot: $file"
+
+  local base_index=0 pane_base=0
+  local optline
+  optline=$(grep '^OPT' "$file" | head -1)
+  [ -n "$optline" ] && {
+    base_index=$(printf '%s' "$optline" | cut -f2)
+    pane_base=$(printf '%s' "$optline" | cut -f3)
+  }
+
+  # Panes first: create every session/window/pane, then apply saved layouts.
+  local sess win pane active cwd rcmd target
+  local seen_sessions='' seen_windows='' key
+
+  while IFS=$'\t' read -r _ sess win pane active cwd rcmd; do
+    [ -d "$cwd" ] || cwd="$HOME"
+
+    if ! printf '%s' "$seen_sessions" | grep -q "|$sess|"; then
+      if ! tmux has-session -t "=$sess" 2>/dev/null; then
+        tmux new-session -d -s "$sess" -c "$cwd"
+        # new-session makes window at base-index; move it if the snapshot differs
+        if [ "$win" != "$base_index" ]; then
+          tmux move-window -s "$sess:$base_index" -t "$sess:$win" 2>/dev/null
+        fi
+      fi
+      seen_sessions="$seen_sessions|$sess|"
+      seen_windows="$seen_windows|$sess:$win|"
+      target="$sess:$win.$pane"
+      [ -n "$rcmd" ] && tmux send-keys -t "$target" "$rcmd" C-m
+      continue
+    fi
+
+    key="|$sess:$win|"
+    if ! printf '%s' "$seen_windows" | grep -q "$key"; then
+      tmux new-window -d -t "$sess:$win" -c "$cwd" 2>/dev/null \
+        || tmux new-window -d -t "$sess:" -c "$cwd"
+      seen_windows="$seen_windows$key"
+    else
+      tmux split-window -d -t "$sess:$win" -c "$cwd"
+    fi
+
+    target="$sess:$win.$pane"
+    [ -n "$rcmd" ] && tmux send-keys -t "$target" "$rcmd" C-m
+  done < <(grep '^PANE' "$file")
+
+  # Names and layouts, once every pane exists.
+  local wname layout wactive
+  while IFS=$'\t' read -r _ sess win wname wactive layout; do
+    tmux rename-window -t "$sess:$win" "$wname" 2>/dev/null
+    tmux select-layout -t "$sess:$win" "$layout" 2>/dev/null
+    [ "$wactive" = "1" ] && tmux select-window -t "$sess:$win" 2>/dev/null
+  done < <(grep '^WIN' "$file")
+
+  while IFS=$'\t' read -r _ sess win pane active cwd rcmd; do
+    [ "$active" = "1" ] && tmux select-pane -t "$sess:$win.$pane" 2>/dev/null
+  done < <(grep '^PANE' "$file")
+
+  printf 'restored %s panes from %s\n' "$(grep -c '^PANE' "$file")" "$file"
+}
+
+cmd_list() {
+  [ -d "$DIR" ] || die "no snapshots in $DIR"
+  ls -lt "$DIR"/*.snapshot 2>/dev/null || die "no snapshots in $DIR"
+}
+
+cmd_show() {
+  local file="$DIR/${1:-last}.snapshot"
+  [ -f "$file" ] || die "no snapshot: $file"
+  cat "$file"
+}
+
+case "${1:-}" in
+  save)    shift; cmd_save "$@" ;;
+  restore) shift; cmd_restore "$@" ;;
+  list)    shift; cmd_list "$@" ;;
+  show)    shift; cmd_show "$@" ;;
+  *)       die 'usage: tmux-snapshot {save|restore|list|show} [name]' ;;
+esac

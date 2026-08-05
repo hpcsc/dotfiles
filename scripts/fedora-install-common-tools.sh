@@ -11,7 +11,7 @@ set -e
 is_fedora || exit 0
 
 # Install essential tools
-for i in curl zsh stow vim tree tmux rsync python3-neovim chafa; do
+for i in curl zsh stow vim tree tmux rsync python3-neovim chafa ImageMagick; do
   echo_yellow "=== Installing $i"
   sudo dnf install -y $i
   echo_green "Installed $i"

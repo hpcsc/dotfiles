@@ -1,0 +1,75 @@
+emulate -L zsh
+setopt local_options err_return pipe_fail
+
+local -a o_block o_out
+zparseopts -D -E n:=o_block o:=o_out
+
+local dep
+for dep in mmdc chafa; do
+  command -v $dep >/dev/null 2>&1 || {
+    print -u2 "mmd: $dep is not installed"
+    return 1
+  }
+done
+
+local out=${o_out[2]:-}
+local ext=svg
+[[ -n $out && -n ${out:e} ]] && ext=${out:e}
+
+local text
+if [[ -n ${1:-} && $1 != -* ]]; then
+  [[ -r $1 ]] || { print -u2 "mmd: cannot read $1"; return 1 }
+  text=$(<"$1")
+  shift
+else
+  text=$(cat)
+fi
+[[ -n $text ]] || { print -u2 "mmd: empty input"; return 1 }
+
+local tmp=$(mktemp -d)
+{
+  # mmdc decides between "whole file is one diagram" and "pull the fenced blocks
+  # out of a document" by extension, so the sniff picks the name it will see.
+  local src=$tmp/in.mmd
+  [[ $text == *'```mermaid'* || $text == *'~~~mermaid'* ]] && src=$tmp/in.md
+  print -r -- "$text" > "$src"
+
+  mmdc -i "$src" -o "$tmp/out.$ext" \
+    -b "${MMD_BG:-transparent}" -t "${MMD_THEME:-dark}" >/dev/null 2>&1 || {
+    print -u2 "mmd: mmdc could not render the diagram"
+    return 1
+  }
+
+  local -a shots
+  shots=("$tmp"/out-*.$ext(Nn))
+  (( ${#shots} )) || shots=("$tmp"/out.$ext(N))
+  (( ${#shots} )) || { print -u2 "mmd: mmdc produced no output"; return 1 }
+
+  if (( ${#o_block} )); then
+    local want=${o_block[2]}
+    (( want >= 1 && want <= ${#shots} )) || {
+      print -u2 "mmd: no block $want (found ${#shots})"
+      return 1
+    }
+    shots=("${shots[$want]}")
+  fi
+
+  local i
+  if [[ -n $out ]]; then
+    local base=${out:r}
+    for i in {1..${#shots}}; do
+      local dest=$out
+      (( ${#shots} > 1 )) && dest=$base-$i.$ext
+      /bin/cp -f "${shots[$i]}" "$dest"
+      print -r -- "$dest"
+    done
+    return 0
+  fi
+
+  for i in {1..${#shots}}; do
+    (( ${#shots} > 1 )) && print -r -- "── block $i/${#shots} ──"
+    chafa --passthrough auto "$@" "${shots[$i]}"
+  done
+} always {
+  rm -rf "$tmp"
+}

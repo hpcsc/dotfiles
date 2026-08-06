@@ -22,12 +22,14 @@ Break operations into small local transactions that communicate through events. 
 
 ### 3. Error Handling
 - [ ] Transient errors handled with retry policies
+- [ ] Handlers safe to repeat — a retry policy over a non-idempotent handler multiplies the bug
 - [ ] Permanent errors trigger compensation
 - [ ] Dead letter queues configured
 
 ### 4. Infrastructure
 - [ ] Durable message bus for reliable delivery
 - [ ] Outbox pattern for atomic operations
+- [ ] Inbox pattern (or an equivalent) on at-least-once consumers
 - [ ] Monitoring for distributed flows
 
 ---
@@ -82,6 +84,12 @@ Transform internal events to external events. Add context, hide internals.
 Store events + state in same transaction. Publish separately.
 - Guarantees: No lost events, atomic state + event
 
+### Inbox Pattern
+The consumer-side mirror. Record the handled fact in the same transaction as the effect it causes.
+- Guarantees: No duplicate effects under at-least-once delivery, atomic effect + dedup record
+- Outbox protects writes leaving your store; inbox protects messages entering it
+- Skip it where the effect is already idempotent — in an event-sourced system the aggregate usually makes it so for free
+
 ---
 
 ## Anti-Pattern Detection
@@ -94,6 +102,7 @@ Store events + state in same transaction. Publish separately.
 | **Synchronous Dependencies** | `s.paymentClient.ProcessPayment()` direct calls | Event-driven communication |
 | **God Process Manager** | PM has DB connections, email clients, business logic | Keep lightweight, delegate to services |
 | **Unreliable Messaging** | `go func() { eventBus.Publish(evt) }()` fire-and-forget | Outbox pattern |
+| **External Dedup Lock** | A dedup key in a different store from the effect (Dynamo, Redis), released when the handler errors | Aggregate invariant, provider idempotency key, or an inbox row in the effect's transaction |
 
 ---
 
@@ -114,6 +123,15 @@ Compensations preserve history. `PaymentRefunded` records a real business fact; 
 4. Commit (atomic)
 5. Background: poll outbox, publish, mark published
 ```
+
+### Inbox Critical Path
+```
+1. Begin transaction
+2. Insert dedup row keyed on the business fact (conflict → already handled: commit, ack)
+3. Apply the effect
+4. Commit (atomic)
+```
+Key on the business fact, not the delivery — message ids and stream positions change under replay, the fact does not. A key held in another store is a lock rather than idempotence: it can be left held by a process that died, and every retry then skips in silence.
 
 ### Event Enrichment Boundary
 - Internal events: Minimal, within bounded context

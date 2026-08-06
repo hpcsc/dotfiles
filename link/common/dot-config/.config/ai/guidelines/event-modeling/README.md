@@ -7,7 +7,7 @@ Guidance for discovering, designing, and diagramming event-driven models — cap
 ### Discovering the model
 
 - [capabilities-vs-processes.md](capabilities-vs-processes.md) — distinguish a business *capability* (the WHAT, stable) from a *process* (the HOW, a trigger→steps→outcome timeline); model processes, organize by capabilities.
-- [message-processing-patterns.md](message-processing-patterns.md) — the catalogue of components behind each arrow (Aggregate, Projection, Reactor, Saga, Process Manager, Translation, Gateway, Policy, Scheduler, Stream Processing), with a selection guide and labeling convention.
+- [message-processing-patterns.md](message-processing-patterns.md) — the catalogue of components behind each arrow (Aggregate, Projection, Reactor, Saga, Process Manager, Translation, Gateway, Policy, Scheduler, Stream Processing), with a selection guide, a labeling convention, and the ranking of mechanisms that make an event→command handler safe to run twice.
 
 ### Designing events
 
@@ -35,5 +35,7 @@ Guidance for discovering, designing, and diagramming event-driven models — cap
 | Model an email / SMS / external call | [external-communications.md](external-communications.md) |
 | Decide how many delivery events several message kinds need | [external-communications.md](external-communications.md) |
 | Label what implements each arrow in the model | [message-processing-patterns.md](message-processing-patterns.md) |
+| Stop a reactor or scheduler doing its work twice | [message-processing-patterns.md](message-processing-patterns.md#safe-to-run-twice) |
+| Stop a customer getting the same email twice | [external-communications.md](external-communications.md) |
 | Sanity-check a model for smells | [anti-patterns.md](anti-patterns.md) |
 | Draw the diagram | [diagram-templates.md](diagram-templates.md) |

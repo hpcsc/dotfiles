@@ -134,13 +134,24 @@ Distinguish between **your domain** and **external provider concerns**:
 
 **Model your domain, not theirs.** Instead of `EmailMessage` aggregate, consider `CustomerEngagement` aggregate.
 
-## The Idempotency Tradeoff
+## Duplicate Sends
 
-There's an unsolvable problem: if a reactor crashes after calling the external provider but before persisting the result event, you may get duplicate communications.
+A reactor that crashes after calling the provider but before recording the result calls the provider again on retry. Delivery is at-least-once, so this is not an edge case to design around — it is the ordinary case, and the only question is what absorbs it. Take the first of these the provider allows:
 
-**Accepted tradeoff**: The probability is small enough to accept occasional duplicates rather than over-engineering with complex outbox patterns.
+**1. The provider accepts an idempotency key.** Stripe and most modern payment and messaging APIs deduplicate server-side on a key you supply. Derive it from the business fact being acted on — this send, this payment, this reply — never from the delivery (message id, event position, queue receipt), which changes on replay while the fact does not. Retries are then unconditionally safe and nothing else is needed.
 
-If duplicates are truly unacceptable, use the outbox pattern—but recognize this may require `...Initiated` style events as triggers.
+**2. The provider can tell you what it already sent.** Where a lookup by your own reference exists, read before sending and skip what is already out. Costs a round trip, needs no extra store, and is weaker than a key — the gap between read and send is still a window.
+
+**3. Neither.** The trade is now real, and it is a choice about *which* failure you prefer, not a way to avoid both:
+
+- Send, then record — risks a duplicate send.
+- Claim, then send — risks a silently lost send, because a process that dies mid-flight leaves the claim held and every retry skipped.
+
+Choose per message, by what each failure costs the customer. A duplicate marketing email is noise; a duplicate payment confirmation is a support call; a *missing* password reset or one-time code locks someone out. Prefer duplicates for anything the customer can act on twice harmlessly, and accept loss only where a duplicate is genuinely worse than silence.
+
+**The outbox does not solve this.** It guarantees at-least-once *publish* — no lost sends — which is the opposite failure to the one you have. Reaching for it here moves the crash window without closing it, its at-least-once delivery makes duplicates more likely rather than less, and it pulls you toward the `...Initiated` trigger events banned above.
+
+**Whatever absorbs the duplicate, it is not a marker in a second store.** A dedup record that cannot commit together with the effect is a lock, not idempotence — see [message-processing-patterns.md](message-processing-patterns.md#safe-to-run-twice).
 
 ## Checklist
 
@@ -151,7 +162,7 @@ When modeling external outbound communication:
 3. ❌ Avoid `...Initiated` events — they're commands in disguise
 4. ❌ Avoid premature `...Sent` events before provider confirmation
 5. ✅ Model your domain (engagement, notification) not the provider's (email, SMS)
-6. ✅ Accept the tradeoff: Occasional duplicates vs complex outbox patterns
+6. ✅ Use the provider's idempotency key where one exists, keyed on the send; where none does, choose which failure you prefer per message
 7. ❌ Don't split delivery events per message kind — ask both whether consumers act differently and whether whatever reports the fact can even see the distinction; merge only when both answers are no
 8. ✅ Key a merged delivery event per send, so it still resolves to exactly one drafted event
 9. ✅ Keep one delivery event per owning aggregate — "one event" is not license to share one type across two owners

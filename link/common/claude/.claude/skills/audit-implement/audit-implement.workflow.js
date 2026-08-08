@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'audit-flow',
+  name: 'audit-implement',
   description:
     'Adversarially audit finished work. Fans specialist lenses over a branch diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings — the review half of construct-directly-then-audit.',
   phases: [

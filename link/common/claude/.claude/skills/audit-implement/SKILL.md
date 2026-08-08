@@ -1,5 +1,5 @@
 ---
-name: audit-flow
+name: audit-implement
 description: Adversarially audit finished work as a background Workflow — fan specialist lenses over a branch diff in parallel, reproduce every runtime claim before it counts, and return ranked findings. Use after implementing something directly, when you want independent review at fan-out scale without handing construction to agents.
 ---
 
@@ -13,7 +13,7 @@ This is the **review half** of construct-directly-then-audit. You implement, com
 
 `implement-flow` runs construction *and* review through agents. Measured over a real multi-task feature, construction — implement, refactor, audit, and the retries they cause — was **64% of wall clock**, while review produced nearly all of the value. Construction is serial, judgment-dense and context-heavy: the work a main agent is fastest at and fan-out helps least with. Review is embarrassingly parallel and *benefits* from independence, because a lens with no attachment to the code is exactly what you want.
 
-**Use `audit-flow`** when you (or a colleague) already built the thing and want it genuinely challenged: several specialist lenses at once, each claim reproduced before it reaches you.
+**Use `audit-implement`** when you (or a colleague) already built the thing and want it genuinely challenged: several specialist lenses at once, each claim reproduced before it reaches you.
 
 **Use `implement-flow` instead** when the work is a large mechanical migration with genuinely disjoint files, when you want an unattended overnight run, or when you specifically want an independent implementer — e.g. to test whether a spec is unambiguous enough for a fresh agent to satisfy.
 
@@ -38,7 +38,7 @@ This is the **review half** of construct-directly-then-audit. You implement, com
 ## How to launch
 
 ```
-echo "$HOME/.claude/skills/audit-flow/audit-flow.workflow.js"   # -> use this absolute literal as scriptPath
+echo "$HOME/.claude/skills/audit-implement/audit-implement.workflow.js"   # -> use this absolute literal as scriptPath
 ```
 
 ```
@@ -84,7 +84,7 @@ Runs in the background; you are notified on completion. Do not poll it.
 1. **Read `coverage_gaps` first.** An audit's blind spots are more actionable than its hits: they tell you what you still have to check yourself.
 2. **Work `findings` in order.** Each carries evidence. A `confirmed` runtime finding has a command and output you can re-run; a `confirmed` quality finding has a rule and a line.
 3. **Skim `refuted`.** A wrongly-refuted finding is the failure mode of this shape. If one looks right to you, it probably is — the verifier is instructed to default to refuting when uncertain.
-4. **Fix directly.** Do not launch another workflow to apply findings; you have the context and the fixes are usually small. Re-run `audit-flow` afterward only if the fixes were substantial.
+4. **Fix directly.** Do not launch another workflow to apply findings; you have the context and the fixes are usually small. Re-run `audit-implement` afterward only if the fixes were substantial.
 5. **Persist what generalises.** A finding that names a repeatable mistake belongs in the repo's learnings file (`tasks/learnings.md`, or the out-of-tree per-project store when the repo gitignores `tasks/`) so the next run — of anything — inherits it.
 
 ---

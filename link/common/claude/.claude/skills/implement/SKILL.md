@@ -270,7 +270,19 @@ Report the resulting `git log` on the default branch, and say plainly that nothi
 
 Do this **before** reflecting. Reflect leaves the in-tree `tasks/learnings.md` modified and uncommitted by design, and a dirty tracked file blocks a rebase.
 
-### 5. Reflect and persist learnings
+### 5. Close out
+
+Create the directory if needed and move the task file — commit it separately:
+
+```
+mkdir -p tasks/completed
+git mv tasks/<story-name>.md tasks/completed/<story-name>.md
+git commit -m "Archive completed task: <feature-name>"
+```
+
+Delete `tasks/.cycles/` if it exists.
+
+### 6. Reflect and persist learnings
 
 Distil what generalises: a codebase convention, a recurring finding, a constraint, a reusable pattern. **Falsifiable filter** — keep a candidate only if you can name in one sentence the specific future mistake it prevents. Otherwise it is noise.
 
@@ -287,10 +299,6 @@ Dedup against the learnings file on substance, not wording.
 ```
 
 A clean run produces no learnings, and that is fine. If the file is the in-tree `tasks/learnings.md`, offer to commit it so teammates inherit it.
-
-### 6. Close out
-
-Move the task file to `tasks/completed/`. Summarise: tasks and commits, the full-suite result, the audit's findings and coverage gaps, the verifier verdict, learnings persisted.
 
 ---
 

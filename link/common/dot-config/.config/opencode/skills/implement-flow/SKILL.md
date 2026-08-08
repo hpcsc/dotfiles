@@ -104,12 +104,35 @@ After detecting, write the cache to `tasks/.environment`:
 language_inventory:
   - <language>
   - <language>
-test_command: <detected test command>
+test_command: <detected command — OMIT when tasks/test-commands.json exists>
 go_tool_prefix: <mise exec -- | "">
 marker_files:
   - <relative path that was found>
   - <relative path that was found>
 ```
+
+### Where the test command comes from
+
+Two files sit under `tasks/`, and they are not interchangeable:
+
+| | `tasks/test-commands.json` | `tasks/.environment` |
+|---|---|---|
+| git | **tracked** — a team decision | **gitignored** — this machine's discovery |
+| kind | authored config | derived cache |
+| holds | the command per language, plus `default` | language inventory, marker files, `go_tool_prefix` |
+
+**Resolution order**, highest first:
+
+1. `tasks/test-commands.json` — the entry for the task's language, else `default`.
+2. `tasks/.environment` -> `test_command` — a cached detection, used **only when there is no config file**.
+3. Detect now, and write the result to `.environment`.
+
+Then prefix every Go command with `.environment` -> `go_tool_prefix`, whichever source won.
+
+**The cache must not store a command the config file already declares.** If `test-commands.json` exists, omit `test_command` from `.environment` entirely — otherwise someone edits the shared config, the stale cache shadows it, and every agent keeps running the old command with nothing to show why.
+
+`go_tool_prefix` stays in the gitignored file for the same reason inverted: it answers whether *this machine* runs Go through mise, and committing that hands a teammate without mise a command that cannot work.
+
 
 The result is the **language inventory** (e.g. `[Go, JavaScript/TypeScript]`). Pass this to the decomposition agent.
 

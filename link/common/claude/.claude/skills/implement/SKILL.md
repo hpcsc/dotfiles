@@ -1,11 +1,11 @@
 ---
 name: implement
-description: Implement a feature directly — decompose into tasks, then build each one yourself against the project's guidelines, committing per task, and hand the finished branch to audit-flow for independent review. Use when you want the feature built quickly and reviewed thoroughly, rather than delegated to implementation agents.
+description: Implement a feature directly — decompose into tasks, then build each one yourself against the project's guidelines, committing per task, and hand the finished branch to audit-implement for independent review. Use when you want the feature built quickly and reviewed thoroughly, rather than delegated to implementation agents.
 ---
 
 Implement a feature directly, then have it audited: $ARGUMENTS
 
-**You write the code.** This skill does not delegate construction to implementation agents. Review is delegated, at the end, to `audit-flow`.
+**You write the code.** This skill does not delegate construction to implementation agents. Review is delegated, at the end, to `audit-implement`.
 
 ---
 
@@ -17,7 +17,7 @@ Construction is serial, judgment-dense and context-heavy: every delegated agent 
 
 So: build directly, review adversarially at the end.
 
-**The trap this skill exists to avoid.** Building directly means nobody hands you the project's guidelines. `go-implementer` reads five of them before it writes a line; left to yourself you will follow the code you can see and miss the rules you cannot. Phase 0 is not optional throat-clearing — it is the compensation for not spawning an implementer.
+**The trap this skill exists to avoid.** Nothing hands you the project's guidelines — left to yourself you follow the code you can see and miss the rules you cannot, then find out at review. Phase 0 is not throat-clearing; loading them is the price of writing the code yourself, and it is much cheaper than the findings it prevents.
 
 Use `implement-flow` instead for large mechanical migrations with genuinely disjoint files, or for unattended overnight runs.
 
@@ -42,7 +42,7 @@ Collect **every** match, not just the first:
 
 ### Read the guidelines — yourself
 
-These are the files the implementer agents read. **Read them for the languages this feature actually touches**, before writing code:
+**Read these for the languages this feature actually touches**, before writing any code:
 
 | Language | Required reading |
 |---|---|
@@ -82,6 +82,20 @@ cat "$root/tasks/test-commands.json" 2>/dev/null
 
 Use the entry for the task's language while working on it; use `default` before committing anything that spans languages and once more in Phase 3. If the file is absent, detect a command (Makefile, `package.json` scripts, framework convention) — never hardcode — and offer to write the config, since working out the split is most of the effort of detecting it.
 
+**A repo may also hold `tasks/.environment`** — a gitignored, machine-local cache written by the opencode sibling of this skill. The two are not interchangeable and the order matters:
+
+1. `tasks/test-commands.json` (tracked, a team decision) wins.
+2. `.environment` -> `test_command` only when there is no config file. A cached command must never shadow one the team committed.
+3. Detection last.
+
+Read `.environment` -> `go_tool_prefix` regardless of which won. It records whether **this machine** runs Go through mise, which is why it is gitignored — committing it hands a teammate without mise a command that cannot run. If it is absent and the project is Go, decide once:
+
+```
+grep -E '^[[:space:]]*go[[:space:]]*=' mise.toml .mise.toml mise.local.toml .mise.local.toml 2>/dev/null | head -1
+```
+
+A match means every Go command in this run is prefixed `mise exec -- `; nothing means none are. Do not re-decide per command, and never double-wrap a project command that already says `mise exec --`.
+
 ### Resolve the learnings file
 
 ```
@@ -97,9 +111,20 @@ fi
 
 A repo that gitignores `tasks/` gets a private per-project store outside the repo — steering without polluting teammates' checkouts. **Read it now**: it holds conventions and recurring findings earlier runs paid for.
 
-### Check the tree
+### Set up an isolated worktree
 
-`git status --porcelain` should be empty. If dirty, stop and ask. If on the default branch, create a feature branch before writing anything.
+`git status --porcelain` must be empty. If dirty, stop and ask — never build on top of someone else's loose work.
+
+Then **work in a worktree**, unless `$ARGUMENTS` contains `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits. That sweep is a real failure mode, not a hypothetical.
+
+Use the **EnterWorktree** tool (this skill is the explicit instruction that tool requires). Name it for the feature. It creates the worktree under `.claude/worktrees/`, puts it on a new branch, and switches the session into it — every command from here runs there.
+
+Two consequences to hold onto:
+
+- **The main repo root is not your cwd.** The `tasks/test-commands.json` and learnings-file recipes above already resolve it via `--git-common-dir` for exactly this reason.
+- **The worktree branches from `origin/<default-branch>` by default** (`worktree.baseRef`). If the work must sit on top of unpushed local commits, either set `worktree.baseRef: head` or pass `--in-place` and use an ordinary branch.
+
+With `--in-place`: no worktree. Create a feature branch if on the default branch, and build in the main checkout.
 
 ---
 
@@ -136,7 +161,24 @@ Show the task list, in order, with dependencies.
 
 ## Phase 2: Build, task by task
 
-For each task, in dependency order. **You do this work** — no `task-implementer`, no worktrees, no per-task reviewers. Reviewers run once, over the finished branch, in Phase 3.
+**You write the code for every task.** Review happens once, over the finished branch, in Phase 3 — so nothing here waits on a reviewer.
+
+### The loop
+
+The task file is the queue, and the only durable record of where you are. Iterate it:
+
+1. **Pick the next task**: the first `- [ ]` entry whose `depends_on` tasks are all `- [x]`. A checked entry is done — skip it, including on a resumed run, and never redo it.
+2. Run steps 1–5 below for that task.
+3. **Re-read the task file** and repeat, until no unchecked entry remains.
+
+Two rules that make the loop survivable:
+
+- **One task in flight at a time.** Never start the next while the current one is uncommitted. A half-finished task on top of another is what makes a run impossible to resume or review.
+- **Checkbox and commit move together** (step 4). The checkbox is what a later run — or a later you, after a `/clear` — reads to know what is done. A task committed but unticked will be redone; a task ticked but uncommitted will be skipped and lost.
+
+Announce which task you are starting, so the queue's progress is visible in the transcript rather than only in the file.
+
+If a task turns out to be unnecessary or wrong once you are in the code, **stop and say so**. The plan is the shared contract; revise it with the user rather than quietly building something else.
 
 ### 1. Tests first, where they apply
 
@@ -150,7 +192,7 @@ Follow the guidelines you loaded, and the surrounding code where the guidelines 
 
 ### 3. Prove it, don't narrate it
 
-Run the task's test command and **read the output**. "Tests pass" without having run them is the failure mode the whole evidence apparatus in `implement-flow` exists to catch; you are not exempt because you wrote the code.
+Run the task's test command and **read the output**. Having written the code is not evidence that it works, and "tests pass" asserted without a run is the claim that costs most when it turns out to be false.
 
 Four checks this session paid for, each of which shipped a defect that a passing suite did not catch:
 
@@ -184,15 +226,15 @@ Say what landed in one or two lines and move to the next task. The user is watch
 
 ---
 
-## Phase 3: Audit and close
+## Phase 3: Audit, integrate, close
 
 ### 1. Full suite
 
 Run the `default` test command in the main tree. Report the real output.
 
-### 2. Hand the branch to `audit-flow`
+### 2. Hand the branch to `audit-implement`
 
-This is where review happens. Invoke the `audit-flow` skill with:
+This is where review happens. Invoke the `audit-implement` skill with:
 
 - `target: "branch"` (or `baseRef` when the branch has already been landed and `merge-base` would come back empty)
 - the `testCommands` map from Phase 0
@@ -208,7 +250,28 @@ Fix findings **directly**. Do not launch a workflow to apply them — you have t
 
 Spawn `run-verifier` in the main tree: staged-but-uncommitted tails, new public symbols with no live caller, a vacuous full-suite, collapsed commit boundaries. If `clean`, say so in one line. If not, surface each finding — a `block` means "done" does not hold.
 
-### 4. Reflect and persist learnings
+### 4. Integrate the branch
+
+Land the work on the default branch, **local only — never push**. Skip when `--no-integrate` is given, and hold off when anything below fails; a branch left standing is always recoverable, a bad fast-forward is not.
+
+Gate on all four: every task `- [x]` and committed, the full suite green, `run-verifier` clean, and the audit's findings either fixed or explicitly accepted by the user.
+
+From inside the worktree:
+
+1. `git rebase <default-branch>` — on conflict, `git rebase --abort`, leave the branch alone, and hand it to the user. Do not resolve someone else's merge for them.
+2. If the rebase actually replayed commits onto a moved base, **re-run the full suite**. Green-before-rebase is not green-after; the base moved under you.
+3. **ExitWorktree with `action: "keep"`** — not `"remove"`. Remove deletes the branch, and the branch is what you are about to merge.
+4. In the main checkout: `git merge --ff-only <feature-branch>`. If it refuses, the base moved again — go back to step 1.
+5. Clean up: `git worktree remove <path>`, `git worktree prune`, `git branch -d <feature-branch>`.
+
+With `--in-place` there is no worktree: steps 1, 2, 4 and the branch delete still apply.
+
+Report the resulting `git log` on the default branch, and say plainly that nothing was pushed.
+
+
+Do this **before** reflecting. Reflect leaves the in-tree `tasks/learnings.md` modified and uncommitted by design, and a dirty tracked file blocks a rebase.
+
+### 5. Reflect and persist learnings
 
 Distil what generalises: a codebase convention, a recurring finding, a constraint, a reusable pattern. **Falsifiable filter** — keep a candidate only if you can name in one sentence the specific future mistake it prevents. Otherwise it is noise.
 
@@ -226,7 +289,7 @@ Dedup against the learnings file on substance, not wording.
 
 A clean run produces no learnings, and that is fine. If the file is the in-tree `tasks/learnings.md`, offer to commit it so teammates inherit it.
 
-### 5. Close out
+### 6. Close out
 
 Move the task file to `tasks/completed/`. Summarise: tasks and commits, the full-suite result, the audit's findings and coverage gaps, the verifier verdict, learnings persisted.
 
@@ -246,9 +309,13 @@ Move the task file to `tasks/completed/`. Summarise: tasks and commits, the full
 | Scenario | Action |
 |---|---|
 | Dirty tree at start | Stop; ask the user to stash or commit. Never build on top of someone else's loose work. |
-| On the default branch | Create a feature branch first. |
+| `EnterWorktree` unavailable or refused | Fall back to `--in-place`: feature branch in the main checkout. Say which you used — it changes where the user finds the code. |
+| Worktree based on `origin/<default>` but the work needs unpushed local commits | Re-run with `--in-place`, or set `worktree.baseRef: head`. Do not cherry-pick around it. |
+| Rebase conflicts at integrate | `git rebase --abort`, leave the branch standing, hand it over. Do not resolve someone else's merge for them. |
+| `merge --ff-only` refuses | The base moved after the rebase. Rebase again and re-run the suite before retrying. |
+| On the default branch with `--in-place` | Create a feature branch first. |
 | `decompose-to-tasks` fails or returns nothing | Retry once. Then decompose yourself and show the user the list you wrote, flagging that it skipped the codebase-exploration pass. |
 | A task turns out to be wrong or unnecessary once you are in the code | Stop and say so. The plan is the shared contract; revise it with the user rather than silently building something else. |
 | Tests will not go green | Report the real failure output. Do not weaken the test to pass, and do not commit red. |
-| `audit-flow` returns findings you disagree with | Say which and why. It refutes when uncertain, so a survivor is usually real — but you have context the lenses do not. |
+| `audit-implement` returns findings you disagree with | Say which and why. It refutes when uncertain, so a survivor is usually real — but you have context the lenses do not. |
 | `run-verifier` reports a `block` | Fix it before calling the feature done. |

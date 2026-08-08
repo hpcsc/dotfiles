@@ -1,6 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "subagent_depth": 2,
   "permission": {
+    "task": "allow",
     "external_directory": {
       "~/.config/ai/**": "allow",
       "~/dotfiles/link/common/dot-config/.config/ai/**": "allow",

@@ -30,6 +30,7 @@ tasks:
       - neovim
       - tmux
       - workmux-form
+      - claude-code
 
   langtools:
     desc: Language-specific tools (parallel after common:core)
@@ -132,6 +133,13 @@ tasks:
     interactive: true
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-claude.sh"
+
+  claude-code:
+    desc: Install Claude Code native binary - no dependencies
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-claude-code.sh"
 
   workmux-form:
     desc: Build the workmux-new-form TUI helper to ~/.local/bin - requires go (mise)

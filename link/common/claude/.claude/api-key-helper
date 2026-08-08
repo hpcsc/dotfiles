@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+
+security find-generic-password -a claude-code -s claude-code-api-key -w

@@ -35,7 +35,26 @@ The result is a **language inventory** (e.g. `[Go, JavaScript/TypeScript, HCL]`)
 | **Performance reviewer** | `go-performance-reviewer` | `js-performance-reviewer` | `elixir-performance-reviewer` | `performance-reviewer` |
 | **Guidelines reviewer** | `go-guidelines-reviewer` | `js-guidelines-reviewer` | `elixir-guidelines-reviewer` | _(skip)_ |
 
-**Test command**: Auto-detect from the project (Makefile, package.json scripts, framework conventions). Never hardcode.
+**Test command**: prefer the repo's own committed config over detection. Look for `tasks/test-commands.json` **at the main repo root** — not the current directory, which differs when running inside a git worktree:
+
+```
+root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+cat "$root/tasks/test-commands.json" 2>/dev/null
+```
+
+It maps a language to the command that tests it, plus a `default` covering everything:
+
+```json
+{
+  "default":    "task test:unit && task test:integration && task test:viewer",
+  "Go":         "task test:unit && task test:integration",
+  "JavaScript/TypeScript": "cd internal/viewer && npx vitest run"
+}
+```
+
+Each cycle is given the entry for **that task's** language, falling back to `default`. A JS-only task re-running the Go suite on every implement, refactor and review iteration is pure latency, and a suite red in a language the task never touched stalls it for nothing. The Phase 3 full-suite run always uses `default` — cross-language breakage has to surface somewhere.
+
+If the file is absent, auto-detect a single command (Makefile, package.json scripts, framework conventions) and use it for every task. Never hardcode. Offer to write the config file: working out the per-language split is most of the effort of detection anyway, and it pays back on every later run.
 
 ### Testing Guidelines
 
@@ -151,7 +170,7 @@ Spawn the `task-implementer` subagent with a single JSON object as input. The or
     "refactorer": "<go-refactorer | js-refactorer | elixir-refactorer | refactorer>",
     "reviewers": ["<triaged reviewer names>"]
   },
-  "test_command": "<detected>",
+  "test_command": "<this task's language entry from tasks/test-commands.json, else `default`, else the detected fallback>",
   "testing_guidelines": {
     "paths": ["..."],
     "instruction": "<verbatim progressive-disclosure instruction>"

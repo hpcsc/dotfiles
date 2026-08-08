@@ -7,6 +7,7 @@ export const meta = {
     { title: 'Implement', detail: 'per task: design tests, implement, refactor, review' },
     { title: 'Verify', detail: 'reproduce runtime findings, honor quality findings directly, audit criteria against re-executed evidence' },
     { title: 'Replan', detail: 'after a task closes, reassess and re-decompose the remaining plan if its premises changed' },
+    { title: 'Restructure', detail: 'one cross-cutting refactor over the finished branch, the structure no single task could see' },
     { title: 'Finalize', detail: 'commit closed tasks, full-suite receipt, run-verifier pass, archive task file, optional branch integration, distil learnings' },
   ],
 }
@@ -109,9 +110,28 @@ if (
 }
 
 const TEST_CMD = ARGS?.testCommand ?? '(detect the project test command yourself: Makefile, package.json scripts, or framework convention)'
+// Per-language test commands, read by the orchestrator out of the repo's own
+// tasks/test-commands.json and passed in whole (this script has no filesystem).
+// A JS-only task re-running the Go suite on every implement, refactor and audit is
+// pure latency, and a red suite in a language the task never touched stalls it for
+// nothing. Whole-branch gates — the final suite, the cross-cutting refactor,
+// integration — deliberately keep the full command: that is where cross-language
+// breakage has to surface.
+const TEST_CMDS = (typeof ARGS === 'object' && ARGS?.testCommands) || {}
+const FULL_TEST_CMD = TEST_CMDS.default ?? TEST_CMD
+const testCmdFor = (language) => {
+  if (!language) return FULL_TEST_CMD
+  const raw = String(language).trim()
+  const canonical = LANG[raw] ? raw : LANG_ALIASES[raw.toLowerCase()]
+  return TEST_CMDS[raw] ?? (canonical && TEST_CMDS[canonical]) ?? TEST_CMDS[raw.toLowerCase()] ?? FULL_TEST_CMD
+}
 const MAX_RESOLVE = ARGS?.maxResolve ?? 3
 const MAX_REPLANS = ARGS?.maxReplans ?? 2
 const INTEGRATE = ARGS?.integrate === true
+// Cross-cutting structure is deferred out of the per-task loop into one pass over the
+// finished branch: in-task refactoring that reaches beyond the task's own diff reads as
+// scope creep to a reviewer and costs attempts arguing about it. Set false to skip.
+const FINAL_REFACTOR = ARGS?.finalRefactor !== false
 // Default keeps the legacy in-tree path, but that is NOT where a shared repo actually
 // stores learnings — the orchestrator resolves this per project (an out-of-tree private
 // store when the repo gitignores tasks/) and passes it as args.learningsPath.
@@ -359,7 +379,7 @@ const VERDICT_SCHEMA = {
 const AUDIT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['test_rerun', 'criteria', 'unmet'],
+  required: ['test_rerun', 'criteria', 'unmet', 'false_fixed', 'unexpected_test_files'],
   properties: {
     test_rerun: RECEIPT,
     criteria: {
@@ -388,6 +408,18 @@ const AUDIT_SCHEMA = {
       type: 'array',
       items: { type: 'string' },
       description: 'criteria with no executed evidence, whose evidence shows failure, or whose cited test no longer resolves (evidence_persists false)',
+    },
+    false_fixed: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        'Finding ids the implementer reported as "fixed" whose claimed change you could NOT find in the tree — the file it said it deleted is still present, the content it said it removed is still there, the path is still in `git ls-files --stage`. Empty array when nothing was claimed fixed or every claim checked out. Judge only what the claim asserts; do not re-litigate whether the finding was right.',
+    },
+    unexpected_test_files: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        'Only for a task marked testable:false, whose evidence is the EXISTING suite passing unchanged. List any test file this task added, and any existing test file it added cases to. Empty array otherwise, and empty when a testable:false task left the test files alone.',
     },
   },
 }
@@ -498,7 +530,10 @@ const designPrompt = (t, cfg) =>
   `From caller-patterns identify the caller pattern and read only that section plus the Quick Reference; use its assert-on / don't-assert-on tables to shape scenarios.`
 
 const implementPrompt = (t, cfg, testPlan, feedback, outstanding = []) =>
-  `${taskHeader(t)}\n\nWrite failing tests first (per the approved plan), then implement until they pass. Test command: \`${TEST_CMD}\`.\n\n` +
+  `${taskHeader(t)}\n\n` +
+  (t.testable === false
+    ? `This task is \`testable: false\`: it changes where code lives or how it is shaped WITHOUT changing what it does, so its evidence is the EXISTING suite passing unchanged. Do NOT add a test file and do NOT add cases to an existing one — a new test here asserts behaviour the current suite already covers, and a reviewer will raise it as a redundant test and block the task. If you believe some behaviour is genuinely uncovered, say so in your summary and leave it uncovered; it belongs to a task that owns that behaviour, not to this move. Run \`${testCmdFor(t.language)}\` and show the existing suite still passing.\n\n`
+    : `Write failing tests first (per the approved plan), then implement until they pass. Test command: \`${testCmdFor(t.language)}\`.\n\n`) +
   `${FRONT_LOAD_READING} The task's affected-file list above is that starting set; read those files whole before your first edit, together with the one or two the patterns-to-follow name as precedent. While iterating, prefer the narrowest test selector that still covers what you changed — the full suite belongs to the receipt at the end, not to every loop.\n\n` +
   `Approved test plan:\n${testPlan}\n\n` +
   (feedback ? `REVISION REQUIRED — close these concrete gaps from the previous attempt:\n${feedback}\n\n` : '') +
@@ -510,7 +545,7 @@ const implementPrompt = (t, cfg, testPlan, feedback, outstanding = []) =>
     : '') +
   `COMMENT DISCIPLINE: keep comments minimal per ${'~/.config/ai/guidelines/comments.md'} — default to none; write one only when you can name the specific wrong conclusion a reader would draw without it. Never name code by its position in the plan ("reactor 1/2", "the decide leg", "the on switch", "PR N", "Task N", "design note X") and never narrate the task/fix/PR — those are plan artifacts a reader of the merged code cannot see. Describe code by its domain role.\n\n` +
   `EVIDENCE CONTRACT (this is non-negotiable):\n` +
-  `- Actually RUN \`${TEST_CMD}\` and return its real output tail in \`test_receipt\` — verbatim command, raw output, pass/fail boolean. A narrated "tests pass" is rejected.\n` +
+  `- Actually RUN \`${testCmdFor(t.language)}\` and return its real output tail in \`test_receipt\` — verbatim command, raw output, pass/fail boolean. A narrated "tests pass" is rejected.\n` +
   `- For EACH acceptance criterion, attach \`criteria_evidence\`: a named test (kind:test) or, for behavior a unit test can't express, an executed demonstration (kind:demo) — with the exact command and its raw output tail. Mark \`satisfied\` only from what the output actually shows.\n` +
   `- EVIDENCE MUST PERSIST. A test that proves a criterion belongs IN the real test file, written there from the start — never in a scratch file you run once and delete. Before you finish, every \`persisted_test\` you cite must still exist and still run; the auditor re-runs them by name and a citation that no longer resolves is a vacuous receipt that blocks the task.\n` +
   `  A throwaway probe is legitimate ONLY when it answers a question for YOU (is this branch reachable, is this perf concern real) and NO criterion rests on it. Before deleting any test file, ask: "does an acceptance criterion lose its proof if this goes?" If yes, it was never a scratch file — fold it into the committed test file instead.\n` +
@@ -521,8 +556,10 @@ const implementPrompt = (t, cfg, testPlan, feedback, outstanding = []) =>
 
 const refactorPrompt = (t, cfg, impl) =>
   `${taskHeader(t)}\n\nFiles changed so far: ${impl.files_changed.join(', ')}.\n` +
-  `Improve structure (duplication, naming, extraction) without changing behavior, following ${'~/.config/ai/guidelines/comments.md'} for comment usage. ` +
-  `Keep tests green: after refactoring, RUN \`${TEST_CMD}\` and return the post-refactor \`test_receipt\` (verbatim). ` +
+  `Tidy ONLY the lines this task just wrote. Read \`git diff --staged\` first and treat it as the boundary of your remit: rename the identifiers it introduces, collapse duplication it introduces, extract a helper used twice WITHIN the new code. Follow ${'~/.config/ai/guidelines/comments.md'} for comment usage.\n` +
+  `OUT OF SCOPE, however tempting: extracting a type or module from code that was already there, decomposing or re-signaturing an existing function, renaming an existing function or file, moving code between modules, or restructuring anything the diff does not already touch. Cross-cutting structure is a separate pass over the finished branch and is not yours. If you can see such an improvement, name it in \`outcome\` and leave the code alone — a reviewer will otherwise raise it as scope creep and it will be reverted, costing the task an attempt for nothing.\n` +
+  `If you move any existing function, you own the fallout: a test that locates code by scanning source text (\`readFileSync\` plus \`indexOf\`/\`substring\` bounds) can silently invert into scanning nothing and pass forever. Re-read any such test and prove it still fails for the reason it names.\n` +
+  `Keep tests green: after refactoring, RUN \`${testCmdFor(t.language)}\` and return the post-refactor \`test_receipt\` (verbatim). ` +
   `If refactoring breaks tests and you cannot fix it, revert and set outcome to "reverted: <reason>". If nothing is worth changing, set outcome "none needed" and still return a passing receipt. Leave changes STAGED.`
 
 const reviewPrompt = (t, changedFiles = []) =>
@@ -550,15 +587,35 @@ const citedEvidenceDigest = (impl) => {
   return cited.map((e) => `  - "${e.criterion}" -> ${e.persisted_test}`).join('\n')
 }
 
+// A `fixed` disposition is a claim about the tree, so it is checkable there and then —
+// waiting for a reviewer to raise the finding again costs a whole attempt and only works
+// when the re-run happens to re-flag it, which reviewer non-determinism does not promise.
+const claimedFixedStep = (impl) => {
+  const claims = (impl.finding_dispositions ?? []).filter((d) => d.status === 'fixed')
+  if (!claims.length) return `6. The implementer claimed no fixes this attempt, so \`false_fixed\` is an empty array.\n`
+  return (
+    `6. VERIFY EACH CLAIMED FIX LANDED. The implementer reported these findings "fixed":\n` +
+    claims.map((d) => `   - [${d.id}] ${d.note}`).join('\n') +
+    `\n   For each, check the claim against the tree: a file it says it deleted must be absent from disk AND from \`git ls-files --stage\`; content it says it removed must be gone from the file; a change it describes must be visible in \`git diff --staged\`. ` +
+    `Note that this task's work is STAGED, not committed — plain \`git diff\` shows nothing here, so use \`git diff --staged\` and \`git status --short\`, and read the file itself rather than inferring from an empty diff. ` +
+    `Put in \`false_fixed\` the id of every claim you cannot confirm. Judge only whether the described change is there; whether the finding deserved fixing is not yours to re-open.\n`
+  )
+}
+
 const auditPrompt = (t, impl, refactor) =>
   `Independently audit task ${t.n} against its acceptance criteria. Do NOT trust the implementer's self-report — re-execute.\n\n${taskHeader(t)}\n\n` +
   `The implementer reported these receipts (verify, do not assume): impl test \`${impl.test_receipt.command}\` -> passed=${impl.test_receipt.passed}; refactor outcome "${refactor.outcome}".\n\n` +
   `It cited these persisted tests as the proof of its criteria:\n${citedEvidenceDigest(impl)}\n\n` +
-  `1. RUN \`${TEST_CMD}\` yourself in the working tree and return the raw result as \`test_rerun\` (this is the executed-evidence check against a possibly-fabricated implementer receipt).\n` +
+  `1. RUN \`${testCmdFor(t.language)}\` yourself in the working tree and return the raw result as \`test_rerun\` (this is the executed-evidence check against a possibly-fabricated implementer receipt).\n` +
   `2. VERIFY EVERY CITATION RESOLVES. For each cited \`<file>::<test name>\` above: confirm the file exists in the working tree, then re-run that test BY NAME (e.g. \`go test -run 'TestX/sub' ./pkg/\`, \`pytest path::test\`, per this project's runner) and confirm it actually SELECTS a test and passes. A runner that matches nothing exits 0 while running zero tests — "no tests to run"/"0 passed"/"testing: warning: no tests to run" is a FAILED citation, not a pass. Set \`evidence_persists\` false for any citation naming a file or test that does not resolve: that means the implementer produced the evidence and then deleted it, which is a vacuous receipt.\n` +
   `3. For each acceptance criterion, decide \`has_executed_evidence\` strictly: is there a test or demonstration whose ACTUAL output shows the criterion met? Narration does not count.\n` +
   `   ONE EXEMPTION, applied narrowly. A criterion may carry a clause about state that does not exist yet during a task — the commit message, \`git log\`, a clean \`git status\` — because this task is committed only AFTER it closes. No evidence for such a clause can exist at any point in this loop, so judge the criterion on the part that IS checkable in the working tree, and record the deferred clause in that criterion's \`note\` rather than listing the criterion as unmet. This exemption covers ONLY clauses about commit or branch state; a criterion whose substance is simply unproven stays unmet.\n` +
-  `4. List in \`unmet\` every criterion with no executed evidence OR with \`evidence_persists\` false (say which, and name the missing file/test), plus "tests regressed" if your re-run failed.`
+  `4. List in \`unmet\` every criterion with no executed evidence OR with \`evidence_persists\` false (say which, and name the missing file/test), plus "tests regressed" if your re-run failed.\n` +
+  `5. RESOLVE EVERY PATH AGAINST THIS TREE. Run \`git rev-parse --show-toplevel\` once and treat that as the root for every path you check. A repo checked out as a git worktree has sibling checkouts of the same repo on disk, and a relative path resolved in the wrong one reports a file "already deleted" that is still sitting in this tree — the exact shape of a fix that looks landed and is not.\n` +
+  claimedFixedStep(impl) +
+  (t.testable === false
+    ? `7. THIS TASK IS \`testable: false\` — its evidence is the EXISTING suite passing unchanged, so it must not add tests. Report in \`unexpected_test_files\` any test file it created and any existing test file it added cases to (\`git diff --staged --stat\` against the project's test-file naming). Return an empty array if it added none.`
+    : `7. This task is testable, so \`unexpected_test_files\` is an empty array.`)
 
 const commitPrompt = (t, ticket, tasksFilePath) =>
   `Commit task ${t.n}: ${t.title}. The changes are already STAGED; if anything is missing, stage it by EXPLICIT path (\`git add -- <file>\` for each file this task changed) — never \`git add -A\`/\`git add .\`, which can sweep in unrelated or prior-task files and trips the individual-file-staging safety check. Create exactly ONE commit.\n` +
@@ -566,6 +623,26 @@ const commitPrompt = (t, ticket, tasksFilePath) =>
   `Apply the repo's OWN commit conventions — read CLAUDE.md / any committing guideline and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one. ` +
   (ticket ? `Weave in this ticket context per those conventions: ${ticket}. ` : '') +
   `The subject MUST satisfy the repo commit rules regardless: imperative mood, <=50 chars, capitalized, no trailing period, NO mention of AI/Claude, NO Co-Authored-By trailer. ` +
+  `Return the resulting commit hash and subject.`
+
+// The cross-cutting half of refactoring, which the per-task pass is forbidden to do.
+// It runs once, over the finished branch, where restructuring IS the task and so
+// cannot read as scope creep — the failure mode that stalled tasks when the same work
+// was attempted inside them.
+const finalRefactorPrompt = () =>
+  `Every task on this branch is committed and its tests pass. Make ONE pass over the branch as a whole for the structure no single task could see.\n\n` +
+  `Resolve the branch base yourself — \`git merge-base HEAD main\`, falling back to \`master\` — then read \`git diff <base>...HEAD\` and the whole post-image of each file it touches. You are looking for structure that emerged across tasks: the same shape built twice in different tasks, a function that grew past what its name claims, a helper that belongs beside its sibling, a module boundary the finished code argues for.\n\n` +
+  `Behaviour must not change. This is the pass with the widest blast radius in the run and it lands after the tests are already green, so a mistake here is subtle rather than loud:\n` +
+  `- A test that locates code by scanning source text (\`readFileSync\` plus \`indexOf\`/\`substring\` bounds, a regex over a file) can silently invert into scanning nothing and pass forever once you move a function. Find every such test in the changed area, and for each one PROVE it still fails for the reason its name gives: inject the violation it claims to catch, watch it fail, revert the injection. Report what you proved in \`outcome\`.\n` +
+  `- An assertion that pins the ABSENCE of something passes when the feature is deleted. If you move code such a test guards, check it still has a positive assertion tying it to the feature.\n\n` +
+  `Follow ${'~/.config/ai/guidelines/comments.md'} for comment usage. After restructuring RUN \`${FULL_TEST_CMD}\` and return the verbatim post-refactor \`test_receipt\`.\n` +
+  `If anything breaks and you cannot fix it, revert everything and set outcome "reverted: <reason>". If the branch needs no cross-cutting change, set outcome "none needed" and still return a passing receipt — that is a perfectly good result, and inventing work here is worse than doing none. Leave changes STAGED and do NOT commit.`
+
+const finalRefactorCommitPrompt = (ticket) =>
+  `Commit the cross-cutting refactor that is already STAGED. If anything is missing, stage it by EXPLICIT path (\`git add -- <file>\`) — never \`git add -A\`/\`git add .\`. Create exactly ONE commit.\n` +
+  `Apply the repo's OWN commit conventions — read CLAUDE.md / any committing guideline and reuse a cached trailer if the repo uses one. ` +
+  (ticket ? `Weave in this ticket context per those conventions: ${ticket}. ` : '') +
+  `The subject MUST satisfy the repo commit rules regardless: imperative mood, <=50 chars, capitalized, no trailing period, NO mention of AI/Claude, NO Co-Authored-By trailer. It describes the restructure, not the features that preceded it. ` +
   `Return the resulting commit hash and subject.`
 
 const remainingDigest = (remaining) =>
@@ -605,7 +682,7 @@ const verifyBrief = (allClosed) =>
   `\`block\` only when all tasks closed; otherwise \`warn\` (a later task may wire it).`
 
 const finalSuitePrompt = () =>
-  `Run the full test suite (\`${TEST_CMD}\`) in the worktree that holds this run's commits — resolve it with \`git rev-parse --show-toplevel\` from the tree where the tasks were committed; do NOT assume the main checkout, which may be on another branch. ` +
+  `Run the full test suite (\`${FULL_TEST_CMD}\`) in the worktree that holds this run's commits — resolve it with \`git rev-parse --show-toplevel\` from the tree where the tasks were committed; do NOT assume the main checkout, which may be on another branch. ` +
   `Return the raw result as a receipt (verbatim command, raw output tail, pass/fail boolean). Do not summarize away the output. ` +
   `A receipt whose output shows zero tests/packages executed (e.g. a change-scoped runner printing "No Go files changed, skip running tests") proves nothing — treat it as NOT passing: set \`passed\` to false and include that line verbatim in \`raw_output_tail\`.`
 
@@ -616,7 +693,7 @@ const finishPrompt = (tasksFilePath, integrate) =>
     ? `2. Integrate the implementation branch into the default branch, LOCALLY ONLY — never push:\n` +
       `   a. \`git branch --show-current\` is the implementation branch. The default branch is \`git rev-parse --abbrev-ref origin/HEAD\` if set, else whichever of \`main\`/\`master\` exists locally. If you are already ON the default branch, set integrated=false and stop — nothing to integrate.\n` +
       `   b. \`git rebase <default>\`. On ANY conflict: \`git rebase --abort\`, set integrated=false, leave the branch exactly as it was, and explain in \`note\`.\n` +
-      `   c. If the rebase actually replayed commits onto a moved base (not a no-op), re-run \`${TEST_CMD}\`; if it fails, STOP — leave the rebased branch checked out for human review, set integrated=false, and put the failing output tail in \`note\`.\n` +
+      `   c. If the rebase actually replayed commits onto a moved base (not a no-op), re-run \`${FULL_TEST_CMD}\`; if it fails, STOP — leave the rebased branch checked out for human review, set integrated=false, and put the failing output tail in \`note\`.\n` +
       `   d. \`git switch <default>\`, \`git merge --ff-only <implementation branch>\`, \`git branch -d <implementation branch>\`. Set integrated=true and \`base_branch\` to the default branch.\n`
     : `2. Do NOT rebase, merge, switch, or delete any branch — the run ends on the implementation branch as-is. Set integrated=false and base_branch=null.\n`) +
   `Report what happened in \`note\`.`
@@ -701,6 +778,12 @@ async function runTask(task) {
   // flagged again — so a finding that is merely not re-raised must not read as
   // resolved. Every id stays here until the implementer says fixed or rejected.
   const carried = new Map()
+  // An attempt that failed on nothing but quality findings needs a cheaper next
+  // pass than a full re-run: no behaviour is in question, so there is no fresh
+  // code worth restructuring and no reason to re-ask a lens that raised nothing.
+  // These two carry that decision from the end of one attempt into the next.
+  let narrowTo = null
+  let skipRefactor = false
 
   for (let attempt = 1; attempt <= MAX_RESOLVE; attempt++) {
     attemptsUsed = attempt
@@ -716,26 +799,59 @@ async function runTask(task) {
       break
     }
     lastFilesChanged = impl.files_changed ?? lastFilesChanged
-    const refactor = (await agent(refactorPrompt(task, cfg, impl), {
-      label: `${tag}:refactor#${attempt}`, phase: 'Implement', agentType: cfg.refactorer, schema: REFACTOR_SCHEMA,
-    })) ?? { outcome: 'skipped (refactor agent returned no result)', test_receipt: impl.test_receipt }
+    const refactor = skipRefactor
+      ? { outcome: 'skipped (previous attempt failed on quality findings only — no new behaviour to restructure)', test_receipt: impl.test_receipt }
+      : (await agent(refactorPrompt(task, cfg, impl), {
+          label: `${tag}:refactor#${attempt}`, phase: 'Implement', agentType: cfg.refactorer, schema: REFACTOR_SCHEMA,
+        })) ?? { outcome: 'skipped (refactor agent returned no result)', test_receipt: impl.test_receipt }
+    if (skipRefactor) log(`${tag}: attempt ${attempt} skipping refactor — fixing quality findings only`)
 
-    const { reviewers, reason } = selectReviewers(cfg, task, impl.files_changed)
+    const { reviewers: panel, reason } = selectReviewers(cfg, task, impl.files_changed)
     if (reason) log(`${tag}: skipping code reviewers — ${reason}`)
+    // Re-ask only the lenses that raised what is still outstanding. A lens that
+    // passed on this diff has nothing to re-decide, and the whole panel costs the
+    // slowest reviewer for every nit. Anything touching behaviour is not a quality
+    // finding, so it never narrows — narrowTo is only ever set on a quality-only fail.
+    // Falling back to the whole panel when the narrowed set comes out empty is not
+    // caution for its own sake: triage is recomputed from each attempt's changed files,
+    // so an objecting lens can drop out of the panel between attempts — and narrowing
+    // to nothing would let the fix close with nobody having looked at it.
+    const narrowed = narrowTo ? panel.filter((r) => narrowTo.has(r)) : null
+    const reviewers = narrowed?.length ? narrowed : panel
+    if (narrowTo) {
+      log(narrowed?.length
+        ? `${tag}: attempt ${attempt} re-reviewing with ${reviewers.join(', ')} — the lens(es) that raised the outstanding findings`
+        : `${tag}: attempt ${attempt} wanted to narrow but no objecting lens is in this attempt's panel — running the full panel`)
+    }
+
+    // The auditor re-runs the suite and checks criteria against the tree; the
+    // reviewers are read-only. Nothing it needs depends on their verdicts, so it
+    // starts here and is awaited once they are in — its whole duration used to sit
+    // on the critical path of every attempt for no reason. It stays AHEAD of
+    // reproduction, which does write scratch tests the audit's suite run would see.
+    const auditPending = agentOrRetry(auditPrompt(task, impl, refactor), { label: `${tag}:audit#${attempt}`, phase: 'Verify', schema: AUDIT_SCHEMA }, `${tag} audit (attempt ${attempt})`)
+
     const reviews = reviewers.length
       ? (await parallel(
-          reviewers.map((r) => () => agent(reviewPrompt(task, impl.files_changed ?? []), { label: `${tag}:review:${r}`, phase: 'Implement', agentType: r, schema: REVIEW_SCHEMA })),
+          reviewers.map((r) => () => agent(reviewPrompt(task, impl.files_changed ?? []), { label: `${tag}:review:${r}`, phase: 'Implement', agentType: r, schema: REVIEW_SCHEMA })
+            .then((rv) => (rv ? { ...rv, reviewer: r } : null))),
         )).filter(Boolean)
       : []
+    const audit = await auditPending
+    if (!audit) {
+      feedback = `audit returned no result after ${INFRA_RETRIES} infrastructure retries — an API outage, not a failed change. Any work already written to the tree is uncommitted.`
+      log(`${tag}: attempt ${attempt} aborted — audit returned no result`)
+      break
+    }
     for (const d of impl.finding_dispositions ?? []) {
       const c = carried.get(d.id)
       if (c) Object.assign(c, { status: d.status, note: d.note, disposedAt: attempt })
     }
 
-    const findings = reviews.flatMap((rv) => rv.findings ?? [])
+    const findings = reviews.flatMap((rv) => (rv.findings ?? []).map((f) => ({ ...f, reviewer: rv.reviewer })))
     for (const f of findings) {
       const c = carried.get(f.id)
-      if (!c) carried.set(f.id, { finding: f, status: 'open', raisedAt: attempt })
+      if (!c) carried.set(f.id, { finding: f, reviewer: f.reviewer, status: 'open', raisedAt: attempt })
       else if (c.status === 'fixed') Object.assign(c, { status: 'open', reraisedAt: attempt })
     }
     // A quality/convention finding has no runtime symptom to reproduce, so the
@@ -763,12 +879,6 @@ async function runTask(task) {
           runtimeFindings.map((f) => () => agent(reproPrompt(task, f), { label: `${tag}:repro:${f.id}`, phase: 'Verify', schema: VERDICT_SCHEMA })),
         )).filter(Boolean)
       : []
-    const audit = await agentOrRetry(auditPrompt(task, impl, refactor), { label: `${tag}:audit#${attempt}`, phase: 'Verify', schema: AUDIT_SCHEMA }, `${tag} audit (attempt ${attempt})`)
-    if (!audit) {
-      feedback = `audit returned no result after ${INFRA_RETRIES} infrastructure retries — an API outage, not a failed change. Any work already written to the tree is uncommitted.`
-      log(`${tag}: attempt ${attempt} aborted — audit returned no result`)
-      break
-    }
 
     const realFindings = repros.filter((v) => v.reproduced && v.classification === 'real')
     const speculative = repros.filter((v) => v.classification === 'speculative')
@@ -780,8 +890,18 @@ async function runTask(task) {
     const destroyed = (audit.criteria ?? [])
       .filter((c) => c.evidence_persists === false)
       .map((c) => `${c.criterion} — cited test no longer resolves in the tree (evidence was produced then deleted; write it into the real test file)`)
-    const unmet = [...new Set([...(audit.unmet ?? []), ...destroyed])]
+    // A task whose evidence is "the existing suite passes unchanged" has no business
+    // adding tests: anything it writes is untested-by-construction surface the reviewers
+    // then argue over, which is how a pure move turns into a stalled revision loop.
+    const strayTests =
+      task.testable === false && (audit.unexpected_test_files ?? []).length
+        ? [
+            `this task is testable:false — its evidence is the existing suite passing unchanged, but it added test cases in ${audit.unexpected_test_files.join(', ')}; remove them`,
+          ]
+        : []
+    const unmet = [...new Set([...(audit.unmet ?? []), ...destroyed, ...strayTests])]
     if (destroyed.length) log(`${tag}: ${destroyed.length} criterion(s) cite a test that no longer resolves`)
+    if (strayTests.length) log(`${tag}: testable:false task added tests in ${audit.unexpected_test_files.join(', ')}`)
 
     // Blocking-ness is only knowable once reproduction has run, so stamp it here:
     // a high-severity quality finding, or a runtime one an independent agent
@@ -797,7 +917,16 @@ async function runTask(task) {
     // work silently skipped, the second a false report of work done. Neither can be
     // allowed to pass as resolved just because a later review happened not to
     // mention it — reviewer output is not a function of the diff.
-    const falseFixed = [...carried.values()].filter((c) => c.reraisedAt === attempt && c.blocking)
+    //
+    // The reviewer-reraise route catches a false claim only one attempt late, and only
+    // when a non-deterministic re-review happens to re-flag it. The auditor checks the
+    // same claims against the tree in the attempt they were made, so a claim whose
+    // change is simply not there blocks immediately.
+    const auditFalseFixed = new Set(audit.false_fixed ?? [])
+    if (auditFalseFixed.size) log(`${tag}: audit could not find the claimed fix for ${[...auditFalseFixed].join(', ')}`)
+    const falseFixed = [...carried.values()].filter(
+      (c) => (c.reraisedAt === attempt && c.blocking) || auditFalseFixed.has(c.finding.id),
+    )
     const undisposed = [...carried.values()].filter(
       (c) => c.blocking && c.status === 'open' && c.raisedAt < attempt && c.reraisedAt !== attempt,
     )
@@ -832,9 +961,26 @@ async function runTask(task) {
     }
 
     feedback = buildFeedback(unmet, realFindings, qualityFindings, undisposed, falseFixed)
+    // Nothing about behaviour is in question: the suite passed, every criterion has
+    // evidence, and no runtime claim reproduced. What is left is naming, comments and
+    // test shape, so the next attempt edits those and re-asks only the lenses that
+    // objected. A falsely-reported fix drops this back to the full panel — that is a
+    // claim about the tree, and the point of re-reviewing is that we do not trust it.
+    const qualityOnly =
+      audit.test_rerun?.passed &&
+      unmet.length === 0 &&
+      realFindings.length === 0 &&
+      falseFixed.length === 0 &&
+      qualityFindings.length > 0
+    const objecting = new Set(
+      [...carried.values()].filter((c) => c.blocking && c.status === 'open' && c.reviewer).map((c) => c.reviewer),
+    )
+    narrowTo = qualityOnly && objecting.size ? objecting : null
+    skipRefactor = qualityOnly
     log(
       `${tag}: attempt ${attempt} did not close — ${unmet.length} unmet criteria, ${realFindings.length} reproduced findings, ` +
-        `${qualityFindings.length} blocking quality (${advisoryQuality.length} advisory), ${undisposed.length} undisposed, ${falseFixed.length} falsely reported fixed`,
+        `${qualityFindings.length} blocking quality (${advisoryQuality.length} advisory), ${undisposed.length} undisposed, ${falseFixed.length} falsely reported fixed` +
+        (qualityOnly ? ' — quality-only, next attempt runs narrowed' : ''),
     )
   }
 
@@ -996,6 +1142,32 @@ while (remaining.length) {
   remaining = revised.tasks ?? []
   planFile = revised.tasks_file ?? planFile
   log(`re-decomposed remaining work into ${remaining.length} task(s)`)
+}
+
+// Cross-cutting structure, once, over the finished branch. Gated on every task having
+// closed: restructuring a branch with work still loose in the tree would mix the two
+// and leave the human unable to tell them apart. Skipped for a single task too — one
+// task's own diff is what the in-task tidy already covers, and there is no second task
+// for structure to emerge between.
+let finalRefactor = null
+if (FINAL_REFACTOR && completed.length > 1 && remaining.length === 0 && results.every((r) => r.status === 'closed')) {
+  phase('Restructure')
+  // The language most of the branch is written in — the pass reads across tasks, so
+  // the majority language is a better fit than whichever task happened to be last.
+  const tally = new Map()
+  for (const t of completed) tally.set(t.language, (tally.get(t.language) ?? 0) + 1)
+  const mainLanguage = [...tally.entries()].sort((a, b) => b[1] - a[1])[0][0]
+  finalRefactor = await agent(finalRefactorPrompt(), { label: 'final-refactor', phase: 'Restructure', agentType: cfgFor(mainLanguage).refactorer, schema: REFACTOR_SCHEMA })
+  const changed = finalRefactor && !/^(none needed|reverted)/i.test(finalRefactor.outcome ?? '')
+  if (changed && finalRefactor.test_receipt?.passed) {
+    const rc = await agentOrRetry(finalRefactorCommitPrompt(ticket), { label: 'final-refactor:commit', phase: 'Restructure', agentType: 'commit', schema: COMMIT_SCHEMA }, 'final-refactor commit')
+    finalRefactor.commit = rc
+    log(`restructure: ${rc?.committed ? `committed ${rc.hash} ${rc.subject}` : 'left staged — commit agent returned no result'}`)
+  } else if (changed) {
+    log(`restructure: left UNCOMMITTED — its own test receipt did not pass (${finalRefactor.outcome})`)
+  } else {
+    log(`restructure: ${finalRefactor?.outcome ?? 'no result'}`)
+  }
 }
 
 phase('Finalize')

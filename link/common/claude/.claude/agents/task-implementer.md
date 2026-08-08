@@ -124,6 +124,10 @@ Do not proceed until the implementer reports back and tests pass (or compilation
 
 ### Refactor (analysis then apply)
 
+**Scope.** This pass tidies **only the lines this task wrote**. `git diff` (or `git diff --staged`) is the boundary of its remit. Restructuring code the task did not already touch — extracting a type or module from existing code, decomposing or re-signaturing an existing function, renaming an existing function or file, moving code between modules — is **out of scope here**, however tempting, and reviewers raise it as scope creep: the revision loop is then spent arguing about a change nobody asked for while the task's actual findings wait. Cross-cutting structure belongs to a separate pass over the finished work, not to a task.
+
+If a genuine improvement is visible but out of scope, name it in the analysis output and leave the code alone.
+
 **Analysis pass**: spawn `agents.refactorer` in analysis-only mode:
 
 ```
@@ -132,11 +136,12 @@ Analyze the following changes for refactoring opportunities. Do NOT make any cha
 Task: [task.description]
 Affected Files: [files changed during implementation]
 
+Read the diff first and treat it as the boundary of your remit: report only changes to the lines this task wrote. Do NOT propose extracting a type from existing code, decomposing or re-signaturing an existing function, renaming an existing function or file, or moving code between modules — that is cross-cutting work for a later pass over the finished branch, and proposing it here costs the task a revision cycle. If you see one, name it under a "deferred (out of scope)" heading instead of listing it as an opportunity.
+
 Examine:
 - Code duplication introduced by this task
-- Naming clarity (variables, functions, types)
-- Extraction opportunities (long functions, repeated logic)
-- Structural improvements (parameter objects, interface alignment)
+- Naming clarity of the identifiers this task introduces
+- Extraction opportunities WITHIN the new code (a helper used twice by lines this task wrote)
 - Comment usage — read `~/.config/ai/guidelines/comments.md` and flag any new or modified comment that restates the code, narrates the task/fix/PR, names code by its position in the plan (`reactor 1/2`, `the decide leg`, `the on switch`, `PR N`, `Task N`, `design note X`), references callers or ticket IDs as its sole content, applies godoc to unexported symbols without subtle logic, or could be removed without losing meaning.
 
 Output:
@@ -150,6 +155,10 @@ Output:
 Refactoring guidance: [analysis output]
 Task: [task.description]
 Affected Files: [files changed during implementation]
+
+Apply only what the guidance lists as an opportunity — anything under "deferred (out of scope)" stays untouched. Do not reach beyond the lines this task wrote.
+
+If you nonetheless move an existing function, you own the fallout: a test that locates code by scanning source text (`readFileSync` plus `indexOf`/`substring` bounds, a regex over a file) can silently invert into scanning nothing and pass forever. Re-read any such test and prove it still fails for the reason its name gives.
 ```
 
 Do not proceed until tests pass. If tests fail, re-spawn (max 2 iterations). If still failing, revert the refactor, proceed with the pre-refactor state, and record `refactoring: "reverted: <reason>"` in the scratch.

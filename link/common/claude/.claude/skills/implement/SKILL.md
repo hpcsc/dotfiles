@@ -174,7 +174,7 @@ The task file is the queue, and the only durable record of where you are. Iterat
 Two rules that make the loop survivable:
 
 - **One task in flight at a time.** Never start the next while the current one is uncommitted. A half-finished task on top of another is what makes a run impossible to resume or review.
-- **Checkbox and commit move together** (step 4). The checkbox is what a later run — or a later you, after a `/clear` — reads to know what is done. A task committed but unticked will be redone; a task ticked but uncommitted will be skipped and lost.
+- **Checkbox and commit move together** (step 4). Tick the checkbox, then stage it alongside the code it represents in a single commit. The checkbox is what a later run — or a later you, after a `/clear` — reads to know what is done. A task committed but unticked will be redone; a task ticked but uncommitted will be skipped and lost.
 
 Announce which task you are starting, so the queue's progress is visible in the transcript rather than only in the file.
 
@@ -214,11 +214,10 @@ Either way the message obeys the `commit` agent's rules: imperative subject, ≤
 
 Three rules the boundary failures in this session earned:
 
-- **Stage by explicit path** — `git add -- <file>` per file this task changed. Never `git add -A`/`git add .`: an unrelated file left loose in the tree gets swept into your commit, and untangling it later means rewriting history.
+- **Tick the task first**, then stage everything together — code plus the task file — so the checkbox and the change land in one commit. A checkbox committed without its code, or code committed without its checkbox, is how a later run redoes work or skips work thinking it is done.
+- **Stage by explicit path** — `git add -- <file>` per file this task changed, plus `git add tasks/<story-name>.md`. Never `git add -A`/`git add .`: an unrelated file left loose in the tree gets swept into your commit, and untangling it later means rewriting history.
 - **One commit per task**, preserving granularity.
 - **One concern per commit.** If a task produced both a behaviour-preserving restructure and a feature, land the restructure first as its own commit, then the feature on top. That ordering also lets you prove the restructure by running the *pre-existing* tests against it alone.
-
-Then tick the task off in `tasks/[story-name].md` (`- [ ]` → `- [x]`) and stage that file so the progress update rides in the same commit.
 
 ### 5. Report and continue
 

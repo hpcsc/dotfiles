@@ -144,11 +144,12 @@ Then, unless `$ARGUMENTS` contains `--in-place`, build in a **worktree**:
 BASE=$(git rev-parse --abbrev-ref HEAD)
 WT="$(git rev-parse --show-toplevel)/../<kebab-feature-name>-wt"
 git worktree add -b <kebab-feature-name> "$WT"
+cd "$WT"
 ```
 
 The user's checkout then stays theirs to browse and run while you work, and nothing they leave loose mid-run can be swept into one of your commits — a real failure, not a hypothetical.
 
-**There is no worktree tool here, so be explicit rather than relying on a persistent working directory**: run every git command as `git -C "$WT" ...`, and give every file operation a path under `$WT`. Resolve the *main* repo root separately when you need it (`--git-common-dir`, as above) — `tasks/test-commands.json` and the learnings file live there, not in the worktree.
+Once inside the worktree, `git` and file operations run against it naturally — no `-C` prefix needed. Resolve the *main* repo root separately when you need it (`git rev-parse --path-format=absolute --git-common-dir` as above) — `tasks/test-commands.json` and the learnings file live there, not in the worktree.
 
 With `--in-place`: no worktree. `git switch -c <kebab-feature-name>` if on the default branch, and build in the main checkout.
 
@@ -200,7 +201,7 @@ The task file is the queue, and the only durable record of where you are. Iterat
 Two rules that make the loop survivable:
 
 - **One task in flight at a time.** Never start the next while the current one is uncommitted. A half-finished task stacked on another is what makes a run impossible to resume or review.
-- **Checkbox and commit move together** (step 4). The checkbox is what a later run reads to know what is done: a task committed but unticked gets redone; a task ticked but uncommitted is skipped and lost.
+- **Checkbox and commit move together** (step 4). Tick the checkbox, then stage it alongside the code it represents in a single commit. The checkbox is what a later run reads to know what is done: a task committed but unticked gets redone; a task ticked but uncommitted is skipped and lost.
 
 Announce which task you are starting, so progress is visible in the transcript and not only in the file.
 
@@ -235,11 +236,10 @@ Its rules, which the commit must satisfy either way: imperative subject, ≤50 c
 
 Three rules earned by real boundary failures:
 
-- **Stage by explicit path** — `git -C "$WT" add -- <file>` per file this task changed. Never `git add -A`/`git add .`: an unrelated file left loose in the tree gets swept into your commit, and untangling it later means rewriting history.
+- **Tick the task first**, then stage everything together — code plus the task file — so the checkbox and the change land in one commit. A checkbox committed without its code, or code committed without its checkbox, is how a later run redoes work or skips work thinking it is done.
+- **Stage by explicit path** — `git add -- <file>` per file this task changed, plus `git add tasks/<story-name>.md`. Never `git add -A`/`git add .`: an unrelated file left loose in the tree gets swept into your commit, and untangling it later means rewriting history.
 - **One commit per task**, preserving granularity.
 - **One concern per commit.** If a task produced both a behaviour-preserving restructure and a feature, land the restructure first as its own commit, then the feature on top. That ordering also lets you prove the restructure by running the *pre-existing* tests against it alone.
-
-Then tick the task off in `tasks/[story-name].md` and stage that file so the progress update rides in the same commit.
 
 ### 5. Report and continue
 
@@ -271,9 +271,9 @@ Land the work on the default branch, **local only — never push**. Skip with `-
 
 Gate on all four: every task `- [x]` and committed, the full suite green, `run-verifier` clean, and the audit's findings either fixed or explicitly accepted by the user.
 
-1. `git -C "$WT" rebase <default-branch>` — on conflict, `git -C "$WT" rebase --abort`, leave the branch alone, hand it to the user. Do not resolve someone else's merge for them.
+1. `git rebase <default-branch>` — on conflict, `git rebase --abort`, leave the branch alone, hand it to the user. Do not resolve someone else's merge for them.
 2. If the rebase actually replayed commits onto a moved base, **re-run the full suite**. Green-before-rebase is not green-after.
-3. In the main checkout: `git merge --ff-only <feature-branch>`. If it refuses, the base moved again — back to step 1.
+3. `cd` back to the main checkout and `git merge --ff-only <feature-branch>`. If it refuses, the base moved again — back to step 1.
 4. Clean up: `git worktree remove "$WT"`, `git worktree prune`, `git branch -d <feature-branch>`.
 
 With `--in-place`: steps 1–3 and the branch delete, no worktree removal.
@@ -321,7 +321,7 @@ Move the task file to `tasks/completed/`. Delete `tasks/.cycles/` if it exists. 
 |---|---|
 | Dirty tree at start | Stop; ask the user to stash or commit. Never build on top of someone else's loose work. |
 | `git worktree add` fails | Fall back to `--in-place` on a feature branch, and say which you used — it changes where the user finds the code. |
-| A path resolves in the wrong tree | Every git command takes `git -C "$WT"`; the main repo root comes from `--git-common-dir`. A relative path resolved in the wrong checkout is how a file looks deleted while still sitting in the other one. |
+| A path resolves in the wrong tree | `cd "$WT"` runs at setup so all operations target the worktree; the main repo root comes from `--git-common-dir`. A relative path resolved in the wrong checkout is how a file looks deleted while still sitting in the other one. |
 | `decompose-to-tasks` fails or returns nothing | Retry once. Then decompose yourself and show the user the list, flagging that it skipped the codebase-exploration pass. |
 | A task turns out wrong once you are in the code | Stop and say so. Revise the plan with the user rather than silently building something else. |
 | Tests will not go green | Report the real failure output. Do not weaken the test to pass, and do not commit red. |

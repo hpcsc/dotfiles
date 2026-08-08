@@ -198,19 +198,51 @@ const kindOf = (r) =>
         : 'semantic'
 
 const CONCURRENCY_HINTS = /goroutine|channel|mutex|\block\b|atomic|async|await|thread|concurren|genserver|\bets\b|\brace\b|transaction|sync\.|semaphore|worker/i
-const PERF_HINTS = /http|query|database|\bdb\b|readall|\bfile\b|stream|\bloop\b|cache|retry|poll|alloc|buffer|batch|pagination|\bindex\b/i
+
+// What "expensive" even means differs by language, and the old single pattern was
+// written for a networked service: `http`, `query`, `database`. Pointed at a CLI and
+// a canvas renderer it matched on `file`, `loop` and `index` — words that appear in
+// prose about almost any task — and ran a specialist five times for nothing.
+//
+// These are matched against the TASK DESCRIPTION, not the diff: this script has no
+// shell, so `impl.files_changed` gives it paths and never contents. That makes the
+// gate a heuristic over how the work was described, which is why the vocabulary has
+// to be words that only show up when the concern is real. A miss is logged below
+// rather than passed over in silence.
+//
+// Do not mistake a quiet gate for coverage. Prose describes intent, and the one
+// real cost defect this repo has seen — a per-character re-measure inside an
+// ellipsis fit — sat in a task whose description mentioned no cost at all. Finding
+// that needs a lens reading the diff, which is an audit over the finished branch,
+// not a gate over the plan.
+const PERF_HINTS = {
+  Go: /http|\bgrpc\b|query|database|\bdb\b|\bsql\b|readall|\bio\.|retry|polling|pagination|unbounded|preallocat|goroutine leak/i,
+  'JavaScript/TypeScript': /\bdom\b|layout|reflow|repaint|innerhtml|re-?render|listener|scroll|resize|animation|requestanimationframe|getboundingclientrect|thrash|debounce|throttle/i,
+  Elixir: /ecto|\brepo\.|genserver|\bstream\b|preload|n\+1/i,
+  Generic: /http|query|database|\bdb\b|readall|retry|polling|pagination|unbounded/i,
+}
+const perfHintsFor = (language) => PERF_HINTS[language] ?? PERF_HINTS[LANG[language] ? language : 'Generic'] ?? PERF_HINTS.Generic
 
 const selectReviewers = (cfg, task, changedFiles) => {
   const codeFiles = (changedFiles ?? []).filter(isCodeFile)
   if (codeFiles.length === 0) return { reviewers: [], reason: 'docs/config-only change — no code reviewers' }
   const hay = `${task.description} ${task.behavior} ${(changedFiles ?? []).join(' ')}`.toLowerCase()
+  const skipped = []
   const reviewers = cfg.reviewers.filter((r) => {
     const k = kindOf(r)
-    if (k === 'concurrency') return CONCURRENCY_HINTS.test(hay)
-    if (k === 'performance') return PERF_HINTS.test(hay)
+    if (k === 'concurrency') {
+      if (CONCURRENCY_HINTS.test(hay)) return true
+      skipped.push(`${r} (nothing in the task describes concurrent work)`)
+      return false
+    }
+    if (k === 'performance') {
+      if (perfHintsFor(task.language).test(hay)) return true
+      skipped.push(`${r} (nothing in the task describes a cost this lens measures — a per-task gate reads the plan's prose, not the diff, so treat performance as covered by an audit over the finished branch rather than here)`)
+      return false
+    }
     return true
   })
-  return { reviewers, reason: null }
+  return { reviewers, reason: null, skipped }
 }
 
 // ---------------------------------------------------------------------------
@@ -806,8 +838,9 @@ async function runTask(task) {
         })) ?? { outcome: 'skipped (refactor agent returned no result)', test_receipt: impl.test_receipt }
     if (skipRefactor) log(`${tag}: attempt ${attempt} skipping refactor — fixing quality findings only`)
 
-    const { reviewers: panel, reason } = selectReviewers(cfg, task, impl.files_changed)
+    const { reviewers: panel, reason, skipped } = selectReviewers(cfg, task, impl.files_changed)
     if (reason) log(`${tag}: skipping code reviewers — ${reason}`)
+    for (const s of skipped ?? []) log(`${tag}: not running ${s}`)
     // Re-ask only the lenses that raised what is still outstanding. A lens that
     // passed on this diff has nothing to re-decide, and the whole panel costs the
     // slowest reviewer for every nit. Anything touching behaviour is not a quality

@@ -1,5 +1,5 @@
 ---
-description: Implement a feature with quality-assured testing
+description: Build a feature directly against the project's guidelines, then have it audited
 ---
 
-Read ~/.claude/skills/implement/SKILL.md and follow its instructions using $ARGUMENTS.
+Read ~/.config/opencode/skills/implement/SKILL.md and follow its instructions using $ARGUMENTS.

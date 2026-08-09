@@ -38,6 +38,7 @@ tasks:
     deps:
       - core
       - configure-yazi
+      - configure-mermaid
 
   krew:
     desc: Install Krew plugins
@@ -126,6 +127,13 @@ tasks:
     interactive: true
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-yazi.sh"
+
+  configure-mermaid:
+    desc: Install the puppeteer browser mermaid-cli renders with - requires mise
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-mermaid.sh"
 
   claude-code:
     desc: Install Claude Code and register the gopls MCP server plus the gopls-lsp plugin - requires mise

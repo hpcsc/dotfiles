@@ -127,17 +127,12 @@ tasks:
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-yazi.sh"
 
-  configure-claude:
-    desc: Register the gopls MCP server and enable the gopls-lsp plugin - requires claude, mise
-    run: once
-    interactive: true
-    cmds:
-      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-claude.sh"
-
   claude-code:
-    desc: Install Claude Code native binary - no dependencies
+    desc: Install Claude Code and register the gopls MCP server plus the gopls-lsp plugin - requires mise
     run: once
     interactive: true
+    deps:
+      - core
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-claude-code.sh"
 

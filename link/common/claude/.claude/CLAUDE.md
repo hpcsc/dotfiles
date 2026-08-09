@@ -1,8 +1,11 @@
 # Tooling Guidelines
 
 ## Code Structure Analysis
-- Use `ast-grep -p '<pattern>' --lang=<language>` for syntax-aware matching
+- **Go — use gopls, not text search**, for symbol questions: where a symbol is used, what calls it, its type, renames. `LSP` and `mcp__gopls__*` are deferred — load them in one `ToolSearch` call. References: `mcp__gopls__go_symbol_references` (name-addressed, no line/char needed). Definition, type, docs: `LSP goToDefinition`, `LSP hover`.
+- Other languages: `ast-grep -p '<pattern>' --lang=<language>` for syntax-aware matching
 - Avoid text-only tools (`rg`, `grep`) unless explicitly requested
+- `rg` and `ast-grep` match text and syntax, not **identity** — both match prefixes of the name you asked about, and hits inside comments and strings. Only gopls resolves the actual symbol.
+- If gopls returns suspiciously few results, or "no package metadata for file", in a repo whose tests are build-tagged, check that GOFLAGS carries the tags. It fails silently — confidently short answers, no error.
 
 ## File Operations
 - Finding files: `fd`

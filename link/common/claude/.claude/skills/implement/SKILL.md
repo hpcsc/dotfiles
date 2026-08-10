@@ -240,6 +240,7 @@ This is where review happens. Invoke the `audit-implement` skill with:
 - `target: "branch"` (or `baseRef` when the branch has already been landed and `merge-base` would come back empty)
 - the `testCommands` map from Phase 0
 - a `brief`: one or two sentences on what the feature was meant to do. Cheap, and it lets the correctness lens compare code against intent instead of inferring intent from code.
+- `story`: the original request from `$ARGUMENTS`, **verbatim**. Do this even though you also wrote the brief — the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing in the whole run that the audit sees which did not come from you.
 
 It fans the applicable lenses over the diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings plus `coverage_gaps`.
 

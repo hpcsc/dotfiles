@@ -1,15 +1,16 @@
 #!/bin/bash
 
-# Dependencies: mise (common-mise.sh), mise-global (common-mise-global.sh)
-# The Claude Code binary is self-contained and does not require Node.js, but the
-# gopls shim it is pointed at afterwards comes from mise-global.
+# The Claude Code binary is self-contained and does not require Node.js.
 #
-# The gopls settings are applied imperatively rather than stowed because both
-# live in files that also hold machine-specific state: the MCP server belongs to
-# ~/.claude.json, which carries the oauth account and per-project history, and
-# the plugin toggle belongs to ~/.claude/settings.json, which on a work machine
-# also carries private marketplaces and a credential-export command. Both steps
-# below only add their own key and leave every other key on the machine alone.
+# Neither half of the gopls integration is configured here, deliberately. Each
+# session runs its own gopls, which watches the whole workspace, and on macOS
+# kqueue costs one file descriptor per watched path -- a ~12k-file monorepo runs
+# about 28k descriptors per session against a default kern.maxfiles of 122880.
+# Four such sessions exhaust the system file table, which surfaces as unrelated
+# apps failing rather than as anything pointing at Go. Opt in per repo instead,
+# where the workspace is small enough to be worth it:
+#   cd <repo> && claude mcp add gopls -- "$HOME/.local/share/mise/shims/gopls" mcp
+#   cd <repo> && claude plugin enable gopls-lsp@claude-plugins-official -s local
 
 # Source utility functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,28 +23,4 @@ if CLAUDE_BIN="$(command -v claude 2>/dev/null)"; then
 else
   echo_yellow "=== Installing Claude Code (native binary)"
   curl -fsSL https://claude.ai/install.sh | bash
-  CLAUDE_BIN="$HOME/.local/bin/claude"
-fi
-
-if [ ! -x "$CLAUDE_BIN" ]; then
-  echo_red "=== claude not found at $CLAUDE_BIN, skipping gopls setup"
-  exit 0
-fi
-
-GOPLS_SHIM="$HOME/.local/share/mise/shims/gopls"
-if [ ! -x "$GOPLS_SHIM" ]; then
-  echo_red "=== gopls shim not found at $GOPLS_SHIM, skipping (run mise-global first)"
-  exit 0
-fi
-
-echo_yellow "=== Registering gopls MCP server at user scope"
-"$CLAUDE_BIN" mcp remove gopls -s user >/dev/null 2>&1 || true
-"$CLAUDE_BIN" mcp add gopls -s user -- "$GOPLS_SHIM" mcp
-echo_green "Registered gopls MCP server"
-
-echo_yellow "=== Enabling gopls-lsp plugin"
-if "$CLAUDE_BIN" plugin enable gopls-lsp@claude-plugins-official -s user >/dev/null 2>&1; then
-  echo_green "Enabled gopls-lsp plugin"
-else
-  echo_green "gopls-lsp plugin already enabled"
 fi

@@ -1,7 +1,8 @@
 # Tooling Guidelines
 
 ## Code Structure Analysis
-- **Go — use gopls, not text search**, for symbol questions: where a symbol is used, what calls it, its type, renames. `LSP` and `mcp__gopls__*` are deferred — load them in one `ToolSearch` call. References: `mcp__gopls__go_symbol_references` (name-addressed, no line/char needed). Definition, type, docs: `LSP goToDefinition`, `LSP hover`.
+- **Go — use gopls, not text search**, for symbol questions: where a symbol is used, what calls it, its type, renames. gopls is opt-in per repo, so try the deferred tools first — `mcp__gopls__*` and `LSP` in one `ToolSearch` call. References: `mcp__gopls__go_symbol_references` (name-addressed, no line/char needed). Definition, type, docs: `LSP goToDefinition`, `LSP hover`.
+- If those tools are absent the repo has not opted in — large monorepos are excluded on purpose, since a long-lived gopls per session exhausts the macOS file table. Use the gopls CLI instead: it needs no server and exits straight away, so it costs nothing to leave unregistered. `gopls references <file>:<line>:<col>`, `gopls definition`, `gopls call_hierarchy`. Still prefer this over `rg`.
 - Other languages: `ast-grep -p '<pattern>' --lang=<language>` for syntax-aware matching
 - Avoid text-only tools (`rg`, `grep`) unless explicitly requested
 - `rg` and `ast-grep` match text and syntax, not **identity** — both match prefixes of the name you asked about, and hits inside comments and strings. Only gopls resolves the actual symbol.

@@ -136,7 +136,7 @@ tasks:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-configure-mermaid.sh"
 
   claude-code:
-    desc: Install Claude Code and register the gopls MCP server plus the gopls-lsp plugin - requires mise
+    desc: Install or update the Claude Code native binary
     run: once
     interactive: true
     deps:

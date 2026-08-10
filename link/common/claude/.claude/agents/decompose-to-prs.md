@@ -94,12 +94,19 @@ For each dependent slice choose its `base`:
 
 ## Step 4: Write Each Slice's tasks.md
 
-For every slice, write `tasks/<story-slug>/<slice-slug>/tasks.md` in the **exact `decompose-to-tasks` format** so `implement-flow` adopts it unchanged:
+For every slice, write **two files** in the **exact `decompose-to-tasks` format** so `implement-flow` adopts them unchanged:
+
+- `tasks/<story-slug>/<slice-slug>/tasks.md` — the tasks in prose
+- `tasks/<story-slug>/<slice-slug>/tasks.json` — the sidecar beside it, carrying each task's `n`, `title`, `language`, `testable`, `depends_on` and `done: false`
+
+The sidecar is where a run records progress, so a slice without one forces its run through a recovery parse before it can start. Both files describe the same tasks; revise them together.
+
+The markdown:
 
 ```markdown
-## Progress
-- [ ] Task 1: [title]
-- [ ] Task 2: [title]
+## Contents
+1. Task 1: [title]
+2. Task 2: [title]
 
 ## Story Reference
 [the slice's own scope — the behavior this PR delivers. Described standalone; no "slice N of M".]

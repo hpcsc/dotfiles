@@ -626,18 +626,21 @@ eq "though status still says so"                  "2" \
 # --------------------------------------------------------------------------------
 printf '\nstatus --all\n'
 
-R18=$(new_repo); mkdir -p "$R18/tasks/completed"
+R18=$(new_repo); mkdir -p "$R18/tasks/completed" "$R18/tasks/big-story/slice-one"
 printf -- '### Task 1: One\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R18/tasks/live.md"
 printf -- '### Task 1: Old\n\n**Depends on:** None\n' > "$R18/tasks/completed/past.md"
 git -C "$R18" add -A && git -C "$R18" commit -qm Plan
 run "$R18" sidecar --tasks-file "$R18/tasks/live.md" >/dev/null
 run "$R18" sidecar --tasks-file "$R18/tasks/completed/past.md" >/dev/null
+# decompose-to-prs puts one breakdown per slice under tasks/<story>/<slice>/tasks.md.
+printf -- '### Task 1: Sliced\n\n**Depends on:** None\n' > "$R18/tasks/big-story/slice-one/tasks.md"
+run "$R18" sidecar --tasks-file "$R18/tasks/big-story/slice-one/tasks.md" >/dev/null
 
 A=$(run "$R18" status --all)
-eq "walks every breakdown, in flight and archived" "2" "$(printf '%s' "$A" | jq -r '.breakdowns | length')"
+eq "walks every breakdown, in flight and archived" "3" "$(printf '%s' "$A" | jq -r '.breakdowns | length')"
 eq "marking which are archived"                    "1" \
    "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.archived)] | length')"
-eq "and carries each task through"                 "3" \
+eq "and carries each task through"                 "4" \
    "$(printf '%s' "$A" | jq -r '[.breakdowns[].progress[]] | length')"
 eq "with the sidecar it read"                      "true" \
    "$(printf '%s' "$A" | jq -r '.breakdowns[0].sidecar | endswith(".json")')"
@@ -647,11 +650,13 @@ eq "with the sidecar it read"                      "true" \
 # rather than as an error, so the reporter falls back to whatever stale checklist is left.
 eq "reports paths relative to the work tree" "tasks/live.md" \
    "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.archived | not) | .tasks_file] | first')"
+eq "and a slice nested under a story"        "tasks/big-story/slice-one/tasks.md" \
+   "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.tasks_file | contains("slice"))] | first | .tasks_file')"
 eq "including archived ones"                 "tasks/completed/past.md" \
    "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.archived) | .tasks_file] | first')"
 
 # The shape the progress reporter consumes.
-eq "flattens to one row per task" "3" \
+eq "flattens to one row per task" "4" \
    "$(printf '%s' "$A" | jq -r '.breakdowns[] | .tasks_file as $f | .progress[] | [$f, (.n|tostring)] | @tsv' | wc -l | tr -d ' ')"
 
 # --------------------------------------------------------------------------------

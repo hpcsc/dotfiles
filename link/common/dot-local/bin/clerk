@@ -576,7 +576,10 @@ cmd_status() {
 
   if [ "$all" = true ]; then
     {
-      for f in "$wt"/tasks/*.md "$wt"/tasks/completed/*.md; do
+      # find, not a glob: decompose-to-prs puts one breakdown per slice under
+      # tasks/<story>/<slice>/tasks.md, and a glob over tasks/*.md sees none of them —
+      # which reads as "this repo has no breakdowns" rather than as a miss.
+      for f in $(find "$wt/tasks" -name '*.md' -type f 2>/dev/null | sort); do
         [ -f "$f" ] || continue
         case "$(basename "$f")" in learnings.md) continue ;; esac
         side="${f%.md}.json"

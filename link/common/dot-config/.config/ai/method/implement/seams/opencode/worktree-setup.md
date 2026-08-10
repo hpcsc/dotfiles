@@ -2,7 +2,7 @@
 
 `clerk prepare` reported whether the tree is `clean`. If it is not, stop and ask — never build on top of someone else's loose work.
 
-Then **work in a worktree**, unless `$ARGUMENTS` contains `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits.
+Then **work in a worktree**, unless the request carries `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits.
 
 ```
 WT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/../wt-<kebab-feature-name>"

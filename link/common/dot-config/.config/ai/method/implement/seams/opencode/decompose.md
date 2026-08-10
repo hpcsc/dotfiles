@@ -2,4 +2,4 @@ Spawn the `decompose-to-tasks` subagent via the `task` tool with a complete, sel
 
 > Detected project languages: [from `clerk prepare`]
 >
-> Decompose the following user story into implementation tasks. For each task set `language` to the language it primarily involves and `depends_on` to the tasks it builds on: [story from $ARGUMENTS]
+> Decompose the following user story into implementation tasks. For each task set `language` to the language it primarily involves and `depends_on` to the tasks it builds on: [the feature description from the request]

@@ -2,20 +2,28 @@
 
 ## How It Works
 
-Opencode reuses Claude Code's skills and agents with thin wrappers.
+Opencode shares Claude Code's method and guidelines. Where a definition can be read from
+Claude's tree it is; where the two tools need different frontmatter or a different idiom,
+both files are generated from one source.
 
 ```
-~/.claude/skills/          <-- Shared skill definitions (SKILL.md)
+~/.config/ai/                <-- Shared across tools
+  guidelines/                <-- Read by both, referenced not copied
+  method/                    <-- Bodies + per-tool seams; both trees generated from here
+~/.claude/skills/            <-- Skill definitions most commands read directly
 ~/.config/opencode/
-  commands/                <-- Thin wrappers that reference Claude skills
-  agents/                  <-- Duplicated from Claude agents (different frontmatter)
-  AGENTS.md                <-- System prompt (tooling guidelines)
-  opencode.json            <-- Permissions and theme
+  commands/                  <-- Thin wrappers naming the skill to read
+  agents/                    <-- Subagent definitions
+  skills/                    <-- Skills whose opencode form differs from Claude's
+  AGENTS.md                  <-- System prompt (tooling guidelines)
+  opencode.json              <-- Permissions and theme
 ```
 
-### Skills → Commands
+Directory names are plural. There are no `agent/` or `command/` singular directories.
 
-Claude skills live in `~/.claude/skills/<name>/SKILL.md`. User-invocable skills get a thin opencode command wrapper:
+### Commands → Skills
+
+User-invocable skills get a thin command wrapper naming the file to read:
 
 ```
 ~/.config/opencode/commands/commit.md
@@ -25,23 +33,39 @@ Claude skills live in `~/.claude/skills/<name>/SKILL.md`. User-invocable skills 
 description: Create a git commit for staged changes
 ---
 
-@~/.claude/skills/commit/SKILL.md
+Read ~/.claude/skills/commit/SKILL.md and follow its instructions using $ARGUMENTS.
 ```
 
-The command just includes the Claude skill via `@` reference. No duplication of skill logic.
+Most wrappers point straight at `~/.claude/skills/`, so there is one copy of the skill.
+`implement` and `implement-flow` point at `~/.config/opencode/skills/` instead, because
+their opencode form genuinely differs — Claude's `implement-flow` skill is a launcher for
+a JS workflow, opencode's is the method itself.
 
-### Agents
+**`$ARGUMENTS` is substituted into the wrapper, not into the skill.** The skill is read as
+a file, so any `$ARGUMENTS` inside it stays literal text. Skills that must act on the
+caller's exact words say so directly and tell the reader to record the request up front,
+rather than depending on a token being replaced.
 
-Agents are duplicated because opencode uses different frontmatter (`mode: subagent`) than Claude Code (`name`, `tools`, `model`, `color`). The agent body is identical.
+### Generated definitions
 
-| Claude Code | Opencode |
-|---|---|
-| `~/.claude/agents/commit.md` | `~/.config/opencode/agents/commit.md` |
-| Frontmatter: `name`, `tools`, `model`, `color` | Frontmatter: `description`, `mode: subagent` |
+`implement` and the agents it invokes are rendered from `~/.config/ai/method/` by
+`scripts/gen-skills.sh` in the dotfiles repo (`task common:gen:skills`, or
+`common:gen:skills:check` to fail on a stale file). The body is shared; only frontmatter
+and a handful of seams differ, so the two trees cannot drift.
+
+| | Claude Code | Opencode |
+|---|---|---|
+| Agent frontmatter | `name`, `tools`, `model`, `color` | `description`, `mode` |
+| Tool restriction | enforced by the `tools` allowlist | inherited from `opencode.json` |
+
+That second row is a real asymmetry: `run-verifier` is structurally read-only on Claude
+because no write tool is in its allowlist, while on opencode the same guarantee rests on
+the prose in its body.
 
 ### Guidelines
 
-Both tools read shared guidelines from `~/.config/ai/guidelines/`. No duplication needed.
+Both tools read shared guidelines from `~/.config/ai/guidelines/`. Referenced, never
+copied — they are consulted on demand and read partially by design.
 
 ## Commands (user-invocable)
 

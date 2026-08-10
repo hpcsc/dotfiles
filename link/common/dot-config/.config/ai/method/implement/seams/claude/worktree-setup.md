@@ -2,7 +2,7 @@
 
 `clerk prepare` reported whether the tree is `clean`. If it is not, stop and ask — never build on top of someone else's loose work.
 
-Then **work in a worktree**, unless `$ARGUMENTS` contains `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits. That sweep is a real failure mode, not a hypothetical.
+Then **work in a worktree**, unless the request carries `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits. That sweep is a real failure mode, not a hypothetical.
 
 Use the **EnterWorktree** tool (this skill is the explicit instruction that tool requires). Name it for the feature. It creates the worktree under `.claude/worktrees/`, puts it on a new branch, and switches the session's working directory into it — same window, same session, no new tmux anything. Every command from here runs there, and relative paths work normally.
 

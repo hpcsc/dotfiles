@@ -13,7 +13,7 @@ Audit finished work: $ARGUMENTS
 
 After a feature is built and green, to have it genuinely challenged. Pairs with `implement`, which builds directly and hands the branch here.
 
-Not a substitute for a quick look at a two-line diff — this spawns one agent per lens plus one per candidate finding.
+Not a substitute for a quick look at a two-line diff — this spawns one agent per lens plus one per distinct finding.
 
 ---
 
@@ -56,11 +56,17 @@ Spawn these via the `task` tool. **If your runtime can run several tasks concurr
 
 Run one set per language present in the diff.
 
-**Every lens prompt must be self-contained** and carry: the change-set summary, the exact diff command, the full list of changed files, and this shared preamble —
+**Give each lens a remit, not the whole diff.** Group the changed files by the language each is *written in* — a `.go` file is Go even when it implements a JavaScript-facing feature, and "generic" means written in something with no lens of its own (CUE, SQL, a grammar corpus), never "everything left over". A lens reviews the files under its own language and raises findings only about those. Without this a three-language change set buys three passes over the same code rather than three complementary reviews, and the copies all get verified separately.
+
+A changed file that lands under no language — prose documentation, a lockfile — is owned by nobody. That is usually right, but say so in the coverage gaps rather than letting the change set read as fully reviewed.
+
+**Every lens prompt must be self-contained** and carry: the change-set summary, the exact diff command, its own remit, the rest of the changed files marked as context, and this shared preamble —
 
 > You are auditing finished, committed work. Nobody is waiting to defend it; judge it as it stands.
 >
-> Read the diff **and the whole post-image of every changed file**, together, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.
+> Read the diff **and the whole post-image of every changed file in your remit**, together, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.
+>
+> The other changed files are context, not remit. A lens of their own language is reviewing them right now, so a finding you raise there is one they are already raising. Read any your own files touch — you cannot judge a caller you have not seen — but do not review them for their own sake. If you spot something wrong in one its owner would plausibly miss, say so in your note rather than as a finding.
 >
 > Do NOT run the full test suite — it already passes, which is why this work is finished. Run a scoped command only to demonstrate a specific finding.
 >
@@ -81,9 +87,21 @@ Run one set per language present in the diff.
 
 ---
 
-## Phase 2: Verify every claim
+## Phase 2: Collapse duplicates before you pay to verify them
 
-Nothing reaches the report unverified. Spawn one verifier per candidate finding (again, concurrently if your runtime allows). Use the language's semantic reviewer, or `general` — the verifier's job is execution and rule-checking, not taste.
+You hold every lens's findings, so do this yourself — it is reading and judgment, not a subagent's job.
+
+Two findings are the **same defect** when one fix resolves both: the same line doing the same wrong thing, described twice. Different wording, different severities and even different files can still be one defect — a regression is routinely reported once against the code that causes it and once against the test that fails to catch it, and the fix is the same edit. Lenses cannot see each other, so this happens on every multi-lens run.
+
+They are **not** the same defect when they merely share a file, a theme or a category. Two unrelated comments breaking one rule in one file are two findings; a missing test for X and a missing test for Y are two findings. **When unsure, leave them separate** — a wrong merge deletes a real defect silently, while a missed merge costs one extra verification.
+
+Merging rules: keep the **highest** severity in the cluster (never the representative's alone), prefer the `runtime` report as the survivor when the cluster mixes natures, since it carries the reproduction, and record every lens that raised it. Verify the survivor once.
+
+---
+
+## Phase 3: Verify every claim
+
+Nothing reaches the report unverified. Spawn one verifier per **distinct** finding (again, concurrently if your runtime allows). Use the language's semantic reviewer, or `general` — the verifier's job is execution and rule-checking, not taste.
 
 > Establish whether this claim about finished code is REAL. You are independent of whoever raised it, and they ran nothing — treat the claim as a hypothesis.
 >
@@ -103,15 +121,14 @@ Nothing reaches the report unverified. Spawn one verifier per candidate finding 
 
 ---
 
-## Phase 3: Report it yourself
+## Phase 4: Report it yourself
 
 You hold every finding and verdict — no synthesis agent needed.
 
 1. **Drop the refuted**, but list them separately with *why*, so the caller can disagree.
-2. **Deduplicate**: two lenses describing one defect become one finding, keeping the more precise claim and the stronger evidence.
-3. **Rank** most severe first. Mark each `confirmed` (reproduced by execution, or a rule cited at a specific line) or `plausible`.
-4. **State the coverage gaps** — the lenses that did not run and why, a file nobody read, a claim nobody could test. Be concrete: "nothing was missed" is almost never true and is not a useful answer.
-5. **Confirm the tree is clean**: `git status --porcelain`. Verifiers write scratch files to prove things; if any survived, say so and remove them. The audit must not leave the repo dirtier than it found it.
+2. **Rank** most severe first. Mark each `confirmed` (reproduced by execution, or a rule cited at a specific line) or `plausible`. They are already deduplicated; do not merge further here, or you discard one verifier's evidence for a claim that was judged on its own.
+3. **State the coverage gaps** — the lenses that did not run and why, a changed file no language claimed, a claim nobody could test. Be concrete: "nothing was missed" is almost never true and is not a useful answer.
+4. **Confirm the tree is clean**: `git status --porcelain`. Verifiers write scratch files to prove things; if any survived, say so and remove them. The audit must not leave the repo dirtier than it found it.
 
 Do not invent findings to pad the report. A clean audit is a real outcome, and saying so plainly beats manufacturing nits.
 

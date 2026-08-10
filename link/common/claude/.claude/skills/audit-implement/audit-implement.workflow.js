@@ -4,7 +4,8 @@ export const meta = {
     'Adversarially audit finished work. Fans specialist lenses over a branch diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings — the review half of construct-directly-then-audit.',
   phases: [
     { title: 'Scope', detail: 'resolve the diff, its languages, and which lenses apply' },
-    { title: 'Review', detail: 'specialist lenses read the whole post-image of every changed file, in parallel' },
+    { title: 'Review', detail: 'each lens reviews the files written in its own language, in parallel' },
+    { title: 'Dedupe', detail: 'collapse findings that name one defect, before paying to verify each copy' },
     { title: 'Verify', detail: 'reproduce each runtime claim independently; quality claims stand on judgment' },
     { title: 'Report', detail: 'dedup, rank, and hand back what survived' },
   ],
@@ -121,12 +122,25 @@ const agentOrRetry = async (prompt, opts, what) => {
 const SCOPE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['base', 'head', 'files', 'languages', 'has_code', 'signals', 'summary'],
+  required: ['base', 'head', 'files', 'languages', 'by_language', 'has_code', 'signals', 'summary'],
   properties: {
     base: { type: 'string', description: 'the resolved base ref the diff was taken from' },
     head: { type: 'string', description: 'the resolved head ref/commit' },
     files: { type: 'array', items: { type: 'string' }, description: 'every changed path, repo-relative' },
     languages: { type: 'array', items: { type: 'string' }, description: 'canonical language names present in the changed CODE files, most-changed first' },
+    by_language: {
+      type: 'array',
+      description: 'the same changed files, grouped by the language each is WRITTEN IN. One entry per name in `languages`, spelled identically. A code file belongs to exactly one entry; a file no lens should own (docs, lockfiles) belongs to none.',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['language', 'files'],
+        properties: {
+          language: { type: 'string', description: 'one of the names in `languages`, verbatim' },
+          files: { type: 'array', items: { type: 'string' }, description: 'changed paths written in this language, repo-relative, exactly as they appear in `files`' },
+        },
+      },
+    },
     has_code: { type: 'boolean', description: 'false when every changed file is docs/config/build only' },
     signals: {
       type: 'object',
@@ -167,6 +181,31 @@ const REVIEW_SCHEMA = {
     verdict: { type: 'string', enum: ['pass', 'concerns'] },
     findings: { type: 'array', items: FINDING },
     note: { type: ['string', 'null'], description: 'what you deliberately did NOT flag and why, when that is the informative part' },
+  },
+}
+
+// Grouping only. The representative, the merged severity and the joined lens keys are
+// all decided in code below, so the one thing this agent has to get right is which
+// findings name the same defect — and a mistake there is caught by the coverage check
+// rather than silently losing a finding.
+const DEDUP_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['clusters'],
+  properties: {
+    clusters: {
+      type: 'array',
+      description: 'every finding id exactly once across all clusters; a finding with no duplicate is a cluster of one',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['ids'],
+        properties: {
+          ids: { type: 'array', items: { type: 'string' }, description: 'the finding ids that are all the SAME defect' },
+          why: { type: ['string', 'null'], description: 'for clusters of more than one: what the single underlying defect is' },
+        },
+      },
+    },
   },
 }
 
@@ -224,6 +263,7 @@ const scopePrompt = () =>
       : `Target: ${TARGET}. Interpret it as a git ref range or a path filter, and say in \`summary\` how you read it.\n`) +
   `\nList every changed path. Then decide, FROM THE DIFF ITSELF rather than from the file names:\n` +
   `- \`languages\`: the canonical language of the changed CODE files — one of "Go", "JavaScript/TypeScript", "Elixir", "Generic" — ordered by how much of the diff each accounts for.\n` +
+  `- \`by_language\`: those same files, grouped under the language each is actually WRITTEN IN. This decides which lens reviews which file, so put every file where a reader of that language would expect it: a \`.go\` file is Go even when it implements a JavaScript-facing feature, and "Generic" means the file is written in something with no lens of its own (CUE, a grammar corpus, SQL, a shell script) — NOT "everything left over" and NOT a second pass over another language's files. Leave a file out entirely when no code lens should own it, such as prose documentation or a lockfile.\n` +
   `- \`has_code\`: false only when EVERY changed file is documentation, config, or build plumbing (.md/.txt/.rst, .json/.yaml/.toml/.ini/.lock, Makefile/Taskfile/*.mk, images). An extension-less file that might carry logic counts as code.\n` +
   `- \`signals.concurrency\`: true ONLY if the diff itself adds or changes concurrent code — goroutines, threads, async/await over shared state, channels, locks, transactions, shared mutable state. A file that merely sits in a concurrent codebase is not a signal.\n` +
   `- \`signals.performance\`: true ONLY if the diff itself adds or changes I/O, database queries, loops over unbounded input, allocation in a hot path, or if a benchmark exists that could measure the change. Absent that, false — a performance lens with nothing to measure returns nothing, every time.\n` +
@@ -254,14 +294,30 @@ const recheckBlock = () =>
       `\nFor each, check the tree and say whether the fix actually landed. If it did not, RE-RAISE it with the SAME id. Judge only whether the described change is there — whether the finding deserved fixing is settled and not yours to re-open.\n` +
       `Your remit is otherwise unchanged: review this diff as you normally would. A fix can introduce a new defect, and you are the lens that would see it.\n\n`
 
-const reviewPreamble = (scope) =>
+// A lens instantiated for a language used to be handed every changed file in the diff,
+// so a three-language change set bought three passes over the same code rather than
+// three complementary reviews — measured once at six near-identical findings out of
+// eight, and a defect reproduced independently by three lenses that each paid to
+// rebuild the base binary. Naming a remit is what makes the panel additive. Files
+// outside it still travel, because a lens that cannot see its file's callers judges it
+// blind; what changes is who may raise a finding about them.
+const fileBlock = (scope, remit) => {
+  if (!remit || remit.length >= scope.files.length) {
+    return `Changed files (${scope.files.length}) — you do not need to discover them:\n${scope.files.map((f) => `  ${f}`).join('\n')}\n\n`
+  }
+  const rest = scope.files.filter((f) => !remit.includes(f))
+  return `YOUR REMIT — the ${remit.length} changed file(s) written in your language. Judge these, and raise findings ONLY about these:\n${remit.map((f) => `  ${f}`).join('\n')}\n\n` +
+    `Context, not remit — the other ${rest.length} changed file(s). A lens of their own language is reviewing them right now, so a finding you raise here is one they are already raising. Read any of them your own files touch, because you cannot judge a caller you have not seen; do not review them for their own sake. If you spot something wrong in one that its owner would plausibly miss, put it in \`note\` and not in \`findings\`:\n${rest.map((f) => `  ${f}`).join('\n')}\n\n`
+}
+
+const reviewPreamble = (scope, remit) =>
   `You are auditing finished, committed work — not a work-in-progress. Nobody is waiting to defend it, so judge it as it stands.\n\n` +
   `Change set, as summarized from the diff: ${scope.summary}\n` +
   intentBlock() +
   recheckBlock() +
   `Diff: \`git diff ${scope.base}...${scope.head}\`${scope.base === 'HEAD' ? ' (or `git diff --cached` — this target is the staged changes)' : ''}\n` +
-  `Changed files (${scope.files.length}) — you do not need to discover them:\n${scope.files.map((f) => `  ${f}`).join('\n')}\n\n` +
-  `Read the diff AND the whole post-image of every changed file, together, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.\n\n` +
+  fileBlock(scope, remit) +
+  `Read the diff AND the whole post-image of every changed file in your remit, together, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.\n\n` +
   `Do NOT run the full test suite — it already passes, that is why this work is finished. Run a scoped command only to demonstrate a specific finding.\n\n`
 
 const findingContract =
@@ -269,14 +325,14 @@ const findingContract =
   `Set \`nature\` to "runtime" when an independent agent could demonstrate the defect by executing code — then make the \`claim\` precise enough to reproduce and give a \`failure_scenario\` (concrete inputs/state -> wrong output). Set it to "quality" for a convention, structure or test defect with no runtime symptom, and set \`quality_kind\`.\n` +
   `Do NOT inflate severity to be taken seriously: everything you raise is verified and reported, and severity is used only to rank. Do NOT pad — a lens that finds nothing real should return verdict "pass" with an empty findings array and, if useful, say in \`note\` what it looked at and deliberately did not flag. An empty result from a lens is a real result here, not a failure.`
 
-const semanticPrompt = (scope, lang) =>
-  reviewPreamble(scope) +
+const semanticPrompt = (scope, lang, remit) =>
+  reviewPreamble(scope, remit) +
   `Your lens is CORRECTNESS. Hunt for defects a user or caller would eventually hit: a wrong condition or off-by-one, an unhandled error or ignored return, a nil/undefined path, a boundary the code does not cover, state left inconsistent on a failure path, an API contract the change quietly breaks for an existing caller.\n\n` +
   `Weigh the change against the intent stated above. Two distinct failures, both findings: code that works but does something other than what the change set claims, and — when the caller's request is given — code that satisfies the diff-derived summary while missing, narrowing, or substituting a proxy for what the request actually asked for. The summary was written from the diff and so can never catch the second on its own; that is what the request block is there for.` +
   findingContract
 
-const testsPrompt = (scope, lang) =>
-  reviewPreamble(scope) +
+const testsPrompt = (scope, lang, remit) =>
+  reviewPreamble(scope, remit) +
   `Your lens is TEST INTEGRITY, and it is the one most likely to find something here, because a suite that passes tells you nothing about whether it *could* fail.\n\n` +
   `Required reading: ${LANG[lang].reading.join(', ')}. ${DISCLOSURE}\n\n` +
   `For every test the diff adds or changes — and every test in the changed area that the diff could have invalidated — ask whether it can still fail for the reason its name gives. Specifically hunt:\n` +
@@ -288,8 +344,8 @@ const testsPrompt = (scope, lang) =>
   `Classify each as \`nature: "quality"\` with \`quality_kind\` "broken-test" (asserts nothing real) or "redundant-test" (duplicates existing coverage). Where you can, PROVE a vacuity claim: break the thing the test names, show it still passes, and put that in the claim. A proven vacuous test is the highest-value finding this audit produces.` +
   findingContract
 
-const guidelinesPrompt = (scope, lang) =>
-  reviewPreamble(scope) +
+const guidelinesPrompt = (scope, lang, remit) =>
+  reviewPreamble(scope, remit) +
   `Your lens is this project's OWN conventions — naming, structure, layering, idiom — as its guideline files define them, not as you would prefer them. Read the repo's CLAUDE.md and any guideline it points at.\n\n` +
   `Also weigh every new or changed comment against ${COMMENTS_GUIDE}: a comment that only restates what the code says, or names code by its plan position ("task N", "step 2", "the new helper") rather than its domain role, is a violation — \`quality_kind: "comment-usage"\`.\n\n` +
   `Required reading: ${LANG[lang].reading.join(', ')}. ${DISCLOSURE}\n\n` +
@@ -302,6 +358,14 @@ const specialistPrompt = (scope, kind) =>
     ? `Your lens is CONCURRENCY. The scoping pass found this diff actually touches concurrent code, so there is something here to judge: unsynchronised shared state, a non-atomic read-modify-write, a lock ordering that can deadlock, a goroutine/task that outlives its context, an operation that is not idempotent under retry or redelivery.`
     : `Your lens is PERFORMANCE. The scoping pass found this diff actually touches I/O, queries, unbounded loops or hot-path allocation. Judge only what you can point at concretely — an N+1 query, an unbounded read, an allocation inside a loop, a missing timeout or limit. Do not raise speculative micro-optimisation; if you can measure it, measure it.`) +
   findingContract
+
+const dedupePrompt = (scope, findings) =>
+  `Independent review lenses examined one change set without seeing each other's work. Group their findings so that ONE DEFECT IS ONE CLUSTER.\n\n` +
+  `Change set: ${scope.summary}\n\n` +
+  `Findings:\n${findings.map((f) => `- [${f.id}] ${f.severity} ${f.nature} ${f.file}${f.line ? `:${f.line}` : ''} (lens: ${f.lens})\n    ${f.claim}`).join('\n')}\n\n` +
+  `Two findings are the same defect when ONE fix resolves both — the same line doing the same wrong thing, described twice. Differently worded claims, different severities and different files can all still be one defect: a regression is often reported once against the code that causes it and once against the test that fails to catch it, and the fix is the same edit.\n\n` +
+  `They are NOT the same defect when they merely share a file, a theme or a category. Two unrelated comments violating the same rule in one file are two findings. A missing test for X and a missing test for Y are two findings. When you are unsure, LEAVE THEM SEPARATE — a wrong merge silently deletes a real defect, while a missed merge only costs one more verification.\n\n` +
+  `Return \`clusters\` covering every id above EXACTLY ONCE. A finding with no duplicate is a cluster containing just itself. Do not invent ids, do not drop ids, do not rename them.`
 
 const verifyPrompt = (scope, f, i, n) =>
   `Establish whether this claim about finished code is REAL. You are independent of whoever raised it and they ran nothing — treat the claim as a hypothesis, not a report.\n\n` +
@@ -325,8 +389,9 @@ const synthPrompt = (scope, confirmed, refuted, lensNotes, gaps) =>
   `REFUTED and dropped (${refuted.length}) — for your judgment of coverage only, do NOT reinstate:\n${refuted.map((r) => `- [${r.finding.id}] ${r.finding.claim} — ${r.basis}`).join('\n') || '  (none)'}\n\n` +
   (lensNotes.length ? `What the lenses deliberately did not flag:\n${lensNotes.map((n) => `- ${n}`).join('\n')}\n\n` : '') +
   (gaps.length ? `Lenses NOT run on this diff:\n${gaps.map((g) => `- ${g}`).join('\n')}\n\n` : '') +
-  `Produce \`findings\`: every survivor, deduplicated (two lenses describing one defect become one finding, keeping the more precise claim and the stronger evidence), ranked most severe first, each with \`confidence\` "confirmed" when execution reproduced it or a quality rule was cited at a specific line, "plausible" otherwise.\n` +
-  `Carry each finding's \`lens\` through verbatim from the list above; when you merge two lenses into one finding, join their keys with " + ". The caller re-asks that lens after fixing instead of paying for a whole audit, so a dropped or invented lens key costs them a full re-run.\n` +
+  `Produce \`findings\`: every survivor, ranked most severe first, each with \`confidence\` "confirmed" when execution reproduced it or a quality rule was cited at a specific line, "plausible" otherwise.\n` +
+  `These have ALREADY been deduplicated — a claim raised by more than one lens was collapsed before verification and carries the joined key. Do not merge them further: two findings that reached you separately were judged separately, and folding them together now discards one verifier's evidence.\n` +
+  `Carry each finding's \`lens\` through verbatim from the list above, joined keys included. The caller re-asks that lens after fixing instead of paying for a whole audit, so a dropped or invented lens key costs them a full re-run.\n` +
   `Then \`coverage_gaps\`: what this audit could not judge — a lens that did not run and why it might have mattered, a file nobody read, a claim nobody could test. Be concrete; "nothing was missed" is almost never true and is not a useful answer.\n` +
   `Do NOT invent findings to pad the report. A clean audit is a real outcome and saying so plainly is more useful than manufacturing nits.`
 
@@ -349,14 +414,37 @@ if (!STORY) log('no caller request given — lenses judge intent from the diff a
 
 phase('Review')
 const primary = canonicalLang(scope.languages?.[0])
+
+// A language's remit is whatever the scope pass filed under it, intersected with the
+// files it actually listed — a hallucinated path would otherwise send a lens looking for
+// something that is not in the diff. `null` means "no remit recorded", and a lens with
+// no remit gets the whole change set: an unscoped review is wasteful, a review of
+// nothing is wrong.
+const remitFor = (lang) => {
+  const owned = [...new Set(
+    (scope.by_language ?? [])
+      .filter((e) => canonicalLang(e.language) === lang)
+      .flatMap((e) => e.files ?? [])
+      .filter((f) => scope.files.includes(f)),
+  )]
+  return owned.length ? owned : null
+}
+
+const notRun = []
 let lenses = []
 for (const lang of (scope.languages?.length ? scope.languages : ['Generic']).map(canonicalLang)) {
   const cfg = LANG[lang]
-  lenses.push({ key: `semantic:${lang}`, agentType: cfg.semantic, prompt: semanticPrompt(scope, lang) })
-  if (cfg.guidelines) lenses.push({ key: `guidelines:${lang}`, agentType: cfg.guidelines, prompt: guidelinesPrompt(scope, lang) })
-  if (scope.signals.tests_changed) lenses.push({ key: `tests:${lang}`, agentType: cfg.tests, prompt: testsPrompt(scope, lang) })
+  const remit = remitFor(lang)
+  if (!remit) log(`${lang}: the scope pass filed no files under this language — its lenses review the whole change set`)
+  lenses.push({ key: `semantic:${lang}`, agentType: cfg.semantic, prompt: semanticPrompt(scope, lang, remit) })
+  if (cfg.guidelines) lenses.push({ key: `guidelines:${lang}`, agentType: cfg.guidelines, prompt: guidelinesPrompt(scope, lang, remit) })
+  // The tests lens is worth running only when this language owns a changed test file.
+  // Scoping made that checkable: before, "any test file changed" put a tests lens on
+  // every language in the diff, including ones with no test of their own in it.
+  const ownsTest = !remit || remit.some((f) => /(^|[/_.-])(test|tests|spec|_test\.|\.test\.|\.spec\.)/i.test(f))
+  if (scope.signals.tests_changed && ownsTest) lenses.push({ key: `tests:${lang}`, agentType: cfg.tests, prompt: testsPrompt(scope, lang, remit) })
+  else if (scope.signals.tests_changed) notRun.push(`test integrity (${lang}) — tests changed in this diff, but none of them is written in ${lang}`)
 }
-const notRun = []
 if (scope.signals.concurrency) lenses.push({ key: 'concurrency', agentType: LANG[primary].concurrency, prompt: specialistPrompt(scope, 'concurrency') })
 else notRun.push('concurrency — the diff does not add or change concurrent code')
 if (scope.signals.performance) lenses.push({ key: 'performance', agentType: LANG[primary].performance, prompt: specialistPrompt(scope, 'performance') })
@@ -381,7 +469,16 @@ if (LENSES) {
   }
 }
 
+// A file no language claimed is a file no lens is answerable for. Usually that is
+// correct — prose and lockfiles have nothing a code lens can judge — but it is stated
+// rather than assumed, because the alternative is a change set that reads as fully
+// reviewed while part of it was owned by nobody.
+const owned = new Set((scope.by_language ?? []).flatMap((e) => e.files ?? []))
+const unowned = scope.files.filter((f) => !owned.has(f))
+if (unowned.length) notRun.push(`${unowned.length} changed file(s) under no language, so no lens owned them: ${unowned.join(', ')}`)
+
 log(`running ${lenses.length} lens(es): ${lenses.map((l) => l.key).join(', ')}`)
+for (const e of scope.by_language ?? []) log(`  ${canonicalLang(e.language)} remit: ${(e.files ?? []).length} file(s)`)
 for (const g of notRun) log(`skipped ${g}`)
 
 const reviews = (await parallel(
@@ -405,13 +502,74 @@ if (!raw.length) {
   }
 }
 
+phase('Dedupe')
+// Verification is the expensive half, so duplicates are collapsed BEFORE it rather than
+// in the report. Two lenses naming one defect used to be verified twice over: measured
+// once at three lenses reporting a single parser regression, each verifier separately
+// building a binary from the base commit to reproduce the same thing. One grouping agent
+// pays for itself the first time it collapses a pair.
+const severityRank = (s) => ({ high: 0, medium: 1, low: 2 })[s] ?? 3
+const findingRank = (f) => severityRank(f.severity) * 2 + (f.nature === 'runtime' ? 0 : 1)
+
+// The representative is picked here, not by the agent: most severe, a runtime report
+// ahead of a quality one (it carries the reproduction), then the fuller claim. Severity
+// is the max across the cluster and never the representative's alone — merging must not
+// be able to downgrade a defect.
+const mergeCluster = (group) => {
+  if (group.length === 1) return group[0]
+  const best = [...group].sort((a, b) => findingRank(a) - findingRank(b) || (b.claim?.length ?? 0) - (a.claim?.length ?? 0))[0]
+  return {
+    ...best,
+    severity: [...group].sort((a, b) => severityRank(a.severity) - severityRank(b.severity))[0].severity,
+    failure_scenario: best.failure_scenario ?? group.find((f) => f.failure_scenario)?.failure_scenario ?? null,
+    suggested_fix: best.suggested_fix ?? group.find((f) => f.suggested_fix)?.suggested_fix ?? null,
+    lens: [...new Set(group.map((f) => f.lens))].join(' + '),
+  }
+}
+
+// Ids are unique within one lens but not across the panel, so an exact collision is two
+// lenses landing on the same name for the same thing. Free to merge and not worth asking about.
+const byId = new Map()
+for (const f of raw) {
+  if (!byId.has(f.id)) byId.set(f.id, [])
+  byId.get(f.id).push(f)
+}
+let groups = [...byId.values()]
+if (raw.length !== groups.length) log(`dedupe: ${raw.length - groups.length} exact id collision(s) merged without asking`)
+
+let candidates = groups.map(mergeCluster)
+if (candidates.length > 1) {
+  const grouping = await agentOrRetry(dedupePrompt(scope, candidates), { label: 'dedupe', phase: 'Dedupe', schema: DEDUP_SCHEMA }, 'dedupe')
+  const byIdent = new Map(candidates.map((f) => [f.id, f]))
+  const proposed = (grouping?.clusters ?? []).map((c) => c.ids ?? [])
+  const flat = proposed.flat()
+  // Accept the grouping only if it accounts for every finding exactly once. An agent that
+  // drops an id would delete a defect here, silently and permanently — the one failure
+  // this stage must not have. A rejected grouping costs the redundant verifications the
+  // stage meant to save; losing a finding costs the audit its point.
+  const complete = flat.length === candidates.length && new Set(flat).size === candidates.length && flat.every((id) => byIdent.has(id))
+  if (complete) {
+    const merged = proposed.map((ids) => mergeCluster(ids.flatMap((id) => byId.get(id) ?? [byIdent.get(id)])))
+    const collapsed = candidates.length - merged.length
+    if (collapsed) {
+      log(`dedupe: ${collapsed} duplicate(s) collapsed — ${merged.length} distinct defect(s) go to Verify instead of ${raw.length}`)
+      for (const c of (grouping.clusters ?? []).filter((x) => (x.ids ?? []).length > 1)) log(`  merged ${c.ids.join(' + ')}${c.why ? ` — ${c.why}` : ''}`)
+    } else {
+      log('dedupe: no duplicates found beyond the exact id collisions')
+    }
+    candidates = merged
+  } else {
+    log(`dedupe: grouping did not account for every finding exactly once (${flat.length} id(s) for ${candidates.length} finding(s)) — discarded it and kept every finding separate`)
+  }
+}
+
 phase('Verify')
 // Every claim is verified before it reaches the caller — a review that hands back
 // unverified assertions is exactly the noise this shape exists to avoid. Runtime
 // claims must be reproduced by execution; quality claims must cite a rule and a
 // line. `deep` puts several independent verifiers on each claim and takes majority.
 const verdicts = await parallel(
-  raw.map((f) => () =>
+  candidates.map((f) => () =>
     parallel(Array.from({ length: VERIFIERS }, (_, i) => () =>
       agent(verifyPrompt(scope, f, i, VERIFIERS), { label: `verify:${f.id}${VERIFIERS > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
     )).then((vs) => {
@@ -442,6 +600,7 @@ return {
   lenses: lenses.map((l) => l.key),
   lenses_not_run: notRun,
   candidates: raw.length,
+  distinct: candidates.length,
   upheld: confirmed.length,
   refuted: refuted.map((r) => ({ id: r.finding.id, claim: r.finding.claim, why: r.basis })),
   findings: report?.findings ?? confirmed.map((c) => ({ ...c.finding, confidence: 'confirmed', evidence: c.basis })),

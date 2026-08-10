@@ -71,26 +71,52 @@ Independent slices (wave 1) fire together; dependent slices that aren't ready ar
 
 **`workmux wait --status done` is not a completion signal.** `done` means the slice's agent went *idle*, which happens many times mid-run: between turns, while a background workflow of its own is running, or after it crashed having committed nothing. Waiting on it alone reports a slice as finished while it is still working.
 
-**Do not watch the task file's checkboxes either.** A run can commit all of its tasks and leave every box in `tasks.md` unticked, so an unchecked list is not evidence of unfinished work.
+**Read completion and liveness from different places, because they answer different questions.**
 
-Count commits on the branch instead — a slice's run commits once per task, so `N` commits with no agent still working is the signal. Wake on *each* commit rather than only the last, so a long slice reports progress instead of going dark:
+*Completion* is the slice's sidecar. `clerk finish` sets a task's `done` flag as it lands, in the same commit as the code, so the sidecar is the run's own record of what it finished — not an inference from something else:
+
+```bash
+clerk status --tasks-file "$WT/tasks/<story-slug>/<slice-slug>/tasks.md" \
+  | jq -r '"\(.done)/\(.total)"'
+```
+
+Do **not** read the markdown for this. Its task list is prose; nothing ticks it, and an unchecked list has never been evidence of unfinished work.
+
+*Liveness* is commits plus agent state. A sidecar reporting `11/11` says the run finished its tasks; it cannot tell you the process is still alive, still committing, or died between `clerk finish` and the commit. So keep counting commits, and keep requiring every agent in the worktree to be idle — a slice that is done-but-crashed and a slice that is finished look identical from the sidecar alone.
+
+Wake on *each* commit rather than only the last, so a long slice reports progress instead of going dark:
+
 ```bash
 WT=<worktree path>; N=<task count for this slice>
+TASKS="$WT/tasks/<story-slug>/<slice-slug>/tasks.md"
 deadline=$((SECONDS+10800)); prev=<commits already on the branch>; stable=0
 while [ "$SECONDS" -lt "$deadline" ]; do
   commits=$(git -C "$WT" rev-list --count origin/<default>..HEAD 2>/dev/null || echo 0)
+  done_n=$(clerk status --tasks-file "$TASKS" 2>/dev/null | jq -r '.done' || echo 0)
   # EVERY agent in the worktree must be idle. Several can share one worktree, and
   # reading whichever one answers first reports a working run as finished.
   working=$(workmux status --json 2>/dev/null \
     | jq -r --arg h "<handle>" '[.[]|select(.worktree==$h)|select(.status=="working")]|length')
-  [ "$commits" != "$prev" ] && { echo "PROGRESS commits=$commits"; exit 0; }
+  [ "$commits" != "$prev" ] && { echo "PROGRESS commits=$commits done=$done_n/$N"; exit 0; }
   if [ "${working:-1}" -eq 0 ]; then stable=$((stable+1)); else stable=0; fi
-  [ "$stable" -ge 5 ] && { echo "STOPPED commits=$commits"; exit 0; }
+  if [ "$stable" -ge 5 ]; then
+    # Both must agree before calling it finished. The sidecar says the run recorded
+    # every task; the commit count says it got them into history. Either alone reports
+    # a run that died partway as complete.
+    if [ "${done_n:-0}" -ge "$N" ] && [ "${commits:-0}" -ge "$N" ]; then
+      echo "DONE commits=$commits done=$done_n/$N"
+    else
+      echo "STOPPED commits=$commits done=$done_n/$N"
+    fi
+    exit 0
+  fi
   sleep 60
 done
-echo "TIMEOUT commits=${commits:-0} working=${working:-?}"
+echo "TIMEOUT commits=${commits:-0} done=${done_n:-?}/$N working=${working:-?}"
 ```
-`STOPPED` with fewer than `N` commits is a run that died, not one that finished. Keep the timeout finite so a wedged run wakes you too, and on every wake read the branch before believing anything. `workmux wait --status done` is still useful as a *cheap early wake* when you want to inspect a slice the moment it goes quiet, as long as you verify rather than report it finished.
+
+`DONE` means both agree. `STOPPED` means the agents went quiet with the two disagreeing — a run that crashed partway, which needs a look rather than a merge.
+Keep the timeout finite so a wedged run wakes you too, and on every wake read the branch before believing anything. `workmux wait --status done` is still useful as a *cheap early wake* when you want to inspect a slice the moment it goes quiet, as long as you verify rather than report it finished.
 
 **Verify a finished slice yourself** — re-run its scoped tests, `go vet`, and `git status --porcelain` in the worktree rather than trusting the run's own receipts. Expect `go build ./...` to fail there on packages whose generated files (swagger docs and the like) exist only in the main checkout; confirm the slice does not touch that package before dismissing it.
 

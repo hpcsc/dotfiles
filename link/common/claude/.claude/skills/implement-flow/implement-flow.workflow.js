@@ -582,7 +582,7 @@ const taskHeader = (t) =>
 
 const decomposePrompt = (story) =>
   `Decompose the following user story into ordered, codebase-aware implementation tasks. For each task set \`language\` to the language it primarily involves, and \`depends_on\` to the task numbers it builds on (\`[]\` if none). Emit tasks in an order where every task's dependencies precede it.\n\n` +
-  `Save the breakdown to \`tasks/[story-name].md\` as usual — including the \`- [ ] Task N: <title>\` checklist — and return its repo-relative path as \`tasks_file\`. The run checks entries off as tasks close, so the file doubles as restartable progress state.\n\n` +
+  `Save the breakdown to \`tasks/[story-name].md\` as usual, and \`tasks/[story-name].json\` beside it, and return the markdown's repo-relative path as \`tasks_file\`. The sidecar is the run's restartable progress state — each task's \`done\` flag is set as it closes — so it must list every task with its \`depends_on\` edges. Do NOT put a progress checklist in the markdown: two files carrying the same fact can disagree, and a stale one still reads as the answer.\n\n` +
   `If \`${LEARNINGS_PATH}\` exists, read it first: its entries are durable conventions, recurring review findings, and constraints distilled from earlier runs in this repo. Fold the relevant ones into each task's \`patterns_to_follow\` and do not re-propose work they already cover.\n\n` +
   `${CRITERIA_RULE}\n\n` +
   `From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
@@ -591,7 +591,7 @@ const decomposePrompt = (story) =>
 const adoptTasksPrompt = (tasksFile) =>
   `Read the existing task breakdown at \`${tasksFile}\` and return its tasks in the required schema — ADOPT it, do not re-plan.\n\n` +
   `- Preserve the file's task order, titles, descriptions, and any stated acceptance criteria and dependencies. Do not invent, merge, split, or drop tasks.\n` +
-  `- The file's checklist is the progress record: a task whose entry is already checked (\`- [x] Task N\`) was completed and committed by an earlier run — OMIT it from \`tasks\` so the run resumes from the first unchecked task.\n` +
+  `- Progress lives in the sidecar \`${tasksFile.replace(/\.md$/, '.json')}\`, not in the markdown. Read it: a task with \`done: true\` was completed and committed by an earlier run — OMIT it from \`tasks\` so the run resumes from the first unfinished one. If there is no sidecar, run \`clerk sidecar --tasks-file ${tasksFile}\` to recover one (it seeds \`done\` from an old \`- [x]\` checklist if the breakdown has one), then read that.\n` +
   `- For any schema field the file does not state, infer conservatively from its content: \`language\` from the target stack, \`depends_on\` from stated ordering (\`[]\` if none), \`affected_files\` / \`patterns_to_follow\` from what it names (empty arrays if none), \`testable\` true unless the task is pure docs/config. \`n\` is each task's own number in the file (file order from 1 if unnumbered).\n` +
   `- Set \`tasks_file\` to \`${tasksFile}\`.\n` +
   `If \`${LEARNINGS_PATH}\` exists you may fold relevant durable learnings into \`patterns_to_follow\`, but otherwise leave the breakdown intact.`
@@ -692,7 +692,7 @@ const auditPrompt = (t, impl, refactor) =>
 
 const commitPrompt = (t, ticket, tasksFilePath) =>
   `Commit task ${t.n}: ${t.title}. The changes are already STAGED; if anything is missing, stage it by EXPLICIT path (\`git add -- <file>\` for each file this task changed) — never \`git add -A\`/\`git add .\`, which can sweep in unrelated or prior-task files and trips the individual-file-staging safety check. Create exactly ONE commit.\n` +
-  `First record progress: in \`${tasksFilePath}\`, flip this task's checklist entry from \`- [ ] Task ${t.n}:\` to \`- [x] Task ${t.n}:\` and stage the file so the progress update rides in this commit. If the file has no such entry or git refuses to stage it (e.g. ignored path), continue without it — never block the commit on the checklist.\n` +
+  `First record progress: run \`clerk finish ${t.n} --tasks-file ${tasksFilePath} -- <every file this task changed>\`. That sets the task's \`done\` flag in the sidecar and stages it, so progress rides in this commit rather than living somewhere it can drift from the code. If \`clerk\` is not installed, set \`done: true\` for task ${t.n} in \`${tasksFilePath.replace(/\.md$/, '.json')}\` and \`git add\` that file instead — but never block the commit on it.\n` +
   `Apply the repo's OWN commit conventions — read CLAUDE.md / any committing guideline and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one. ` +
   (ticket ? `Weave in this ticket context per those conventions: ${ticket}. ` : '') +
   `The subject MUST satisfy the repo commit rules regardless: imperative mood, <=50 chars, capitalized, no trailing period, NO mention of AI/Claude, NO Co-Authored-By trailer. ` +
@@ -743,7 +743,7 @@ const redecomposePrompt = (story, completed, remaining, reason, tasksFilePath) =
     `Completed tasks (do NOT re-emit, do NOT redo):\n${completedDigest(completed)}\n\n` +
     `Current remaining tasks you are revising:\n${remainingDigest(remaining)}\n\n` +
     `Re-decompose ONLY the not-yet-started work so the story still lands. Return \`tasks\` containing just the revised remaining tasks — numbered from ${nextN} upward, dependency-ordered, with \`depends_on\` allowed to reference completed task numbers. Same fields as a normal decomposition. Keep what is still correct, drop what is now unnecessary, add what is missing.\n\n` +
-    `Also update the breakdown file at \`${tasksFilePath}\` in place: leave completed tasks and their checked \`- [x]\` checklist entries untouched, replace the not-yet-started task sections and their unchecked checklist entries with the revised tasks, and return the same path as \`tasks_file\`.\n\n` +
+    `Also update the breakdown at \`${tasksFilePath}\` and its sidecar \`${tasksFilePath.replace(/\.md$/, '.json')}\` in place: leave completed tasks untouched — including their \`done: true\` flags, which are this run's only record of what is already built — and replace the not-yet-started ones with the revised tasks in both files. Return the same markdown path as \`tasks_file\`.\n\n` +
     `If \`${LEARNINGS_PATH}\` exists, read it and fold relevant durable learnings into \`patterns_to_follow\`.\n\n` +
     `${CRITERIA_RULE}\n\n` +
     `From ${CALLER_PATTERNS} read 'How to Identify the Caller' and the Quick Reference; from any language testing-patterns guideline read 'Unit of Behavior'. ${DISCLOSURE}\n\n` +
@@ -783,7 +783,7 @@ const finalSuitePrompt = () =>
 
 const finishPrompt = (tasksFilePath, integrate) =>
   `Every task in this run closed and was committed. Finish the run's bookkeeping in the main working tree:\n\n` +
-  `1. Archive the task breakdown: \`mkdir -p tasks/completed\` then \`git mv ${tasksFilePath} tasks/completed/\` (if the file is untracked, plain \`mv\` and \`git add\` the new path). Commit the move as ONE commit whose subject satisfies the repo commit rules (imperative mood, <=50 chars, capitalized, no trailing period, NO mention of AI/Claude, NO Co-Authored-By). Set \`tasks_file_moved_to\` to the new repo-relative path, or null with the reason in \`note\` if the move could not be done.\n` +
+  `1. Archive the task breakdown AND its sidecar: \`mkdir -p tasks/completed\` then \`git mv ${tasksFilePath} tasks/completed/\` and \`git mv ${tasksFilePath.replace(/\.md$/, '.json')} tasks/completed/\` (skip the sidecar if it does not exist) (if the file is untracked, plain \`mv\` and \`git add\` the new path). Commit the move as ONE commit whose subject satisfies the repo commit rules (imperative mood, <=50 chars, capitalized, no trailing period, NO mention of AI/Claude, NO Co-Authored-By). Set \`tasks_file_moved_to\` to the new repo-relative path, or null with the reason in \`note\` if the move could not be done.\n` +
   (integrate
     ? `2. Integrate the implementation branch into the default branch, LOCALLY ONLY — never push:\n` +
       `   a. \`git branch --show-current\` is the implementation branch. The default branch is \`git rev-parse --abbrev-ref origin/HEAD\` if set, else whichever of \`main\`/\`master\` exists locally. If you are already ON the default branch, set integrated=false and stop — nothing to integrate.\n` +
@@ -1132,7 +1132,7 @@ const story = (typeof ARGS === 'string' ? ARGS : ARGS?.story) || (tasksFile && `
 if (!story) throw new Error('implement-flow: pass args.story (a user story) and/or args.tasksFile (an existing tasks/*.md to adopt)')
 
 // A caller holding the breakdown already can hand it over as args.plan and skip the
-// adopt agent. Adopting is deterministic work — read a checklist, drop the ticked
+// adopt agent. Adopting is deterministic work — read the sidecar, drop the done
 // entries — but running it as a model call put the most fragile step in the system at
 // the front of the most-used path: resuming a partly-done story began by asking an
 // agent to parse markdown, so one 529 there ended the run before any work started.
@@ -1140,7 +1140,7 @@ if (!story) throw new Error('implement-flow: pass args.story (a user story) and/
 // file do it.
 //
 // tasks must contain only the work still OUTSTANDING — the same contract adopt mode
-// honours by skipping `- [x]` entries. tasks_file still points at the breakdown, so
+// honours by skipping `done: true` entries. tasks_file still points at the breakdown,
 // closing a task keeps checking its box off there.
 const suppliedPlan = typeof ARGS === 'object' ? ARGS?.plan : undefined
 

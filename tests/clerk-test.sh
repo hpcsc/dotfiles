@@ -530,7 +530,47 @@ eq "recovery seeds done from a legacy checklist" "true" "$(jq -r '.tasks[0].done
 eq "and leaves the unticked one open"            "false" "$(jq -r '.tasks[1].done' "$R15/tasks/old.json")"
 eq "so next resumes where the run left off"      "2" "$(run "$R15" next --allow-dirty | jq -r '.task.n')"
 
+
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$WT" 2>/dev/null
+printf '\nresuming, and the breakdown a run edits\n'
+
+R16=$(new_repo); mkdir -p "$R16/tasks"
+printf -- '### Task 1: One\n\n**Acceptance Criteria:**\n- [ ] first\n- [ ] second\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R16/tasks/r.md"
+printf 'package a\n' > "$R16/a.go"
+git -C "$R16" add -A && git -C "$R16" commit -qm Plan
+run "$R16" sidecar >/dev/null && git -C "$R16" add -A && git -C "$R16" commit -qm Sidecar
+
+# A task section's acceptance criteria are ticked by hand as they are verified, so the
+# breakdown stays a file the run edits even though progress left it.
+printf 'edit\n' >> "$R16/a.go"
+sed -i.bak 's/- \[ \] first/- [x] first/' "$R16/tasks/r.md" && rm -f "$R16/tasks/r.md.bak"
+F=$(run "$R16" finish 1 -- a.go)
+eq "finish stages a breakdown the run modified" "true" "$(printf '%s' "$F" | jq -r '.breakdown_staged')"
+eq "so nothing is left dirty behind it"        "0" \
+   "$(cd "$R16" && git status --porcelain | grep -c '^ M' | tr -d ' ')"
+
+# An untouched breakdown is not swept into the commit.
+git -C "$R16" commit -qm "Task 1"
+printf 'more\n' >> "$R16/a.go"
+F=$(run "$R16" finish 2 -- a.go)
+eq "an untouched breakdown is left alone" "false" "$(printf '%s' "$F" | jq -r '.breakdown_staged')"
+git -C "$R16" reset -q --hard HEAD
+
+# prepare gives a resuming run what it needs to avoid starting over.
+P=$(run "$R16" prepare)
+eq "prepare lists the repo's worktrees"     "main" "$(printf '%s' "$P" | jq -r '.worktrees[0].branch')"
+eq "and every breakdown with its progress"  "1|2" \
+   "$(printf '%s' "$P" | jq -r '.breakdowns[0].done')|$(printf '%s' "$P" | jq -r '.breakdowns[0].total')"
+eq "flagging one that is part-built"        "true|false" \
+   "$(printf '%s' "$P" | jq -r '.breakdowns[0].started')|$(printf '%s' "$P" | jq -r '.breakdowns[0].finished')"
+
+WT3="$R16/../wtr-$(basename "$R16")"
+git -C "$R16" worktree add -q -b resumed "$WT3" >/dev/null 2>&1
+eq "a worktree created for the feature is visible to prepare" "resumed" \
+   "$(run "$R16" prepare | jq -r '.worktrees[] | select(.branch == "resumed") | .branch')"
+git -C "$R16" worktree remove --force "$WT3" 2>/dev/null
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

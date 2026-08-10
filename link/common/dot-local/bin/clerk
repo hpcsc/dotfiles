@@ -180,8 +180,29 @@ find_tasks_file() {
 # prepare
 # --------------------------------------------------------------------------------
 
+# Every breakdown under tasks/, with how far each got. find_tasks_file deliberately
+# refuses when there is more than one; this is what a resuming run reads instead of
+# guessing, and what stops it decomposing a story that is already half built.
+list_breakdowns() {
+  local wt=$1 f side
+  for f in "$wt"/tasks/*.md; do
+    [ -f "$f" ] || continue
+    case "$(basename "$f")" in learnings.md) continue ;; esac
+    side="${f%.md}.json"
+    if [ -f "$side" ]; then
+      jq -c --arg p "$f" --arg s "$side" \
+        '{path: $p, sidecar: $s, total: (.tasks | length),
+          done: ([.tasks[] | select(.done == true)] | length),
+          started: ([.tasks[] | select(.done == true)] | length > 0),
+          finished: ([.tasks[] | select(.done != true)] | length == 0)}' "$side" 2>/dev/null
+    else
+      jq -n -c --arg p "$f" '{path: $p, sidecar: null, total: null, done: null, started: null, finished: null}'
+    fi
+  done | jq -s -c .
+}
+
 cmd_prepare() {
-  local root wt gd branch base def langs cmds prefix learn tasks clean
+  local root wt gd branch base def langs cmds prefix learn tasks clean breakdowns trees
   root=$(repo_root) || die "not a git repository"
   wt=$(work_tree)
   def=$(default_branch)
@@ -193,6 +214,12 @@ cmd_prepare() {
   prefix=$(resolve_go_prefix "$root")
   learn=$(resolve_learnings_path "$root")
   tasks=$(find_tasks_file "$wt") || tasks=""
+  breakdowns=$(list_breakdowns "$wt")
+  # Worktrees this repo already has. A resumed run must enter the one it left rather
+  # than opening a second for the same feature and stranding the first's commits.
+  trees=$(git worktree list --porcelain 2>/dev/null | awk '
+    /^worktree /{p=$2} /^branch /{b=$2; sub(/^refs\/heads\//, "", b); print p "\t" b}' \
+    | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {path: .[0], branch: .[1]})')
   if tree_is_clean; then clean=true; else clean=false; fi
 
   jq -n \
@@ -208,6 +235,8 @@ cmd_prepare() {
     --argjson languages "$langs" \
     --argjson test_commands "$cmds" \
     --argjson clean "$clean" \
+    --argjson breakdowns "$breakdowns" \
+    --argjson worktrees "$trees" \
     '{
       version: $version,
       repo_root: $repo_root,
@@ -222,7 +251,9 @@ cmd_prepare() {
       test_command: ($test_commands.default // null),
       go_tool_prefix: $go_tool_prefix,
       learnings_path: $learnings_path,
-      tasks_file: (if $tasks_file == "" then null else $tasks_file end)
+      tasks_file: (if $tasks_file == "" then null else $tasks_file end),
+      breakdowns: $breakdowns,
+      worktrees: $worktrees
     }'
 }
 
@@ -422,7 +453,7 @@ cmd_next() {
 # can disagree, and a mirror that has gone stale still reads as authoritative to
 # whoever opens it.
 cmd_finish() {
-  local n= tasks_override= root wt tasks side dir f tmp
+  local n= tasks_override= root wt tasks side dir f tmp staged_tasks=false
   n=${1:-}; shift 2>/dev/null || true
   case "$n" in ''|*[!0-9]*) die "finish: first argument must be a task number" ;; esac
 
@@ -460,6 +491,15 @@ cmd_finish() {
   # Explicit paths only. `git add -A` sweeps whatever the user left loose in the tree
   # into this task's commit, and untangling that later means rewriting history.
   git add -- "$@" || die "finish: staging failed — report this and stop; do not stage by hand"
+  # The breakdown is still a file a run edits: progress left it, but each task section
+  # carries its acceptance criteria as checkboxes, ticked by hand as they are verified.
+  # finish does not manage that content — but leaving it modified after a step whose
+  # whole point is that a task's pieces land together strands those ticks outside the
+  # commit and dirties the tree, which then blocks `next`.
+  if ! git diff --quiet -- "$tasks" 2>/dev/null; then
+    git add -- "$tasks" || die "finish: could not stage the modified breakdown"
+    staged_tasks=true
+  fi
   git add -- "$side" || die "finish: could not stage the sidecar — report this and stop. Marking the task done and staging it with its code is precisely what this command exists to do in one step"
 
   dir=$(state_dir); mkdir -p "$dir/tasks"
@@ -467,8 +507,8 @@ cmd_finish() {
     '{n: ($n | tonumber), at: $at, files: (split("\n") | map(select(length > 0)))}' \
     > "$dir/tasks/$n.json"
 
-  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg side "$side" \
-    '{task: ($n | tonumber), done: true, sidecar: $side,
+  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg side "$side" --arg st "$staged_tasks" \
+    '{task: ($n | tonumber), done: true, sidecar: $side, breakdown_staged: ($st == "true"),
       staged: (split("\n") | map(select(length > 0))),
       next_step: "invoke the commit skill — the message is judgment, not mechanics"}'
 }

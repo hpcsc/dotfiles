@@ -141,7 +141,9 @@ while the tree is dirty — one task in flight at a time is what keeps a run res
 
 `clerk finish N -- <files>` marks the task done in the sidecar and stages it alongside
 exactly those paths, so the progress record and the change it stands for land in one
-commit. It refuses a path that does not exist, refuses a task already done, and never
+commit. It also stages the breakdown **if the run has modified it** — each task section
+carries its acceptance criteria as checkboxes, ticked by hand as they are verified, and
+leaving those outside the commit would strand them and dirty the tree. It refuses a path that does not exist, refuses a task already done, and never
 runs `git add -A`.
 
 The message is judgment, so it goes to the commit agent. The four prove-it checks — a
@@ -202,7 +204,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 
 | Command | What it settles | Exit |
 |---|---|---|
-| `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean | 0 |
+| `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, plus every existing worktree and breakdown with its progress | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
 | `status` | Progress from the sidecar, for a human | 0 |
@@ -242,6 +244,13 @@ gitignore entry — and, usefully, agent harnesses refuse writes under `.git/`, 
 failed command cannot be "finished" by hand. That refusal is the guard working, not a
 problem to route around: the guarantees come from a command performing its steps
 together, and a tree that merely ends up looking similar has none of them.
+
+### Resuming
+
+A stopped run resumes rather than restarting. `clerk prepare` reports every worktree of
+the repo with its branch, and every breakdown with how many of its tasks are done, so
+the skill enters the worktree it left and adopts the breakdown it was working through
+instead of opening a second worktree and decomposing the story again.
 
 ### Three refusals worth knowing
 

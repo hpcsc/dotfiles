@@ -123,10 +123,10 @@ costs more than loading them costs up front.
 
 ### Phase 1 — plan
 
-`decompose-to-tasks` writes `tasks/<story>.md` with its `- [ ] Task N` checklist and,
-beside it, `tasks/<story>.json`. The markdown is the human artifact and the progress
-record; the sidecar is what makes `clerk next` a lookup rather than a regex over prose.
-Then the only gate before code.
+`decompose-to-tasks` writes `tasks/<story>.md` and, beside it, `tasks/<story>.json`.
+The markdown describes the tasks in prose
+and the sidecar carries the dependency graph and the run's progress. Nothing rewrites
+the markdown afterwards. Then the only gate before code.
 
 A breakdown that predates the sidecar has none, and `clerk next` refuses rather than
 guessing. `clerk sidecar` recovers one by reading the `### Task N:` sections and their
@@ -139,10 +139,10 @@ is an explicit command rather than something `next` does behind your back.
 `clerk next` returns the first task whose dependencies are all checked off, and exits 3
 while the tree is dirty — one task in flight at a time is what keeps a run resumable.
 
-`clerk finish N -- <files>` ticks the checkbox and stages exactly those paths
-alongside the task file, so the box and the change it stands for land in one commit. It
-refuses a path that does not exist, refuses a task already checked off, and never runs
-`git add -A`.
+`clerk finish N -- <files>` marks the task done in the sidecar and stages it alongside
+exactly those paths, so the progress record and the change it stands for land in one
+commit. It refuses a path that does not exist, refuses a task already done, and never
+runs `git add -A`.
 
 The message is judgment, so it goes to the commit agent. The four prove-it checks — a
 guard shown to fail, an absence assertion with a positive partner, a source-scanning
@@ -173,7 +173,7 @@ flowchart LR
     direction TB
     m1["which test command,<br/>by precedence"]
     m2["which task is next,<br/>by dependency"]
-    m3["what may be staged,<br/>and the checkbox with it"]
+    m3["what may be staged,<br/>and the task marked done with it"]
     m4["whether the green<br/>describes this tree"]
     m5["whether the branch<br/>may land"]
     m6["staged tails, vacuous<br/>receipts, unreferenced symbols"]
@@ -204,8 +204,9 @@ it with `--audit-accepted`, and without that the gate stays shut.
 |---|---|---|
 | `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
-| `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars | 0 · **2** if nothing parses |
-| `finish <n> -- <files>` | Checkbox ticked, named paths staged with it (`complete` is an accepted alias) | 0 · **2** refused |
+| `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
+| `status` | Progress from the sidecar, for a human | 0 |
+| `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it (`complete` is an accepted alias) | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
@@ -214,32 +215,26 @@ it with `--audit-accepted`, and without that the gate stays shut.
 Every command takes `--tasks-file` when `tasks/` holds more than one breakdown. Exit 2
 is a usage error throughout.
 
-### Where progress actually lives
-
-Three files get loosely called "state" and they are not interchangeable.
+### Where progress lives
 
 | File | Holds | Written by |
 |---|---|---|
-| `tasks/<story>.md` | **Which tasks are done** — the `- [x]` checklist, and the authority | `clerk finish`; it is what `clerk next` reads |
-| `tasks/<story>.json` | The dependency graph, plus a `done` mirror of the checklist | `decompose-to-tasks`, `clerk sidecar`, and `clerk finish` |
-| `<git-dir>/clerk/*` | The suite receipt, the archive record, and each task's file list | `clerk receipt`, `clerk land`, `clerk finish` |
+| `tasks/<story>.json` | The dependency graph and **`done` per task** — the only record of progress | `decompose-to-tasks`, `clerk sidecar`, `clerk finish` |
+| `tasks/<story>.md` | The tasks in prose: behaviour, criteria, affected files, dependencies | `decompose-to-tasks`; nothing rewrites it afterwards |
+| `<git-dir>/clerk/*` | The suite receipt, the archive record, each task's file list | `clerk receipt`, `clerk land`, `clerk finish` |
 
-**Both files carry completion, and the checkbox is the authority.** `clerk finish` ticks
-the box and sets `done: true` on that task in the sidecar, staging both with the code, so
-progress is readable by a tool without parsing markdown.
+**One place, deliberately.** The breakdown used to carry a `- [ ]` checklist as well, and
+two files holding the one fact a resumed run depends on can disagree — while a mirror
+that has gone stale still reads as the answer to whoever opens it. `clerk status` prints
+progress when a human wants it; `clerk finish` stages the sidecar with the code, so the
+progress record and the change it stands for land in the same commit.
 
-The checkbox wins because it is the file a human edits. Making the sidecar authoritative
-would turn a hand-tick — an entirely natural thing to do — into a silent no-op, and
-silently ignoring a human's edit is worse than any parsing cost it saves.
+A breakdown from before the change still carries ticks. `clerk sidecar` seeds `done`
+from them, so recovering one resumes the run rather than declaring it unstarted.
 
-Which is why `clerk next` **refuses when the two disagree** rather than picking a winner.
-Divergence means one was edited by hand, and there is no safe guess: trusting the
-checkbox discards a machine update, trusting the sidecar discards a human one. It names
-the tasks and stops. A sidecar with no `done` fields at all predates the mirror and is
-read as unknown rather than as "nothing is done", so older breakdowns keep working.
-
-`clerk sidecar --force` carries `done` across a regeneration — it is the one field in
-there not derived from the markdown.
+`clerk sidecar` and `clerk finish` write byte-identical formatting, so the first `finish`
+after a recovery shows a one-line `done` flip rather than reformatting the whole file
+into someone's task commit.
 
 The files under `<git-dir>/clerk` are internal bookkeeping, not an interface. They sit
 inside the git directory so they are per-worktree, never committed, and need no

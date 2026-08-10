@@ -96,7 +96,7 @@ With `--in-place`: no worktree. Create a feature branch if on the default branch
 
 If the request names a file in `tasks/`, read it, present the task list, and skip decomposition. Tasks already checked `- [x]` are done — resume at the first unchecked one.
 
-A breakdown written before sidecars existed has no `tasks/<story>.json`, and `clerk next` refuses without one rather than guessing at dependencies. Recover it:
+A breakdown written before sidecars existed has no `tasks/<story>.json`, and `clerk next` refuses without one rather than guessing at dependencies. Recover it — and if it carries an old `- [x]` checklist, the recovery seeds `done` from those ticks so the run resumes where it left off:
 
 ```
 clerk sidecar          # reads the `### Task N:` sections and their `**Depends on:**` lines
@@ -112,7 +112,7 @@ Spawn the `decompose-to-tasks` agent with the Agent tool, passing the languages 
 >
 > Decompose the following user story into implementation tasks. For each task set `language` to the language it primarily involves and `depends_on` to the tasks it builds on: [the feature description from the request]
 
-It does the codebase exploration and dependency analysis that makes the task list worth having. It writes `tasks/[story-name].md` with a `- [ ] Task N` checklist that is the run's durable progress record, and `tasks/[story-name].json` beside it — the machine-readable sidecar `clerk next` reads so that selecting the next task is a lookup rather than a regex over prose.
+It does the codebase exploration and dependency analysis that makes the task list worth having. It writes `tasks/[story-name].md` describing each task, and `tasks/[story-name].json` beside it — the sidecar that carries the dependency graph and the run's progress. The sidecar is the durable record; the markdown is prose and nothing rewrites it.
 
 **Carry the learnings forward.** Pass the learnings file's contents as `Accumulated project learnings`: "These are durable conventions, recurring review findings and constraints from earlier runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover."
 
@@ -141,7 +141,7 @@ Show the task list, in order, with dependencies.
 clerk next
 ```
 
-Returns the first task whose `depends_on` are all checked off, plus how many remain and how many are blocked. It **exits 3 while the tree is dirty**, because one task in flight at a time is what keeps a run resumable — a half-finished task on top of another is what makes a run impossible to review. Commit the current one before asking for the next.
+Returns the first task whose `depends_on` are all done, plus how many remain and how many are blocked. It **exits 3 while the tree is dirty**, because one task in flight at a time is what keeps a run resumable — a half-finished task on top of another is what makes a run impossible to review. Commit the current one before asking for the next.
 
 Announce which task you are starting, so the queue's progress is visible in the transcript rather than only in the file.
 
@@ -174,7 +174,7 @@ Four checks earlier runs paid for, each of which shipped a defect that a passing
 clerk finish <n> -- <every file this task changed>
 ```
 
-That ticks the checkbox, mirrors it as `done: true` in the sidecar, and stages both alongside those paths, so the progress record and the change it stands for land in one commit. The checkbox stays authoritative — it is the file you would edit by hand — and `clerk next` refuses outright if the two ever disagree rather than guessing which to believe. A checkbox committed without its code makes a later run redo the work; code without its checkbox makes it skip work it never did. `clerk finish` refuses a path that does not exist and refuses a task already checked off, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
+That sets `done: true` on the task in the sidecar and stages it alongside those paths, so the progress record and the change it stands for land in one commit. The sidecar is the only place completion is recorded; the breakdown is prose, and is not rewritten. `clerk status` prints progress when you want to read it. A sidecar committed without its code makes a later run skip work it never did; code committed without the sidecar makes it redo work. `clerk finish` refuses a path that does not exist and refuses a task already done, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
 
 Then write the message, which is judgment rather than mechanics:
 

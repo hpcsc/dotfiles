@@ -150,6 +150,7 @@ prose. Both must describe the same tasks — if you revise one, revise the other
   "tasks": [
     {
       "n": 1,
+      "done": false,
       "title": "<the same imperative title as the markdown>",
       "language": "Go",
       "testable": true,
@@ -160,8 +161,10 @@ prose. Both must describe the same tasks — if you revise one, revise the other
 }
 ```
 
-`n` matches the markdown's `Task N` numbering and its `- [ ] Task N:` checklist entry —
-that correspondence is what lets tooling tick the right box. `depends_on` is an array of
+`n` matches the markdown's `### Task N:` heading. `done` starts absent — tooling sets it,
+and this file is the only place progress is recorded, so do not add a checkbox list to
+the markdown: a second copy of that fact can go stale while still reading as the answer.
+`depends_on` is an array of
 task numbers (`[]` when a task has none); it is the dependency edge the markdown states
 as **Depends on:**, so the two must agree. Keep every other field the markdown already
 carries out of the JSON: duplicating prose invites the two to drift, and nothing reads

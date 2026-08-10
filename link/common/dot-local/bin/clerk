@@ -240,9 +240,10 @@ sidecar_for() {
   printf '%s' "$j"
 }
 
-# Task numbers whose checklist entry is ticked. The markdown is the source of truth for
-# progress precisely because it is what a human edits and what the commit carries.
-done_numbers() {
+# Task numbers ticked in a legacy checklist. Breakdowns no longer carry checkboxes;
+# this exists so recovering a sidecar from one that predates the change picks the
+# progress up rather than declaring everything unstarted.
+checklist_done() {
   sed -n 's/^[[:space:]]*- \[[xX]\][[:space:]]*Task \([0-9][0-9]*\).*/\1/p' "$1"
 }
 
@@ -271,9 +272,13 @@ cmd_sidecar() {
 
   # Regenerating must not discard progress. `done` is the one field in here that is not
   # derived from the markdown, so it is carried across a --force rewrite.
-  local prior=
+  # Two sources of prior progress: a sidecar being regenerated, and — for a breakdown
+  # written when the checklist still carried it — the ticks in the markdown.
+  local prior= ticked=
   [ -f "$out" ] && prior=$(jq -c '[.tasks[] | select(.done == true) | .n]' "$out" 2>/dev/null)
   [ -n "$prior" ] || prior="[]"
+  ticked=$(checklist_done "$tasks" | jq -R -s -c 'split("\n") | map(select(length > 0) | tonumber)')
+  prior=$(jq -n -c --argjson a "$prior" --argjson b "$ticked" '$a + $b | unique')
 
   if [ -f "$out" ] && [ "$force" != true ]; then
     jq -n --arg p "$out" '{written: false, path: $p, note: "already exists; pass --force to rewrite"}'
@@ -318,7 +323,7 @@ cmd_sidecar() {
   fi
   [ -n "$rows" ] || die "sidecar: found no 'Task N' sections or checklist entries in $(basename "$tasks") — write the sidecar by hand"
 
-  printf '%s\n' "$rows" | jq -R -s -c --arg tasks "$tasks" --arg from "$from" --argjson prior "$prior" '
+  printf '%s\n' "$rows" | jq -R -s --arg tasks "$tasks" --arg from "$from" --argjson prior "$prior" '
     # A **Depends on:** line is prose, and three shapes in it will produce wrong edges if
     # you just harvest digits. "None — ... Independent of Task 1" names a task it is
     # explicitly NOT waiting on. "US-007 Task 5" is a dependency on another breakdown
@@ -351,7 +356,7 @@ cmd_sidecar() {
         depends_on: deps(.[2] // ""),
         affected_files: ((.[4] // "") | split(" ") | map(select(length > 0)))
       })
-    | map(if ([.n] | inside($prior)) then .done = true else . end)
+    | map(.done = ([.n] | inside($prior)))
     | {story: ($tasks | split("/") | last | sub("\\.md$"; "")),
        tasks_file: $tasks, recovered_from: $from, tasks: .}' > "$out"
 
@@ -392,29 +397,7 @@ cmd_next() {
     return 3
   fi
 
-  donej=$(done_numbers "$tasks" | jq -R -s -c 'split("\n") | map(select(length > 0) | tonumber)')
-
-  # Both files carry completion now, and they must agree. Disagreement means one was
-  # edited by hand, and there is no safe way to guess which is right: trusting the
-  # checkbox silently discards a machine update, trusting the sidecar silently discards
-  # a human one. Refuse and name the tasks instead.
-  local conflict
-  conflict=$(jq -c --argjson done "$donej" '
-    [ .tasks[]
-      | select(has("done"))
-      | . as $t
-      | (([$t.n] | inside($done)) as $ticked
-         | if ($t.done == true) != $ticked
-           then {n: $t.n, checklist: (if $ticked then "checked" else "unchecked" end),
-                 sidecar: (if $t.done then "done" else "not done" end)}
-           else empty end) ]' "$side")
-  if [ "$(printf '%s' "$conflict" | jq 'length')" -gt 0 ]; then
-    jq -n --argjson c "$conflict" --arg md "$tasks" --arg side "$side" \
-      '{error: "checklist and sidecar disagree",
-        detail: "one of these was edited by hand; the checklist is authoritative, so fix the sidecar to match it (or re-run clerk sidecar --force)",
-        checklist: $md, sidecar: $side, tasks: $c}' >&2
-    return 4
-  fi
+  donej=$(jq -c '[.tasks[] | select(.done == true) | .n]' "$side")
 
   jq --argjson done "$donej" '
     (.tasks // []) as $all
@@ -433,12 +416,16 @@ cmd_next() {
 # programmable completion — and sandbox classifiers refuse the whole invocation before
 # clerk is ever reached. Nothing about this command runs a string; the collision is the
 # word. `complete` stays accepted so anything already scripted keeps working.
+#
+# Completion lives in the sidecar and nowhere else. It was briefly mirrored into a
+# markdown checkbox as well; two files carrying the one fact a resumed run depends on
+# can disagree, and a mirror that has gone stale still reads as authoritative to
+# whoever opens it.
 cmd_finish() {
-  local n= tasks_override= root wt tasks side dir f line tmp tmpj staged
+  local n= tasks_override= root wt tasks side dir f tmp
   n=${1:-}; shift 2>/dev/null || true
   case "$n" in ''|*[!0-9]*) die "finish: first argument must be a task number" ;; esac
 
-  staged=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --tasks-file) tasks_override=${2:-}; shift 2 ;;
@@ -454,54 +441,62 @@ cmd_finish() {
     tasks=$(find_tasks_file "$wt") || die "finish: no single task file under $wt/tasks (pass --tasks-file)"
   fi
   [ -f "$tasks" ] || die "finish: task file not found: $tasks"
+  side=$(sidecar_for "$tasks") || die "finish: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
 
-  line=$(grep -n "^[[:space:]]*- \[[ xX]\][[:space:]]*Task ${n}:" "$tasks" | head -1)
-  [ -n "$line" ] || die "finish: no '- [ ] Task ${n}:' entry in $(basename "$tasks")"
-  case "$line" in *'- [x]'*|*'- [X]'*) die "finish: Task ${n} is already checked off — a task is never redone" ;; esac
+  jq -e --argjson n "$n" '[.tasks[] | select(.n == $n)] | length > 0' "$side" >/dev/null 2>&1 \
+    || die "finish: no Task $n in $(basename "$side")"
+  jq -e --argjson n "$n" '[.tasks[] | select(.n == $n and .done == true)] | length == 0' "$side" >/dev/null 2>&1 \
+    || die "finish: Task $n is already done — a task is never redone"
 
   for f in "$@"; do
     [ -e "$f" ] || die "finish: '$f' does not exist — stage only what this task actually changed"
   done
 
-  # Tick first, then stage everything together, so the checkbox and the change it stands
-  # for land in one commit. A checkbox committed without its code makes a later run skip
-  # work; code without its checkbox makes it redo work.
-  tmp="${tasks}.clerk.$$"
-  awk -v n="$n" '
-    $0 ~ ("^[[:space:]]*- \\[[ ]\\][[:space:]]*Task " n ":") { sub(/\[ \]/, "[x]") }
-    { print }
-  ' "$tasks" > "$tmp" || die "finish: could not rewrite $tasks — report this and stop; do not tick the box by hand"
-  cat "$tmp" > "$tasks" && rm -f "$tmp"
-
-  # Mirror completion into the sidecar so tooling has it machine-readable. The checkbox
-  # stays authoritative: it is what a human edits, and a hand-tick must never become a
-  # silent no-op. This copy exists to be READ, and to make a hand-edit of either file
-  # detectable by disagreeing with the other.
-  side=$(sidecar_for "$tasks") || side=""
-  if [ -n "$side" ]; then
-    tmpj="${side}.clerk.$$"
-    if jq --argjson n "$n" '.tasks |= map(if .n == $n then .done = true else . end)' "$side" > "$tmpj" 2>/dev/null; then
-      cat "$tmpj" > "$side"
-    fi
-    rm -f "$tmpj"
-  fi
+  tmp="${side}.clerk.$$"
+  jq --argjson n "$n" '.tasks |= map(if .n == $n then .done = true else . end)' "$side" > "$tmp" \
+    || die "finish: could not rewrite $side — report this and stop; do not mark it done by hand"
+  cat "$tmp" > "$side"; rm -f "$tmp"
 
   # Explicit paths only. `git add -A` sweeps whatever the user left loose in the tree
   # into this task's commit, and untangling that later means rewriting history.
   git add -- "$@" || die "finish: staging failed — report this and stop; do not stage by hand"
-  [ -n "$side" ] && { git add -- "$side" || die "finish: could not stage the sidecar"; }
-  git add -- "$tasks" || die "finish: could not stage the task file — report this and stop. Ticking the box and staging it separately is precisely what this command exists to do in one step"
+  git add -- "$side" || die "finish: could not stage the sidecar — report this and stop. Marking the task done and staging it with its code is precisely what this command exists to do in one step"
 
   dir=$(state_dir); mkdir -p "$dir/tasks"
   printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '{n: ($n | tonumber), at: $at, files: (split("\n") | map(select(length > 0)))}' \
     > "$dir/tasks/$n.json"
 
-  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg t "$tasks" --arg side "$side" \
-    '{task: ($n | tonumber), checkbox: "ticked", tasks_file: $t,
-      sidecar: (if $side == "" then null else $side end),
+  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg side "$side" \
+    '{task: ($n | tonumber), done: true, sidecar: $side,
       staged: (split("\n") | map(select(length > 0))),
       next_step: "invoke the commit skill — the message is judgment, not mechanics"}'
+}
+
+# Progress, for a human. The breakdown carries no checkboxes, so this is what you read
+# instead of skimming the markdown for ticks.
+cmd_status() {
+  local tasks_override= root wt tasks side
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      *) die "status: unknown argument '$1'" ;;
+    esac
+  done
+  root=$(repo_root) || die "not a git repository"
+  wt=$(work_tree)
+  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
+    tasks=$(find_tasks_file "$wt") || die "status: no single task file under $wt/tasks (pass --tasks-file)"
+  fi
+  side=$(sidecar_for "$tasks") || die "status: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
+
+  jq --arg t "$tasks" '
+    (.tasks // []) as $all
+    | ([$all[] | select(.done == true) | .n]) as $done
+    | {tasks_file: $t, total: ($all | length), done: ($done | length),
+       remaining: ([$all[] | select(.done != true)] | length),
+       progress: [$all[] | {n, title, done: (.done == true),
+                            blocked_by: [(.depends_on // [])[] | select(([.] | inside($done)) | not)]}]}' "$side"
 }
 
 # --------------------------------------------------------------------------------
@@ -583,12 +578,18 @@ cmd_gate() {
   elif [ ! -f "$tasks" ]; then
     passed=false; detail="task file not found: $tasks"
   else
-    unchecked=$(grep -c '^[[:space:]]*- \[ \]' "$tasks" 2>/dev/null | tr -d ' ')
-    [ -n "$unchecked" ] || unchecked=0
-    if [ "$unchecked" -eq 0 ]; then
-      passed=true; detail="all tasks checked off in $(basename "$tasks")"
+    local side donej open
+    side=$(sidecar_for "$tasks") || side=""
+    if [ -n "$side" ]; then
+      donej=$(jq -c '[.tasks[] | select(.done == true) | .n]' "$side")
+      open=$(jq -c --argjson done "$donej" '[.tasks[] | select(([.n] | inside($done)) | not)] | length' "$side")
+      if [ "${open:-1}" -eq 0 ]; then
+        passed=true; detail="every task marked done in $(basename "$side")"
+      else
+        passed=false; detail="$open task(s) still open in $(basename "$side")"
+      fi
     else
-      passed=false; detail="$unchecked task(s) still unchecked in $(basename "$tasks")"
+      passed=false; detail="no sidecar beside $tasks — run 'clerk sidecar' to recover one"
     fi
   fi
   checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
@@ -891,6 +892,7 @@ USAGE
                                      refuse that word as the bash builtin)
   clerk sidecar [--force]            recover tasks/<story>.json from a breakdown
                                      written before sidecars existed
+  clerk status                       progress from the sidecar, for a human
   clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
                                      record a suite run against the SHA it describes
   clerk gate [--audit-accepted] [--tasks-file <f>]
@@ -913,6 +915,7 @@ need jq
 case "${1:-}" in
   prepare)  shift; cmd_prepare "$@" ;;
   next)     shift; cmd_next "$@" ;;
+  status)   shift; cmd_status "$@" ;;
   sidecar)  shift; cmd_sidecar "$@" ;;
   finish|complete) shift; cmd_finish "$@" ;;
   receipt)  shift; cmd_receipt "$@" ;;

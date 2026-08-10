@@ -105,10 +105,9 @@ printf '\nnext and complete\n'
 R5=$(new_repo)
 mkdir -p "$R5/tasks"
 cat > "$R5/tasks/story.md" <<'EOF'
-## Progress
-- [ ] Task 1: Add the type
-- [ ] Task 2: Wire the handler
-- [ ] Task 3: Document it
+### Task 1: Add the type
+### Task 2: Wire the handler
+### Task 3: Document it
 EOF
 cat > "$R5/tasks/story.json" <<'EOF'
 {"story":"demo","tasks_file":"tasks/story.md","tasks":[
@@ -131,11 +130,11 @@ eq "unless explicitly allowed" "1" "$(run "$R5" next --allow-dirty | jq -r '.tas
 
 C=$(run "$R5" finish 1 -- a.go)
 eq "finish stages exactly the named files" "a.go" "$(printf '%s' "$C" | jq -r '.staged | join(",")')"
-eq "and ticks the checkbox"                  "1"    "$(grep -c '^- \[x\] Task 1:' "$R5/tasks/story.md" | tr -d ' ')"
-eq "and stages the task file and sidecar with the code" "3" "$(git -C "$R5" diff --cached --name-only | wc -l | tr -d ' ')"
+eq "and marks it done in the sidecar"        "true" "$(jq -r '.tasks[0].done' "$R5/tasks/story.json")"
+eq "and stages the sidecar with the code"    "2"    "$(git -C "$R5" diff --cached --name-only | wc -l | tr -d ' ')"
 
 run "$R5" finish 1 -- a.go >/dev/null 2>&1
-eq "a completed task is never redone" "2" "$?"
+eq "a done task is never redone" "2" "$?"
 
 run "$R5" finish 2 -- does-not-exist.go >/dev/null 2>&1
 eq "refuses to stage a path that does not exist" "2" "$?"
@@ -145,13 +144,13 @@ eq "refuses to run without an explicit file list" "2" "$?"
 
 git -C "$R5" commit -qm "Task 1"
 J=$(run "$R5" next)
-eq "the dependency unblocks once its task is checked off" "2" "$(printf '%s' "$J" | jq -r '.task.n')"
+eq "the dependency unblocks once its task is done" "2" "$(printf '%s' "$J" | jq -r '.task.n')"
 eq "and blocked drops accordingly"                        "1" "$(printf '%s' "$J" | jq -r '.blocked')"
 
 run "$R5" finish 2 -- b.go >/dev/null && git -C "$R5" commit -qm "Task 2"
 run "$R5" finish 3 -- README.md >/dev/null && git -C "$R5" commit -qm "Task 3"
 J=$(run "$R5" next)
-eq "reports done when every task is checked" "true" "$(printf '%s' "$J" | jq -r '.done')"
+eq "reports done when every task is done" "true" "$(printf '%s' "$J" | jq -r '.done')"
 eq "and hands back no task"                  "null" "$(printf '%s' "$J" | jq -r '.task')"
 
 R6=$(new_repo); mkdir -p "$R6/tasks"; printf -- '- [ ] Task 1: x\n' > "$R6/tasks/s.md"
@@ -203,19 +202,20 @@ printf '\nreceipt and gate\n'
 R4=$(new_repo)
 mkdir -p "$R4/tasks"
 cat > "$R4/tasks/story.md" <<'EOF'
-- [x] Task 1: Done
-- [ ] Task 2: Not done
+### Task 1: Done
+### Task 2: Not done
 EOF
+printf '{"tasks":[{"n":1,"title":"Done","depends_on":[],"done":true},{"n":2,"title":"Not done","depends_on":[],"done":false}]}\n' > "$R4/tasks/story.json"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Add tasks"
 
 G=$(run "$R4" gate); RC=$?
-eq "gate refuses while a task is unchecked" "false" "$(printf '%s' "$G" | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
+eq "gate refuses while a task is open" "false" "$(printf '%s' "$G" | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
 eq "gate exits non-zero when not ok"        "1"     "$RC"
 eq "no receipt recorded is reported as such" "false" "$(printf '%s' "$G" | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
-sed -i.bak 's/- \[ \] Task 2/- [x] Task 2/' "$R4/tasks/story.md" && rm -f "$R4/tasks/story.md.bak"
+jq '.tasks |= map(.done = true)' "$R4/tasks/story.json" > "$R4/tasks/t" && mv -f "$R4/tasks/t" "$R4/tasks/story.json"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Finish task 2"
-eq "gate accepts a fully checked task file" "true" \
+eq "gate accepts a fully done breakdown" "true" \
    "$(run "$R4" gate | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
 
 run "$R4" receipt --command "task test" --passed >/dev/null
@@ -263,8 +263,8 @@ printf '\nland\n'
 
 R8=$(new_repo)
 mkdir -p "$R8/tasks"
-printf -- '- [ ] Task 1: Only task\n' > "$R8/tasks/feature.md"
-printf '{"tasks":[{"n":1,"title":"Only task","depends_on":[]}]}\n' > "$R8/tasks/feature.json"
+printf -- '### Task 1: Only task\n' > "$R8/tasks/feature.md"
+printf '{"tasks":[{"n":1,"title":"Only task","depends_on":[],"done":false}]}\n' > "$R8/tasks/feature.json"
 git -C "$R8" add -A && git -C "$R8" commit -qm "Plan"
 git -C "$R8" switch -qc feature
 
@@ -447,8 +447,8 @@ printf '\nthe whole flow inside a worktree\n'
 # repository and the run died on the first commit.
 R13=$(new_repo)
 mkdir -p "$R13/tasks"
-printf -- '- [ ] Task 1: Only task\n' > "$R13/tasks/wt.md"
-printf '{"tasks":[{"n":1,"title":"Only task","depends_on":[]}]}\n' > "$R13/tasks/wt.json"
+printf -- '### Task 1: Only task\n' > "$R13/tasks/wt.md"
+printf '{"tasks":[{"n":1,"title":"Only task","depends_on":[],"done":false}]}\n' > "$R13/tasks/wt.json"
 printf 'package a\n' > "$R13/a.go"
 git -C "$R13" add -A && git -C "$R13" commit -qm "Plan"
 WT2="$R13/../wtflow-$(basename "$R13")"
@@ -461,11 +461,11 @@ eq "next reads the worktree's sidecar" "1" "$(run "$WT2" next | jq -r '.task.n')
 printf 'edit\n' >> "$WT2/a.go"
 C=$(run "$WT2" finish 1 -- a.go); RC=$?
 eq "complete succeeds inside a worktree" "0" "$RC"
-eq "and stages the worktree's task file" "3" "$(git -C "$WT2" diff --cached --name-only | wc -l | tr -d ' ')"
+eq "and stages the worktree's sidecar" "2" "$(git -C "$WT2" diff --cached --name-only | wc -l | tr -d ' ')"
 eq "and records its state under the worktree git dir" "1" \
    "$(ls "$(git -C "$WT2" rev-parse --absolute-git-dir)/clerk/tasks"/*.json 2>/dev/null | wc -l | tr -d ' ')"
-eq "the main checkout's copy is untouched" "1" \
-   "$(grep -c '^- \[ \] Task 1:' "$R13/tasks/wt.md" | tr -d ' ')"
+eq "the main checkout's sidecar is untouched" "false" \
+   "$(jq -r '.tasks[0].done' "$R13/tasks/wt.json")"
 
 git -C "$WT2" commit -qm "Task 1"
 run "$WT2" receipt --command "go test ./..." --passed >/dev/null
@@ -489,42 +489,46 @@ git -C "$R13" worktree remove --force "$WT2" 2>/dev/null
 
 
 # --------------------------------------------------------------------------------
-printf '\ncompletion in both files\n'
+# --------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------
+printf '\nprogress lives in one place\n'
 
 R14=$(new_repo); mkdir -p "$R14/tasks"
-printf -- '- [ ] Task 1: One\n- [ ] Task 2: Two\n' > "$R14/tasks/both.md"
-printf '{"tasks":[{"n":1,"title":"One","depends_on":[]},{"n":2,"title":"Two","depends_on":[1]}]}\n' > "$R14/tasks/both.json"
+printf -- '### Task 1: One\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R14/tasks/one.md"
 printf 'package a\n' > "$R14/a.go"
 git -C "$R14" add -A && git -C "$R14" commit -qm Plan
+run "$R14" sidecar >/dev/null
+git -C "$R14" add -A && git -C "$R14" commit -qm Sidecar
+
+eq "a breakdown with no checkboxes works end to end" "1" "$(run "$R14" next | jq -r '.task.n')"
+eq "status counts what is left"                      "0|2" \
+   "$(run "$R14" status | jq -r '.done')|$(run "$R14" status | jq -r '.remaining')"
 
 printf 'edit\n' >> "$R14/a.go"
-F=$(run "$R14" finish 1 -- a.go)
-eq "finish reports the sidecar it updated" "$R14/tasks/both.json" "$(printf '%s' "$F" | jq -r '.sidecar')"
-eq "and marks the task done there"        "true" "$(jq -r '.tasks[0].done' "$R14/tasks/both.json")"
-eq "leaving the other alone"              "null" "$(jq -r '.tasks[1].done' "$R14/tasks/both.json")"
-eq "and stages the sidecar with the rest" "3" "$(git -C "$R14" diff --cached --name-only | wc -l | tr -d ' ')"
-git -C "$R14" commit -qm "Task 1"
-eq "next still advances"                  "2" "$(run "$R14" next | jq -r '.task.n')"
+run "$R14" finish 1 -- a.go >/dev/null
+eq "finish needs no checkbox to record progress" "true" "$(jq -r '.tasks[0].done' "$R14/tasks/one.json")"
+eq "and status follows"                          "1|1" \
+   "$(run "$R14" status | jq -r '.done')|$(run "$R14" status | jq -r '.remaining')"
+eq "status names what still blocks a task"       "" \
+   "$(run "$R14" status | jq -r '.progress[1].blocked_by | join(",")')"
 
-# A hand-edit to either file must not be guessed at.
-sed -i.bak 's/- \[x\] Task 1/- [ ] Task 1/' "$R14/tasks/both.md" && rm -f "$R14/tasks/both.md.bak"
-run "$R14" next --allow-dirty >/dev/null 2>&1
-eq "next refuses when the two disagree" "4" "$?"
-E=$(run "$R14" next --allow-dirty 2>&1 >/dev/null)
-eq "naming the task that diverged" "1" "$(printf '%s' "$E" | jq -r '.tasks[0].n')"
-eq "and which side says what"      "unchecked|done" \
-   "$(printf '%s' "$E" | jq -r '.tasks[0].checklist')|$(printf '%s' "$E" | jq -r '.tasks[0].sidecar')"
+# The markdown is never rewritten now, so a task commit carries only code and sidecar.
+eq "the breakdown itself is not touched" "0" \
+   "$(git -C "$R14" diff --cached --name-only | grep -c 'one.md' | tr -d ' ')"
 
-# Regenerating must not throw progress away.
-run "$R14" sidecar --force --tasks-file "$R14/tasks/both.md" >/dev/null
-eq "sidecar --force preserves what was already done" "true" "$(jq -r '.tasks[0].done' "$R14/tasks/both.json")"
+# Formatting must match between the two writers or the first finish reformats the file.
+eq "finish does not reformat what sidecar wrote" "2" \
+   "$(git -C "$R14" diff --cached -- tasks/one.json | grep -cE '^[-+][^-+]' | tr -d ' ')"
 
-# A sidecar with no done fields at all is an older one; it must not trip the check.
+# A breakdown from before the change carries ticks; recovery must pick them up.
 R15=$(new_repo); mkdir -p "$R15/tasks"
-printf -- '- [x] Task 1: One\n- [ ] Task 2: Two\n' > "$R15/tasks/old.md"
-printf '{"tasks":[{"n":1,"title":"One","depends_on":[]},{"n":2,"title":"Two","depends_on":[1]}]}\n' > "$R15/tasks/old.json"
+printf -- '- [x] Task 1: One\n- [ ] Task 2: Two\n\n### Task 1: One\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R15/tasks/old.md"
 git -C "$R15" add -A && git -C "$R15" commit -qm Plan
-eq "an older sidecar without done fields still works" "2" "$(run "$R15" next | jq -r '.task.n')"
+run "$R15" sidecar >/dev/null
+eq "recovery seeds done from a legacy checklist" "true" "$(jq -r '.tasks[0].done' "$R15/tasks/old.json")"
+eq "and leaves the unticked one open"            "false" "$(jq -r '.tasks[1].done' "$R15/tasks/old.json")"
+eq "so next resumes where the run left off"      "2" "$(run "$R15" next --allow-dirty | jq -r '.task.n')"
 
 # --------------------------------------------------------------------------------
 rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$WT" 2>/dev/null

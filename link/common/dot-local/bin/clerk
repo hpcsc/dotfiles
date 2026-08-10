@@ -153,6 +153,11 @@ resolve_learnings_path() {
 # Task file discovery
 # --------------------------------------------------------------------------------
 
+# Resolve against the WORK TREE, not the main repo root. The breakdown is tracked
+# content on the branch: inside a worktree it is the worktree's copy that gets ticked,
+# staged and committed, and `git add` refuses a path from the main checkout as being
+# outside the repository. Only tasks/test-commands.json and the learnings file live at
+# the main root, because they are shared config rather than branch content.
 find_tasks_file() {
   local root=$1 f n=0 found=
   for f in "$root"/tasks/*.md; do
@@ -181,7 +186,7 @@ cmd_prepare() {
   cmds=$(resolve_test_commands "$root")
   prefix=$(resolve_go_prefix "$root")
   learn=$(resolve_learnings_path "$root")
-  tasks=$(find_tasks_file "$root") || tasks=""
+  tasks=$(find_tasks_file "$wt") || tasks=""
   if tree_is_clean; then clean=true; else clean=false; fi
 
   jq -n \
@@ -241,7 +246,7 @@ done_numbers() {
 # would silently reorder the work. So it is an explicit command that shows what it
 # extracted, never something `next` does behind your back.
 cmd_sidecar() {
-  local force=false tasks_override= root tasks out rows n
+  local force=false tasks_override= root wt tasks out rows n
   while [ $# -gt 0 ]; do
     case "$1" in
       --force) force=true; shift ;;
@@ -251,8 +256,9 @@ cmd_sidecar() {
   done
 
   root=$(repo_root) || die "not a git repository"
+  wt=$(work_tree)
   if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$root") || die "sidecar: no single task file under $root/tasks (pass --tasks-file)"
+    tasks=$(find_tasks_file "$wt") || die "sidecar: no single task file under $wt/tasks (pass --tasks-file)"
   fi
   [ -f "$tasks" ] || die "sidecar: task file not found: $tasks"
   out="${tasks%.md}.json"
@@ -347,7 +353,7 @@ cmd_sidecar() {
 }
 
 cmd_next() {
-  local allow_dirty=false tasks_override= root tasks side donej
+  local allow_dirty=false tasks_override= root wt tasks side donej
   while [ $# -gt 0 ]; do
     case "$1" in
       --allow-dirty) allow_dirty=true; shift ;;
@@ -357,8 +363,9 @@ cmd_next() {
   done
 
   root=$(repo_root) || die "not a git repository"
+  wt=$(work_tree)
   if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$root") || die "next: no single task file under $root/tasks (pass --tasks-file)"
+    tasks=$(find_tasks_file "$wt") || die "next: no single task file under $wt/tasks (pass --tasks-file)"
   fi
   [ -f "$tasks" ] || die "next: task file not found: $tasks"
   side=$(sidecar_for "$tasks") || die "next: no sidecar beside $tasks — run 'clerk sidecar' to recover one from the breakdown, or let decompose-to-tasks write ${tasks%.md}.json"
@@ -387,7 +394,7 @@ cmd_next() {
 }
 
 cmd_complete() {
-  local n= tasks_override= root tasks side dir f line tmp staged
+  local n= tasks_override= root wt tasks side dir f line tmp staged
   n=${1:-}; shift 2>/dev/null || true
   case "$n" in ''|*[!0-9]*) die "complete: first argument must be a task number" ;; esac
 
@@ -402,8 +409,9 @@ cmd_complete() {
   [ $# -gt 0 ] || die "complete: name the files this task changed after '--' (never 'git add -A')"
 
   root=$(repo_root) || die "not a git repository"
+  wt=$(work_tree)
   if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$root") || die "complete: no single task file under $root/tasks (pass --tasks-file)"
+    tasks=$(find_tasks_file "$wt") || die "complete: no single task file under $wt/tasks (pass --tasks-file)"
   fi
   [ -f "$tasks" ] || die "complete: task file not found: $tasks"
 
@@ -492,7 +500,7 @@ cmd_receipt() {
 # --------------------------------------------------------------------------------
 
 cmd_gate() {
-  local audit_accepted=false tasks_override= dir root head rec checks ok
+  local audit_accepted=false tasks_override= dir root wt head rec checks ok
   while [ $# -gt 0 ]; do
     case "$1" in
       --audit-accepted) audit_accepted=true; shift ;;
@@ -502,20 +510,21 @@ cmd_gate() {
   done
 
   root=$(repo_root) || die "not a git repository"
+  wt=$(work_tree)
   dir=$(state_dir)
   head=$(git rev-parse HEAD 2>/dev/null)
   checks="[]"
 
   # 1. every task checked off
   local tasks unchecked detail passed
-  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else tasks=$(find_tasks_file "$root") || tasks=""; fi
+  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else tasks=$(find_tasks_file "$wt") || tasks=""; fi
   if [ -z "$tasks" ] && [ -f "$dir/archived.json" ]; then
     # The breakdown having been archived IS the evidence every task closed — archiving
     # is gated on it. Without this, a second `land` (say, to integrate after a rebase)
     # finds no breakdown in tasks/ and refuses on a run that already satisfied it.
     passed=true; detail="breakdown already archived at $(jq -r '.path' "$dir/archived.json")"
   elif [ -z "$tasks" ]; then
-    passed=false; detail="no task file found under $root/tasks (pass --tasks-file to name it)"
+    passed=false; detail="no task file found under $wt/tasks (pass --tasks-file to name it)"
   elif [ ! -f "$tasks" ]; then
     passed=false; detail="task file not found: $tasks"
   else
@@ -739,7 +748,7 @@ cmd_land() {
 
   root=$(repo_root); wt=$(work_tree); dir=$(state_dir)
   def=$(default_branch); branch=$(git rev-parse --abbrev-ref HEAD)
-  tasks=$(find_tasks_file "$root") || tasks=""
+  tasks=$(find_tasks_file "$wt") || tasks=""
 
   # Archive first, on the feature branch, so the archive commit rides with the work it
   # belongs to instead of landing on the default branch behind it. It also has to come
@@ -747,11 +756,11 @@ cmd_land() {
   local archived=null
   if [ -n "$tasks" ] && [ -f "$tasks" ]; then
     [ -n "$name" ] || name=$(basename "${tasks%.md}")
-    mkdir -p "$root/tasks/completed"
-    git mv "$tasks" "$root/tasks/completed/$(basename "$tasks")" 2>/dev/null \
+    mkdir -p "$wt/tasks/completed"
+    git mv "$tasks" "$wt/tasks/completed/$(basename "$tasks")" 2>/dev/null \
       || die "land: could not archive $tasks"
     if [ -f "${tasks%.md}.json" ]; then
-      git mv "${tasks%.md}.json" "$root/tasks/completed/$(basename "${tasks%.md}").json" 2>/dev/null || true
+      git mv "${tasks%.md}.json" "$wt/tasks/completed/$(basename "${tasks%.md}").json" 2>/dev/null || true
     fi
     git commit -qm "Archive completed task: $name" || die "land: archive commit failed"
     archived=$(jq -n --arg p "tasks/completed/$(basename "$tasks")" '$p')

@@ -438,7 +438,56 @@ eq "a local edge survives beside a cross-story one" "2" "$(jq -r '.tasks[2].depe
 eq "a range expands"                                "1,2,3" "$(jq -r '.tasks[3].depends_on | join(",")' "$R12/tasks/prose.json")"
 eq "a list joined by and does not fuse its numbers" "1,3,4" "$(jq -r '.tasks[4].depends_on | join(",")' "$R12/tasks/prose.json")"
 
+
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$WT" 2>/dev/null
+printf '\nthe whole flow inside a worktree\n'
+
+# The skill's primary shape is a worktree, and every task-file command was resolving
+# the breakdown against the MAIN repo root — so `git add` rejected it as outside the
+# repository and the run died on the first commit.
+R13=$(new_repo)
+mkdir -p "$R13/tasks"
+printf -- '- [ ] Task 1: Only task\n' > "$R13/tasks/wt.md"
+printf '{"tasks":[{"n":1,"title":"Only task","depends_on":[]}]}\n' > "$R13/tasks/wt.json"
+printf 'package a\n' > "$R13/a.go"
+git -C "$R13" add -A && git -C "$R13" commit -qm "Plan"
+WT2="$R13/../wtflow-$(basename "$R13")"
+git -C "$R13" worktree add -q -b flow "$WT2" >/dev/null 2>&1
+
+eq "prepare finds the breakdown in the worktree" "$(cd "$WT2" && pwd -P)/tasks/wt.md" \
+   "$(run "$WT2" prepare | jq -r '.tasks_file')"
+eq "next reads the worktree's sidecar" "1" "$(run "$WT2" next | jq -r '.task.n')"
+
+printf 'edit\n' >> "$WT2/a.go"
+C=$(run "$WT2" complete 1 -- a.go); RC=$?
+eq "complete succeeds inside a worktree" "0" "$RC"
+eq "and stages the worktree's task file" "2" "$(git -C "$WT2" diff --cached --name-only | wc -l | tr -d ' ')"
+eq "and records its state under the worktree git dir" "1" \
+   "$(ls "$(git -C "$WT2" rev-parse --absolute-git-dir)/clerk/tasks"/*.json 2>/dev/null | wc -l | tr -d ' ')"
+eq "the main checkout's copy is untouched" "1" \
+   "$(grep -c '^- \[ \] Task 1:' "$R13/tasks/wt.md" | tr -d ' ')"
+
+git -C "$WT2" commit -qm "Task 1"
+run "$WT2" receipt --command "go test ./..." --passed >/dev/null
+eq "gate reads the worktree breakdown" "true" \
+   "$(run "$WT2" gate --audit-accepted | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
+
+L=$(run "$WT2" land --audit-accepted)
+eq "land archives inside the worktree" "tasks/completed/wt.md" "$(printf '%s' "$L" | jq -r '.archived')"
+eq "and the archive landed on the worktree branch" "1" \
+   "$(git -C "$WT2" log --oneline -1 --name-only | grep -c 'tasks/completed/wt.md' | tr -d ' ')"
+
+run "$WT2" receipt --command "go test ./..." --passed >/dev/null
+L=$(run "$WT2" land --integrate --audit-accepted)
+eq "integrating from inside a worktree stops before the merge" "false" "$(printf '%s' "$L" | jq -r '.landed')"
+case "$(printf '%s' "$L" | jq -r '.next_step')" in
+  *"merge --ff-only"*) ok "and prints the command to run in the main checkout" ;;
+  *) bad "and prints the command to run in the main checkout" "a merge --ff-only hint" "$(printf '%s' "$L" | jq -r '.next_step')" ;;
+esac
+
+git -C "$R13" worktree remove --force "$WT2" 2>/dev/null
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

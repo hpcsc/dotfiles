@@ -301,6 +301,24 @@ cmd_sidecar() {
   [ -n "$rows" ] || die "sidecar: found no 'Task N' sections or checklist entries in $(basename "$tasks") — write the sidecar by hand"
 
   printf '%s\n' "$rows" | jq -R -s -c --arg tasks "$tasks" --arg from "$from" '
+    # A **Depends on:** line is prose, and three shapes in it will produce wrong edges if
+    # you just harvest digits. "None — ... Independent of Task 1" names a task it is
+    # explicitly NOT waiting on. "US-007 Task 5" is a dependency on another breakdown
+    # entirely, not on task 5 of this one. And "Tasks 1-4" is a range, not two numbers.
+    def deps($raw):
+      ($raw | gsub("\\*"; "") | gsub("^\\s+"; "")) as $s
+      | if ($s | ascii_downcase | startswith("none")) then []
+        else
+          ($s | gsub("US-[0-9]+\\s*Tasks?\\s*[0-9]+(\\s*(,|and)\\s*[0-9]+)*"; " ")) as $t
+          | [ $t | scan("Tasks?\\s+([0-9]+(?:\\s*[,-]\\s*[0-9]+)*(?:\\s*,?\\s*and\\s*[0-9]+)*)") | .[0] ]
+          | map(gsub("\\s*and\\s*"; ",") | gsub("\\s"; "")
+                | split(",") | map(select(length > 0))
+                | map(if test("-")
+                      then (split("-") | map(tonumber)) as $r | [range($r[0]; $r[1] + 1)]
+                      else [tonumber] end)
+                | flatten)
+          | flatten | unique
+        end;
     def lang($files):
       if   ($files | test("\\.go$|\\.go ")) then "Go"
       elif ($files | test("\\.tsx?$|\\.jsx?$|\\.tsx? |\\.jsx? ")) then "JavaScript/TypeScript"
@@ -312,7 +330,7 @@ cmd_sidecar() {
         title: (.[1] // "" | gsub("^\\s+|\\s+$"; "")),
         language: lang(.[4] // ""),
         testable: ((.[3] // "") | ascii_downcase | startswith("no") | not),
-        depends_on: [ (.[2] // "") | scan("[0-9]+") | tonumber ],
+        depends_on: deps(.[2] // ""),
         affected_files: ((.[4] // "") | split(" ") | map(select(length > 0)))
       })
     | {story: ($tasks | split("/") | last | sub("\\.md$"; "")),

@@ -391,7 +391,54 @@ git -C "$R11" add -A && git -C "$R11" commit -qm "Empty"
 run "$R11" sidecar >/dev/null 2>&1
 eq "fails loudly when nothing parses" "2" "$?"
 
+
+# The shapes that make a **Depends on:** line prose rather than a field.
+R12=$(new_repo); mkdir -p "$R12/tasks"
+cat > "$R12/tasks/prose.md" <<'EOF'
+### Task 1: Independent one
+
+**Affected Files/Modules:**
+- `a.go` — x
+
+**Depends on:** None (US-006 is on main). Independent of Task 3 — different writers.
+
+### Task 2: Cross-story only
+
+**Affected Files/Modules:**
+- `b.go` — x
+
+**Depends on:** US-007 Task 1 (`ast.ThenView`) and US-007 Task 2 (the rest)
+
+### Task 3: Local plus cross-story
+
+**Affected Files/Modules:**
+- `c.go` — x
+
+**Depends on:** Task 2 (for the helper), and **US-009 Task 1**, which must be on main
+
+### Task 4: A range
+
+**Affected Files/Modules:**
+- `d.go` — x
+
+**Depends on:** Tasks 1-3, and **all upstream** — US-007 Task 5, US-009 Task 1
+
+### Task 5: A list joined by and
+
+**Affected Files/Modules:**
+- `e.go` — x
+
+**Depends on:** Tasks 1, 3 and 4 — the section states what each one produces
+EOF
+git -C "$R12" add -A && git -C "$R12" commit -qm "Prose deps"
+run "$R12" sidecar --tasks-file "$R12/tasks/prose.md" >/dev/null
+eq "None wins over a task named as NOT a dependency" "0" "$(jq -r '.tasks[0].depends_on | length' "$R12/tasks/prose.json")"
+eq "a purely cross-story dependency is not a local edge" "0" "$(jq -r '.tasks[1].depends_on | length' "$R12/tasks/prose.json")"
+eq "a local edge survives beside a cross-story one" "2" "$(jq -r '.tasks[2].depends_on | join(",")' "$R12/tasks/prose.json")"
+eq "a range expands"                                "1,2,3" "$(jq -r '.tasks[3].depends_on | join(",")' "$R12/tasks/prose.json")"
+eq "a list joined by and does not fuse its numbers" "1,3,4" "$(jq -r '.tasks[4].depends_on | join(",")' "$R12/tasks/prose.json")"
+
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

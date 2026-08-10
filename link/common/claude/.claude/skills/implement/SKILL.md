@@ -250,7 +250,11 @@ Fix findings **directly**. Do not launch a workflow to apply them — you have t
 
 **Then re-run the `default` suite, and report that output.** Step 1's receipt was taken before these fixes existed, so it is evidence about a tree that no longer exists — and the integration gate below means the later run, not that one. This is the one place in the skill where code changes land after the last green receipt, which is exactly the vacuous-receipt shape the audit itself hunts for. If you changed nothing, say so and keep step 1's receipt.
 
-**Re-run `audit-implement` only if the fixes were substantial** — a new code path, a changed contract, a fix whose blast radius you cannot see the edge of. Typo-level and single-call-site fixes do not earn a second workflow. If you do re-run it, pass the same `brief` and `story`.
+**Then re-audit narrowed, not wholesale.** Every finding carries the `lens` that raised it. Re-invoke `audit-implement` with `args.lenses` set to just those keys and `args.recheck` set to the findings you fixed (`id`, `claim`, and what you changed), plus the same `brief` and `story`. That costs the scope pass and those lenses, and skips Verify and Report altogether when nothing is raised — the expected outcome.
+
+**Widen to the full panel when any fix touched behaviour.** A quality fix — a comment removed, a redundant test folded, a name changed — cannot break what another lens owns, so the raising lens is sufficient. A fix that changes a code path can, and the lens that raised the original finding is not watching for it. Same rule `implement-flow` applies to its per-task panel: quality-only failures narrow, anything touching behaviour never does.
+
+If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix suite run above is the evidence that matters.
 
 ### 3. Validate against the story
 

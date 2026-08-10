@@ -80,6 +80,18 @@ const TARGET = ARGS?.target ?? 'branch'
 const BASE_REF = ARGS?.baseRef ?? null
 const BRIEF = ARGS?.brief ?? null
 const STORY = ARGS?.story ?? null
+// A re-audit after fixes usually only needs to re-ask the lens that raised the finding.
+// Restricting the panel is safe ONLY when the fixes could not have changed behaviour —
+// a behaviour change can break something a different lens owns, and the lens that
+// raised the original finding is not watching for it. The caller owns that judgment.
+// Split on "+" because a deduplicated finding reports the merged key of the lenses that
+// raised it ("guidelines:Go + tests:Go"). The caller reads `lens` off a finding and
+// hands it straight back, so accepting only atomic keys would silently match nothing
+// and fall through to a full re-audit — the exact cost this argument exists to avoid.
+const LENSES = Array.isArray(ARGS?.lenses) && ARGS.lenses.length
+  ? [...new Set(ARGS.lenses.flatMap((k) => String(k).split('+').map((s) => s.trim()).filter(Boolean)))]
+  : null
+const RECHECK = Array.isArray(ARGS?.recheck) ? ARGS.recheck : []
 const DEPTH = ARGS?.depth ?? 'standard'
 const VERIFIERS = DEPTH === 'deep' ? 3 : 1
 const TEST_CMDS = (typeof ARGS === 'object' && ARGS?.testCommands) || {}
@@ -180,11 +192,14 @@ const SYNTH_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'severity', 'file', 'claim', 'nature', 'confidence'],
+        required: ['id', 'severity', 'file', 'claim', 'nature', 'confidence', 'lens'],
         properties: {
           id: { type: 'string' }, severity: { type: 'string', enum: ['low', 'medium', 'high'] },
           file: { type: 'string' }, line: { type: ['integer', 'null'] },
           claim: { type: 'string' }, nature: { type: 'string', enum: ['runtime', 'quality'] },
+          // Carried through so the caller can re-ask just this lens after fixing, instead
+          // of paying a whole audit. Without it the report is a dead end for a re-audit.
+          lens: { type: 'string', description: 'the lens key that raised this, verbatim from the survivor list; when deduplicating two lenses into one finding, join their keys with " + "' },
           confidence: { type: 'string', enum: ['confirmed', 'plausible'], description: 'confirmed = reproduced by execution, or a quality rule cited at a specific line' },
           evidence: { type: 'string', description: 'the command + output that reproduced it, or the rule + line' },
           suggested_fix: { type: ['string', 'null'] },
@@ -227,10 +242,23 @@ const intentBlock = () =>
       (BRIEF ? `Caller's one-line brief: ${BRIEF}\n` : '') +
       `\n`
 
+// A claimed fix is a claim about the tree, checkable right now — so the lens is told
+// what was claimed rather than left to rediscover it. It keeps its full remit over the
+// diff: a fix can introduce a fresh defect, and a lens restricted to re-checking old
+// ids would be blind to exactly that.
+const recheckBlock = () =>
+  !RECHECK.length
+    ? ''
+    : `THIS IS A RE-AUDIT. An earlier pass raised the findings below and they were reported fixed:\n` +
+      RECHECK.map((r) => `  - [${r.id}] ${r.claim}${r.note ? ` — reported fix: ${r.note}` : ''}`).join('\n') +
+      `\nFor each, check the tree and say whether the fix actually landed. If it did not, RE-RAISE it with the SAME id. Judge only whether the described change is there — whether the finding deserved fixing is settled and not yours to re-open.\n` +
+      `Your remit is otherwise unchanged: review this diff as you normally would. A fix can introduce a new defect, and you are the lens that would see it.\n\n`
+
 const reviewPreamble = (scope) =>
   `You are auditing finished, committed work — not a work-in-progress. Nobody is waiting to defend it, so judge it as it stands.\n\n` +
   `Change set, as summarized from the diff: ${scope.summary}\n` +
   intentBlock() +
+  recheckBlock() +
   `Diff: \`git diff ${scope.base}...${scope.head}\`${scope.base === 'HEAD' ? ' (or `git diff --cached` — this target is the staged changes)' : ''}\n` +
   `Changed files (${scope.files.length}) — you do not need to discover them:\n${scope.files.map((f) => `  ${f}`).join('\n')}\n\n` +
   `Read the diff AND the whole post-image of every changed file, together, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.\n\n` +
@@ -293,11 +321,12 @@ const verifyPrompt = (scope, f, i, n) =>
 const synthPrompt = (scope, confirmed, refuted, lensNotes, gaps) =>
   `Assemble the final audit report from verified material only.\n\n` +
   `Change set: ${scope.summary}\nFiles: ${scope.files.length}\n\n` +
-  `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
+  `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens}) — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
   `REFUTED and dropped (${refuted.length}) — for your judgment of coverage only, do NOT reinstate:\n${refuted.map((r) => `- [${r.finding.id}] ${r.finding.claim} — ${r.basis}`).join('\n') || '  (none)'}\n\n` +
   (lensNotes.length ? `What the lenses deliberately did not flag:\n${lensNotes.map((n) => `- ${n}`).join('\n')}\n\n` : '') +
   (gaps.length ? `Lenses NOT run on this diff:\n${gaps.map((g) => `- ${g}`).join('\n')}\n\n` : '') +
   `Produce \`findings\`: every survivor, deduplicated (two lenses describing one defect become one finding, keeping the more precise claim and the stronger evidence), ranked most severe first, each with \`confidence\` "confirmed" when execution reproduced it or a quality rule was cited at a specific line, "plausible" otherwise.\n` +
+  `Carry each finding's \`lens\` through verbatim from the list above; when you merge two lenses into one finding, join their keys with " + ". The caller re-asks that lens after fixing instead of paying for a whole audit, so a dropped or invented lens key costs them a full re-run.\n` +
   `Then \`coverage_gaps\`: what this audit could not judge — a lens that did not run and why it might have mattered, a file nobody read, a claim nobody could test. Be concrete; "nothing was missed" is almost never true and is not a useful answer.\n` +
   `Do NOT invent findings to pad the report. A clean audit is a real outcome and saying so plainly is more useful than manufacturing nits.`
 
@@ -320,7 +349,7 @@ if (!STORY) log('no caller request given — lenses judge intent from the diff a
 
 phase('Review')
 const primary = canonicalLang(scope.languages?.[0])
-const lenses = []
+let lenses = []
 for (const lang of (scope.languages?.length ? scope.languages : ['Generic']).map(canonicalLang)) {
   const cfg = LANG[lang]
   lenses.push({ key: `semantic:${lang}`, agentType: cfg.semantic, prompt: semanticPrompt(scope, lang) })
@@ -333,6 +362,24 @@ else notRun.push('concurrency — the diff does not add or change concurrent cod
 if (scope.signals.performance) lenses.push({ key: 'performance', agentType: LANG[primary].performance, prompt: specialistPrompt(scope, 'performance') })
 else notRun.push('performance — the diff has no I/O, query, unbounded loop or hot-path allocation to measure')
 if (!scope.signals.tests_changed) notRun.push('test integrity — no test file changed')
+
+// Narrowed re-audit. The fallback to the full panel is not caution for its own sake:
+// the panel is recomputed from THIS scope, so a lens named here can legitimately be
+// absent now (the tests lens drops out once no test file changes), and narrowing to
+// nothing would return a clean audit that nobody performed. Whatever is held back is
+// reported as a coverage gap — a narrowed run must not read as full coverage.
+if (LENSES) {
+  const narrowed = lenses.filter((l) => LENSES.includes(l.key))
+  if (narrowed.length) {
+    for (const l of lenses.filter((x) => !narrowed.includes(x))) {
+      notRun.push(`${l.key} — held back: this is a narrowed re-audit of ${narrowed.map((n) => n.key).join(', ')}`)
+    }
+    log(`narrowed re-audit: running ${narrowed.map((l) => l.key).join(', ')} of ${lenses.length} applicable lens(es)`)
+    lenses = narrowed
+  } else {
+    log(`narrowed re-audit asked for ${LENSES.join(', ')} but none is in this diff's panel — running the full panel instead`)
+  }
+}
 
 log(`running ${lenses.length} lens(es): ${lenses.map((l) => l.key).join(', ')}`)
 for (const g of notRun) log(`skipped ${g}`)

@@ -47,6 +47,17 @@ Read the values rather than re-deriving them. Three of them have precedence rule
 
 If `clerk` is not installed, its resolutions are documented in `~/.config/ai/method/implement/` — but install it rather than hand-executing them; getting `test_command` precedence wrong silently tests the wrong thing.
 
+### Check whether this run already exists
+
+Stopping and restarting is the normal case, not an edge one, and the two ways of getting it wrong are both expensive: a second worktree strands the first one's commits somewhere nobody looks, and a second decomposition produces a different task list against code the first run already changed, so the sidecar recording what was built no longer describes the plan.
+
+`clerk prepare` reports what you need to tell the difference:
+
+- **`worktrees`** — every worktree of this repo with its branch. One whose branch matches this feature means the run already has a home; enter that one rather than creating another. How you enter it is tool-specific and covered below.
+- **`breakdowns`** — every breakdown under `tasks/` with `done`, `total`, `started` and `finished`. One with `started: true` and `finished: false` is a part-built run; adopt it in Phase 1 rather than decomposing again.
+
+Neither present means a fresh start. `clerk status --tasks-file <path>` shows exactly where a previous run stopped.
+
 ### Read the guidelines — yourself
 
 **Read these for the languages `clerk prepare` reported**, before writing any code:

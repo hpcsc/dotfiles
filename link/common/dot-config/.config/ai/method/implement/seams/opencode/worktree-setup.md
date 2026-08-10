@@ -4,6 +4,10 @@
 
 Then **work in a worktree**, unless the request carries `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits.
 
+**If `clerk prepare` listed a worktree whose branch matches this feature**, that run already has a home — `cd` to its `path` and carry on. Do not `git worktree add` a second one; that is how the first one's commits get stranded.
+
+Otherwise create it:
+
 ```
 WT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/../wt-<kebab-feature-name>"
 git worktree add -b <kebab-feature-name> "$WT"

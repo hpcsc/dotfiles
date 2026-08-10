@@ -4,7 +4,9 @@
 
 Then **work in a worktree**, unless the request carries `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits. That sweep is a real failure mode, not a hypothetical.
 
-Use the **EnterWorktree** tool (this skill is the explicit instruction that tool requires). Name it for the feature. It creates the worktree under `.claude/worktrees/`, puts it on a new branch, and switches the session's working directory into it — same window, same session, no new tmux anything. Every command from here runs there, and relative paths work normally.
+**If `clerk prepare` listed a worktree whose branch matches this feature**, that run already has a home: call **EnterWorktree** with its `path` to switch into it, and do not pass `name`. Creating a second one for the same feature is how the first one's commits get stranded.
+
+Otherwise use the **EnterWorktree** tool with a `name` (this skill is the explicit instruction that tool requires). Name it for the feature. It creates the worktree under `.claude/worktrees/`, puts it on a new branch, and switches the session's working directory into it — same window, same session, no new tmux anything. Every command from here runs there, and relative paths work normally.
 
 Two consequences to hold onto:
 

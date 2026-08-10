@@ -227,11 +227,11 @@ Say what landed in one or two lines and move to the next task. The user is watch
 
 ---
 
-## Phase 3: Audit, integrate, close
+## Phase 3: Audit, validate, close
 
 ### 1. Full suite
 
-Run the `default` test command in the main tree. Report the real output.
+Run the `default` test command **in the tree that holds this run's commits** — resolve it with `git rev-parse --show-toplevel`, and do not assume the main checkout. Unless you passed `--in-place`, you are in the worktree and the main checkout is still sitting on the default branch without a line of this feature in it; a suite run there tests the wrong tree and passes for the wrong reason. Report the real output.
 
 ### 2. Hand the branch to `audit-implement`
 
@@ -267,17 +267,19 @@ This costs a read, not an agent, because you are already here. Re-read the story
 
 Quote the story's own words for anything you raise; if you cannot point at the phrase, you are inventing a requirement. Put mismatches to the user as questions and let them decide — you wrote this code, which makes you the worst-placed reader of your own interpretation of the request. Finding nothing is the common result; say so in a line.
 
-Do this **before** integrating: a mismatch found after the fast-forward is a mismatch found too late.
+Do this **before** integrating, on the runs where you integrate at all: a mismatch found after the fast-forward is a mismatch found too late.
 
 ### 4. Verify the run
 
-Spawn `run-verifier` in the main tree: staged-but-uncommitted tails, new public symbols with no live caller, a vacuous full-suite, collapsed commit boundaries. If `clean`, say so in one line. If not, surface each finding — a `block` means "done" does not hold.
+Spawn `run-verifier` **in the tree that holds this run's commits** — tell it to resolve that tree with `git rev-parse --show-toplevel` rather than assume the main checkout, which does not have the branch yet. Pointed at the wrong tree it finds no commits to check and reports clean, which is the one failure mode a verifier must not have. It checks staged-but-uncommitted tails, new public symbols with no live caller, a vacuous full-suite, and collapsed commit boundaries. If `clean`, say so in one line. If not, surface each finding — a `block` means "done" does not hold.
 
 ### 5. Integrate the branch
 
-Land the work on the default branch, **local only — never push**. Skip when `--no-integrate` is given, and hold off when anything below fails; a branch left standing is always recoverable, a bad fast-forward is not.
+**Integration is opt-in. By default this step does not run** — the work stays on its branch, in its worktree, and you hand it over. Land it only when `$ARGUMENTS` explicitly asks: `--integrate`, or the user saying so in words.
 
-Gate on all four: every task `- [x]` and committed, **the full suite green on the tree you are about to land** (the post-fix run from step 2 if the audit changed anything, not step 1's), `run-verifier` clean, and the audit's findings either fixed or explicitly accepted by the user.
+That default is not timidity. Landing on the default branch is the one irreversible thing this skill does, and it is the step whose inputs — a green suite, a clean verifier, findings you judged accepted — are all things you assessed about your own work. A branch left standing costs one `git merge --ff-only` to land later; a bad fast-forward costs a history rewrite. Absent an explicit instruction, leave the cheap option in place.
+
+When it does run: **local only — never push.** Hold off when anything below fails, and gate on all four: every task `- [x]` and committed, **the full suite green on the tree you are about to land** (the post-fix run from step 2 if the audit changed anything, not step 1's), `run-verifier` clean, and the audit's findings either fixed or explicitly accepted by the user.
 
 From inside the worktree:
 
@@ -291,8 +293,9 @@ With `--in-place` there is no worktree: steps 1, 2, 4 and the branch delete stil
 
 Report the resulting `git log` on the default branch, and say plainly that nothing was pushed.
 
+**When you did NOT integrate** (the default), say so explicitly rather than letting silence imply it landed: name the branch, its worktree path, and the one command that lands it — `git merge --ff-only <feature-branch>` from the main checkout, after a `git rebase <default-branch>` if the base has moved. Leave the worktree in place; the user may want to run the code before landing it.
 
-Do this **before** reflecting. Reflect leaves the in-tree `tasks/learnings.md` modified and uncommitted by design, and a dirty tracked file blocks a rebase.
+Integrating, when it happens, must come **before** reflecting. Reflect leaves the in-tree `tasks/learnings.md` modified and uncommitted by design, and a dirty tracked file blocks a rebase.
 
 ### 6. Close out
 

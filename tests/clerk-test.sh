@@ -660,6 +660,86 @@ eq "flattens to one row per task" "4" \
    "$(printf '%s' "$A" | jq -r '.breakdowns[] | .tasks_file as $f | .progress[] | [$f, (.n|tostring)] | @tsv' | wc -l | tr -d ' ')"
 
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$WT" 2>/dev/null
+printf '\na repo that keeps tasks/ out of history\n'
+
+# The regime that sent a run into the main checkout: a fresh worktree only ever
+# materialises tracked files, so an excluded breakdown is not in it, and resolving the
+# breakdown against the work tree left the worktree the one place the run could not see
+# its own plan. Every command has to find it at the main root instead.
+R19=$(new_repo)
+printf 'tasks\n' > "$R19/.gitignore"
+git -C "$R19" add -A && git -C "$R19" commit -qm "Exclude tasks"
+mkdir -p "$R19/tasks"
+cat > "$R19/tasks/story.md" <<'EOF'
+# Story
+
+## Task 1: Add the type
+**Depends on:** None
+EOF
+cat > "$R19/tasks/story.json" <<'EOF'
+{"story":"story","tasks":[
+ {"n":1,"title":"Add the type","language":"Go","testable":true,"depends_on":[],"affected_files":["a.go"]},
+ {"n":2,"title":"Use it","language":"Go","testable":true,"depends_on":[1],"affected_files":["b.go"]}]}
+EOF
+printf 'package a\n' > "$R19/a.go"; printf 'package b\n' > "$R19/b.go"
+git -C "$R19" add -A && git -C "$R19" commit -qm "Add code"
+
+J=$(run "$R19" prepare)
+eq "prepare says the breakdown is not tracked" "false" "$(printf '%s' "$J" | jq -r '.tasks_tracked')"
+eq "and homes it at the main repo root"        "$R19" "$(printf '%s' "$J" | jq -r '.tasks_home')"
+eq "and still finds it"                        "$R19/tasks/story.md" "$(printf '%s' "$J" | jq -r '.tasks_file')"
+
+WT2="$R19/.wt/feature"
+git -C "$R19" worktree add -q -b feature "$WT2" >/dev/null 2>&1
+eq "a worktree does not contain the excluded breakdown" "" "$(ls "$WT2/tasks" 2>/dev/null)"
+J=$(run "$WT2" prepare)
+eq "yet prepare inside it resolves the breakdown anyway" "$R19/tasks/story.md" \
+   "$(printf '%s' "$J" | jq -r '.tasks_file')"
+eq "reporting the work tree it is standing in"          "$WT2" "$(printf '%s' "$J" | jq -r '.work_tree')"
+eq "next picks up where the plan says"                  "1"    "$(run "$WT2" next | jq -r '.task.n')"
+
+printf 'package a2\n' > "$WT2/a.go"
+C=$(run "$WT2" finish 1 -- a.go)
+eq "finish reports the breakdown as untracked" "false" "$(printf '%s' "$C" | jq -r '.breakdown_tracked')"
+eq "still marks the task done"                 "true"  "$(jq -r '.tasks[0].done' "$R19/tasks/story.json")"
+eq "and stages only the code, never the sidecar" "a.go" \
+   "$(git -C "$WT2" diff --cached --name-only | tr '\n' ',' | sed 's/,$//')"
+
+git -C "$WT2" commit -qm "Task 1" >/dev/null
+printf 'package b2\n' > "$WT2/b.go"
+run "$WT2" finish 2 -- b.go >/dev/null 2>&1
+eq "a second task in the worktree also succeeds" "0" "$?"
+git -C "$WT2" commit -qm "Task 2" >/dev/null
+eq "status reads progress from the excluded sidecar" "2|2" \
+   "$(run "$WT2" status | jq -r '[.total, .done] | join("|")')"
+
+run "$WT2" receipt --command "true" --passed >/dev/null
+L=$(run "$WT2" land --audit-accepted)
+eq "land archives the breakdown by moving it, not committing it" \
+   "$R19/tasks/completed/story.md" "$(printf '%s' "$L" | jq -r '.archived')"
+eq "the archived breakdown is where it was moved to" "yes" \
+   "$([ -f "$R19/tasks/completed/story.md" ] && echo yes || echo no)"
+eq "its sidecar moved with it"                       "yes" \
+   "$([ -f "$R19/tasks/completed/story.json" ] && echo yes || echo no)"
+eq "and no archive commit was made"                  "Task 2" \
+   "$(git -C "$WT2" log -1 --format=%s)"
+
+# The tracked regime must keep staging the sidecar with the code — the guard against a
+# progress record landing in a different commit from the work it stands for.
+R20=$(new_repo)
+mkdir -p "$R20/tasks"
+printf '# Story\n\n## Task 1: Add it\n**Depends on:** None\n' > "$R20/tasks/story.md"
+printf '{"story":"story","tasks":[{"n":1,"title":"Add it","language":"Go","testable":true,"depends_on":[],"affected_files":["a.go"]}]}\n' > "$R20/tasks/story.json"
+printf 'package a\n' > "$R20/a.go"
+git -C "$R20" add -A && git -C "$R20" commit -qm "Add plan"
+printf 'package a2\n' > "$R20/a.go"
+C=$(run "$R20" finish 1 -- a.go)
+eq "a tracked breakdown is still reported as tracked" "true" "$(printf '%s' "$C" | jq -r '.breakdown_tracked')"
+eq "and its sidecar still lands with the code"        "a.go,tasks/story.json" \
+   "$(git -C "$R20" diff --cached --name-only | sort | tr '\n' ',' | sed 's/,$//')"
+
+# --------------------------------------------------------------------------------
+git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

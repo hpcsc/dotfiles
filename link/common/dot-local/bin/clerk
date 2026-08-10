@@ -159,11 +159,33 @@ resolve_learnings_path() {
 # Task file discovery
 # --------------------------------------------------------------------------------
 
-# Resolve against the WORK TREE, not the main repo root. The breakdown is tracked
-# content on the branch: inside a worktree it is the worktree's copy that gets ticked,
-# staged and committed, and `git add` refuses a path from the main checkout as being
-# outside the repository. Only tasks/test-commands.json and the learnings file live at
-# the main root, because they are shared config rather than branch content.
+# Answers for the path as the repo's own rules see it, which covers .gitignore,
+# .git/info/exclude and a global core.excludesFile alike — a repo that keeps tasks/ out
+# of history usually does it through info/exclude, where a grep of .gitignore finds
+# nothing.
+is_ignored() {
+  local dir=$1 rel=$2
+  (cd "$dir" 2>/dev/null && git check-ignore -q -- "$rel" 2>/dev/null)
+}
+
+# Where this repo's breakdowns live, which depends on whether tasks/ is committed.
+#
+# Tracked: the WORK TREE. The breakdown is content on the branch — inside a worktree it
+# is the worktree's copy that gets ticked, staged and committed, and `git add` refuses a
+# path from the main checkout as being outside the repository.
+#
+# Excluded: the MAIN REPO ROOT. Then the breakdown is machine-local and belongs to the
+# repository rather than to any one branch, so a fresh worktree is never going to contain
+# it — checkout only ever materialises tracked files. Resolving there is what lets a run
+# work in a worktree at all; otherwise the only way to see your own breakdown is to build
+# in the main checkout, which is exactly the isolation the worktree exists to provide.
+tasks_home() {
+  local root wt
+  root=$(repo_root) || return 1
+  wt=$(work_tree)
+  if is_ignored "$root" tasks; then printf '%s' "$root"; else printf '%s' "$wt"; fi
+}
+
 find_tasks_file() {
   local root=$1 f n=0 found=
   for f in "$root"/tasks/*.md; do
@@ -202,9 +224,9 @@ list_breakdowns() {
 }
 
 cmd_prepare() {
-  local root wt gd branch base def langs cmds prefix learn tasks clean breakdowns trees
+  local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees
   root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree)
+  wt=$(work_tree); th=$(tasks_home)
   def=$(default_branch)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
   base=""
@@ -213,14 +235,15 @@ cmd_prepare() {
   cmds=$(resolve_test_commands "$root")
   prefix=$(resolve_go_prefix "$root")
   learn=$(resolve_learnings_path "$root")
-  tasks=$(find_tasks_file "$wt") || tasks=""
-  breakdowns=$(list_breakdowns "$wt")
+  tasks=$(find_tasks_file "$th") || tasks=""
+  breakdowns=$(list_breakdowns "$th")
   # Worktrees this repo already has. A resumed run must enter the one it left rather
   # than opening a second for the same feature and stranding the first's commits.
   trees=$(git worktree list --porcelain 2>/dev/null | awk '
     /^worktree /{p=$2} /^branch /{b=$2; sub(/^refs\/heads\//, "", b); print p "\t" b}' \
     | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {path: .[0], branch: .[1]})')
   if tree_is_clean; then clean=true; else clean=false; fi
+  if is_ignored "$root" tasks; then tracked=false; else tracked=true; fi
 
   jq -n \
     --arg version "$CLERK_VERSION" \
@@ -232,6 +255,8 @@ cmd_prepare() {
     --arg go_tool_prefix "$prefix" \
     --arg learnings_path "$learn" \
     --arg tasks_file "$tasks" \
+    --arg tasks_home "$th" \
+    --argjson tasks_tracked "$tracked" \
     --argjson languages "$langs" \
     --argjson test_commands "$cmds" \
     --argjson clean "$clean" \
@@ -252,6 +277,8 @@ cmd_prepare() {
       go_tool_prefix: $go_tool_prefix,
       learnings_path: $learnings_path,
       tasks_file: (if $tasks_file == "" then null else $tasks_file end),
+      tasks_home: $tasks_home,
+      tasks_tracked: $tasks_tracked,
       breakdowns: $breakdowns,
       worktrees: $worktrees
     }'
@@ -284,7 +311,7 @@ checklist_done() {
 # would silently reorder the work. So it is an explicit command that shows what it
 # extracted, never something `next` does behind your back.
 cmd_sidecar() {
-  local force=false tasks_override= root wt tasks out rows n
+  local force=false tasks_override= root wt th tasks out rows n
   while [ $# -gt 0 ]; do
     case "$1" in
       --force) force=true; shift ;;
@@ -294,9 +321,9 @@ cmd_sidecar() {
   done
 
   root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree)
+  wt=$(work_tree); th=$(tasks_home)
   if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$wt") || die "sidecar: no single task file under $wt/tasks (pass --tasks-file)"
+    tasks=$(find_tasks_file "$th") || die "sidecar: no single task file under $th/tasks (pass --tasks-file)"
   fi
   [ -f "$tasks" ] || die "sidecar: task file not found: $tasks"
   out="${tasks%.md}.json"
@@ -402,7 +429,7 @@ cmd_sidecar() {
 }
 
 cmd_next() {
-  local allow_dirty=false tasks_override= root wt tasks side donej
+  local allow_dirty=false tasks_override= root wt th tasks side donej
   while [ $# -gt 0 ]; do
     case "$1" in
       --allow-dirty) allow_dirty=true; shift ;;
@@ -412,9 +439,9 @@ cmd_next() {
   done
 
   root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree)
+  wt=$(work_tree); th=$(tasks_home)
   if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$wt") || die "next: no single task file under $wt/tasks (pass --tasks-file)"
+    tasks=$(find_tasks_file "$th") || die "next: no single task file under $th/tasks (pass --tasks-file)"
   fi
   [ -f "$tasks" ] || die "next: task file not found: $tasks"
   side=$(sidecar_for "$tasks") || die "next: no sidecar beside $tasks — run 'clerk sidecar' to recover one from the breakdown, or let decompose-to-tasks write ${tasks%.md}.json"
@@ -453,7 +480,7 @@ cmd_next() {
 # can disagree, and a mirror that has gone stale still reads as authoritative to
 # whoever opens it.
 cmd_finish() {
-  local n= tasks_override= root wt tasks side dir f tmp staged_tasks=false
+  local n= tasks_override= root wt th tasks side dir f tmp staged_tasks=false tracked_tasks=true
   n=${1:-}; shift 2>/dev/null || true
   case "$n" in ''|*[!0-9]*) die "finish: first argument must be a task number" ;; esac
 
@@ -467,9 +494,9 @@ cmd_finish() {
   [ $# -gt 0 ] || die "finish: name the files this task changed after '--' (never 'git add -A')"
 
   root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree)
+  wt=$(work_tree); th=$(tasks_home)
   if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$wt") || die "finish: no single task file under $wt/tasks (pass --tasks-file)"
+    tasks=$(find_tasks_file "$th") || die "finish: no single task file under $th/tasks (pass --tasks-file)"
   fi
   [ -f "$tasks" ] || die "finish: task file not found: $tasks"
   side=$(sidecar_for "$tasks") || die "finish: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
@@ -496,19 +523,31 @@ cmd_finish() {
   # finish does not manage that content — but leaving it modified after a step whose
   # whole point is that a task's pieces land together strands those ticks outside the
   # commit and dirties the tree, which then blocks `next`.
-  if ! git diff --quiet -- "$tasks" 2>/dev/null; then
-    git add -- "$tasks" || die "finish: could not stage the modified breakdown"
-    staged_tasks=true
+  #
+  # None of that applies when the repo keeps tasks/ out of history. Then the breakdown
+  # and its sidecar are machine-local, `git add` refuses them outright, and the hazard
+  # they are staged against — a sidecar committed without the code it stands for, or the
+  # reverse — cannot arise, because neither is ever committed. Rewriting the sidecar is
+  # the whole of the job.
+  if is_ignored "$(dirname "$side")" "$(basename "$side")"; then
+    tracked_tasks=false
+  else
+    tracked_tasks=true
+    if ! git diff --quiet -- "$tasks" 2>/dev/null; then
+      git add -- "$tasks" || die "finish: could not stage the modified breakdown"
+      staged_tasks=true
+    fi
+    git add -- "$side" || die "finish: could not stage the sidecar — report this and stop. Marking the task done and staging it with its code is precisely what this command exists to do in one step"
   fi
-  git add -- "$side" || die "finish: could not stage the sidecar — report this and stop. Marking the task done and staging it with its code is precisely what this command exists to do in one step"
 
   dir=$(state_dir); mkdir -p "$dir/tasks"
   printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '{n: ($n | tonumber), at: $at, files: (split("\n") | map(select(length > 0)))}' \
     > "$dir/tasks/$n.json"
 
-  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg side "$side" --arg st "$staged_tasks" \
+  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg side "$side" --arg st "$staged_tasks" --arg tr "$tracked_tasks" \
     '{task: ($n | tonumber), done: true, sidecar: $side, breakdown_staged: ($st == "true"),
+      breakdown_tracked: ($tr == "true"),
       staged: (split("\n") | map(select(length > 0))),
       next_step: "invoke the commit skill — the message is judgment, not mechanics"}'
 }
@@ -563,7 +602,7 @@ status_of() {
 # the repo, in flight and archived, which is what a cross-story report wants: clerk owns
 # this format, so it owns reading it rather than leaving each caller to learn the schema.
 cmd_status() {
-  local tasks_override= all=false root wt tasks side f arch
+  local tasks_override= all=false root wt th tasks side f arch
   while [ $# -gt 0 ]; do
     case "$1" in
       --tasks-file) tasks_override=${2:-}; shift 2 ;;
@@ -572,7 +611,7 @@ cmd_status() {
     esac
   done
   root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree)
+  wt=$(work_tree); th=$(tasks_home)
 
   if [ "$all" = true ]; then
     {
@@ -595,7 +634,7 @@ cmd_status() {
   fi
 
   if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$wt") || die "status: no single task file under $wt/tasks (pass --tasks-file)"
+    tasks=$(find_tasks_file "$th") || die "status: no single task file under $th/tasks (pass --tasks-file)"
   fi
   side=$(sidecar_for "$tasks") || die "status: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
   status_of "$tasks" "$side" false
@@ -653,7 +692,7 @@ cmd_receipt() {
 # --------------------------------------------------------------------------------
 
 cmd_gate() {
-  local audit_accepted=false tasks_override= dir root wt head rec checks ok
+  local audit_accepted=false tasks_override= dir root wt th head rec checks ok
   while [ $# -gt 0 ]; do
     case "$1" in
       --audit-accepted) audit_accepted=true; shift ;;
@@ -663,14 +702,14 @@ cmd_gate() {
   done
 
   root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree)
+  wt=$(work_tree); th=$(tasks_home)
   dir=$(state_dir)
   head=$(git rev-parse HEAD 2>/dev/null)
   checks="[]"
 
   # 1. every task checked off
   local tasks unchecked detail passed
-  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else tasks=$(find_tasks_file "$wt") || tasks=""; fi
+  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else tasks=$(find_tasks_file "$th") || tasks=""; fi
   if [ -z "$tasks" ] && [ -f "$dir/archived.json" ]; then
     # The breakdown having been archived IS the evidence every task closed — archiving
     # is gated on it. Without this, a second `land` (say, to integrate after a rebase)
@@ -886,7 +925,7 @@ cmd_verify() {
 # --------------------------------------------------------------------------------
 
 cmd_land() {
-  local integrate=false audit=false name= root wt tasks def branch before after dir
+  local integrate=false audit=false name= root wt th tasks def branch before after dir
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -905,26 +944,37 @@ cmd_land() {
     return 1
   fi
 
-  root=$(repo_root); wt=$(work_tree); dir=$(state_dir)
+  root=$(repo_root); wt=$(work_tree); th=$(tasks_home); dir=$(state_dir)
   def=$(default_branch); branch=$(git rev-parse --abbrev-ref HEAD)
-  tasks=$(find_tasks_file "$wt") || tasks=""
+  tasks=$(find_tasks_file "$th") || tasks=""
 
   # Archive first, on the feature branch, so the archive commit rides with the work it
   # belongs to instead of landing on the default branch behind it. It also has to come
   # before any rebase: `git mv` leaves a dirty tree, and a dirty tree blocks the rebase.
-  local archived=null
+  local archived=null archive_dir archive_path
   if [ -n "$tasks" ] && [ -f "$tasks" ]; then
     [ -n "$name" ] || name=$(basename "${tasks%.md}")
-    mkdir -p "$wt/tasks/completed"
-    git mv "$tasks" "$wt/tasks/completed/$(basename "$tasks")" 2>/dev/null \
-      || die "land: could not archive $tasks"
-    if [ -f "${tasks%.md}.json" ]; then
-      git mv "${tasks%.md}.json" "$wt/tasks/completed/$(basename "${tasks%.md}").json" 2>/dev/null || true
+    archive_dir="$th/tasks/completed"
+    mkdir -p "$archive_dir"
+    if is_ignored "$(dirname "$tasks")" "$(basename "$tasks")"; then
+      # Machine-local breakdown: a plain move, and no archive commit. `git mv` would
+      # refuse a path it does not track, and committing it would put in history the very
+      # thing this repo decided to keep out of it.
+      /bin/mv -f "$tasks" "$archive_dir/$(basename "$tasks")" || die "land: could not archive $tasks"
+      [ -f "${tasks%.md}.json" ] && /bin/mv -f "${tasks%.md}.json" "$archive_dir/$(basename "${tasks%.md}").json"
+      archive_path="$archive_dir/$(basename "$tasks")"
+    else
+      git mv "$tasks" "$archive_dir/$(basename "$tasks")" 2>/dev/null \
+        || die "land: could not archive $tasks"
+      if [ -f "${tasks%.md}.json" ]; then
+        git mv "${tasks%.md}.json" "$archive_dir/$(basename "${tasks%.md}").json" 2>/dev/null || true
+      fi
+      git commit -qm "Archive completed task: $name" || die "land: archive commit failed"
+      archive_path="tasks/completed/$(basename "$tasks")"
     fi
-    git commit -qm "Archive completed task: $name" || die "land: archive commit failed"
-    archived=$(jq -n --arg p "tasks/completed/$(basename "$tasks")" '$p')
+    archived=$(jq -n --arg p "$archive_path" '$p')
     mkdir -p "$dir"
-    jq -n --arg p "tasks/completed/$(basename "$tasks")" --arg n "$name" \
+    jq -n --arg p "$archive_path" --arg n "$name" \
       '{path: $p, name: $n}' > "$dir/archived.json"
   fi
 

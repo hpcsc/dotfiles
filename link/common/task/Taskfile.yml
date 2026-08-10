@@ -22,7 +22,7 @@ tasks:
         vars: { MODE: stories }
 
   progress:tasks:
-    desc: Show the task checklist of every breakdown still in flight
+    desc: Show the task list and progress of every breakdown still in flight
     dir: '{{.USER_WORKING_DIR}}'
     cmds:
       - task: report
@@ -83,4 +83,22 @@ tasks:
         # pipe and so never looks like a terminal. NO_COLOR disables, FORCE_COLOR
         # overrides for a pager or a CI log that renders escapes.
         if [ -n "$FORCE_COLOR" ] || { [ -t 1 ] && [ -z "$NO_COLOR" ]; }; then color=1; else color=; fi
-        awk -v mode={{.MODE}} -v color="$color" -f "$HOME/.config/task/progress.awk" "$@"
+
+        # Task progress lives in each breakdown's JSON sidecar, and clerk owns that
+        # format — so it reads it, rather than this recipe learning the schema and
+        # becoming a second thing to update when the schema moves. What stays here is
+        # the reporter's own job: joining breakdowns to stories, and the layout.
+        # A repo without clerk, or a breakdown without a sidecar, simply contributes no
+        # rows; the awk falls back to any `- [ ] Task N` checklist such a breakdown
+        # still carries.
+        progress=$(mktemp)
+        if command -v clerk >/dev/null 2>&1; then
+          clerk status --all 2>/dev/null \
+            | jq -r '.breakdowns[] | .tasks_file as $f | .progress[]
+                     | [$f, (.n | tostring), (if .done then "1" else "0" end), .title] | @tsv' \
+            > "$progress" 2>/dev/null || : > "$progress"
+        fi
+
+        awk -v mode={{.MODE}} -v color="$color" -v progress="$progress" \
+            -f "$HOME/.config/task/progress.awk" "$@"
+        rm -f "$progress"

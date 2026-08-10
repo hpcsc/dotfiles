@@ -622,7 +622,31 @@ eq "an unticked criterion does not shut the gate" "true" \
 eq "though status still says so"                  "2" \
    "$(run "$R17" status | jq -r '.criteria.unticked')"
 
+
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$WT" 2>/dev/null
+printf '\nstatus --all\n'
+
+R18=$(new_repo); mkdir -p "$R18/tasks/completed"
+printf -- '### Task 1: One\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R18/tasks/live.md"
+printf -- '### Task 1: Old\n\n**Depends on:** None\n' > "$R18/tasks/completed/past.md"
+git -C "$R18" add -A && git -C "$R18" commit -qm Plan
+run "$R18" sidecar --tasks-file "$R18/tasks/live.md" >/dev/null
+run "$R18" sidecar --tasks-file "$R18/tasks/completed/past.md" >/dev/null
+
+A=$(run "$R18" status --all)
+eq "walks every breakdown, in flight and archived" "2" "$(printf '%s' "$A" | jq -r '.breakdowns | length')"
+eq "marking which are archived"                    "1" \
+   "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.archived)] | length')"
+eq "and carries each task through"                 "3" \
+   "$(printf '%s' "$A" | jq -r '[.breakdowns[].progress[]] | length')"
+eq "with the sidecar it read"                      "true" \
+   "$(printf '%s' "$A" | jq -r '.breakdowns[0].sidecar | endswith(".json")')"
+
+# The shape the progress reporter consumes.
+eq "flattens to one row per task" "3" \
+   "$(printf '%s' "$A" | jq -r '.breakdowns[] | .tasks_file as $f | .progress[] | [$f, (.n|tostring)] | @tsv' | wc -l | tr -d ' ')"
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

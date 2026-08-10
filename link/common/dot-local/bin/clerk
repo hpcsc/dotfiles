@@ -532,34 +532,21 @@ criteria_counts() {
 
 # Progress, for a human. The breakdown carries no progress checkboxes, so this is what
 # you read instead of skimming the markdown for ticks.
-cmd_status() {
-  local tasks_override= root wt tasks side
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --tasks-file) tasks_override=${2:-}; shift 2 ;;
-      *) die "status: unknown argument '$1'" ;;
-    esac
-  done
-  root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree)
-  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$wt") || die "status: no single task file under $wt/tasks (pass --tasks-file)"
-  fi
-  side=$(sidecar_for "$tasks") || die "status: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
+status_of() {
+  local tasks=$1 side=$2 archived=$3 crit
 
-  local crit
   crit=$(criteria_counts "$tasks" | jq -R -s -c '
     split("\n") | map(select(length > 0) | split("\t")
       | {n: (.[0] | tonumber), total: (.[1] | tonumber), ticked: (.[2] | tonumber)})')
 
-  jq --arg t "$tasks" --argjson crit "$crit" '
+  jq --arg t "$tasks" --arg s "$side" --argjson crit "$crit" --argjson archived "$archived" '
     (.tasks // []) as $all
     | ([$all[] | select(.done == true) | .n]) as $done
     | ($crit | map({(.n | tostring): .}) | add // {}) as $c
     | [$all[] | select(.done == true)
        | ($c[.n | tostring] // {total: 0, ticked: 0}) as $k
        | select($k.total > $k.ticked) | .n] as $unwalked
-    | {tasks_file: $t, total: ($all | length), done: ($done | length),
+    | {tasks_file: $t, sidecar: $s, archived: $archived, total: ($all | length), done: ($done | length),
        remaining: ([$all[] | select(.done != true)] | length),
        criteria: {total: ([$crit[].total] | add // 0), ticked: ([$crit[].ticked] | add // 0),
                   unticked: (([$crit[].total] | add // 0) - ([$crit[].ticked] | add // 0))},
@@ -570,6 +557,44 @@ cmd_status() {
             criteria: {total: $k.total, ticked: $k.ticked, unticked: ($k.total - $k.ticked)},
             blocked_by: [(.depends_on // [])[] | select(([.] | inside($done)) | not)]}]}' "$side"
 }
+
+# Progress, for a human. The breakdown carries no progress checkboxes, so this is what
+# you read instead of skimming the markdown for ticks. --all walks every breakdown in
+# the repo, in flight and archived, which is what a cross-story report wants: clerk owns
+# this format, so it owns reading it rather than leaving each caller to learn the schema.
+cmd_status() {
+  local tasks_override= all=false root wt tasks side f arch
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      --all) all=true; shift ;;
+      *) die "status: unknown argument '$1'" ;;
+    esac
+  done
+  root=$(repo_root) || die "not a git repository"
+  wt=$(work_tree)
+
+  if [ "$all" = true ]; then
+    {
+      for f in "$wt"/tasks/*.md "$wt"/tasks/completed/*.md; do
+        [ -f "$f" ] || continue
+        case "$(basename "$f")" in learnings.md) continue ;; esac
+        side="${f%.md}.json"
+        [ -f "$side" ] || continue
+        case "$f" in */completed/*) arch=true ;; *) arch=false ;; esac
+        status_of "$f" "$side" "$arch"
+      done
+    } | jq -s -c '{breakdowns: .}'
+    return
+  fi
+
+  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
+    tasks=$(find_tasks_file "$wt") || die "status: no single task file under $wt/tasks (pass --tasks-file)"
+  fi
+  side=$(sidecar_for "$tasks") || die "status: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
+  status_of "$tasks" "$side" false
+}
+
 
 # --------------------------------------------------------------------------------
 # receipt — records a suite run against the SHA it actually describes.

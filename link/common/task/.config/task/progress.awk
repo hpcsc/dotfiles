@@ -7,6 +7,12 @@
 #   user-stories/**.md            story inventory: one "### US-NNN: Title" per story
 #   user-stories/completed/**.md  story files finished in full
 #   tasks/*.md                    task breakdowns in flight
+#   tasks/<story>.json            the sidecar beside a breakdown, carrying each task's
+#                                 done flag — the record of progress. Passed already
+#                                 flattened as `-v progress=<file>`, one TSV row per
+#                                 task, because awk is a poor place to parse JSON and
+#                                 the caller has jq. A breakdown with no sidecar falls
+#                                 back to any `- [ ] Task N` checklist it still carries
 #   tasks/completed/*.md          archived breakdowns — an archived breakdown is
 #                                 what marks its story delivered, since that is
 #                                 where a fully-closed run moves its task file
@@ -33,6 +39,25 @@
 # whatever mix of states a file is in.
 
 BEGIN {
+    # Progress rows: <breakdown path> \t <n> \t <0|1 done> \t <title>. Read first so the
+    # per-file rules below know whether a breakdown has a sidecar and can leave a legacy
+    # checklist alone when it does.
+    if (progress != "") {
+        while ((getline row < progress) > 0) {
+            split(row, c, "\t")
+            f = c[1]
+            if (f == "") continue
+            bd_side[f] = 1
+            bd_total[f]++
+            n = ++tk_n[f]
+            tk_num[f, n] = c[2]
+            tk_done[f, n] = (c[3] == "1")
+            tk_title[f, n] = c[4]
+            if (c[3] == "1") bd_done[f]++
+        }
+        close(progress)
+    }
+
     if (color) {
         tick  = "\033[2m[\033[0m\033[38;5;46m✓\033[0m\033[2m]\033[0m"
         flight = "\033[2m[\033[0m~\033[2m]\033[0m"
@@ -120,7 +145,10 @@ kind == "bd" || kind == "bd_done" {
         }
     }
 
-    if ($0 ~ /^- \[[ x]\][ \t]+Task[ \t]/) {
+    # Only when the sidecar said nothing about this file. A breakdown written since
+    # progress moved out of the markdown has no checklist to count, and one written
+    # before it should not be counted twice.
+    if (!(FILENAME in bd_side) && $0 ~ /^- \[[ x]\][ \t]+Task[ \t]/) {
         bd_total[FILENAME]++
         if ($0 ~ /^- \[x\]/) bd_done[FILENAME]++
     }
@@ -224,7 +252,7 @@ function report_stories(   i, j, sf, mark) {
     printf "%s delivered (breakdown archived)   %s in flight   %s not started\n", tick, flight, blank
 }
 
-function report_tasks(   i, f, any, line, mark) {
+function report_tasks(   i, j, f, any, line, mark) {
     printf "Task breakdowns in flight (tasks/*.md)\n\n"
     for (i = 1; i <= bd_count; i++) {
         f = bd_order[i]
@@ -232,6 +260,11 @@ function report_tasks(   i, f, any, line, mark) {
         any = 1
         printf "%s   %d/%d tasks\n", f, bd_done[f] + 0, bd_total[f] + 0
         if (f in bd_ref) printf "  story file: %s\n", bd_ref[f]
+        if (f in bd_side) {
+            for (j = 1; j <= tk_n[f]; j++)
+                printf "  %s Task %s: %s\n", (tk_done[f, j] ? tick : blank), tk_num[f, j], tk_title[f, j]
+            continue
+        }
         while ((getline line < f) > 0) {
             if (line ~ /^- \[[ x]\][ \t]+Task[ \t]/) {
                 mark = (line ~ /^- \[x\]/) ? tick : blank

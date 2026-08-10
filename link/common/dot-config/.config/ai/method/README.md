@@ -207,7 +207,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, plus every existing worktree and breakdown with its progress | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
-| `status` | Progress from the sidecar, plus acceptance criteria walked per task | 0 |
+| `status [--all]` | Progress from the sidecar, plus acceptance criteria walked per task; `--all` walks every breakdown in the repo, in flight and archived | 0 |
 | `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it (`complete` is an accepted alias) | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
@@ -259,6 +259,15 @@ criterion, which is the combination worth looking at.
 It is reported and never gated on. Whether a criterion is genuinely met is judgment, and
 a script counting boxes would be the wrong authority for it — `gate` reads `done` from
 the sidecar and nothing else.
+
+### Reading the format from outside
+
+`clerk status --all` walks every breakdown in the repo and returns each task with its
+`done` flag. That exists so nothing else has to learn the sidecar's schema: the global
+`task -g progress` reporter calls it and flattens the result, rather than reaching into
+`tasks/*.json` itself and becoming a second thing to update when the shape moves.
+
+Whoever owns a format owns its reader.
 
 ### Resuming
 

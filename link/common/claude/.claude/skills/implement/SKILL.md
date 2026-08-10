@@ -248,6 +248,10 @@ It fans the applicable lenses over the diff in parallel, reproduces every runtim
 
 Fix findings **directly**. Do not launch a workflow to apply them — you have the context and they are usually small.
 
+**Then re-run the `default` suite, and report that output.** Step 1's receipt was taken before these fixes existed, so it is evidence about a tree that no longer exists — and the integration gate below means the later run, not that one. This is the one place in the skill where code changes land after the last green receipt, which is exactly the vacuous-receipt shape the audit itself hunts for. If you changed nothing, say so and keep step 1's receipt.
+
+**Re-run `audit-implement` only if the fixes were substantial** — a new code path, a changed contract, a fix whose blast radius you cannot see the edge of. Typo-level and single-call-site fixes do not earn a second workflow. If you do re-run it, pass the same `brief` and `story`.
+
 ### 3. Validate against the story
 
 The audit checked whether the code is correct and whether it matches the brief. Neither it nor `run-verifier` checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a decomposition you approved before any code existed.
@@ -269,7 +273,7 @@ Spawn `run-verifier` in the main tree: staged-but-uncommitted tails, new public 
 
 Land the work on the default branch, **local only — never push**. Skip when `--no-integrate` is given, and hold off when anything below fails; a branch left standing is always recoverable, a bad fast-forward is not.
 
-Gate on all four: every task `- [x]` and committed, the full suite green, `run-verifier` clean, and the audit's findings either fixed or explicitly accepted by the user.
+Gate on all four: every task `- [x]` and committed, **the full suite green on the tree you are about to land** (the post-fix run from step 2 if the audit changed anything, not step 1's), `run-verifier` clean, and the audit's findings either fixed or explicitly accepted by the user.
 
 From inside the worktree:
 

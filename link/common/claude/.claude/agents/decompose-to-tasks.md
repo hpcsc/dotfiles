@@ -139,6 +139,37 @@ Every acceptance criterion must be checkable by someone standing in the working 
 - **Location:** `tasks/`
 - **Filename:** `[story-name].md` (kebab-case, derived from the story title or feature name)
 
+### Save the machine-readable sidecar
+
+Write `tasks/[story-name].json` beside the markdown, with the same stem. The markdown
+stays the human-readable artifact and the progress record; the JSON is what tooling
+reads, so that selecting the next unblocked task is a lookup rather than a regex over
+prose. Both must describe the same tasks — if you revise one, revise the other.
+
+```json
+{
+  "story": "<one-line feature name>",
+  "tasks_file": "tasks/[story-name].md",
+  "tasks": [
+    {
+      "n": 1,
+      "title": "<the same imperative title as the markdown>",
+      "language": "Go",
+      "testable": true,
+      "depends_on": [],
+      "affected_files": ["path/to/file.go"]
+    }
+  ]
+}
+```
+
+`n` matches the markdown's `Task N` numbering and its `- [ ] Task N:` checklist entry —
+that correspondence is what lets tooling tick the right box. `depends_on` is an array of
+task numbers (`[]` when a task has none); it is the dependency edge the markdown states
+as **Depends on:**, so the two must agree. Keep every other field the markdown already
+carries out of the JSON: duplicating prose invites the two to drift, and nothing reads
+it from here.
+
 ### Return to caller
 After saving, return a structured summary containing:
 1. The file path where the task list was saved

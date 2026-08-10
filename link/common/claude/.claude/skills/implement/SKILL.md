@@ -7,6 +7,9 @@ Implement a feature directly, then have it audited: $ARGUMENTS
 
 **You write the code.** This skill does not delegate construction to implementation agents. Review is delegated, at the end, to `audit-implement`.
 
+<!-- GENERATED from ~/.config/ai/method/implement/. Edit the body or a seam, then run
+     `task gen:skills` — edits made here are overwritten. -->
+
 ---
 
 ## Why this shape
@@ -27,24 +30,27 @@ Use `implement-flow` instead for large mechanical migrations with genuinely disj
 
 ## Phase 0: Ground yourself
 
-### Detect languages
+### Resolve the environment
 
-Collect **every** match, not just the first:
+```
+clerk prepare
+```
 
-| Marker file | Language |
-|---|---|
-| `go.mod` | Go |
-| `package.json` | JavaScript/TypeScript |
-| `mix.exs` | Elixir |
-| `Gemfile` or `*.gemspec` | Ruby |
-| `pyproject.toml` / `setup.py` / `requirements.txt` | Python |
-| `Cargo.toml` | Rust |
-| `*.tf` | HCL |
-| (none matched) | Generic — infer from file extensions |
+One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, and whether the tree is `clean`.
+
+Read the values rather than re-deriving them. Three of them have precedence rules that are easy to get subtly wrong and were previously prose you had to execute correctly:
+
+- **`test_command`** — `tasks/test-commands.json` (tracked, a team decision) beats `tasks/.environment` (a gitignored machine-local cache) beats detection. A cached command must never shadow one the team committed. Use the entry for the task's language while working on it; use `default` before committing anything that spans languages, and again in Phase 3.
+- **`go_tool_prefix`** — whether *this machine* runs Go through mise. Decided once, applied to every Go command, never double-wrapped on a project command that already says `mise exec --`.
+- **`learnings_path`** — in-tree when the repo tracks `tasks/`, out-of-tree per-project when it gitignores it, so a shared repo gets steering without polluting teammates' checkouts.
+
+**Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
+
+If `clerk` is not installed, its resolutions are documented in `~/.config/ai/method/implement/` — but install it rather than hand-executing them; getting `test_command` precedence wrong silently tests the wrong thing.
 
 ### Read the guidelines — yourself
 
-**Read these for the languages this feature actually touches**, before writing any code:
+**Read these for the languages `clerk prepare` reported**, before writing any code:
 
 | Language | Required reading |
 |---|---|
@@ -65,65 +71,17 @@ A short file with no index comment (e.g. `javascript/naming-patterns.md`, 64 lin
 
 At minimum load: the caller pattern that fits this work (UI / Inbound / Outbound / Async / Exported API) plus the Quick Reference from `caller-patterns.md`; "What to Test", "Unit of Behavior" and "Assertion Strictness" from the language testing guideline; and the whole naming guideline, which is short and is the one most often broken by default.
 
-### Resolve the test commands
-
-Prefer the repo's own config over detection. It lives at the **main repo root**, which is not the cwd inside a worktree:
-
-```
-root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-cat "$root/tasks/test-commands.json" 2>/dev/null
-```
-
-```json
-{
-  "default": "task test:unit && task test:integration && task test:viewer",
-  "Go": "task test:unit && task test:integration",
-  "JavaScript/TypeScript": "cd internal/viewer && npx vitest run"
-}
-```
-
-Use the entry for the task's language while working on it; use `default` before committing anything that spans languages and once more in Phase 3. If the file is absent, detect a command (Makefile, `package.json` scripts, framework convention) — never hardcode — and offer to write the config, since working out the split is most of the effort of detecting it.
-
-**A repo may also hold `tasks/.environment`** — a gitignored, machine-local cache written by the opencode sibling of this skill. The two are not interchangeable and the order matters:
-
-1. `tasks/test-commands.json` (tracked, a team decision) wins.
-2. `.environment` -> `test_command` only when there is no config file. A cached command must never shadow one the team committed.
-3. Detection last.
-
-Read `.environment` -> `go_tool_prefix` regardless of which won. It records whether **this machine** runs Go through mise, which is why it is gitignored — committing it hands a teammate without mise a command that cannot run. If it is absent and the project is Go, decide once:
-
-```
-grep -E '^[[:space:]]*go[[:space:]]*=' mise.toml .mise.toml mise.local.toml .mise.local.toml 2>/dev/null | head -1
-```
-
-A match means every Go command in this run is prefixed `mise exec -- `; nothing means none are. Do not re-decide per command, and never double-wrap a project command that already says `mise exec --`.
-
-### Resolve the learnings file
-
-```
-if git check-ignore -q tasks/learnings.md 2>/dev/null; then
-  root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-  slug=$(echo "$root" | sed 's#/#-#g; s#^-##')
-  mkdir -p "$HOME/.claude/implement-learnings/$slug"
-  echo "$HOME/.claude/implement-learnings/$slug/learnings.md"
-else
-  echo "tasks/learnings.md"
-fi
-```
-
-A repo that gitignores `tasks/` gets a private per-project store outside the repo — steering without polluting teammates' checkouts. **Read it now**: it holds conventions and recurring findings earlier runs paid for.
-
 ### Set up an isolated worktree
 
-`git status --porcelain` must be empty. If dirty, stop and ask — never build on top of someone else's loose work.
+`clerk prepare` reported whether the tree is `clean`. If it is not, stop and ask — never build on top of someone else's loose work.
 
 Then **work in a worktree**, unless `$ARGUMENTS` contains `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits. That sweep is a real failure mode, not a hypothetical.
 
-Use the **EnterWorktree** tool (this skill is the explicit instruction that tool requires). Name it for the feature. It creates the worktree under `.claude/worktrees/`, puts it on a new branch, and switches the session into it — every command from here runs there.
+Use the **EnterWorktree** tool (this skill is the explicit instruction that tool requires). Name it for the feature. It creates the worktree under `.claude/worktrees/`, puts it on a new branch, and switches the session's working directory into it — same window, same session, no new tmux anything. Every command from here runs there, and relative paths work normally.
 
 Two consequences to hold onto:
 
-- **The main repo root is not your cwd.** The `tasks/test-commands.json` and learnings-file recipes above already resolve it via `--git-common-dir` for exactly this reason.
+- **The main repo root is not your cwd.** Re-run `clerk prepare` after entering: it reports `repo_root` and `work_tree` separately for exactly this reason, and `tasks/` and the learnings file live under the former.
 - **The worktree branches from `origin/<default-branch>` by default** (`worktree.baseRef`). If the work must sit on top of unpushed local commits, either set `worktree.baseRef: head` or pass `--in-place` and use an ordinary branch.
 
 With `--in-place`: no worktree. Create a feature branch if on the default branch, and build in the main checkout.
@@ -138,11 +96,13 @@ If `$ARGUMENTS` names a file in `tasks/`, read it, present the task list, and sk
 
 ### Otherwise decompose
 
-Spawn `decompose-to-tasks`. It does the codebase exploration and dependency analysis that makes the task list worth having, and it writes `tasks/[story-name].md` with a `- [ ] Task N` checklist that is the run's durable progress record.
+Spawn the `decompose-to-tasks` agent with the Agent tool, passing the languages `clerk prepare` reported:
 
-> Detected project languages: [inventory from Phase 0]
+> Detected project languages: [from `clerk prepare`]
 >
 > Decompose the following user story into implementation tasks. For each task set `language` to the language it primarily involves and `depends_on` to the tasks it builds on: [story from $ARGUMENTS]
+
+It does the codebase exploration and dependency analysis that makes the task list worth having. It writes `tasks/[story-name].md` with a `- [ ] Task N` checklist that is the run's durable progress record, and `tasks/[story-name].json` beside it — the machine-readable sidecar `clerk next` reads so that selecting the next task is a lookup rather than a regex over prose.
 
 **Carry the learnings forward.** Pass the learnings file's contents as `Accumulated project learnings`: "These are durable conventions, recurring review findings and constraints from earlier runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover."
 
@@ -167,16 +127,11 @@ Show the task list, in order, with dependencies.
 
 ### The loop
 
-The task file is the queue, and the only durable record of where you are. Iterate it:
+```
+clerk next
+```
 
-1. **Pick the next task**: the first `- [ ]` entry whose `depends_on` tasks are all `- [x]`. A checked entry is done — skip it, including on a resumed run, and never redo it.
-2. Run steps 1–5 below for that task.
-3. **Re-read the task file** and repeat, until no unchecked entry remains.
-
-Two rules that make the loop survivable:
-
-- **One task in flight at a time.** Never start the next while the current one is uncommitted. A half-finished task on top of another is what makes a run impossible to resume or review.
-- **Checkbox and commit move together** (step 4). Tick the checkbox, then stage it alongside the code it represents in a single commit. The checkbox is what a later run — or a later you, after a `/clear` — reads to know what is done. A task committed but unticked will be redone; a task ticked but uncommitted will be skipped and lost.
+Returns the first task whose `depends_on` are all checked off, plus how many remain and how many are blocked. It **exits 3 while the tree is dirty**, because one task in flight at a time is what keeps a run resumable — a half-finished task on top of another is what makes a run impossible to review. Commit the current one before asking for the next.
 
 Announce which task you are starting, so the queue's progress is visible in the transcript rather than only in the file.
 
@@ -196,7 +151,7 @@ Follow the guidelines you loaded, and the surrounding code where the guidelines 
 
 Run the task's test command and **read the output**. Having written the code is not evidence that it works, and "tests pass" asserted without a run is the claim that costs most when it turns out to be false.
 
-Four checks this session paid for, each of which shipped a defect that a passing suite did not catch:
+Four checks earlier runs paid for, each of which shipped a defect that a passing suite did not catch:
 
 - **A new guard must be shown to fail.** Inject the violation it claims to catch, watch it fail, revert the injection. A test that cannot fail is worse than no test, because it reads as coverage.
 - **An absence assertion needs a positive partner.** `expect(x).toBeNull()` on an attribute nothing sets passes when the whole feature is deleted.
@@ -205,6 +160,14 @@ Four checks this session paid for, each of which shipped a defect that a passing
 
 ### 4. Commit the task
 
+```
+clerk complete <n> -- <every file this task changed>
+```
+
+That ticks the checkbox and stages those paths together with the task file, so the checkbox and the change it stands for land in one commit. A checkbox committed without its code makes a later run redo the work; code without its checkbox makes it skip work it never did. `clerk complete` refuses a path that does not exist and refuses a task already checked off, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
+
+Then write the message, which is judgment rather than mechanics:
+
 **Do NOT run `git commit` via Bash.** Use the Skill tool.
 
 Detect which skill: `test -f .claude/skills/commit/SKILL.md && echo exists || echo missing` (relative to the project root). Confirm the file exists — do not speculatively invoke `commit` to find out.
@@ -212,18 +175,16 @@ Detect which skill: `test -f .claude/skills/commit/SKILL.md && echo exists || ec
 - `exists` → invoke `commit` with the task description and any ticket context from `$ARGUMENTS`.
 - `missing` → invoke `pcommit` (which delegates to the `commit` agent).
 
-Either way the message obeys the `commit` agent's rules: imperative subject, ≤50 chars, capitalised, no trailing period, blank line before a body wrapped at 72 explaining **what and why**; no AI/Claude mention, no `Co-Authored-By`, no generated-with footer, no generic file lists. Apply the repo's own conventions too — read `CLAUDE.md` and any committing guideline, and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one.
+The message obeys the `commit` agent's rules: imperative subject, ≤50 chars, capitalised, no trailing period, blank line before a body wrapped at 72 explaining **what and why**; no AI/Claude mention, no `Co-Authored-By`, no generated-with footer, no generic file lists. Apply the repo's own conventions too — read the project's instructions file and any committing guideline, and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one.
 
-Three rules the boundary failures in this session earned:
+Two rules `clerk` cannot enforce for you:
 
-- **Tick the task first**, then stage everything together — code plus the task file — so the checkbox and the change land in one commit. A checkbox committed without its code, or code committed without its checkbox, is how a later run redoes work or skips work thinking it is done.
-- **Stage by explicit path** — `git add -- <file>` per file this task changed, plus `git add tasks/<story-name>.md`. Never `git add -A`/`git add .`: an unrelated file left loose in the tree gets swept into your commit, and untangling it later means rewriting history.
 - **One commit per task**, preserving granularity.
 - **One concern per commit.** If a task produced both a behaviour-preserving restructure and a feature, land the restructure first as its own commit, then the feature on top. That ordering also lets you prove the restructure by running the *pre-existing* tests against it alone.
 
 ### 5. Report and continue
 
-Say what landed in one or two lines and move to the next task. The user is watching this happen — unlike a delegated run, there is nothing hidden that a per-commit gate would need to reveal. Stop and ask only when something genuinely needs a decision.
+Say what landed in one or two lines and go back to `clerk next`. The user is watching this happen — unlike a delegated run, there is nothing hidden that a per-commit gate would need to reveal. Stop and ask only when something genuinely needs a decision.
 
 ---
 
@@ -231,16 +192,23 @@ Say what landed in one or two lines and move to the next task. The user is watch
 
 ### 1. Full suite
 
-Run the `default` test command **in the tree that holds this run's commits** — resolve it with `git rev-parse --show-toplevel`, and do not assume the main checkout. Unless you passed `--in-place`, you are in the worktree and the main checkout is still sitting on the default branch without a line of this feature in it; a suite run there tests the wrong tree and passes for the wrong reason. Report the real output.
+Run the `default` test command **in the tree that holds this run's commits** — `clerk prepare` reported it as `work_tree`. Unless you passed `--in-place` you are in a worktree, and the main checkout is on the default branch without a line of this feature in it; a suite run there tests the wrong tree and passes for the wrong reason.
+
+Then record it:
+
+```
+clerk receipt --command "<the command you ran>" --passed --output-file <captured output>
+```
+
+The receipt is bound to the SHA it describes. That is what lets the gate in step 6 refuse a green taken before later changes, which is otherwise indistinguishable from a green taken after them.
 
 ### 2. Hand the branch to `audit-implement`
 
-This is where review happens. Invoke the `audit-implement` skill with:
+This is where review happens.
 
-- `target: "branch"` (or `baseRef` when the branch has already been landed and `merge-base` would come back empty)
-- the `testCommands` map from Phase 0
-- a `brief`: one or two sentences on what the feature was meant to do. Cheap, and it lets the correctness lens compare code against intent instead of inferring intent from code.
-- `story`: the original request from `$ARGUMENTS`, **verbatim**. Do this even though you also wrote the brief — the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing in the whole run that the audit sees which did not come from you.
+Invoke the `audit-implement` skill with the Skill tool. It launches a background Workflow: deterministic fan-out, schema-validated findings, and an adversarial verifier per claim.
+
+Pass it the base ref the work started from, the `test_commands` map, a one-or-two-sentence `brief` on what the feature was meant to do, and `story` — the original request from `$ARGUMENTS`, **verbatim**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing the audit sees that did not come from you.
 
 It fans the applicable lenses over the diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings plus `coverage_gaps`.
 
@@ -248,17 +216,17 @@ It fans the applicable lenses over the diff in parallel, reproduces every runtim
 
 Fix findings **directly**. Do not launch a workflow to apply them — you have the context and they are usually small.
 
-**Then re-run the `default` suite, and report that output.** Step 1's receipt was taken before these fixes existed, so it is evidence about a tree that no longer exists — and the integration gate below means the later run, not that one. This is the one place in the skill where code changes land after the last green receipt, which is exactly the vacuous-receipt shape the audit itself hunts for. If you changed nothing, say so and keep step 1's receipt.
+**Then re-run the suite and record a new receipt.** Step 1's receipt describes a tree that no longer exists. This is the one place in the skill where code changes land after the last green, which is exactly the vacuous-receipt shape the audit itself hunts for. If you changed nothing, say so and keep the existing receipt.
 
-**Then re-audit narrowed, not wholesale.** Every finding carries the `lens` that raised it. Re-invoke `audit-implement` with `args.lenses` set to just those keys and `args.recheck` set to the findings you fixed (`id`, `claim`, and what you changed), plus the same `brief` and `story`. That costs the scope pass and those lenses, and skips Verify and Report altogether when nothing is raised — the expected outcome.
+**Then re-audit narrowed, not wholesale.** Every finding carries the `lens` that raised it. Re-invoke `audit-implement` with `lenses` set to just those keys and `recheck` set to the findings you fixed, plus the same `brief` and `story`. That costs the scope pass and those lenses, and skips Verify and Report altogether when nothing is raised — the expected outcome.
 
-**Widen to the full panel when any fix touched behaviour.** A quality fix — a comment removed, a redundant test folded, a name changed — cannot break what another lens owns, so the raising lens is sufficient. A fix that changes a code path can, and the lens that raised the original finding is not watching for it. Same rule `implement-flow` applies to its per-task panel: quality-only failures narrow, anything touching behaviour never does.
+**Widen to the full panel when any fix touched behaviour.** A quality fix — a comment removed, a redundant test folded, a name changed — cannot break what another lens owns, so the raising lens is sufficient. A fix that changes a code path can, and the lens that raised the original finding is not watching for it.
 
-If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix suite run above is the evidence that matters.
+If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix receipt is the evidence that matters.
 
 ### 3. Validate against the story
 
-The audit checked whether the code is correct and whether it matches the brief. Neither it nor `run-verifier` checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a decomposition you approved before any code existed.
+The audit checked whether the code is correct and whether it matches the brief. Neither it nor the verifier checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a decomposition you approved before any code existed.
 
 This costs a read, not an agent, because you are already here. Re-read the story from `$ARGUMENTS` **verbatim** — not your memory of it, and not the brief you wrote from it — then read `git log --oneline` and the branch diff, and answer two questions:
 
@@ -271,51 +239,32 @@ Do this **before** integrating, on the runs where you integrate at all: a mismat
 
 ### 4. Verify the run
 
-Spawn `run-verifier` **in the tree that holds this run's commits** — tell it to resolve that tree with `git rev-parse --show-toplevel` rather than assume the main checkout, which does not have the branch yet. Pointed at the wrong tree it finds no commits to check and reports clean, which is the one failure mode a verifier must not have. It checks staged-but-uncommitted tails, new public symbols with no live caller, a vacuous full-suite, and collapsed commit boundaries. If `clean`, say so in one line. If not, surface each finding — a `block` means "done" does not hold.
-
-### 5. Close out
-
-Archive the task file **on the feature branch, before any integration**, so the archive commit rides with the feature it belongs to rather than landing on the default branch behind it. `implement-flow` archives in its Finalize ahead of the optional rebase for the same reason; this is that ordering.
-
-There is a mechanical reason too: `git mv` leaves a dirty tracked file, and a dirty tree blocks the rebase in step 6. Archive-then-integrate is the only order in which both steps work.
-
-From inside the worktree:
-
 ```
-mkdir -p tasks/completed
-git mv tasks/<story-name>.md tasks/completed/<story-name>.md
-git commit -m "Archive completed task: <feature-name>"
+clerk verify --all-closed
 ```
 
-That subject faces the same commit rules as every other — imperative, ≤50 chars, capitalized, no trailing period — and `Archive completed task: ` already spends 24 of them, so shorten the feature name rather than overflow.
+Staged-but-uncommitted tails, a vacuous or stale receipt, new exported symbols with no non-test caller, and commit-boundary arithmetic against the file lists `clerk complete` recorded. It reports what it could **not** check in `not_checked` rather than passing over it silently.
 
-Delete `tasks/.cycles/` if it exists.
+What `clerk verify` leaves in `not_checked` is the residue that still needs judgment — chiefly whether a commit mixes unrelated concerns, and reachability for languages whose exported symbols it does not extract. Spawn the `run-verifier` agent for that residue only when `not_checked` is non-empty; a full agent pass over checks a script already settled is wasted.
 
-### 6. Integrate the branch
+### 5. Close out and land
 
-**Integration is opt-in. By default this step does not run** — the work stays on its branch, in its worktree, and you hand it over. Land it only when `$ARGUMENTS` explicitly asks: `--integrate`, or the user saying so in words.
+```
+clerk land                    # archive the breakdown; leave the branch standing
+clerk land --integrate        # …and put it on the default branch
+```
 
-That default is not timidity. Landing on the default branch is the one irreversible thing this skill does, and it is the step whose inputs — a green suite, a clean verifier, findings you judged accepted — are all things you assessed about your own work. A branch left standing costs one `git merge --ff-only` to land later; a bad fast-forward costs a history rewrite. Absent an explicit instruction, leave the cheap option in place.
+`land` runs the gate first and refuses if it does not open: every task checked off, the tree clean, a passing receipt **at the current HEAD**, and `--audit-accepted` asserted once the audit's findings are fixed or the user has accepted them. That last one is judgment, so it is asserted rather than inferred — without it the gate simply stays shut.
 
-When it does run: **local only — never push.** Hold off when anything below fails, and gate on all four: every task `- [x]` and committed, **the full suite green on the tree you are about to land** (the post-fix run from step 2 if the audit changed anything, not step 1's), `run-verifier` clean, and the audit's findings either fixed or explicitly accepted by the user.
+It archives the breakdown to `tasks/completed/` **on the feature branch, before any integration**, so the archive commit rides with the work it belongs to rather than landing on the default branch behind it. That order is also the only one that works: `git mv` leaves a dirty tree and a dirty tree blocks the rebase.
 
-From inside the worktree:
+**Integration is opt-in.** Without `--integrate` the work stays on its branch and you hand it over, naming the branch and the one command that lands it. That default is not timidity: landing is the one irreversible step here and its inputs are all things you assessed about your own work. A branch left standing costs one `merge --ff-only` later; a bad fast-forward costs a history rewrite.
 
-1. `git rebase <default-branch>` — on conflict, `git rebase --abort`, leave the branch alone, and hand it to the user. Do not resolve someone else's merge for them.
-2. If the rebase actually replayed commits onto a moved base, **re-run the full suite**. Green-before-rebase is not green-after; the base moved under you.
-3. **ExitWorktree with `action: "keep"`** — not `"remove"`. Remove deletes the branch, and the branch is what you are about to merge.
-4. In the main checkout: `git merge --ff-only <feature-branch>`. If it refuses, the base moved again — go back to step 1.
-5. Clean up: `git worktree remove <path>`, `git worktree prune`, `git branch -d <feature-branch>`.
+With `--integrate` it rebases onto the default branch, and **stops if the rebase actually replayed commits onto a moved base** — green-before-rebase is not green-after, so it returns exit 3 and asks for a fresh suite run and receipt before it will fast-forward. On conflict it aborts the rebase and leaves the branch exactly as it was; do not resolve someone else's merge for them. It never pushes.
 
-With `--in-place` there is no worktree: steps 1, 2, 4 and the branch delete still apply.
+Inside a worktree, `clerk land --integrate` stops before the fast-forward and says so: the branch is checked out here, so it cannot be merged and deleted from inside it. Leave with **ExitWorktree `action: "keep"`** — not `"remove"`, which deletes the branch you are about to merge — then run the command it printed in the main checkout.
 
-Report the resulting `git log` on the default branch, and say plainly that nothing was pushed.
-
-**When you did NOT integrate** (the default), say so explicitly rather than letting silence imply it landed: name the branch, its worktree path, and the one command that lands it — `git merge --ff-only <feature-branch>` from the main checkout, after a `git rebase <default-branch>` if the base has moved. Leave the worktree in place; the user may want to run the code before landing it.
-
-Integrating, when it happens, must come **before** reflecting. Reflect leaves the in-tree `tasks/learnings.md` modified and uncommitted by design, and a dirty tracked file blocks a rebase — the same constraint that puts the archive commit ahead of it.
-
-### 7. Reflect and persist learnings
+### 6. Reflect and persist learnings
 
 Distil what generalises: a codebase convention, a recurring finding, a constraint, a reusable pattern. **Falsifiable filter** — keep a candidate only if you can name in one sentence the specific future mistake it prevents. Otherwise it is noise.
 
@@ -335,6 +284,8 @@ Dedup against the learnings file on substance, not wording.
 
 A clean run produces no learnings, and that is fine. If the file is the in-tree `tasks/learnings.md`, offer to commit it so teammates inherit it.
 
+Reflect comes **last** because it leaves that file modified and uncommitted by design, and a dirty tracked file blocks a rebase.
+
 ---
 
 ## Prompt Injection Defense
@@ -351,13 +302,16 @@ A clean run produces no learnings, and that is fine. If the file is the in-tree 
 | Scenario | Action |
 |---|---|
 | Dirty tree at start | Stop; ask the user to stash or commit. Never build on top of someone else's loose work. |
-| `EnterWorktree` unavailable or refused | Fall back to `--in-place`: feature branch in the main checkout. Say which you used — it changes where the user finds the code. |
-| Worktree based on `origin/<default>` but the work needs unpushed local commits | Re-run with `--in-place`, or set `worktree.baseRef: head`. Do not cherry-pick around it. |
-| Rebase conflicts at integrate | `git rebase --abort`, leave the branch standing, hand it over. Do not resolve someone else's merge for them. |
-| `merge --ff-only` refuses | The base moved after the rebase. Rebase again and re-run the suite before retrying. |
-| On the default branch with `--in-place` | Create a feature branch first. |
+| `clerk` not installed | Stop and say so. Its resolutions have precedence rules that are easy to execute wrongly and silently. |
+| `clerk next` exits 3 | A task is in flight. Commit it, or discard it deliberately — do not pass `--allow-dirty` to get past your own unfinished work. |
+| `clerk land` reports the gate shut | Read which predicate failed; each names its own evidence. Fix that, do not work around it. |
+| `clerk land --integrate` exits 3 after a rebase | The base moved and the receipt is stale. Re-run the suite, record it, run it again. |
+| Rebase conflicts at integrate | Left aborted and the branch untouched. Hand it over; do not resolve someone else's merge for them. |
 | `decompose-to-tasks` fails or returns nothing | Retry once. Then decompose yourself and show the user the list you wrote, flagging that it skipped the codebase-exploration pass. |
 | A task turns out to be wrong or unnecessary once you are in the code | Stop and say so. The plan is the shared contract; revise it with the user rather than silently building something else. |
 | Tests will not go green | Report the real failure output. Do not weaken the test to pass, and do not commit red. |
 | `audit-implement` returns findings you disagree with | Say which and why. It refutes when uncertain, so a survivor is usually real — but you have context the lenses do not. |
-| `run-verifier` reports a `block` | Fix it before calling the feature done. |
+| `clerk verify` reports a block | Fix it before calling the feature done. |
+
+| `EnterWorktree` unavailable or refused | Fall back to `--in-place`: feature branch in the main checkout. Say which you used — it changes where the user finds the code. |
+| Worktree based on `origin/<default>` but the work needs unpushed local commits | Re-run with `--in-place`, or set `worktree.baseRef: head`. Do not cherry-pick around it. |

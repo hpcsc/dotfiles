@@ -1,0 +1,1 @@
+What `clerk verify` leaves in `not_checked` is the residue that still needs judgment — chiefly whether a commit mixes unrelated concerns, and reachability for languages whose exported symbols it does not extract. Spawn the `run-verifier` subagent via the `task` tool for that residue only when `not_checked` is non-empty.

@@ -1,0 +1,1 @@
+Inside a worktree, `clerk land --integrate` stops before the fast-forward and says so: the branch is checked out here, so it cannot be merged and deleted from inside it. Leave with **ExitWorktree `action: "keep"`** — not `"remove"`, which deletes the branch you are about to merge — then run the command it printed in the main checkout.

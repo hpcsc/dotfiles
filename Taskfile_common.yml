@@ -4,6 +4,21 @@ vars:
   SCRIPT_DIR: ./scripts
 
 tasks:
+  gen:skills:
+    desc: Regenerate per-tool SKILL.md files from the shared method body and seams
+    cmds:
+      - "{{.SCRIPT_DIR}}/gen-skills.sh"
+
+  gen:skills:check:
+    desc: Fail if a generated SKILL.md is out of date with its source
+    cmds:
+      - "{{.SCRIPT_DIR}}/gen-skills.sh --check"
+
+  test:clerk:
+    desc: Run the clerk fixture tests
+    cmds:
+      - ./tests/clerk-test.sh
+
   base:
     desc: Common scripts with no dependencies (parallel)
     run: once

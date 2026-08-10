@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Generate the per-tool SKILL.md files from the shared method body plus its seams.
+#
+# A procedure the agent must follow in full is concatenated, not referenced: splitting
+# it into "now read these six files" adds six reads and invites partial compliance,
+# which is the failure class this whole arrangement exists to remove. Guidelines are
+# the opposite — consulted on demand, read partially by design — and stay referenced.
+#
+# Usage: scripts/gen-skills.sh [--check]
+#   --check  exit 1 if any generated file is out of date, changing nothing
+
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+METHOD="$ROOT/link/common/dot-config/.config/ai/method"
+
+CHECK=false
+[ "${1:-}" = "--check" ] && CHECK=true
+
+# method-name  tool  output-path
+TARGETS="
+implement claude   $ROOT/link/common/claude/.claude/skills/implement/SKILL.md
+implement opencode $ROOT/link/common/dot-config/.config/opencode/skills/implement/SKILL.md
+"
+
+fail=0
+
+render() {
+  local method=$1 tool=$2 body="$METHOD/$1/body.md" seams="$METHOD/$1/seams/$2"
+  [ -f "$body" ]  || { printf 'gen-skills: missing body %s\n' "$body" >&2; return 1; }
+  [ -d "$seams" ] || { printf 'gen-skills: missing seams %s\n' "$seams" >&2; return 1; }
+
+  # Substitute every {{seam:name}} with seams/<tool>/<name>.md. An unresolved marker is
+  # an error rather than a silent hole: a SKILL.md missing its worktree section reads
+  # as complete and simply omits a step.
+  awk -v seams="$seams" '
+    /^\{\{seam:[a-z-]+\}\}$/ {
+      name = $0
+      sub(/^\{\{seam:/, "", name); sub(/\}\}$/, "", name)
+      path = seams "/" name ".md"
+      if ((getline line < path) < 0) {
+        printf("gen-skills: no seam %s\n", path) > "/dev/stderr"
+        exit 3
+      }
+      print line
+      while ((getline line < path) > 0) print line
+      close(path)
+      next
+    }
+    /\{\{seam:/ { printf("gen-skills: malformed marker: %s\n", $0) > "/dev/stderr"; exit 3 }
+    { print }
+  ' "$body"
+}
+
+printf '%s\n' "$TARGETS" | while read -r method tool out; do
+  [ -n "$method" ] || continue
+  rendered=$(render "$method" "$tool") || { fail=1; continue; }
+
+  if [ "$CHECK" = true ]; then
+    if [ ! -f "$out" ] || ! printf '%s\n' "$rendered" | diff -q - "$out" >/dev/null 2>&1; then
+      printf 'out of date: %s\n' "${out#$ROOT/}" >&2
+      exit 1
+    fi
+    printf 'up to date:  %s\n' "${out#$ROOT/}"
+  else
+    mkdir -p "$(dirname "$out")"
+    printf '%s\n' "$rendered" > "$out"
+    printf 'wrote %s (%s lines)\n' "${out#$ROOT/}" "$(printf '%s\n' "$rendered" | wc -l | tr -d ' ')"
+  fi
+done

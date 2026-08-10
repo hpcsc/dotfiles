@@ -1,7 +1,4 @@
----
-name: implement
-description: Implement a feature directly — decompose into tasks, then build each one yourself against the project's guidelines, committing per task, and hand the finished branch to audit-implement for independent review. Use when you want the feature built quickly and reviewed thoroughly, rather than delegated to implementation agents.
----
+{{seam:frontmatter}}
 
 Implement a feature directly, then have it audited: $ARGUMENTS
 
@@ -71,21 +68,7 @@ A short file with no index comment (e.g. `javascript/naming-patterns.md`, 64 lin
 
 At minimum load: the caller pattern that fits this work (UI / Inbound / Outbound / Async / Exported API) plus the Quick Reference from `caller-patterns.md`; "What to Test", "Unit of Behavior" and "Assertion Strictness" from the language testing guideline; and the whole naming guideline, which is short and is the one most often broken by default.
 
-### Isolate the work
-
-`clerk prepare` reported whether the tree is `clean`. If it is not, stop and ask — never build on top of someone else's loose work.
-
-Then **work in a worktree**, unless `$ARGUMENTS` contains `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits.
-
-```
-WT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/../wt-<kebab-feature-name>"
-git worktree add -b <kebab-feature-name> "$WT"
-cd "$WT"
-```
-
-Once inside, `git` and file operations run against the worktree naturally — no `-C` prefix needed. Re-run `clerk prepare` after `cd`: it reports `repo_root` and `work_tree` separately, and `tasks/` and the learnings file live under the former, not under your cwd.
-
-With `--in-place`: no worktree. `git switch -c <kebab-feature-name>` if on the default branch, and build in the main checkout.
+{{seam:worktree-setup}}
 
 ---
 
@@ -97,11 +80,7 @@ If `$ARGUMENTS` names a file in `tasks/`, read it, present the task list, and sk
 
 ### Otherwise decompose
 
-Spawn the `decompose-to-tasks` subagent via the `task` tool with a complete, self-contained prompt, passing the languages `clerk prepare` reported:
-
-> Detected project languages: [from `clerk prepare`]
->
-> Decompose the following user story into implementation tasks. For each task set `language` to the language it primarily involves and `depends_on` to the tasks it builds on: [story from $ARGUMENTS]
+{{seam:decompose}}
 
 It does the codebase exploration and dependency analysis that makes the task list worth having. It writes `tasks/[story-name].md` with a `- [ ] Task N` checklist that is the run's durable progress record, and `tasks/[story-name].json` beside it — the machine-readable sidecar `clerk next` reads so that selecting the next task is a lookup rather than a regex over prose.
 
@@ -169,7 +148,7 @@ That ticks the checkbox and stages those paths together with the task file, so t
 
 Then write the message, which is judgment rather than mechanics:
 
-Spawn the `commit` subagent via the `task` tool with the task description and any ticket context from `$ARGUMENTS`. The changes are already staged by `clerk complete`; the agent writes the message and creates exactly one commit.
+{{seam:commit}}
 
 The message obeys the `commit` agent's rules: imperative subject, ≤50 chars, capitalised, no trailing period, blank line before a body wrapped at 72 explaining **what and why**; no AI/Claude mention, no `Co-Authored-By`, no generated-with footer, no generic file lists. Apply the repo's own conventions too — read the project's instructions file and any committing guideline, and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one.
 
@@ -202,7 +181,7 @@ The receipt is bound to the SHA it describes. That is what lets the gate in step
 
 This is where review happens.
 
-Invoke the `audit-implement` skill. There is no workflow engine here, so it orchestrates the lenses itself via the `task` tool — the findings are the same shape, but their structure rests on the lenses following the output contract rather than on schema validation.
+{{seam:audit}}
 
 Pass it the base ref the work started from, the `test_commands` map, a one-or-two-sentence `brief` on what the feature was meant to do, and `story` — the original request from `$ARGUMENTS`, **verbatim**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing the audit sees that did not come from you.
 
@@ -241,7 +220,7 @@ clerk verify --all-closed
 
 Staged-but-uncommitted tails, a vacuous or stale receipt, new exported symbols with no non-test caller, and commit-boundary arithmetic against the file lists `clerk complete` recorded. It reports what it could **not** check in `not_checked` rather than passing over it silently.
 
-What `clerk verify` leaves in `not_checked` is the residue that still needs judgment — chiefly whether a commit mixes unrelated concerns, and reachability for languages whose exported symbols it does not extract. Spawn the `run-verifier` subagent via the `task` tool for that residue only when `not_checked` is non-empty.
+{{seam:verify}}
 
 ### 5. Close out and land
 
@@ -258,7 +237,7 @@ It archives the breakdown to `tasks/completed/` **on the feature branch, before 
 
 With `--integrate` it rebases onto the default branch, and **stops if the rebase actually replayed commits onto a moved base** — green-before-rebase is not green-after, so it returns exit 3 and asks for a fresh suite run and receipt before it will fast-forward. On conflict it aborts the rebase and leaves the branch exactly as it was; do not resolve someone else's merge for them. It never pushes.
 
-Inside a worktree, `clerk land --integrate` stops before the fast-forward and says so: the branch is checked out here, so it cannot be merged and deleted from inside it. `cd` back to the main checkout, run the command it printed, then `git worktree remove "$WT"` and `git worktree prune`.
+{{seam:worktree-teardown}}
 
 ### 6. Reflect and persist learnings
 
@@ -309,11 +288,4 @@ Reflect comes **last** because it leaves that file modified and uncommitted by d
 | `audit-implement` returns findings you disagree with | Say which and why. It refutes when uncertain, so a survivor is usually real — but you have context the lenses do not. |
 | `clerk verify` reports a block | Fix it before calling the feature done. |
 
-| `git worktree add` fails | Fall back to `--in-place` on a feature branch, and say which you used — it changes where the user finds the code. |
-| A path resolves in the wrong tree | `cd "$WT"` runs at setup so all operations target the worktree; the main repo root comes from `clerk prepare`'s `repo_root`. A relative path resolved in the wrong checkout is how a file looks deleted while still sitting in the other one. |
-
----
-
-## Implementation notes
-
-This skill spawns subagents via the opencode `task` tool with complete, self-contained prompts: `decompose-to-tasks` for planning, `commit` for commits, `run-verifier` for the judgment residue after `clerk verify`, and — through `audit-implement` — the review lenses. Everything else is your own work, which is the point.
+{{seam:error-handling-extra}}

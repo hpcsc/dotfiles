@@ -1,0 +1,1 @@
+What `clerk verify` leaves in `not_checked` is the residue that still needs judgment — chiefly whether a commit mixes unrelated concerns, and reachability for languages whose exported symbols it does not extract. Spawn the `run-verifier` agent for that residue only when `not_checked` is non-empty; a full agent pass over checks a script already settled is wasted.

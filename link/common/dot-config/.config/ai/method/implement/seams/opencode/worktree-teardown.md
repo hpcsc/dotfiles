@@ -1,0 +1,1 @@
+Inside a worktree, `clerk land --integrate` stops before the fast-forward and says so: the branch is checked out here, so it cannot be merged and deleted from inside it. `cd` back to the main checkout, run the command it printed, then `git worktree remove "$WT"` and `git worktree prune`.

@@ -1,0 +1,745 @@
+#!/usr/bin/env bash
+# clerk — the deterministic mechanics of an implementation run.
+#
+# It keeps the docket and checks the paperwork; it never judges the work. Everything
+# here is something a program does more reliably than a prompt: resolving facts about
+# the repo, selecting the next unblocked task, deciding whether a branch may land.
+# Writing the code, reviewing it, and deciding a fix is right stay with the model.
+#
+# Targets bash 3.2 (macOS /bin/bash): no associative arrays, no ${v,,}, no mapfile.
+# Requires: git, jq.
+
+set -uo pipefail
+
+CLERK_VERSION=0.1.0
+
+die() { printf 'clerk: %s\n' "$1" >&2; exit 2; }
+
+need() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
+
+# --------------------------------------------------------------------------------
+# Repo facts
+# --------------------------------------------------------------------------------
+
+# The tree we are standing in. Never assume the main checkout: inside a worktree it is
+# on another branch entirely, and a suite or verifier pointed there tests code that
+# does not contain the feature. This is the resolution the skill prose kept getting
+# wrong by saying "the main tree".
+work_tree() { git rev-parse --show-toplevel 2>/dev/null; }
+
+# The main repo root, which is NOT the work tree inside a worktree. tasks/ and the
+# learnings file live here.
+repo_root() {
+  local common
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  dirname "$common"
+}
+
+# Per-worktree, inside the git dir, so state is never committed and needs no ignore
+# entry. --absolute-git-dir resolves to .git/worktrees/<name> in a worktree.
+state_dir() {
+  local gd
+  gd=$(git rev-parse --absolute-git-dir 2>/dev/null) || return 1
+  printf '%s/clerk' "$gd"
+}
+
+default_branch() {
+  local d=
+  # Only ask git when origin/HEAD actually exists. Without a remote, `rev-parse
+  # --abbrev-ref origin/HEAD` echoes the literal string back, which sed reduces to
+  # "HEAD" — and a base of HEAD makes every base..HEAD diff silently empty, so the
+  # run's own commits vanish and every scoped check reports nothing to find.
+  if git show-ref --verify --quiet refs/remotes/origin/HEAD 2>/dev/null; then
+    d=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null | sed 's#^origin/##')
+  fi
+  case "$d" in ''|HEAD|origin/HEAD) d= ;; esac
+  if [ -z "$d" ]; then
+    for c in main master; do
+      if git show-ref --verify --quiet "refs/heads/$c"; then d=$c; break; fi
+    done
+  fi
+  printf '%s' "$d"
+}
+
+tree_is_clean() { [ -z "$(git status --porcelain 2>/dev/null)" ]; }
+
+# --------------------------------------------------------------------------------
+# Language detection — every match, not just the first. A repo with go.mod and
+# package.json is both, and a run that sees only the first tests half of it.
+# --------------------------------------------------------------------------------
+
+detect_languages() {
+  local root=$1
+  {
+    [ -f "$root/go.mod" ] && echo "Go"
+    [ -f "$root/package.json" ] && echo "JavaScript/TypeScript"
+    [ -f "$root/mix.exs" ] && echo "Elixir"
+    { [ -f "$root/Gemfile" ] || ls "$root"/*.gemspec >/dev/null 2>&1; } && echo "Ruby"
+    { [ -f "$root/pyproject.toml" ] || [ -f "$root/setup.py" ] || [ -f "$root/requirements.txt" ]; } && echo "Python"
+    [ -f "$root/Cargo.toml" ] && echo "Rust"
+    ls "$root"/*.tf >/dev/null 2>&1 && echo "HCL"
+    true
+  } 2>/dev/null
+}
+
+# --------------------------------------------------------------------------------
+# tasks/.environment — a gitignored machine-local cache. Written as JSON by the
+# opencode sibling; also accept key=value so a hand-written one works.
+# --------------------------------------------------------------------------------
+
+env_get() {
+  local file=$1 key=$2 v=
+  [ -f "$file" ] || return 1
+  if head -c1 "$file" 2>/dev/null | grep -q '{'; then
+    v=$(jq -r --arg k "$key" '.[$k] // empty' "$file" 2>/dev/null)
+  else
+    v=$(sed -n "s/^${key}=//p" "$file" 2>/dev/null | head -1 | sed 's/^"//; s/"$//')
+  fi
+  [ -n "$v" ] && printf '%s' "$v"
+}
+
+# Precedence is a team decision beating a machine cache beating a guess. A cached
+# command must never shadow one the team committed.
+resolve_test_commands() {
+  local root=$1 cfg="$1/tasks/test-commands.json" envf="$1/tasks/.environment" cmd=
+  if [ -f "$cfg" ] && jq -e . "$cfg" >/dev/null 2>&1; then
+    jq -c . "$cfg"
+    return
+  fi
+  cmd=$(env_get "$envf" test_command) || cmd=
+  if [ -n "$cmd" ]; then jq -n -c --arg c "$cmd" '{default: $c, _source: "tasks/.environment"}'; return; fi
+  if [ -f "$root/Taskfile.yml" ] || [ -f "$root/Taskfile.yaml" ]; then
+    jq -n -c '{default: "task test", _source: "detected: Taskfile"}'
+  elif [ -f "$root/Makefile" ] && grep -qE '^test:' "$root/Makefile" 2>/dev/null; then
+    jq -n -c '{default: "make test", _source: "detected: Makefile"}'
+  elif [ -f "$root/package.json" ] && jq -e '.scripts.test' "$root/package.json" >/dev/null 2>&1; then
+    jq -n -c '{default: "npm test", _source: "detected: package.json"}'
+  elif [ -f "$root/go.mod" ]; then
+    jq -n -c '{default: "go test ./...", _source: "detected: go.mod"}'
+  else
+    jq -n -c '{_source: "undetected"}'
+  fi
+}
+
+# Records whether THIS machine runs Go through mise. Gitignored for that reason:
+# committing it hands a teammate without mise a command that cannot run. Decided once,
+# never per-command, and never double-wrapped.
+resolve_go_prefix() {
+  local root=$1 envf="$1/tasks/.environment" p=
+  p=$(env_get "$envf" go_tool_prefix) && { printf '%s' "$p"; return; }
+  [ -f "$root/go.mod" ] || { printf ''; return; }
+  if grep -hE '^[[:space:]]*go[[:space:]]*=' \
+       "$root/mise.toml" "$root/.mise.toml" "$root/mise.local.toml" "$root/.mise.local.toml" \
+       2>/dev/null | head -1 | grep -q .; then
+    printf 'mise exec -- '
+  else
+    printf ''
+  fi
+}
+
+# Durable learnings must survive across runs but must not be committed into a shared
+# repo that gitignores tasks/. Let the project's own gitignore decide.
+resolve_learnings_path() {
+  local root=$1 slug=
+  if (cd "$root" && git check-ignore -q tasks/learnings.md 2>/dev/null); then
+    slug=$(printf '%s' "$root" | sed 's#/#-#g; s#^-##')
+    printf '%s/.claude/implement-learnings/%s/learnings.md' "$HOME" "$slug"
+  else
+    printf '%s/tasks/learnings.md' "$root"
+  fi
+}
+
+# --------------------------------------------------------------------------------
+# Task file discovery
+# --------------------------------------------------------------------------------
+
+find_tasks_file() {
+  local root=$1 f n=0 found=
+  for f in "$root"/tasks/*.md; do
+    [ -f "$f" ] || continue
+    case "$(basename "$f")" in learnings.md) continue ;; esac
+    found=$f; n=$((n + 1))
+  done
+  [ "$n" -eq 1 ] && { printf '%s' "$found"; return 0; }
+  [ "$n" -eq 0 ] && return 1
+  return 3
+}
+
+# --------------------------------------------------------------------------------
+# prepare
+# --------------------------------------------------------------------------------
+
+cmd_prepare() {
+  local root wt gd branch base def langs cmds prefix learn tasks clean
+  root=$(repo_root) || die "not a git repository"
+  wt=$(work_tree)
+  def=$(default_branch)
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  base=""
+  [ -n "$def" ] && base=$(git merge-base HEAD "$def" 2>/dev/null)
+  langs=$(detect_languages "$root" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+  cmds=$(resolve_test_commands "$root")
+  prefix=$(resolve_go_prefix "$root")
+  learn=$(resolve_learnings_path "$root")
+  tasks=$(find_tasks_file "$root") || tasks=""
+  if tree_is_clean; then clean=true; else clean=false; fi
+
+  jq -n \
+    --arg version "$CLERK_VERSION" \
+    --arg repo_root "$root" \
+    --arg work_tree "$wt" \
+    --arg branch "$branch" \
+    --arg default_branch "$def" \
+    --arg base "$base" \
+    --arg go_tool_prefix "$prefix" \
+    --arg learnings_path "$learn" \
+    --arg tasks_file "$tasks" \
+    --argjson languages "$langs" \
+    --argjson test_commands "$cmds" \
+    --argjson clean "$clean" \
+    '{
+      version: $version,
+      repo_root: $repo_root,
+      work_tree: $work_tree,
+      in_worktree: ($repo_root != $work_tree),
+      branch: $branch,
+      default_branch: (if $default_branch == "" then null else $default_branch end),
+      base: (if $base == "" then null else $base end),
+      clean: $clean,
+      languages: $languages,
+      test_commands: $test_commands,
+      test_command: ($test_commands.default // null),
+      go_tool_prefix: $go_tool_prefix,
+      learnings_path: $learnings_path,
+      tasks_file: (if $tasks_file == "" then null else $tasks_file end)
+    }'
+}
+
+# --------------------------------------------------------------------------------
+# The sidecar. Reading `depends_on` out of markdown task bodies is a regex over prose;
+# `decompose-to-tasks` writes tasks/<story>.json beside the markdown so it is a lookup
+# instead. The markdown stays the human artifact and the progress record — the checkbox
+# is still what says a task is done — and the JSON only carries what tooling needs.
+# --------------------------------------------------------------------------------
+
+sidecar_for() {
+  local tasks=$1 j
+  j="${tasks%.md}.json"
+  [ -f "$j" ] || return 1
+  printf '%s' "$j"
+}
+
+# Task numbers whose checklist entry is ticked. The markdown is the source of truth for
+# progress precisely because it is what a human edits and what the commit carries.
+done_numbers() {
+  sed -n 's/^[[:space:]]*- \[[xX]\][[:space:]]*Task \([0-9][0-9]*\).*/\1/p' "$1"
+}
+
+cmd_next() {
+  local allow_dirty=false tasks_override= root tasks side donej
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --allow-dirty) allow_dirty=true; shift ;;
+      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      *) die "next: unknown argument '$1'" ;;
+    esac
+  done
+
+  root=$(repo_root) || die "not a git repository"
+  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
+    tasks=$(find_tasks_file "$root") || die "next: no single task file under $root/tasks (pass --tasks-file)"
+  fi
+  [ -f "$tasks" ] || die "next: task file not found: $tasks"
+  side=$(sidecar_for "$tasks") || die "next: no sidecar beside $tasks — decompose-to-tasks writes ${tasks%.md}.json"
+
+  # One task in flight at a time. A half-finished task sitting on top of another is what
+  # makes a run impossible to resume or review, so starting the next one is refused
+  # rather than merely discouraged.
+  if [ "$allow_dirty" != true ] && ! tree_is_clean; then
+    jq -n --arg d "$(git status --porcelain | head -5 | tr '\n' ';')" \
+      '{error: "work in flight", detail: ("commit or discard the current task before starting another: " + $d)}' >&2
+    return 3
+  fi
+
+  donej=$(done_numbers "$tasks" | jq -R -s -c 'split("\n") | map(select(length > 0) | tonumber)')
+
+  jq --argjson done "$donej" '
+    (.tasks // []) as $all
+    | [$all[] | select(([.n] | inside($done)) | not)] as $open
+    | [$open[] | select([.depends_on // [] | .[] | select(([.] | inside($done)) | not)] | length == 0)] as $ready
+    | {
+        done: ($open | length) == 0,
+        remaining: ($open | length),
+        blocked: (($open | length) - ($ready | length)),
+        task: ($ready | sort_by(.n) | first // null)
+      }' "$side"
+}
+
+cmd_complete() {
+  local n= tasks_override= root tasks side dir f line tmp staged
+  n=${1:-}; shift 2>/dev/null || true
+  case "$n" in ''|*[!0-9]*) die "complete: first argument must be a task number" ;; esac
+
+  staged=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      --) shift; break ;;
+      *) die "complete: unknown argument '$1'" ;;
+    esac
+  done
+  [ $# -gt 0 ] || die "complete: name the files this task changed after '--' (never 'git add -A')"
+
+  root=$(repo_root) || die "not a git repository"
+  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
+    tasks=$(find_tasks_file "$root") || die "complete: no single task file under $root/tasks (pass --tasks-file)"
+  fi
+  [ -f "$tasks" ] || die "complete: task file not found: $tasks"
+
+  line=$(grep -n "^[[:space:]]*- \[[ xX]\][[:space:]]*Task ${n}:" "$tasks" | head -1)
+  [ -n "$line" ] || die "complete: no '- [ ] Task ${n}:' entry in $(basename "$tasks")"
+  case "$line" in *'- [x]'*|*'- [X]'*) die "complete: Task ${n} is already checked off — a task is never redone" ;; esac
+
+  for f in "$@"; do
+    [ -e "$f" ] || die "complete: '$f' does not exist — stage only what this task actually changed"
+  done
+
+  # Tick first, then stage everything together, so the checkbox and the change it stands
+  # for land in one commit. A checkbox committed without its code makes a later run skip
+  # work; code without its checkbox makes it redo work.
+  tmp="${tasks}.clerk.$$"
+  awk -v n="$n" '
+    $0 ~ ("^[[:space:]]*- \\[[ ]\\][[:space:]]*Task " n ":") { sub(/\[ \]/, "[x]") }
+    { print }
+  ' "$tasks" > "$tmp" || die "complete: could not rewrite $tasks"
+  cat "$tmp" > "$tasks" && rm -f "$tmp"
+
+  # Explicit paths only. `git add -A` sweeps whatever the user left loose in the tree
+  # into this task's commit, and untangling that later means rewriting history.
+  git add -- "$@" || die "complete: staging failed"
+  git add -- "$tasks" || die "complete: could not stage the task file"
+
+  dir=$(state_dir); mkdir -p "$dir/tasks"
+  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{n: ($n | tonumber), at: $at, files: (split("\n") | map(select(length > 0)))}' \
+    > "$dir/tasks/$n.json"
+
+  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg t "$tasks" \
+    '{task: ($n | tonumber), checkbox: "ticked", tasks_file: $t,
+      staged: (split("\n") | map(select(length > 0))),
+      next_step: "invoke the commit skill — the message is judgment, not mechanics"}'
+}
+
+# --------------------------------------------------------------------------------
+# receipt — records a suite run against the SHA it actually describes.
+#
+# This is the file that did not exist, which is why a green run taken before the audit
+# fixes could still satisfy a gate that said "the full suite green".
+# --------------------------------------------------------------------------------
+
+cmd_receipt() {
+  local command= passed= tail_file= sha dir out
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --command) command=${2:-}; shift 2 ;;
+      --passed) passed=true; shift ;;
+      --failed) passed=false; shift ;;
+      --output-file) tail_file=${2:-}; shift 2 ;;
+      *) die "receipt: unknown argument '$1'" ;;
+    esac
+  done
+  [ -n "$command" ] || die "receipt: --command is required"
+  [ -n "$passed" ] || die "receipt: pass --passed or --failed"
+
+  sha=$(git rev-parse HEAD 2>/dev/null) || die "receipt: cannot resolve HEAD"
+  dir=$(state_dir) || die "not a git repository"
+  mkdir -p "$dir" || die "receipt: cannot create $dir"
+
+  out=""
+  if [ -n "$tail_file" ] && [ -f "$tail_file" ]; then
+    out=$(tail -c 4000 "$tail_file")
+  fi
+
+  jq -n \
+    --arg sha "$sha" \
+    --arg command "$command" \
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg output_tail "$out" \
+    --argjson passed "$passed" \
+    '{sha: $sha, command: $command, passed: $passed, at: $at, output_tail: $output_tail}' \
+    > "$dir/receipt.json" || die "receipt: cannot write $dir/receipt.json"
+
+  jq -c . "$dir/receipt.json"
+}
+
+# --------------------------------------------------------------------------------
+# gate — the four landing predicates, reported with their evidence.
+#
+# Three are computable. "The audit's findings are fixed or accepted" is a judgment, so
+# it is asserted by the caller rather than guessed at here; without the assertion the
+# gate simply does not open.
+# --------------------------------------------------------------------------------
+
+cmd_gate() {
+  local audit_accepted=false tasks_override= dir root head rec checks ok
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --audit-accepted) audit_accepted=true; shift ;;
+      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      *) die "gate: unknown argument '$1'" ;;
+    esac
+  done
+
+  root=$(repo_root) || die "not a git repository"
+  dir=$(state_dir)
+  head=$(git rev-parse HEAD 2>/dev/null)
+  checks="[]"
+
+  # 1. every task checked off
+  local tasks unchecked detail passed
+  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else tasks=$(find_tasks_file "$root") || tasks=""; fi
+  if [ -z "$tasks" ] && [ -f "$dir/archived.json" ]; then
+    # The breakdown having been archived IS the evidence every task closed — archiving
+    # is gated on it. Without this, a second `land` (say, to integrate after a rebase)
+    # finds no breakdown in tasks/ and refuses on a run that already satisfied it.
+    passed=true; detail="breakdown already archived at $(jq -r '.path' "$dir/archived.json")"
+  elif [ -z "$tasks" ]; then
+    passed=false; detail="no task file found under $root/tasks (pass --tasks-file to name it)"
+  elif [ ! -f "$tasks" ]; then
+    passed=false; detail="task file not found: $tasks"
+  else
+    unchecked=$(grep -c '^[[:space:]]*- \[ \]' "$tasks" 2>/dev/null | tr -d ' ')
+    [ -n "$unchecked" ] || unchecked=0
+    if [ "$unchecked" -eq 0 ]; then
+      passed=true; detail="all tasks checked off in $(basename "$tasks")"
+    else
+      passed=false; detail="$unchecked task(s) still unchecked in $(basename "$tasks")"
+    fi
+  fi
+  checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
+    '. + [{name: "tasks-complete", ok: $ok, detail: $d}]')
+
+  # 2. nothing left loose in the tree
+  local dirty
+  dirty=$(git status --porcelain 2>/dev/null)
+  if [ -z "$dirty" ]; then
+    passed=true; detail="working tree clean"
+  else
+    passed=false; detail="uncommitted changes: $(printf '%s' "$dirty" | head -5 | tr '\n' ';')"
+  fi
+  checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
+    '. + [{name: "tree-clean", ok: $ok, detail: $d}]')
+
+  # 3. the receipt must describe the tree being landed, not an earlier one
+  rec="$dir/receipt.json"
+  if [ ! -f "$rec" ]; then
+    passed=false; detail="no suite receipt recorded — run the suite and 'clerk receipt --command ... --passed'"
+  else
+    local rsha rpassed rcmd
+    rsha=$(jq -r '.sha' "$rec" 2>/dev/null)
+    rpassed=$(jq -r '.passed' "$rec" 2>/dev/null)
+    rcmd=$(jq -r '.command' "$rec" 2>/dev/null)
+    if [ "$rpassed" != "true" ]; then
+      passed=false; detail="recorded receipt failed: $rcmd"
+    elif [ "$rsha" != "$head" ]; then
+      passed=false
+      detail="receipt describes ${rsha:0:8}, HEAD is ${head:0:8} — the tree changed after the suite ran; re-run it"
+    else
+      passed=true; detail="green at ${head:0:8}: $rcmd"
+    fi
+  fi
+  checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
+    '. + [{name: "receipt-fresh", ok: $ok, detail: $d}]')
+
+  # 4. the judgment one — asserted, never inferred
+  if [ "$audit_accepted" = true ]; then
+    passed=true; detail="caller asserted audit findings are fixed or explicitly accepted"
+  else
+    passed=false; detail="pass --audit-accepted once the audit's findings are fixed or the user has accepted them"
+  fi
+  checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
+    '. + [{name: "audit-accepted", ok: $ok, detail: $d}]')
+
+  ok=$(printf '%s' "$checks" | jq -c 'all(.[]; .ok)')
+  printf '%s' "$checks" | jq --argjson ok "$ok" '{ok: $ok, checks: .}'
+  [ "$ok" = "true" ]
+}
+
+# --------------------------------------------------------------------------------
+# verify — the mechanical half of what the run-verifier agent does.
+#
+# Three of its four checks need no judgment at all, and one of them a script does more
+# correctly than the agent currently does: the agent hunts dead code with `rg -w`, which
+# the project's own guidelines forbid for symbol questions because text matches prefixes,
+# comments and strings. Text search IS sound in one direction though — no textual match
+# anywhere means no reference, since text is a superset of identity. Only that direction
+# is used here, and anything it cannot settle is reported as not-checked rather than
+# guessed at.
+# --------------------------------------------------------------------------------
+
+VACUITY_RE='no files changed|no tests to run|no test files|0 passed|0 tests|skip running tests|no tests ran'
+
+cmd_verify() {
+  local all_closed=false root dir def base head findings notchecked rec
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --all-closed) all_closed=true; shift ;;
+      *) die "verify: unknown argument '$1'" ;;
+    esac
+  done
+
+  root=$(repo_root) || die "not a git repository"
+  dir=$(state_dir)
+  def=$(default_branch)
+  head=$(git rev-parse HEAD 2>/dev/null)
+  base=""
+  [ -n "$def" ] && base=$(git merge-base HEAD "$def" 2>/dev/null)
+  findings="[]"
+  notchecked="[]"
+
+  add_finding() {
+    findings=$(printf '%s' "$findings" | jq -c \
+      --arg c "$1" --arg s "$2" --arg d "$3" '. + [{check: $c, severity: $s, detail: $d}]')
+  }
+  add_gap() { notchecked=$(printf '%s' "$notchecked" | jq -c --arg g "$1" '. + [$g]'); }
+
+  # 1. staged-tail — a task that did not close leaves its work staged, so a plain
+  #    `git diff` looks empty and the run reads as finished.
+  local staged dirty
+  staged=$(git diff --cached --name-only 2>/dev/null)
+  dirty=$(git status --porcelain 2>/dev/null | grep -v '^??' | head -10)
+  if [ -n "$staged" ]; then
+    add_finding staged-tail block \
+      "staged but uncommitted: $(printf '%s' "$staged" | tr '\n' ' ')— an unfinished task, not a stray edit; inspect 'git diff --staged'"
+  elif [ -n "$dirty" ]; then
+    add_finding staged-tail warn \
+      "tracked files modified but not staged: $(printf '%s' "$dirty" | tr '\n' ';')"
+  fi
+
+  # 2. vacuous-receipt — judged from the recorded receipt rather than by re-running,
+  #    because the receipt is what the gate trusts and it is what must not be hollow.
+  rec="$dir/receipt.json"
+  if [ ! -f "$rec" ]; then
+    add_finding vacuous-receipt block "no suite receipt recorded for this run"
+  else
+    local rsha rpassed rtail rcmd
+    rsha=$(jq -r '.sha' "$rec"); rpassed=$(jq -r '.passed' "$rec")
+    rcmd=$(jq -r '.command' "$rec"); rtail=$(jq -r '.output_tail' "$rec")
+    if [ "$rpassed" != "true" ]; then
+      add_finding vacuous-receipt block "the recorded receipt failed: $rcmd"
+    elif [ "$rsha" != "$head" ]; then
+      add_finding vacuous-receipt block \
+        "receipt describes ${rsha:0:8} but HEAD is ${head:0:8} — it does not describe this tree"
+    elif [ -n "$rtail" ] && printf '%s' "$rtail" | grep -qiE "$VACUITY_RE"; then
+      add_finding vacuous-receipt block \
+        "the receipt's output shows nothing ran: $(printf '%s' "$rtail" | grep -iE "$VACUITY_RE" | head -1)"
+    elif [ -z "$rtail" ]; then
+      add_gap "vacuous-receipt — the receipt carries no output tail, so it could not be checked for vacuity; record it with --output-file"
+    fi
+  fi
+
+  # 3. dead-code — new exported symbols with no reference outside their own file and
+  #    the tests. Sound-direction-only: zero textual matches proves no reference.
+  if [ -n "$base" ]; then
+    local gofiles sym deffile hits
+    gofiles=$(git diff --name-only "$base"..HEAD -- '*.go' 2>/dev/null)
+    if [ -n "$gofiles" ]; then
+      for sym in $(git diff "$base"..HEAD -- '*.go' 2>/dev/null \
+          | sed -n 's/^+func \([A-Z][A-Za-z0-9_]*\)(.*/\1/p; s/^+func ([^)]*) \([A-Z][A-Za-z0-9_]*\)(.*/\1/p; s/^+type \([A-Z][A-Za-z0-9_]*\) .*/\1/p' \
+          | sort -u); do
+        deffile=$(git grep -l -w -- "$sym" HEAD -- '*.go' 2>/dev/null | head -1)
+        hits=$(git grep -l -w -- "$sym" HEAD -- '*.go' ':!*_test.go' 2>/dev/null | wc -l | tr -d ' ')
+        if [ "${hits:-0}" -le 1 ]; then
+          if [ "$all_closed" = true ]; then
+            add_finding dead-code block "$sym is defined but referenced nowhere outside its own file and the tests (${deffile#*:})"
+          else
+            add_finding dead-code warn "$sym has no non-test caller yet — a later task may still wire it (${deffile#*:})"
+          fi
+        fi
+      done
+    fi
+    for lang in JavaScript/TypeScript Elixir; do
+      case "$(detect_languages "$root")" in
+        *"$lang"*) add_gap "dead-code — $lang symbols were not checked; only Go exported funcs and types are extracted mechanically" ;;
+      esac
+    done
+  else
+    add_gap "dead-code — no merge-base with a default branch, so the run's own commits could not be scoped"
+  fi
+
+  # 4. commit-boundary — arithmetic, and only possible because `clerk complete` recorded
+  #    which files belonged to which task.
+  if [ -d "$dir/tasks" ] && [ -n "$base" ]; then
+    local tf n files c count
+    for tf in "$dir"/tasks/*.json; do
+      [ -f "$tf" ] || continue
+      n=$(jq -r '.n' "$tf")
+      files=$(jq -r '.files[]' "$tf")
+      count=0
+      for c in $(git log --format=%H "$base"..HEAD 2>/dev/null); do
+        if git show --name-only --format= "$c" 2>/dev/null | grep -qxF "$(printf '%s' "$files" | head -1)"; then
+          count=$((count + 1))
+        fi
+      done
+      if [ "$count" -gt 1 ]; then
+        add_finding commit-boundary warn \
+          "task $n's files appear in $count commits — its work was split or swept into another task's commit"
+      fi
+    done
+  else
+    add_gap "commit-boundary — no per-task file records; run tasks through 'clerk complete' for this check"
+  fi
+
+  local clean
+  clean=$(printf '%s' "$findings" | jq -c 'map(select(.severity == "block")) | length == 0')
+  jq -n --argjson clean "$clean" --argjson findings "$findings" --argjson not_checked "$notchecked" \
+    '{clean: $clean, findings: ($findings | sort_by(if .severity == "block" then 0 else 1 end)), not_checked: $not_checked}'
+  [ "$clean" = "true" ]
+}
+
+# --------------------------------------------------------------------------------
+# land — archive the breakdown, then optionally put the branch on the default branch.
+#
+# Integration is opt-in: landing is the one irreversible step, and its inputs are all
+# things the caller assessed about its own work. A branch left standing costs one
+# ff-merge later; a bad fast-forward costs a history rewrite.
+# --------------------------------------------------------------------------------
+
+cmd_land() {
+  local integrate=false audit=false name= root wt tasks def branch before after dir
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --integrate) integrate=true; shift ;;
+      --audit-accepted) audit=true; shift ;;
+      --feature-name) name=${2:-}; shift 2 ;;
+      *) die "land: unknown argument '$1'" ;;
+    esac
+  done
+
+  local gate_out gate_rc
+  if [ "$audit" = true ]; then gate_out=$(cmd_gate --audit-accepted); else gate_out=$(cmd_gate); fi
+  gate_rc=$?
+  if [ "$gate_rc" -ne 0 ]; then
+    printf '%s' "$gate_out" | jq '{landed: false, reason: "gate did not open", gate: .}'
+    return 1
+  fi
+
+  root=$(repo_root); wt=$(work_tree); dir=$(state_dir)
+  def=$(default_branch); branch=$(git rev-parse --abbrev-ref HEAD)
+  tasks=$(find_tasks_file "$root") || tasks=""
+
+  # Archive first, on the feature branch, so the archive commit rides with the work it
+  # belongs to instead of landing on the default branch behind it. It also has to come
+  # before any rebase: `git mv` leaves a dirty tree, and a dirty tree blocks the rebase.
+  local archived=null
+  if [ -n "$tasks" ] && [ -f "$tasks" ]; then
+    [ -n "$name" ] || name=$(basename "${tasks%.md}")
+    mkdir -p "$root/tasks/completed"
+    git mv "$tasks" "$root/tasks/completed/$(basename "$tasks")" 2>/dev/null \
+      || die "land: could not archive $tasks"
+    if [ -f "${tasks%.md}.json" ]; then
+      git mv "${tasks%.md}.json" "$root/tasks/completed/$(basename "${tasks%.md}").json" 2>/dev/null || true
+    fi
+    git commit -qm "Archive completed task: $name" || die "land: archive commit failed"
+    archived=$(jq -n --arg p "tasks/completed/$(basename "$tasks")" '$p')
+    mkdir -p "$dir"
+    jq -n --arg p "tasks/completed/$(basename "$tasks")" --arg n "$name" \
+      '{path: $p, name: $n}' > "$dir/archived.json"
+  fi
+
+  if [ "$integrate" != true ]; then
+    jq -n --arg b "$branch" --arg d "$def" --arg wt "$wt" --argjson archived "$archived" \
+      '{landed: false, archived: $archived, branch: $b, default_branch: $d, work_tree: $wt,
+        note: "integration is opt-in and was not requested",
+        to_land: ("git -C <main checkout> merge --ff-only " + $b + " (rebase onto " + $d + " first if the base moved)")}'
+    return 0
+  fi
+
+  [ -n "$def" ] || die "land: cannot resolve a default branch"
+  [ "$branch" != "$def" ] && : || die "land: already on $def — nothing to integrate"
+
+  before=$(git rev-parse HEAD)
+  if ! git rebase "$def" >/dev/null 2>&1; then
+    git rebase --abort >/dev/null 2>&1
+    jq -n --arg d "$def" '{landed: false, reason: ("rebase onto " + $d + " conflicted; branch left exactly as it was"),
+                           note: "resolve it yourself or hand it to the user — do not resolve someone else'"'"'s merge"}'
+    return 1
+  fi
+  after=$(git rev-parse HEAD)
+
+  # Green-before-rebase is not green-after. If commits actually replayed onto a moved
+  # base, the recorded receipt describes a tree that no longer exists, so landing stops
+  # here until the suite has been re-run against the new HEAD.
+  if [ "$before" != "$after" ]; then
+    jq -n --arg b "$before" --arg a "$after" \
+      '{landed: false, rebased: true, reason: "the rebase replayed commits onto a moved base",
+        was: $b, now: $a,
+        next_step: "re-run the full suite, record it with '"'"'clerk receipt'"'"', then run '"'"'clerk land --integrate'"'"' again"}'
+    return 3
+  fi
+
+  if [ "$root" != "$wt" ]; then
+    jq -n --arg b "$branch" --arg d "$def" --arg root "$root" \
+      '{landed: false, rebased: false, reason: "this is a worktree; the branch is checked out here so it cannot be merged and deleted from inside it",
+        next_step: ("leave the worktree keeping the branch, then in " + $root + ": git merge --ff-only " + $b + " && git worktree prune && git branch -d " + $b)}'
+    return 3
+  fi
+
+  git switch -q "$def" || die "land: could not switch to $def"
+  if ! git merge --ff-only "$branch" >/dev/null 2>&1; then
+    git switch -q "$branch"
+    jq -n '{landed: false, reason: "merge --ff-only refused: the base moved again", next_step: "rebase and re-run the suite, then retry"}'
+    return 1
+  fi
+  git branch -d "$branch" >/dev/null 2>&1
+
+  jq -n --arg d "$def" --arg b "$branch" --argjson archived "$archived" \
+    --arg log "$(git log --oneline -5)" \
+    '{landed: true, archived: $archived, base_branch: $d, deleted_branch: $b,
+      pushed: false, log: ($log | split("\n"))}'
+}
+
+# --------------------------------------------------------------------------------
+
+usage() {
+  cat <<'EOF'
+clerk — deterministic mechanics for an implementation run
+
+USAGE
+  clerk prepare                      resolve the repo's facts as JSON
+  clerk next [--allow-dirty]         the first task whose dependencies are all done;
+                                     exit 3 if a task is still in flight
+  clerk complete <n> -- <files...>   tick the checkbox and stage those paths with it
+  clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
+                                     record a suite run against the SHA it describes
+  clerk gate [--audit-accepted] [--tasks-file <f>]
+                                     report the landing predicates; exit 0 only if all pass
+  clerk land [--integrate] [--audit-accepted]
+                                     archive the breakdown; land the branch only if asked
+  clerk verify [--all-closed]        the mechanical half of run-verifier
+  clerk version
+
+Every command takes --tasks-file to name the breakdown when tasks/ holds more than one.
+
+Everything here is mechanical. Judgment — writing code, reviewing it, deciding a fix
+is right — stays with the caller.
+EOF
+}
+
+need git
+need jq
+
+case "${1:-}" in
+  prepare)  shift; cmd_prepare "$@" ;;
+  next)     shift; cmd_next "$@" ;;
+  complete) shift; cmd_complete "$@" ;;
+  receipt)  shift; cmd_receipt "$@" ;;
+  verify)   shift; cmd_verify "$@" ;;
+  land)     shift; cmd_land "$@" ;;
+  gate)    shift; cmd_gate "$@" ;;
+  version) printf 'clerk %s\n' "$CLERK_VERSION" ;;
+  ''|-h|--help|help) usage ;;
+  *) die "unknown command '$1' (try: clerk help)" ;;
+esac

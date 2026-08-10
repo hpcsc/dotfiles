@@ -1,0 +1,28 @@
+### Resolve the environment
+
+```
+clerk prepare
+```
+
+One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, and whether the tree is `clean`.
+
+Read the values rather than re-deriving them. Three of them have precedence rules that are easy to get subtly wrong and were previously prose you had to execute correctly:
+
+- **`test_command`** — `tasks/test-commands.json` (tracked, a team decision) beats `tasks/.environment` (a gitignored machine-local cache) beats detection. A cached command must never shadow one the team committed. Use the entry for the task's language while working on it; use `default` before committing anything that spans languages, and again in Phase 3.
+- **`go_tool_prefix`** — whether *this machine* runs Go through mise. Decided once, applied to every Go command, never double-wrapped on a project command that already says `mise exec --`.
+- **`learnings_path`** — in-tree when the repo tracks `tasks/`, out-of-tree per-project when it gitignores it, so a shared repo gets steering without polluting teammates' checkouts.
+
+**Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
+
+If `clerk` is not installed, its resolutions are documented in `~/.config/ai/method/implement/` — but install it rather than hand-executing them; getting `test_command` precedence wrong silently tests the wrong thing.
+
+### Check whether this run already exists
+
+Stopping and restarting is the normal case, not an edge one, and the two ways of getting it wrong are both expensive: a second worktree strands the first one's commits somewhere nobody looks, and a second decomposition produces a different task list against code the first run already changed, so the sidecar recording what was built no longer describes the plan.
+
+`clerk prepare` reports what you need to tell the difference:
+
+- **`worktrees`** — every worktree of this repo with its branch. One whose branch matches this feature means the run already has a home; enter that one rather than creating another. How you enter it is tool-specific and covered below.
+- **`breakdowns`** — every breakdown under `tasks/` with `done`, `total`, `started` and `finished`. One with `started: true` and `finished: false` is a part-built run; adopt it in Phase 1 rather than decomposing again.
+
+Neither present means a fresh start. `clerk status --tasks-file <path>` shows exactly where a previous run stopped.

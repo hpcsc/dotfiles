@@ -21,6 +21,8 @@ CHECK=false
 TARGETS="
 implement claude   $ROOT/link/common/claude/.claude/skills/implement/SKILL.md
 implement opencode $ROOT/link/common/dot-config/.config/opencode/skills/implement/SKILL.md
+implement-auto claude   $ROOT/link/common/claude/.claude/skills/implement-auto/SKILL.md
+implement-auto opencode $ROOT/link/common/dot-config/.config/opencode/skills/implement-auto/SKILL.md
 agents/decompose-to-tasks claude   $ROOT/link/common/claude/.claude/agents/decompose-to-tasks.md
 agents/decompose-to-tasks opencode $ROOT/link/common/dot-config/.config/opencode/agents/decompose-to-tasks.md
 agents/commit claude   $ROOT/link/common/claude/.claude/agents/commit.md
@@ -39,7 +41,7 @@ render() {
   # Substitute every {{seam:name}} with seams/<tool>/<name>.md. An unresolved marker is
   # an error rather than a silent hole: a SKILL.md missing its worktree section reads
   # as complete and simply omits a step.
-  awk -v seams="$seams" '
+  awk -v seams="$seams" -v method="$METHOD" '
     /^\{\{seam:[a-z-]+\}\}$/ {
       name = $0
       sub(/^\{\{seam:/, "", name); sub(/\}\}$/, "", name)
@@ -53,7 +55,23 @@ render() {
       close(path)
       next
     }
-    /\{\{seam:/ { printf("gen-skills: malformed marker: %s\n", $0) > "/dev/stderr"; exit 3 }
+    # Fragments shared between skills, as opposed to per-tool variants. Included, not
+    # referenced, for the same reason seams are: a procedure the agent must follow in
+    # full should arrive in full.
+    /^\{\{include:[a-z0-9\/-]+\.md\}\}$/ {
+      name = $0
+      sub(/^\{\{include:/, "", name); sub(/\}\}$/, "", name)
+      path = method "/" name
+      if ((getline line < path) < 0) {
+        printf("gen-skills: no shared fragment %s\n", path) > "/dev/stderr"
+        exit 3
+      }
+      print line
+      while ((getline line < path) > 0) print line
+      close(path)
+      next
+    }
+    /\{\{(seam|include):/ { printf("gen-skills: malformed marker: %s\n", $0) > "/dev/stderr"; exit 3 }
     { print }
   ' "$body"
 }

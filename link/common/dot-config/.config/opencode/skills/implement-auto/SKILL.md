@@ -3,7 +3,7 @@ name: implement-auto
 description: Implement a feature autonomously through the full test-design → test-write → implement → refactor → review loop, pausing only for plan approval and pre-commit approval.
 ---
 
-Implement a feature autonomously with a single approval gate before each commit: $ARGUMENTS
+Implement a feature autonomously with a single approval gate before each commit. The command that invoked this skill passed you the request; treat everything it handed over as described below.
 
 **The request** is everything the caller just handed you: the feature description, plus any flags. **Record it verbatim before you do anything else** and refer to that record from here on — the audit is given it unsummarized, the validation pass re-reads it against the finished branch, and one step reads a path out of it.
 
@@ -93,7 +93,7 @@ A breakdown written before sidecars existed has no `tasks/<story>.json`; `clerk 
 
 ### Decompose
 
-Spawn the `decompose-to-tasks` agent with the Agent tool, passing the languages `clerk prepare` reported:
+Spawn the `decompose-to-tasks` subagent via the `task` tool with a complete, self-contained prompt, passing the languages `clerk prepare` reported:
 
 > Detected project languages: [list from Phase 0]
 >
@@ -133,7 +133,7 @@ mkdir -p tasks/.cycles
 
 Pick the task with `clerk next` — it returns the first task whose dependencies are all done, reading the sidecar rather than parsing the breakdown, and refuses while the tree is dirty because one task in flight at a time is what keeps a run resumable.
 
-Then spawn the `task-implementer` subagent with the Agent tool, passing a single JSON object as input.
+Then spawn the `task-implementer` subagent via the `task` tool, passing a single JSON object as input.
 
 The orchestrator assembles the JSON from `clerk next`'s output and the approved plan — do NOT ask the subagent to re-parse the task list file. The `language` field is taken from the task's annotation (set during decomposition), not from Phase 0's global inventory.
 
@@ -215,12 +215,7 @@ Read `tasks/.cycles/task-<N>.md` (the scratch file from the cycle's return). Pre
 
 ### Step 3: Commit
 
-**CRITICAL**: Do NOT run `git commit` via Bash. You MUST use the Skill tool to invoke a commit skill.
-
-**Detect which skill to use**: Run `test -f .claude/skills/commit/SKILL.md && echo exists || echo missing` (relative to the project root) to check whether a project-level `commit` skill exists. Do NOT speculatively invoke `commit` to see if it works — you must confirm the file exists first.
-
-- **If the output is `exists`**: use the Skill tool to invoke `commit` with the step description and any ticket context from `$ARGUMENTS`.
-- **If the output is `missing`**: use the Skill tool to invoke `pcommit` with the step description and any ticket context from `$ARGUMENTS`.
+**Do NOT run `git commit` via Bash.** Spawn the `commit` subagent via the `task` tool with the step description and any ticket context carried in the request. The changes are already staged by `clerk finish`; the agent writes the message and creates exactly one commit.
 
 ### Step 4: Update progress, checkpoint, and check plan validity
 

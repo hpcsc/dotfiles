@@ -355,6 +355,7 @@ After all tasks complete:
    - All steps approved by human reviewer at the commit gate
    - Full test suite passing
    - Independent run-verifier pass: [clean, or N findings surfaced]
+   - Story validation: [delivers the story as asked, or N open questions put to the user]
    - Durable learnings persisted to the learnings file: [count, or none]
    ```
 

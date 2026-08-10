@@ -649,7 +649,7 @@ eq "with the sidecar it read"                      "true" \
 # absolute one silently fails to join — which reads as "this breakdown has no progress"
 # rather than as an error, so the reporter falls back to whatever stale checklist is left.
 eq "reports paths relative to the work tree" "tasks/live.md" \
-   "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.archived | not) | .tasks_file] | first')"
+   "$(printf '%s' "$A" | jq -r '[.breakdowns[].tasks_file | select(endswith("/live.md"))] | first')"
 eq "and a slice nested under a story"        "tasks/big-story/slice-one/tasks.md" \
    "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.tasks_file | contains("slice"))] | first | .tasks_file')"
 eq "including archived ones"                 "tasks/completed/past.md" \

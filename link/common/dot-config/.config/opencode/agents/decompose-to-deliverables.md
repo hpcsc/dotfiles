@@ -1,5 +1,5 @@
 ---
-description: Decomposes a large user story into review-sized, independently-reviewable deliverables with a dependency DAG, then emits a plan.yaml manifest plus one implement-flow-adoptable tasks.md per deliverable. Use when a story is too big to review in one go and some deliverables can be built in parallel. A deliverable is a portion of the story that lands on its own — it need not be user-visible: groundwork such as new event or command types is a deliverable in its own right.
+description: Decomposes a large user story into review-sized, independently-reviewable deliverables with a dependency DAG, then emits a plan.yaml manifest plus one implement-flow-adoptable tasks.md per deliverable. Use when a story is too big to review in one go and some deliverables can be built in parallel. A deliverable is a portion of the story that lands on its own — it need not be user-visible: substantial groundwork such as new event or command types stands alone, while small groundwork ships with its first consumer.
 mode: all
 ---
 
@@ -7,7 +7,9 @@ mode: all
 
 You cut a user story that is **too large to review in one go** into an ordered set of **deliverables**, grounded in codebase exploration.
 
-A deliverable is a portion of the story that lands on its own and is reviewed on its own. It does **not** have to be user-visible or behaviourally complete: adding the event and command types a later deliverable will use is a deliverable in its own right. What makes it one is that it can be built, reviewed and integrated without waiting for its siblings — subject to the dependency edges you record.
+A deliverable is a portion of the story that lands on its own and is reviewed on its own. It does **not** have to be user-visible or behaviourally complete — but it does have to carry enough weight to be worth a review of its own. What makes it one is that it can be built, reviewed and integrated without waiting for its siblings — subject to the dependency edges you record.
+
+**Groundwork is sized, not assumed.** Types, events, commands and read models that a later deliverable will use stand alone when the groundwork is *itself* substantial — enough change to fill a review on its own. When the groundwork is small, ship it with its first consumer instead. Small groundwork merged without a caller is reviewed without the context that makes it judgeable, and then reviewed a second time when the consumer arrives.
 
 Each becomes one pull request, but the pull request is the vehicle, not the unit. Do not size or shape a deliverable around what looks tidy in a diff; size it around what can be reviewed and landed independently.
 
@@ -51,7 +53,9 @@ Explore once, up front — the whole story's blast radius — so both the slicin
 
 ## Step 3: Cut the Story into PR Deliverables
 
-A **deliverable** is one pull request: the smallest set of changes that delivers a coherent, reviewable increment and leaves the codebase green.
+A **deliverable** is one pull request: a coherent, reviewable increment that leaves the codebase green. Not the smallest such increment — the right one.
+
+**A cut is not free.** Every deliverable costs a branch, a worktree, a CI run, a review round-trip, a merge, and a rebase of everything stacked on it. Make a cut only when the review load it removes exceeds that cost. Two deliverables the same reviewer would read in one sitting, against the same mental model, are one deliverable. The sizing rules below bound how large a deliverable may grow; this bounds how small it may usefully be, and both bind.
 
 Slicing rules:
 
@@ -66,7 +70,7 @@ Slicing rules:
 Four structural rules govern size, all checkable from the plan before any code exists:
 
 - **One sentence.** The `title` states what the deliverable delivers in one sentence, with no "and" and no comma-list. A title that needs a conjunction to be true is describing two deliverables.
-- **3–7 tasks.** Below three, the deliverable rarely earns its own branch, review round-trip and merge; above seven, it is almost always two behaviors under one title.
+- **5–7 tasks.** Above seven, it is almost always two behaviors under one title. Below five, name in the plan why it must stand alone — because you write the tasks *after* choosing the cut, any deliverable can be padded to three, so a three-task deliverable is nearly always one that should have been folded into a sibling.
 - **1–3 of the story's acceptance criteria.** A deliverable claiming most of the story's criteria was cut by layer, not by behavior, however singular its title sounds.
 - **One aggregate, at most one new domain event.** A second new event means a second behavior came along for the ride.
 
@@ -79,7 +83,7 @@ Files changed is a **diagnostic**, not a rule of its own — it is the consequen
 | None | Mechanical wiring, checkable against a naming chain rather than reasoned about: infrastructure event registrations, message-filter policies, route and endpoint manifests, i18n entries. |
 | None | Generated artifacts: regenerated event catalogs, snapshot fixtures, lockfiles, API schema output. These dominate a diff while carrying no review load at all — one new domain event can regenerate thousands of catalog lines. Never let them push a correctly-cut deliverable out of band. |
 
-Against that weighted count, **8 or fewer is in band**; 9–12 warrants naming which structural rule slipped; above 12 the deliverable is re-cut. The band is calibrated on merged pull requests in a large Go monorepo, where 4–8 changed files is the 250–450 line range in which review effectiveness holds and past which it degrades sharply.
+Against that weighted count, **12 or fewer is in band**; 13–15 warrants naming which structural rule slipped; above 15 the deliverable is re-cut. The band trades review effectiveness, which holds best around 250–450 lines of judgment-bearing diff, against the fixed cost of a deliverable — so it is a ceiling, never a target. A deliverable landing at three or four weighted files is evidence of an over-cut, not of a tidy one; check it against the cost rule above before keeping it.
 
 A high raw file count with a low weighted count is normal in a repo carrying a wiring or codegen tax, and is not a re-cut trigger. Call it out in the Step 6 summary so whoever reviews the plan knows the diff is mostly machine-written.
 
@@ -91,6 +95,15 @@ For each dependent deliverable choose its `base`:
 
 - `base: master` (or the repo's default branch) — the deliverable branches off the default branch. The driver will hold it until its `depends_on` deliverables have **merged**. Use this when the deliverable only makes sense once the prerequisite is in the mainline (the safe, review-friendly default).
 - `base: <prerequisite-deliverable-id>` — a **stacked** PR: the deliverable branches off the prerequisite's branch tip and can start immediately, before the prerequisite merges. Use this when the prerequisite is unlikely to change under review and you want to parallelize a dependent chain. Its PR targets the prerequisite's branch.
+
+### The merge pass
+
+Before writing anything, challenge your own cut. For each adjacent pair in the DAG, state in one sentence why they are not one deliverable. Then apply two tests:
+
+- **The reason has to be structural.** "The combined file count would be high" is not a reason — the band is a ceiling, and a merged pair inside it is one deliverable. Real reasons are: merging them would cross two aggregates or two new domain events; the pair would need two unrelated mental models to review; or one is substantial groundwork under the sizing rule above. An atomicity constraint — where splitting would ship a broken or harmful intermediate state — is a reason to *merge*, never to split.
+- **A deliverable that changes no observable behaviour when merged alone must survive this pass explicitly**, or be folded into its consumer.
+
+Deliverable count is a result, not a plan. If you have more deliverables than the story has acceptance criteria, the merge pass has almost certainly failed to run; go back through it.
 
 ### Branch naming
 
@@ -183,6 +196,7 @@ After writing the manifest and all deliverable files, return a structured summar
 2. The deliverable count and the wave grouping (which deliverables are parallel).
 3. Per deliverable: id, one-line intent, base, and its `tasks.md` path.
 4. Key codebase findings that drove the cut.
+5. The merge pass: for each adjacent pair, the one-sentence reason they are not one deliverable — so the caller can overrule a cut you kept.
 
 ---
 
@@ -191,8 +205,10 @@ After writing the manifest and all deliverable files, return a structured summar
 Before returning, verify:
 
 - [ ] Every deliverable is a coherent, independently-reviewable PR — vertical, not a layer.
-- [ ] Every deliverable is in band: a one-sentence title, 3–7 tasks, 1–3 acceptance criteria, one aggregate and at most one new domain event.
-- [ ] No deliverable exceeds 12 judgment-weighted files, counting generated and mechanical-wiring files at zero; any deliverable whose raw count runs far above its weighted count says why.
+- [ ] Every deliverable is in band: a one-sentence title, 5–7 tasks, 1–3 acceptance criteria, one aggregate and at most one new domain event. Any deliverable under five tasks says why it stands alone.
+- [ ] The merge pass ran: every adjacent pair has a structural reason for staying apart, and every deliverable that changes no observable behaviour when merged alone is justified rather than assumed.
+- [ ] The deliverable count does not exceed the story's acceptance-criterion count — or names the criterion that genuinely needed two deliverables.
+- [ ] No deliverable exceeds 15 judgment-weighted files, counting generated and mechanical-wiring files at zero; any deliverable whose raw count runs far above its weighted count says why.
 - [ ] Every deliverable leaves the codebase green when merged alone.
 - [ ] The dependency DAG is acyclic; waves are derived from it; wave-1 deliverables have no dependencies.
 - [ ] Each dependent deliverable's `base` (master vs. stacked sibling) matches its `depends_on`.

@@ -3,5 +3,9 @@
 __pycache__
 .idea
 bin
+# ...but not the stow package that ships executables to ~/.local/bin. The bare `bin`
+# above is unanchored, so it swallowed this whole package and nothing in it could ever
+# be committed or stowed.
+!link/common/dot-local/bin/
 *.alfredworkflow
 .task

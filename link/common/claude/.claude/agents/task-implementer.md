@@ -259,6 +259,7 @@ Return to the orchestrator EXACTLY one JSON object and nothing else:
   "status": "pass",
   "scratch": "tasks/.cycles/task-3.md",
   "plan_impact": "none",
+  "premise_doubt": null,
   "blocker": null
 }
 ```
@@ -270,6 +271,9 @@ Fields:
   - `"block"` — the cycle could not finish (e.g., agent spawn failed after retry, compile never succeeded). Record the blocker in the scratch file before returning.
 - `scratch`: path to the scratch file written (same as the input `scratch_path`).
 - `plan_impact`: `"triggered"` if any "Learnings" field is non-"none"; otherwise `"none"`.
+- `premise_doubt`: normally `null`. Set it to one or two sentences when, having been through the code, you believe the **task itself** was misconceived — an acceptance criterion measures a proxy rather than the thing it names, the task duplicates work already in the tree, or the behaviour it specifies contradicts what the surrounding code exists to do. Name the criterion or premise and what in the code contradicts it.
+
+  This is **not** `status: "block"` and not an unresolved finding. A blocker says the cycle could not finish; an unresolved finding is a gap in this task's own work. A premise doubt says the task finished exactly as specified and the specification looks wrong — the one thing nothing downstream re-opens, because the reviewers judge the diff and the orchestrator judges the evidence. Finish the cycle normally and set the field; it changes nothing about `status`, and the orchestrator carries it to the human.
 - `blocker`: one-line reason when `status` is `"block"`; otherwise `null`.
 
 Never include prose, diffs, or transcripts in the return. The scratch file is the interface.

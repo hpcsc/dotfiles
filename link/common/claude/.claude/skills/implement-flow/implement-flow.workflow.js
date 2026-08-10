@@ -336,6 +336,16 @@ const IMPL_SCHEMA = {
         },
       },
     },
+    // The implementer is the only agent in the run that reads the acceptance criteria
+    // with the real code in front of it, and nothing downstream ever re-opens whether
+    // those criteria were right — the audit checks evidence against them, the reviewers
+    // check the diff. Without a field for it, "this task is misconceived" has no way out
+    // of this agent except as a failed attempt, which is a different claim entirely.
+    premise_doubt: {
+      type: 'string',
+      description:
+        'OPTIONAL and never a substitute for doing the task — implement it as specified and return full evidence regardless. Use it only when, having been in the code, you believe the task itself is misconceived: an acceptance criterion measures a proxy rather than the thing it names, the task duplicates work already present, or the behaviour it specifies contradicts what the surrounding code exists to do. Name the specific criterion or premise and what in the code contradicts it. Omit the field entirely when you have no such doubt; a hedging note is worse than none.',
+    },
   },
 }
 
@@ -583,7 +593,9 @@ const implementPrompt = (t, cfg, testPlan, feedback, outstanding = []) =>
   `  A throwaway probe is legitimate ONLY when it answers a question for YOU (is this branch reachable, is this perf concern real) and NO criterion rests on it. Before deleting any test file, ask: "does an acceptance criterion lose its proof if this goes?" If yes, it was never a scratch file — fold it into the committed test file instead.\n` +
   `- A TEST THAT CANNOT FAIL IS NOT EVIDENCE. Before citing any test, apply the substitution test: if the code under test were reverted, stubbed, or had this branch deleted, would this test fail? If it would still pass, it proves nothing and will block the task as a \`broken-test\`.\n` +
   `  Criteria phrased as an ABSENCE — "without X", "behaves exactly as before", "produces no diagnostic", "is unchanged" — are where this goes wrong most, because asserting a zero value on input that omits the feature passes with the feature deleted. Prove those against input that DOES exercise the new handling: assert the with-X and without-X cases together (sibling elements, a table with both rows, a before/after of the same document), so deleting or misrouting the handling breaks the assertion. Where a criterion rests on such a claim, actually run the mutation once — break the handling, watch the test fail, restore it — and cite the test only after it has demonstrably failed for the right reason.\n` +
-  `- Leave NO build artifacts in the tree. Build to a temp path or \`-o /dev/null\`; a compiler invoked without an output flag drops a binary in the repo root, where it reads as untracked source and can be swept into a commit.\n` +
+  `- Leave NO build artifacts in the tree. Build to a temp path or \`-o /dev/null\`; a compiler invoked without an output flag drops a binary in the repo root, where it reads as untracked source and can be swept into a commit.\n\n` +
+  `IF THE TASK ITSELF LOOKS WRONG, SAY SO — in \`premise_doubt\`, and only there. You are the only agent in this run that reads these acceptance criteria with the real code in front of you, and nothing after you re-opens whether they were the right criteria: the auditor checks your evidence against them, the reviewers check the diff. So when a criterion measures a proxy for the thing it names, or this task duplicates work already in the tree, or the behaviour specified contradicts what the surrounding code exists to do, write that down. ` +
+  `This does not excuse you from the task: implement it as specified and return the full evidence anyway. The note is carried to the human, changes nothing about whether this task closes, and costs you no attempt — raising one is free, and staying quiet about a real doubt is the only expensive option.\n\n` +
   `Leave all changes STAGED. Do NOT commit.`
 
 const refactorPrompt = (t, cfg, impl) =>
@@ -816,6 +828,11 @@ async function runTask(task) {
   // These two carry that decision from the end of one attempt into the next.
   let narrowTo = null
   let skipRefactor = false
+  // Doubts about the task's own premise, kept apart from `unresolved` on purpose:
+  // unresolved entries are gaps in THIS task's evidence and are what a retry works on,
+  // while these are questions about whether the task should have been specified this
+  // way at all. Nothing in the loop can act on one, so they ride out to the human.
+  const premiseDoubts = []
 
   for (let attempt = 1; attempt <= MAX_RESOLVE; attempt++) {
     attemptsUsed = attempt
@@ -831,6 +848,10 @@ async function runTask(task) {
       break
     }
     lastFilesChanged = impl.files_changed ?? lastFilesChanged
+    if (impl.premise_doubt?.trim()) {
+      premiseDoubts.push({ attempt, note: impl.premise_doubt.trim() })
+      log(`${tag}: implementer raised a premise doubt — ${impl.premise_doubt.trim()}`)
+    }
     const refactor = skipRefactor
       ? { outcome: 'skipped (previous attempt failed on quality findings only — no new behaviour to restructure)', test_receipt: impl.test_receipt }
       : (await agent(refactorPrompt(task, cfg, impl), {
@@ -986,6 +1007,7 @@ async function runTask(task) {
         status: 'closed',
         attempts: attempt,
         unresolved: [...speculative.map((s) => `speculative: ${s.finding_id} — ${s.note}`), ...carriedOut],
+        premise_doubts: premiseDoubts,
         // Carried so the caller can name the staged files if the commit agent dies
         // between closing this task and committing it.
         files_changed: lastFilesChanged,
@@ -1029,6 +1051,7 @@ async function runTask(task) {
         : []),
     ],
     uncommitted: lastFilesChanged,
+    premise_doubts: premiseDoubts,
     evidence,
   }
 }
@@ -1246,6 +1269,14 @@ log(reflection
   ? `reflect: ${learnings.length} durable learning(s) written to ${LEARNINGS_PATH}`
   : 'reflect: agent returned nothing — no learnings written this run')
 
+// Aggregated where a reviewer of the branch will actually look. Left only on the
+// per-task entries these are easy to miss on a run that closed everything — which is
+// precisely the run where a wrong premise is otherwise invisible.
+const premiseDoubts = results.flatMap((r) => (r.premise_doubts ?? []).map((d) => ({ task: r.n, title: r.title, ...d })))
+if (premiseDoubts.length) {
+  log(`${premiseDoubts.length} premise doubt(s) raised while implementing — they blocked nothing; read them against the story`)
+}
+
 return {
   story,
   tasks_file: finish?.tasks_file_moved_to ?? planFile,
@@ -1270,6 +1301,7 @@ return {
       )
     })(),
   learnings,
+  premise_doubts: premiseDoubts,
   tasks: results.map((r) => ({
     n: r.n,
     title: r.title,
@@ -1277,6 +1309,7 @@ return {
     attempts: r.attempts,
     commit: r.commit ?? null,
     unresolved: r.unresolved,
+    premise_doubts: r.premise_doubts ?? [],
     evidence: trimEvidence(r.evidence),
   })),
 }

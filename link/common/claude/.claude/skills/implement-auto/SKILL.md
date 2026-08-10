@@ -200,12 +200,14 @@ When in doubt, include the reviewer.
   "status": "pass" | "block",
   "scratch": "tasks/.cycles/task-<N>.md",
   "plan_impact": "none" | "triggered",
+  "premise_doubt": "<the task itself looks misconceived, and why>" | null,
   "blocker": "<reason>" | null
 }
 ```
 
 - `status: "block"` → surface the blocker to the user (point at the scratch file) and stop. Do not proceed to Step 2.
 - `status: "pass"` → proceed to Step 2. Unresolved findings from exhausted inner revision loops live in the scratch file — the user sees them at the Step 4 gate.
+- `premise_doubt` non-null → **surface it verbatim at the Step 2 gate, above the cycle summary**, and carry it into the Step 4 plan-validity check. It is not a blocker and not a failed cycle: the task finished as specified and the cycle is telling you the specification looks wrong. That is the one judgment nothing else in this skill re-opens — the reviewers judge the diff, the gate summary reports conformance — so it must reach the person at the gate rather than sit in a scratch file.
 
 The orchestrator **must not** read the subagent's inner transcript. Read `scratch` only at Steps 3, 4, and 5.
 
@@ -213,6 +215,7 @@ The orchestrator **must not** read the subagent's inner transcript. Read `scratc
 
 Read `tasks/.cycles/task-<N>.md` (the scratch file from the cycle's return). Present to the user:
 
+- **`premise_doubt` first, verbatim, if the cycle returned one.** Everything else at this gate is conformance evidence — it answers "did the task get built as specified". This is the only item that answers "should it have been specified that way", and it came from the one agent that read the criteria with the code in front of it. Ask the user directly whether the task's premise still holds.
 - The "Cycle summary" section (implementation summary, test plan used, refactoring outcome, review verdict, test output, unresolved findings).
 - List of files changed from the "Checkpoint entry" section.
 

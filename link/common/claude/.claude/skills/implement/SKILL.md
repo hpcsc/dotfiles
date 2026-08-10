@@ -21,6 +21,8 @@ So: build directly, review adversarially at the end.
 
 Use `implement-flow` instead for large mechanical migrations with genuinely disjoint files, or for unattended overnight runs.
 
+**And prefer this one whenever the *what* is not yet settled.** The delegated siblings execute a specification: they prove the code obeys acceptance criteria fixed before any code existed, which is right when the behaviour is known and wrong when the story is the thing under investigation. Being fast is what makes this skill the tool for that case — at minutes per feature, building a version, looking at it and discarding it is a cheaper way to find out whether a requirement is right than arguing about it in a task breakdown.
+
 ---
 
 ## Phase 0: Ground yourself

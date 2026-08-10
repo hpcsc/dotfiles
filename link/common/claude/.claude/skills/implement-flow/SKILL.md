@@ -15,6 +15,8 @@ This is the gate-free, background sibling of `implement` / `implement-auto`. Tho
 
 **Do NOT use it** for: changes that are hard to reverse or reach outside the repo (migrations against shared state, deploys, anything destructive), or work where you want to steer at each step. Use `implement` / `implement-auto` (which keep the human gates) for those.
 
+**The axis that decides it: is the *what* already settled?** This skill executes a specification — it proves the code obeys acceptance criteria that a decomposition wrote before any code existed. That is exactly right when the behaviour is known and the work is getting there: a refactor, a migration, a well-understood feature, a bug with a correct answer. It is the wrong tool when the story *is* the thing under investigation, because a mis-framed story produces a flawless-looking run — every receipt real, every criterion evidenced, the wrong thing built correctly. When you are still learning what the right behaviour is, use `implement`: at minutes per feature it is cheap enough to build, look at, and throw away, which is the only thing that actually settles a *what*.
+
 Because it is gate-free and auto-commits, the safety boundary is the **branch + the evidence contract**, not a human at each step. Set both up before launching.
 
 ---
@@ -126,13 +128,15 @@ The whole design rests on one rule: **a claim that can be executed must be prese
 - Every acceptance criterion must map to **executed** evidence, surfaced as a matrix in the result.
 - **Evidence must survive the run.** A criterion proven by a test cites that test as `<file>::<name>`, and the audit agent re-runs it *by name* in the final tree — confirming it selects a test rather than matching nothing. A citation that no longer resolves means the implementer produced the proof in a scratch file and deleted it, which blocks the task exactly as missing evidence would. The rule for the implementer: a throwaway probe is fine when it answers a question *for the agent*; the moment a criterion rests on it, it belongs in the committed test file.
 
-When you review the finished branch, you're auditing receipts, not re-deriving correctness.
+When you review the finished branch, you're auditing receipts, not re-deriving correctness — **for verification**. Receipts prove the code obeys the acceptance criteria; they say nothing about whether those were the right criteria. That question is validation, it has no executable form, and it was never delegated. The run asks it too (the `validation` block, below) but returns *questions*, not evidence. Answering them is yours, and it is the one part of reviewing this branch that no receipt can shorten.
 
 ---
 
 ## After it returns
 
-1. **Verify first — review by exception.** The run already ran the `run-verifier` agent in Finalize; read its verdict at `verification` in the returned object. If `clean`, report one line — `verified · <closed> closed, <open> open · <full-suite receipt> · branch <name>` — and do NOT walk the diff. If it has findings, that is the exception: surface each (`staged-tail`, `dead-code`, `vacuous-receipt`, `commit-boundary`) with its file/symbol and fix, then resolve or hand back — a `block` means the run's "done" does not hold. (To re-verify by hand at any time, run the `/verify-run` command in the worktree.)
+1. **Verify by exception; validate always.** The run already ran the `run-verifier` agent in Finalize; read its verdict at `verification` in the returned object. If `clean`, report one line — `verified · <closed> closed, <open> open · <full-suite receipt> · branch <name>` — and do NOT walk the diff hunting for defects. If it has findings, that is the exception: surface each (`staged-tail`, `dead-code`, `vacuous-receipt`, `commit-boundary`) with its file/symbol and fix, then resolve or hand back — a `block` means the run's "done" does not hold. (To re-verify by hand at any time, run the `/verify-run` command in the worktree.)
+
+   **"By exception" covers verification only.** Read `validation` and `premise_doubts` (below) on every run, including a clean one — a run that built the wrong thing correctly is exactly the run whose verification comes back clean.
 2. Read the returned summary: closed vs. open task counts, the full-suite receipt, `integrated` (whether the branch was landed on the default branch and deleted), and per-task evidence. With `args.integrate` the fully-closed run ends on the default branch — review `git log` there instead of a branch diff; otherwise everything is on the implementation branch as before.
 3. **Open tasks** (evidence didn't close within `maxResolve`) are the human's queue — their `unresolved` list names the concrete gaps. Resume them with `implement-auto` (gated) or fix manually.
 4. **Review the learnings file** (`args.learningsPath`) — the reflect step appended any new durable learnings there. If it's the in-tree `tasks/learnings.md`, it's an uncommitted change in your diff: keep, edit, or discard, and commit it if you want teammates to inherit it. If it resolved out-of-tree, it's private steering already in place for the next run — nothing to commit.

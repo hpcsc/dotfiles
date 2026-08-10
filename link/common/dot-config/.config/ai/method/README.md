@@ -128,6 +128,12 @@ beside it, `tasks/<story>.json`. The markdown is the human artifact and the prog
 record; the sidecar is what makes `clerk next` a lookup rather than a regex over prose.
 Then the only gate before code.
 
+A breakdown that predates the sidecar has none, and `clerk next` refuses rather than
+guessing. `clerk sidecar` recovers one by reading the `### Task N:` sections and their
+`**Depends on:**` lines, and prints what it extracted so the edges can be checked. It is
+a recovery path, not a source of truth — a misread edge reorders work silently — so it
+is an explicit command rather than something `next` does behind your back.
+
 ### Phase 2 — build, task by task
 
 `clerk next` returns the first task whose dependencies are all checked off, and exits 3
@@ -198,6 +204,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 |---|---|---|
 | `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
+| `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars | 0 · **2** if nothing parses |
 | `complete <n> -- <files>` | Checkbox ticked, named paths staged with it | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |

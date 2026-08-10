@@ -295,7 +295,103 @@ eq "onto the default branch"         "main"    "$(printf '%s' "$L" | jq -r '.bas
 eq "deletes the feature branch"      "0"       "$(git -C "$R8" branch --list feature | wc -l | tr -d ' ')"
 eq "and never pushes"                "false"   "$(printf '%s' "$L" | jq -r '.pushed')"
 
+
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$WT" 2>/dev/null
+printf '\nsidecar recovery\n'
+
+R9=$(new_repo)
+mkdir -p "$R9/tasks"
+cat > "$R9/tasks/legacy.md" <<'EOF'
+# Legacy breakdown
+
+## Progress
+- [ ] Task 1: Add the event type
+- [ ] Task 2: Wire the handler
+- [ ] Task 3: Update the docs
+
+## Tasks
+
+### Task 1: Add the event type
+
+**Behavior:** A new event exists.
+
+**Affected Files/Modules:**
+- `internal/events/order.go` — add the type
+- `internal/events/order_test.go` — cover it
+
+**Testable:** Yes
+
+**Depends on:** None
+
+### Task 2: Wire the handler
+
+**Behavior:** The handler dispatches it.
+
+**Affected Files/Modules:**
+- `internal/handler/order.go` — dispatch
+
+**Testable:** Yes
+
+**Depends on:** Task 1
+
+### Task 3: Update the docs
+
+**Behavior:** Docs mention it.
+
+**Affected Files/Modules:**
+- `README.md` — document
+
+**Testable:** No
+
+**Depends on:** Tasks 1, 2
+EOF
+git -C "$R9" add -A && git -C "$R9" commit -qm "Legacy plan"
+
+run "$R9" next >/dev/null 2>&1
+eq "next refuses a breakdown with no sidecar" "2" "$?"
+
+S=$(run "$R9" sidecar)
+eq "sidecar recovers every task"          "3" "$(printf '%s' "$S" | jq -r '.tasks')"
+eq "and says it read the task sections"   "sections" "$(printf '%s' "$S" | jq -r '.recovered_from')"
+eq "None becomes an empty dependency list" "0" "$(jq -r '.tasks[0].depends_on | length' "$R9/tasks/legacy.json")"
+eq "a single dependency is recovered"      "1" "$(jq -r '.tasks[1].depends_on | join(",")' "$R9/tasks/legacy.json")"
+eq "and so are several"                    "1,2" "$(jq -r '.tasks[2].depends_on | join(",")' "$R9/tasks/legacy.json")"
+eq "testable No is honoured"               "false" "$(jq -r '.tasks[2].testable' "$R9/tasks/legacy.json")"
+eq "language is inferred from the files"   "Go" "$(jq -r '.tasks[0].language' "$R9/tasks/legacy.json")"
+eq "affected files come across"            "internal/events/order.go" "$(jq -r '.tasks[0].affected_files[0]' "$R9/tasks/legacy.json")"
+eq "titles survive"                        "Wire the handler" "$(jq -r '.tasks[1].title' "$R9/tasks/legacy.json")"
+
+case "$(run "$R9" sidecar --force | jq -r '.next_step')" in
+  *"commit it alongside the breakdown"*) ok "and says to commit it before carrying on" ;;
+  *) bad "and says to commit it before carrying on" "a note about committing" "$(run "$R9" sidecar --force | jq -r '.next_step')" ;;
+esac
+
+git -C "$R9" add -A && git -C "$R9" commit -qm "Recover sidecar"
+eq "next works once the sidecar exists" "1" "$(run "$R9" next | jq -r '.task.n')"
+eq "and the recovered edges block the rest" "2" "$(run "$R9" next | jq -r '.blocked')"
+
+eq "it refuses to clobber an existing sidecar" "false" "$(run "$R9" sidecar | jq -r '.written')"
+eq "unless forced"                             "true"  "$(run "$R9" sidecar --force | jq -r '.written')"
+
+# A breakdown with only a checklist yields numbers and titles but no edges — safe,
+# because a breakdown is emitted in dependency order, but it must say so.
+R10=$(new_repo); mkdir -p "$R10/tasks"
+printf -- '- [ ] Task 1: First\n- [ ] Task 2: Second\n' > "$R10/tasks/bare.md"
+git -C "$R10" add -A && git -C "$R10" commit -qm "Bare plan"
+S=$(run "$R10" sidecar)
+eq "falls back to the checklist when there are no sections" "checklist" "$(printf '%s' "$S" | jq -r '.recovered_from')"
+eq "recovering both entries"                                "2" "$(printf '%s' "$S" | jq -r '.tasks')"
+case "$(printf '%s' "$S" | jq -r '.note')" in
+  *"every depends_on is empty"*) ok "and warns that no edges were recovered" ;;
+  *) bad "and warns that no edges were recovered" "a note about empty depends_on" "$(printf '%s' "$S" | jq -r '.note')" ;;
+esac
+
+R11=$(new_repo); mkdir -p "$R11/tasks"; printf 'no tasks here at all\n' > "$R11/tasks/empty.md"
+git -C "$R11" add -A && git -C "$R11" commit -qm "Empty"
+run "$R11" sidecar >/dev/null 2>&1
+eq "fails loudly when nothing parses" "2" "$?"
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

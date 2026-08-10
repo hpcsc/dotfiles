@@ -235,6 +235,99 @@ done_numbers() {
   sed -n 's/^[[:space:]]*- \[[xX]\][[:space:]]*Task \([0-9][0-9]*\).*/\1/p' "$1"
 }
 
+# Recover a sidecar from a breakdown written before sidecars existed. The markdown is
+# regular enough for this — `### Task N: title` sections with `**Depends on:**` lines —
+# but it is a recovery path, not the source of truth: a dependency edge this misreads
+# would silently reorder the work. So it is an explicit command that shows what it
+# extracted, never something `next` does behind your back.
+cmd_sidecar() {
+  local force=false tasks_override= root tasks out rows n
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force) force=true; shift ;;
+      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      *) die "sidecar: unknown argument '$1'" ;;
+    esac
+  done
+
+  root=$(repo_root) || die "not a git repository"
+  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
+    tasks=$(find_tasks_file "$root") || die "sidecar: no single task file under $root/tasks (pass --tasks-file)"
+  fi
+  [ -f "$tasks" ] || die "sidecar: task file not found: $tasks"
+  out="${tasks%.md}.json"
+
+  if [ -f "$out" ] && [ "$force" != true ]; then
+    jq -n --arg p "$out" '{written: false, path: $p, note: "already exists; pass --force to rewrite"}'
+    return 0
+  fi
+
+  # n \t title \t depends \t testable \t files(space-separated)
+  rows=$(awk '
+    function flush() {
+      if (n != "") printf "%s\t%s\t%s\t%s\t%s\n", n, title, deps, testable, files
+      n = ""; title = ""; deps = ""; testable = ""; files = ""; mode = ""
+    }
+    /^###[[:space:]]+Task[[:space:]]+[0-9]+:/ {
+      flush()
+      line = $0
+      sub(/^###[[:space:]]+Task[[:space:]]+/, "", line)
+      n = line; sub(/:.*$/, "", n)
+      title = line; sub(/^[0-9]+:[[:space:]]*/, "", title)
+      next
+    }
+    /^\*\*Depends on:\*\*/ { deps = $0; sub(/^\*\*Depends on:\*\*[[:space:]]*/, "", deps); mode = ""; next }
+    /^\*\*Testable:\*\*/   { testable = $0; sub(/^\*\*Testable:\*\*[[:space:]]*/, "", testable); mode = ""; next }
+    /^\*\*Affected Files/  { mode = "files"; next }
+    /^\*\*/                { mode = ""; next }
+    mode == "files" && /`/ {
+      f = $0
+      sub(/^[^`]*`/, "", f); sub(/`.*$/, "", f)
+      if (f != "") files = (files == "" ? f : files " " f)
+      next
+    }
+    END { flush() }
+  ' "$tasks")
+
+  # No task sections at all: fall back to the checklist, which gives numbers and titles
+  # but no edges. That is safe here — a breakdown is emitted in dependency order, and
+  # this skill runs one task at a time — but it is reported rather than passed off as a
+  # recovered graph.
+  local from=sections
+  if [ -z "$rows" ]; then
+    rows=$(sed -n 's/^[[:space:]]*- \[[ xX]\][[:space:]]*Task \([0-9][0-9]*\):[[:space:]]*\(.*\)$/\1\t\2\t\t\t/p' "$tasks")
+    from=checklist
+  fi
+  [ -n "$rows" ] || die "sidecar: found no 'Task N' sections or checklist entries in $(basename "$tasks") — write the sidecar by hand"
+
+  printf '%s\n' "$rows" | jq -R -s -c --arg tasks "$tasks" --arg from "$from" '
+    def lang($files):
+      if   ($files | test("\\.go$|\\.go ")) then "Go"
+      elif ($files | test("\\.tsx?$|\\.jsx?$|\\.tsx? |\\.jsx? ")) then "JavaScript/TypeScript"
+      elif ($files | test("\\.exs?$|\\.exs? ")) then "Elixir"
+      else "Generic" end;
+    split("\n") | map(select(length > 0) | split("\t"))
+    | map({
+        n: (.[0] | tonumber),
+        title: (.[1] // "" | gsub("^\\s+|\\s+$"; "")),
+        language: lang(.[4] // ""),
+        testable: ((.[3] // "") | ascii_downcase | startswith("no") | not),
+        depends_on: [ (.[2] // "") | scan("[0-9]+") | tonumber ],
+        affected_files: ((.[4] // "") | split(" ") | map(select(length > 0)))
+      })
+    | {story: ($tasks | split("/") | last | sub("\\.md$"; "")),
+       tasks_file: $tasks, recovered_from: $from, tasks: .}' > "$out"
+
+  n=$(jq -r '.tasks | length' "$out")
+  jq -n --arg p "$out" --argjson n "$n" --arg from "$from" --argjson tasks "$(jq -c '[.tasks[] | {n, title, depends_on}]' "$out")" \
+    '{written: true, path: $p, tasks: $n, recovered_from: $from,
+      note: (if $from == "checklist"
+             then "no Task sections found; numbers and titles came from the checklist and every depends_on is empty — check the order before relying on it"
+             else "check the extracted dependencies against the breakdown before relying on them" end),
+      next_step: "commit it alongside the breakdown it describes — until then it is loose in the tree and `clerk next` will read that as work in flight",
+      extracted: $tasks}'
+}
+
 cmd_next() {
   local allow_dirty=false tasks_override= root tasks side donej
   while [ $# -gt 0 ]; do
@@ -250,7 +343,7 @@ cmd_next() {
     tasks=$(find_tasks_file "$root") || die "next: no single task file under $root/tasks (pass --tasks-file)"
   fi
   [ -f "$tasks" ] || die "next: task file not found: $tasks"
-  side=$(sidecar_for "$tasks") || die "next: no sidecar beside $tasks — decompose-to-tasks writes ${tasks%.md}.json"
+  side=$(sidecar_for "$tasks") || die "next: no sidecar beside $tasks — run 'clerk sidecar' to recover one from the breakdown, or let decompose-to-tasks write ${tasks%.md}.json"
 
   # One task in flight at a time. A half-finished task sitting on top of another is what
   # makes a run impossible to resume or review, so starting the next one is refused
@@ -712,6 +805,8 @@ USAGE
   clerk next [--allow-dirty]         the first task whose dependencies are all done;
                                      exit 3 if a task is still in flight
   clerk complete <n> -- <files...>   tick the checkbox and stage those paths with it
+  clerk sidecar [--force]            recover tasks/<story>.json from a breakdown
+                                     written before sidecars existed
   clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
                                      record a suite run against the SHA it describes
   clerk gate [--audit-accepted] [--tasks-file <f>]
@@ -734,6 +829,7 @@ need jq
 case "${1:-}" in
   prepare)  shift; cmd_prepare "$@" ;;
   next)     shift; cmd_next "$@" ;;
+  sidecar)  shift; cmd_sidecar "$@" ;;
   complete) shift; cmd_complete "$@" ;;
   receipt)  shift; cmd_receipt "$@" ;;
   verify)   shift; cmd_verify "$@" ;;

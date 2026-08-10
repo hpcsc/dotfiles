@@ -97,6 +97,14 @@ With `--in-place`: no worktree. `git switch -c <kebab-feature-name>` if on the d
 
 If the request names a file in `tasks/`, read it, present the task list, and skip decomposition. Tasks already checked `- [x]` are done — resume at the first unchecked one.
 
+A breakdown written before sidecars existed has no `tasks/<story>.json`, and `clerk next` refuses without one rather than guessing at dependencies. Recover it:
+
+```
+clerk sidecar          # reads the `### Task N:` sections and their `**Depends on:**` lines
+```
+
+It prints what it extracted. **Check those dependencies against the breakdown before relying on them** — a misread edge reorders the work silently, which is the one thing this file is the source of truth for. If the breakdown has only a checklist and no task sections, it says so and leaves every `depends_on` empty; that is safe here, since a breakdown is emitted in dependency order and this skill runs one task at a time. Commit the sidecar alongside the breakdown it describes.
+
 ### Otherwise decompose
 
 Spawn the `decompose-to-tasks` subagent via the `task` tool with a complete, self-contained prompt, passing the languages `clerk prepare` reported:

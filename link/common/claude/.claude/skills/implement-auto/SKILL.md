@@ -7,22 +7,23 @@ Implement a feature autonomously with a single approval gate before each commit:
 
 ---
 
-## Phase 0: Language Detection
+## Phase 0: Ground yourself
 
-Detect all project languages. Check for marker files — collect every match (not just the first):
+```
+clerk prepare
+```
 
-| Marker file | Language |
-|---|---|
-| `go.mod` | Go |
-| `package.json` | JavaScript/TypeScript |
-| `mix.exs` | Elixir |
-| `Gemfile` or `*.gemspec` | Ruby |
-| `pyproject.toml` or `setup.py` or `requirements.txt` | Python |
-| `Cargo.toml` | Rust |
-| `*.tf` | HCL |
-| (none matched) | Generic / inferred from file extensions |
+One JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root` and `work_tree` separately, `base`, `clean`, plus `worktrees` and `breakdowns` — every worktree of this repo with its branch, and every breakdown under `tasks/` with how far it got.
 
-The result is a **language inventory** (e.g. `[Go, JavaScript/TypeScript, HCL]`). Each task in Phase 1 will be annotated with the language it primarily involves.
+Read the values rather than re-deriving them. The precedence rules are easy to execute subtly wrongly: `tasks/test-commands.json` (a team decision) beats `tasks/.environment` (a machine-local cache) beats detection, and `go_tool_prefix` records whether *this machine* runs Go through mise — decided once, applied to every Go command, never double-wrapped.
+
+Each cycle is given the entry for **that task's** language, falling back to `default`. A JS-only task re-running the Go suite on every implement, refactor and review iteration is pure latency, and a suite red in a language the task never touched stalls it for nothing. The Phase 3 full-suite run always uses `default` — cross-language breakage has to surface somewhere.
+
+**Read the learnings file** at `learnings_path` now. It holds conventions and recurring findings earlier runs paid for.
+
+**Check whether this run already exists.** A breakdown in `breakdowns` with `started: true` and `finished: false` is a part-built run: adopt it in Phase 1 rather than decomposing again, because a second decomposition produces a different task list against code the first run already changed.
+
+If `clerk` is not installed, stop and say so rather than hand-executing its resolutions.
 
 ### Language Configuration
 
@@ -34,27 +35,6 @@ The result is a **language inventory** (e.g. `[Go, JavaScript/TypeScript, HCL]`)
 | **Concurrency reviewer** | `go-concurrency-reviewer` | `js-concurrency-reviewer` | `elixir-concurrency-reviewer` | `concurrency-reviewer` |
 | **Performance reviewer** | `go-performance-reviewer` | `js-performance-reviewer` | `elixir-performance-reviewer` | `performance-reviewer` |
 | **Guidelines reviewer** | `go-guidelines-reviewer` | `js-guidelines-reviewer` | `elixir-guidelines-reviewer` | _(skip)_ |
-
-**Test command**: prefer the repo's own committed config over detection. Look for `tasks/test-commands.json` **at the main repo root** — not the current directory, which differs when running inside a git worktree:
-
-```
-root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-cat "$root/tasks/test-commands.json" 2>/dev/null
-```
-
-It maps a language to the command that tests it, plus a `default` covering everything:
-
-```json
-{
-  "default":    "task test:unit && task test:integration && task test:viewer",
-  "Go":         "task test:unit && task test:integration",
-  "JavaScript/TypeScript": "cd internal/viewer && npx vitest run"
-}
-```
-
-Each cycle is given the entry for **that task's** language, falling back to `default`. A JS-only task re-running the Go suite on every implement, refactor and review iteration is pure latency, and a suite red in a language the task never touched stalls it for nothing. The Phase 3 full-suite run always uses `default` — cross-language breakage has to surface somewhere.
-
-If the file is absent, auto-detect a single command (Makefile, package.json scripts, framework conventions) and use it for every task. Never hardcode. Offer to write the config file: working out the per-language split is most of the effort of detection anyway, and it pays back on every later run.
 
 ### Testing Guidelines
 
@@ -84,29 +64,17 @@ When a language-specific testing guideline also exists (see table above), includ
 
 ## Phase 1: Planning
 
-### Resolve the learnings file
+### Adopt an existing breakdown if there is one
 
-Durable learnings must persist across runs but must NOT be committed into a shared repo that gitignores `tasks/`. Resolve where this project keeps them once, and use that path (the **learnings file**) wherever learnings are read or written below:
+If `$ARGUMENTS` points to an existing file in `tasks/`, or Phase 0 found a part-built breakdown:
 
-```
-if git check-ignore -q tasks/learnings.md 2>/dev/null; then
-  root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")   # main repo root, stable across worktrees
-  slug=$(echo "$root" | sed 's#/#-#g; s#^-##')
-  mkdir -p "$HOME/.claude/implement-learnings/$slug"
-  echo "$HOME/.claude/implement-learnings/$slug/learnings.md"   # shared repo → private per-project store, out of tree
-else
-  echo "tasks/learnings.md"                                     # not ignored → in-tree, shared via the repo
-fi
-```
+1. Read it and run `clerk status --tasks-file <path>` — tasks with `done: true` in the sidecar are finished, and it reports how far the run got.
+2. Present the task list to the user.
+3. Skip decomposition, proceed to the approval gate, and let `clerk next` pick up at the first unblocked task that is not done.
 
-A repo that gitignores `tasks/` (collaborated with others) gets a private per-project store outside the repo: it still steers the next run but never pollutes the tree, the diff, or teammates' checkouts. A repo that tracks `tasks/learnings.md` keeps it in-tree so teammates inherit it.
+**Do not decompose a story that already has a breakdown in progress.** The sidecar recording what was built would no longer describe the plan.
 
-### Check for Existing Task File
-
-If `$ARGUMENTS` points to an existing file in `tasks/`:
-1. Read the task file
-2. Present the task list to the user
-3. Skip decomposition, proceed to approval gate
+A breakdown written before sidecars existed has no `tasks/<story>.json`; `clerk sidecar` recovers one from its `### Task N:` sections, seeding `done` from any old `- [x]` ticks. Check the dependencies it extracted before relying on them.
 
 ### Decompose
 
@@ -116,7 +84,7 @@ Spawn the `decompose-to-tasks` agent with the detected language inventory:
 >
 > Decompose the following user story into implementation tasks. For each task, determine which language it primarily involves and include a `language` field set to one of the detected languages above: [user story from $ARGUMENTS]
 
-**Carry forward prior learnings.** If the learnings file (resolved in *Resolve the learnings file* above) exists, read it and pass its contents to `decompose-to-tasks` as `Accumulated project learnings` with the instruction: "These are durable conventions, recurring review findings, and constraints distilled from earlier implementation runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover." This closes the self-improvement loop — learnings persisted at the end of one run steer the next run's plan.
+**Carry forward prior learnings.** If the learnings file (`learnings_path` from `clerk prepare`) exists, read it and pass its contents to `decompose-to-tasks` as `Accumulated project learnings` with the instruction: "These are durable conventions, recurring review findings, and constraints distilled from earlier implementation runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover." This closes the self-improvement loop — learnings persisted at the end of one run steer the next run's plan.
 
 For each language in the detected inventory that has a testing guideline entry in the Testing Guidelines table, pass that language-specific guideline plus `caller-patterns.md` as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Both files open with a Section Index — read the indexes first and load only the sections you need. From `caller-patterns.md`, read 'How to Identify the Caller' and the Quick Reference to understand which caller patterns lead to testable behavior. From the language-specific guideline, read the 'Unit of Behavior' section to decide whether a task delivers independently testable behavior or is only meaningful through a downstream consumer. Do not read either file end-to-end."
 
@@ -148,7 +116,9 @@ mkdir -p tasks/.cycles
 
 ### Step 1: Run the cycle (delegated to `task-implementer`)
 
-Spawn the `task-implementer` subagent with a single JSON object as input. The orchestrator assembles the JSON from the approved plan and the task at hand — do NOT ask the subagent to re-parse the task list file. The `language` field is taken from the task's annotation (set during decomposition), not from Phase 0's global inventory.
+Pick the task with `clerk next` — it returns the first task whose dependencies are all done, reading the sidecar rather than parsing the breakdown, and refuses while the tree is dirty because one task in flight at a time is what keeps a run resumable.
+
+Then spawn the `task-implementer` subagent with a single JSON object as input. The orchestrator assembles the JSON from `clerk next`'s output and the approved plan — do NOT ask the subagent to re-parse the task list file. The `language` field is taken from the task's annotation (set during decomposition), not from Phase 0's global inventory.
 
 ```json
 {
@@ -237,12 +207,15 @@ Read `tasks/.cycles/task-<N>.md` (the scratch file from the cycle's return). Pre
 
 ### Step 4: Update progress, checkpoint, and check plan validity
 
-#### Update the task file
+#### Record the task as done
 
 ```
-old: - [ ] Task N: [title]
-new: - [x] Task N: [title]
+clerk finish <N> -- <every file this task changed>
 ```
+
+That sets `done: true` on the task in the sidecar and stages it, so progress and the code it stands for are recorded together rather than in two places that can disagree. It also stages the breakdown if the cycle modified it — the task sections carry acceptance criteria as checkboxes, ticked as they are verified, and leaving those outside the commit strands them.
+
+Run it **before** Step 3's commit, so the sidecar rides in that commit. It refuses a task already done and never runs `git add -A`.
 
 #### Append the checkpoint entry
 
@@ -300,9 +273,15 @@ Show remaining tasks and proceed to the next task (back to Step 1).
 
 After all tasks complete:
 
-1. **Run full test suite** (detected test command)
+1. **Run the full suite** with the `default` command from `clerk prepare`, in the tree that holds this run's commits (`work_tree`, not the main checkout). Then record it:
 
-2. **Verify the run (review by exception).** Spawn the `run-verifier` agent in the main tree — it independently checks the finished run for staged-but-uncommitted tails, new public symbols with no live caller (dead code), a vacuous full-suite, and collapsed commit boundaries, and returns `{ clean, findings }`. If `clean`, note it and move on. If it has findings, surface each (file/symbol + severity) to the user before summarizing — a `block` means the run's "done" does not hold and needs a fix, even though every commit was individually approved.
+   ```
+   clerk receipt --command "<what you ran>" --passed --output-file <captured output>
+   ```
+
+   The receipt is bound to the SHA it describes, which is what lets a stale green be detected rather than trusted.
+
+2. **Verify the run (review by exception).** Run `clerk verify --all-closed` first — it settles staged tails, vacuous or stale receipts, unreferenced new symbols and commit-boundary arithmetic, and reports what it could not settle in `not_checked`. Spawn the `run-verifier` agent only for that residue, which is chiefly whether a single commit mixes unrelated concerns and reachability in languages `clerk` does not extract. If both come back clean, note it and move on. If it has findings, surface each (file/symbol + severity) to the user before summarizing — a `block` means the run's "done" does not hold and needs a fix, even though every commit was individually approved.
 
 3. **Validate against the story (questions, not blockers).**
 
@@ -335,7 +314,7 @@ After all tasks complete:
 
    If no candidates survive the filter, say so and skip — a clean run produces no learnings, and that's fine. The learnings file is durable project knowledge; if it's the in-tree `tasks/learnings.md`, offer to commit it so teammates inherit it — if it resolved out-of-tree, it's already private steering for the next run, nothing to commit.
 
-5. **Clean up** — delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (cycle scratch files are per-cycle; by this point they should all be gone, but remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist). **Never delete the learnings file** — it persists across runs.
+5. **Clean up** — delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (cycle scratch files are per-cycle; by this point they should all be gone, but remove the directory if it lingers). Move the task markdown file **and its sidecar** to `tasks/completed/` (create the directory if it doesn't exist) — they describe the same run and separating them leaves the breakdown without its dependency graph or its progress. **Never delete the learnings file** — it persists across runs.
 
 6. **Summarize**
    ```markdown
@@ -354,7 +333,8 @@ After all tasks complete:
    - All steps reviewed by applicable reviewers (semantic + security/performance/concurrency as needed)
    - All steps approved by human reviewer at the commit gate
    - Full test suite passing
-   - Independent run-verifier pass: [clean, or N findings surfaced]
+   - clerk verify: [clean, or N findings] · run-verifier on the residue: [clean, or N]
+   - Acceptance criteria walked: [from `clerk status`; note any task done with criteria unticked]
    - Story validation: [delivers the story as asked, or N open questions put to the user]
    - Durable learnings persisted to the learnings file: [count, or none]
    ```

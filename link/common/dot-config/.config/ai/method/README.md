@@ -212,8 +212,29 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `land [--integrate]` | Archive on the branch; integrate only when asked | 0 · **1** · **3** after a live rebase |
 
 Every command takes `--tasks-file` when `tasks/` holds more than one breakdown. Exit 2
-is a usage error throughout. State lives under `git rev-parse --absolute-git-dir`, so it
-is per-worktree, never committed, and needs no gitignore entry.
+is a usage error throughout.
+
+### Where progress actually lives
+
+Three files get loosely called "state" and they are not interchangeable.
+
+| File | Holds | Written by |
+|---|---|---|
+| `tasks/<story>.md` | **Which tasks are done** — the `- [x]` checklist | `clerk complete`, and it is what `clerk next` reads |
+| `tasks/<story>.json` | Static structure: number, title, language, testability, dependency edges | `decompose-to-tasks` or `clerk sidecar`; never touched again |
+| `<git-dir>/clerk/*` | The suite receipt, the archive record, and each task's file list | `clerk receipt`, `clerk land`, `clerk complete` |
+
+**The sidecar does not track completion.** It carries the dependency graph and nothing
+that changes as work proceeds. Completion is the checkbox in the markdown, which is why
+the checkbox and the code it stands for must land in the same commit — that file is the
+progress record a resumed run reads, and it is the one a human reads too.
+
+The files under `<git-dir>/clerk` are internal bookkeeping, not an interface. They sit
+inside the git directory so they are per-worktree, never committed, and need no
+gitignore entry — and, usefully, agent harnesses refuse writes under `.git/`, so a
+failed command cannot be "finished" by hand. That refusal is the guard working, not a
+problem to route around: the guarantees come from a command performing its steps
+together, and a tree that merely ends up looking similar has none of them.
 
 ### Three refusals worth knowing
 

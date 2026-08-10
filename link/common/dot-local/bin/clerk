@@ -8,6 +8,12 @@
 #
 # Targets bash 3.2 (macOS /bin/bash): no associative arrays, no ${v,,}, no mapfile.
 # Requires: git, jq.
+#
+# If you are an agent reading this to work out what a command would have done: don't.
+# The files under <git-dir>/clerk are internal bookkeeping, not an interface, and doing
+# a failed command's work by hand defeats the point of it being a command — the
+# guarantees live in doing the steps together, not in the end state resembling theirs.
+# When a command fails, report the failure and stop.
 
 set -uo pipefail
 
@@ -430,13 +436,13 @@ cmd_complete() {
   awk -v n="$n" '
     $0 ~ ("^[[:space:]]*- \\[[ ]\\][[:space:]]*Task " n ":") { sub(/\[ \]/, "[x]") }
     { print }
-  ' "$tasks" > "$tmp" || die "complete: could not rewrite $tasks"
+  ' "$tasks" > "$tmp" || die "complete: could not rewrite $tasks — report this and stop; do not tick the box by hand"
   cat "$tmp" > "$tasks" && rm -f "$tmp"
 
   # Explicit paths only. `git add -A` sweeps whatever the user left loose in the tree
   # into this task's commit, and untangling that later means rewriting history.
-  git add -- "$@" || die "complete: staging failed"
-  git add -- "$tasks" || die "complete: could not stage the task file"
+  git add -- "$@" || die "complete: staging failed — report this and stop; do not stage by hand"
+  git add -- "$tasks" || die "complete: could not stage the task file — report this and stop. Ticking the box and staging it separately is precisely what this command exists to do in one step"
 
   dir=$(state_dir); mkdir -p "$dir/tasks"
   printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

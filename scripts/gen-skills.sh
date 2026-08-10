@@ -29,6 +29,8 @@ agents/commit claude   $ROOT/link/common/claude/.claude/agents/commit.md
 agents/commit opencode $ROOT/link/common/dot-config/.config/opencode/agents/commit.md
 agents/run-verifier claude   $ROOT/link/common/claude/.claude/agents/run-verifier.md
 agents/run-verifier opencode $ROOT/link/common/dot-config/.config/opencode/agents/run-verifier.md
+agents/decompose-to-deliverables claude   $ROOT/link/common/claude/.claude/agents/decompose-to-deliverables.md
+agents/decompose-to-deliverables opencode $ROOT/link/common/dot-config/.config/opencode/agents/decompose-to-deliverables.md
 "
 
 fail=0

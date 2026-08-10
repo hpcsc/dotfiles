@@ -642,6 +642,14 @@ eq "and carries each task through"                 "3" \
 eq "with the sidecar it read"                      "true" \
    "$(printf '%s' "$A" | jq -r '.breakdowns[0].sidecar | endswith(".json")')"
 
+# Paths must be work-tree relative. A consumer walking tasks/ has relative paths, and an
+# absolute one silently fails to join — which reads as "this breakdown has no progress"
+# rather than as an error, so the reporter falls back to whatever stale checklist is left.
+eq "reports paths relative to the work tree" "tasks/live.md" \
+   "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.archived | not) | .tasks_file] | first')"
+eq "including archived ones"                 "tasks/completed/past.md" \
+   "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.archived) | .tasks_file] | first')"
+
 # The shape the progress reporter consumes.
 eq "flattens to one row per task" "3" \
    "$(printf '%s' "$A" | jq -r '.breakdowns[] | .tasks_file as $f | .progress[] | [$f, (.n|tostring)] | @tsv' | wc -l | tr -d ' ')"

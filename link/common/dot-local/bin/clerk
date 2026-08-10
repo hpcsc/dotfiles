@@ -533,13 +533,13 @@ criteria_counts() {
 # Progress, for a human. The breakdown carries no progress checkboxes, so this is what
 # you read instead of skimming the markdown for ticks.
 status_of() {
-  local tasks=$1 side=$2 archived=$3 crit
+  local tasks=$1 side=$2 archived=$3 label=${4:-$1} crit
 
   crit=$(criteria_counts "$tasks" | jq -R -s -c '
     split("\n") | map(select(length > 0) | split("\t")
       | {n: (.[0] | tonumber), total: (.[1] | tonumber), ticked: (.[2] | tonumber)})')
 
-  jq --arg t "$tasks" --arg s "$side" --argjson crit "$crit" --argjson archived "$archived" '
+  jq --arg t "$label" --arg s "$side" --argjson crit "$crit" --argjson archived "$archived" '
     (.tasks // []) as $all
     | ([$all[] | select(.done == true) | .n]) as $done
     | ($crit | map({(.n | tostring): .}) | add // {}) as $c
@@ -582,7 +582,10 @@ cmd_status() {
         side="${f%.md}.json"
         [ -f "$side" ] || continue
         case "$f" in */completed/*) arch=true ;; *) arch=false ;; esac
-        status_of "$f" "$side" "$arch"
+        # Report the path relative to the work tree. It is the identifier every consumer
+        # already has — a report walking `tasks/` sees relative paths — and an absolute
+        # one silently fails to join, which reads as "no data" rather than as an error.
+        status_of "$f" "$side" "$arch" "${f#$wt/}"
       done
     } | jq -s -c '{breakdowns: .}'
     return

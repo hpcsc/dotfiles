@@ -570,7 +570,59 @@ eq "a worktree created for the feature is visible to prepare" "resumed" \
    "$(run "$R16" prepare | jq -r '.worktrees[] | select(.branch == "resumed") | .branch')"
 git -C "$R16" worktree remove --force "$WT3" 2>/dev/null
 
+
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$WT" 2>/dev/null
+printf '\nacceptance criteria, reported not gated\n'
+
+R17=$(new_repo); mkdir -p "$R17/tasks"
+cat > "$R17/tasks/c.md" <<'EOF'
+## Contents
+1. Task 1: One
+2. Task 2: Two
+
+### Task 1: One
+
+**Acceptance Criteria:**
+- [x] first
+- [x] second
+- [ ] third
+
+**Depends on:** None
+
+### Task 2: Two
+
+**Acceptance Criteria:**
+- [ ] alpha
+
+**Depends on:** Task 1
+EOF
+printf 'package a\n' > "$R17/a.go"
+git -C "$R17" add -A && git -C "$R17" commit -qm Plan
+run "$R17" sidecar >/dev/null && git -C "$R17" add -A && git -C "$R17" commit -qm Sidecar
+
+S=$(run "$R17" status)
+eq "counts criteria across the breakdown" "4|2|2" \
+   "$(printf '%s' "$S" | jq -r '.criteria.total')|$(printf '%s' "$S" | jq -r '.criteria.ticked')|$(printf '%s' "$S" | jq -r '.criteria.unticked')"
+eq "a contents list above the sections is not counted" "3" \
+   "$(printf '%s' "$S" | jq -r '.progress[0].criteria.total')"
+
+printf 'edit\n' >> "$R17/a.go"
+run "$R17" finish 1 -- a.go >/dev/null
+S=$(run "$R17" status)
+eq "flags a task marked done with a criterion unwalked" "1" \
+   "$(printf '%s' "$S" | jq -r '.done_with_unticked_criteria | join(",")')"
+
+# Information only: it must not shut the gate.
+git -C "$R17" commit -qm "Task 1"
+printf 'more\n' >> "$R17/a.go"
+run "$R17" finish 2 -- a.go >/dev/null && git -C "$R17" commit -qm "Task 2"
+run "$R17" receipt --command "go test ./..." --passed >/dev/null
+eq "an unticked criterion does not shut the gate" "true" \
+   "$(run "$R17" gate --audit-accepted | jq -r '.ok')"
+eq "though status still says so"                  "2" \
+   "$(run "$R17" status | jq -r '.criteria.unticked')"
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -513,8 +513,25 @@ cmd_finish() {
       next_step: "invoke the commit skill — the message is judgment, not mechanics"}'
 }
 
-# Progress, for a human. The breakdown carries no checkboxes, so this is what you read
-# instead of skimming the markdown for ticks.
+# Acceptance criteria per task section, counted from the breakdown. These are NOT run
+# progress — they are the record of which criteria were actually walked, ticked by hand
+# as each is verified. Reported so an unwalked one is visible; never gated on, because
+# whether a criterion has really been met is judgment and a script counting boxes would
+# be the wrong authority. Only checkboxes inside a `### Task N:` section are counted, so
+# a legacy progress list above the first section is excluded by construction.
+criteria_counts() {
+  awk '
+    function flush() { if (n != "") printf "%s\t%s\t%s\n", n, total, ticked; n = ""; total = 0; ticked = 0 }
+    /^###[[:space:]]+Task[[:space:]]+[0-9]+:/ {
+      flush(); n = $0; sub(/^###[[:space:]]+Task[[:space:]]+/, "", n); sub(/:.*$/, "", n); next
+    }
+    n != "" && /^[[:space:]]*- \[[ xX]\]/ { total++; if ($0 ~ /- \[[xX]\]/) ticked++ }
+    END { flush() }
+  ' "$1"
+}
+
+# Progress, for a human. The breakdown carries no progress checkboxes, so this is what
+# you read instead of skimming the markdown for ticks.
 cmd_status() {
   local tasks_override= root wt tasks side
   while [ $# -gt 0 ]; do
@@ -530,13 +547,28 @@ cmd_status() {
   fi
   side=$(sidecar_for "$tasks") || die "status: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
 
-  jq --arg t "$tasks" '
+  local crit
+  crit=$(criteria_counts "$tasks" | jq -R -s -c '
+    split("\n") | map(select(length > 0) | split("\t")
+      | {n: (.[0] | tonumber), total: (.[1] | tonumber), ticked: (.[2] | tonumber)})')
+
+  jq --arg t "$tasks" --argjson crit "$crit" '
     (.tasks // []) as $all
     | ([$all[] | select(.done == true) | .n]) as $done
+    | ($crit | map({(.n | tostring): .}) | add // {}) as $c
+    | [$all[] | select(.done == true)
+       | ($c[.n | tostring] // {total: 0, ticked: 0}) as $k
+       | select($k.total > $k.ticked) | .n] as $unwalked
     | {tasks_file: $t, total: ($all | length), done: ($done | length),
        remaining: ([$all[] | select(.done != true)] | length),
-       progress: [$all[] | {n, title, done: (.done == true),
-                            blocked_by: [(.depends_on // [])[] | select(([.] | inside($done)) | not)]}]}' "$side"
+       criteria: {total: ([$crit[].total] | add // 0), ticked: ([$crit[].ticked] | add // 0),
+                  unticked: (([$crit[].total] | add // 0) - ([$crit[].ticked] | add // 0))},
+       done_with_unticked_criteria: $unwalked,
+       progress: [$all[]
+         | ($c[.n | tostring] // {total: 0, ticked: 0}) as $k
+         | {n, title, done: (.done == true),
+            criteria: {total: $k.total, ticked: $k.ticked, unticked: ($k.total - $k.ticked)},
+            blocked_by: [(.depends_on // [])[] | select(([.] | inside($done)) | not)]}]}' "$side"
 }
 
 # --------------------------------------------------------------------------------

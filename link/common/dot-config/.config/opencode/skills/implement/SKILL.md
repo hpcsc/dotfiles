@@ -192,6 +192,8 @@ Two rules `clerk` cannot enforce for you:
 
 ### 5. Report and continue
 
+Tick the acceptance criteria you actually walked in this task's section of the breakdown — that is the only per-criterion evidence a reviewer of the finished branch gets, and `clerk finish` stages the file for you once you have edited it. `clerk status` counts them and flags any task marked done that still carries an unwalked criterion; it never gates on that, because whether a criterion is genuinely met is your judgment rather than a box count.
+
 Say what landed in one or two lines and go back to `clerk next`. The user is watching this happen — unlike a delegated run, there is nothing hidden that a per-commit gate would need to reveal. Stop and ask only when something genuinely needs a decision.
 
 ---

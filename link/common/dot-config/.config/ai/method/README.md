@@ -207,7 +207,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, plus every existing worktree and breakdown with its progress | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
-| `status` | Progress from the sidecar, for a human | 0 |
+| `status` | Progress from the sidecar, plus acceptance criteria walked per task | 0 |
 | `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it (`complete` is an accepted alias) | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
@@ -244,6 +244,21 @@ gitignore entry — and, usefully, agent harnesses refuse writes under `.git/`, 
 failed command cannot be "finished" by hand. That refusal is the guard working, not a
 problem to route around: the guarantees come from a command performing its steps
 together, and a tree that merely ends up looking similar has none of them.
+
+### Acceptance criteria are reported, never gated
+
+A breakdown's task sections carry their acceptance criteria as checkboxes, ticked by
+hand as each is verified. Those are not run progress — they are the record of which
+criteria were actually walked, and the only per-criterion evidence a reviewer of the
+finished branch can read.
+
+`clerk status` counts them: per task, and as a total, plus
+`done_with_unticked_criteria` — tasks marked done that still carry an unwalked
+criterion, which is the combination worth looking at.
+
+It is reported and never gated on. Whether a criterion is genuinely met is judgment, and
+a script counting boxes would be the wrong authority for it — `gate` reads `done` from
+the sidecar and nothing else.
 
 ### Resuming
 

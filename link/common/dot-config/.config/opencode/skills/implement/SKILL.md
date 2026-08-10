@@ -100,7 +100,9 @@ git worktree add -b <kebab-feature-name> "$WT"
 cd "$WT"
 ```
 
-Once inside, `git` and file operations run against the worktree naturally — no `-C` prefix needed. Re-run `clerk prepare` after `cd`: it reports `repo_root` and `work_tree` separately, and `tasks/` and the learnings file live under the former, not under your cwd.
+Once inside, `git` and file operations run against the worktree naturally — no `-C` prefix needed. Re-run `clerk prepare` after `cd`: it reports `repo_root` and `work_tree` separately, and the learnings file and `tasks/test-commands.json` live under the former, not under your cwd.
+
+**A repo that keeps `tasks/` out of history is not a reason to skip the worktree.** A fresh checkout only ever materialises tracked files, so an excluded breakdown will not be in the new worktree — but `clerk` resolves it at the main repo root in that case and every command finds it there. `prepare` says which regime you are in: `tasks_tracked` and `tasks_home`. Building in the main checkout to stay near the breakdown trades the isolation for nothing, and it is the isolation that keeps the audit's verifiers from writing probe files into a tree you are also running a suite in.
 
 With `--in-place`: no worktree. `git switch -c <kebab-feature-name>` if on the default branch, and build in the main checkout.
 
@@ -232,6 +234,10 @@ The receipt is bound to the SHA it describes. That is what lets the gate in step
 This is where review happens.
 
 Invoke the `audit-implement` skill. There is no workflow engine here, so it orchestrates the lenses itself via the `task` tool — the findings are the same shape, but their structure rests on the lenses following the output contract rather than on schema validation.
+
+**Nothing else may touch this tree while the audit is in flight.** Its verifiers prove claims by mutating the working tree — reverting a line to check a test still fails, writing a probe file, deleting it again. That is the substitution test doing its job, and it is why the test-integrity lens is worth having. It also means any command you run against the same tree concurrently is reading a tree mid-experiment: a suite that fails because a probe file vanished under it has told you nothing, and reporting that run either way would be false. Start the audit *after* step 1's suite has finished and its receipt is written, then wait.
+
+When it returns, check `git status --porcelain` before running anything. A verifier that died mid-probe leaves residue behind; restore the tree to the branch tip before you trust another run.
 
 Pass it the base ref the work started from, the `test_commands` map, a one-or-two-sentence `brief` on what the feature was meant to do, and `story` — the request, **verbatim and unsummarized**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing the audit sees that did not come from you.
 

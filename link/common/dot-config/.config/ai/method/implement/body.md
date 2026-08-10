@@ -181,6 +181,10 @@ This is where review happens.
 
 {{seam:audit}}
 
+**Nothing else may touch this tree while the audit is in flight.** Its verifiers prove claims by mutating the working tree — reverting a line to check a test still fails, writing a probe file, deleting it again. That is the substitution test doing its job, and it is why the test-integrity lens is worth having. It also means any command you run against the same tree concurrently is reading a tree mid-experiment: a suite that fails because a probe file vanished under it has told you nothing, and reporting that run either way would be false. Start the audit *after* step 1's suite has finished and its receipt is written, then wait.
+
+When it returns, check `git status --porcelain` before running anything. A verifier that died mid-probe leaves residue behind; restore the tree to the branch tip before you trust another run.
+
 Pass it the base ref the work started from, the `test_commands` map, a one-or-two-sentence `brief` on what the feature was meant to do, and `story` — the request, **verbatim and unsummarized**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing the audit sees that did not come from you.
 
 It fans the applicable lenses over the diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings plus `coverage_gaps`.

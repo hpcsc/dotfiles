@@ -94,9 +94,11 @@ Then **work in a worktree**, unless the request carries `--in-place`. This is no
 
 Otherwise use the **EnterWorktree** tool with a `name` (this skill is the explicit instruction that tool requires). Name it for the feature. It creates the worktree under `.claude/worktrees/`, puts it on a new branch, and switches the session's working directory into it — same window, same session, no new tmux anything. Every command from here runs there, and relative paths work normally.
 
+**A repo that keeps `tasks/` out of history is not a reason to skip the worktree.** A fresh checkout only ever materialises tracked files, so an excluded breakdown will not be in the new worktree — but `clerk` resolves it at the main repo root in that case and every command finds it there. `prepare` says which regime you are in: `tasks_tracked` and `tasks_home`. Building in the main checkout to stay near the breakdown trades the isolation for nothing, and it is the isolation that keeps the audit's verifiers from writing probe files into a tree you are also running a suite in.
+
 Two consequences to hold onto:
 
-- **The main repo root is not your cwd.** Re-run `clerk prepare` after entering: it reports `repo_root` and `work_tree` separately for exactly this reason, and `tasks/` and the learnings file live under the former.
+- **The main repo root is not your cwd.** Re-run `clerk prepare` after entering: it reports `repo_root` and `work_tree` separately for exactly this reason, and the learnings file and `tasks/test-commands.json` live under the former. So does the breakdown itself when `tasks_tracked` is false.
 - **The worktree branches from `origin/<default-branch>` by default** (`worktree.baseRef`). If the work must sit on top of unpushed local commits, either set `worktree.baseRef: head` or pass `--in-place` and use an ordinary branch.
 
 With `--in-place`: no worktree. Create a feature branch if on the default branch, and build in the main checkout.
@@ -234,6 +236,10 @@ The receipt is bound to the SHA it describes. That is what lets the gate in step
 This is where review happens.
 
 Invoke the `audit-implement` skill with the Skill tool. It launches a background Workflow: deterministic fan-out, schema-validated findings, and an adversarial verifier per claim.
+
+**Nothing else may touch this tree while the audit is in flight.** Its verifiers prove claims by mutating the working tree — reverting a line to check a test still fails, writing a probe file, deleting it again. That is the substitution test doing its job, and it is why the test-integrity lens is worth having. It also means any command you run against the same tree concurrently is reading a tree mid-experiment: a suite that fails because a probe file vanished under it has told you nothing, and reporting that run either way would be false. Start the audit *after* step 1's suite has finished and its receipt is written, then wait.
+
+When it returns, check `git status --porcelain` before running anything. A verifier that died mid-probe leaves residue behind; restore the tree to the branch tip before you trust another run.
 
 Pass it the base ref the work started from, the `test_commands` map, a one-or-two-sentence `brief` on what the feature was meant to do, and `story` — the request, **verbatim and unsummarized**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing the audit sees that did not come from you.
 

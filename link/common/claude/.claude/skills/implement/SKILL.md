@@ -302,6 +302,8 @@ Delete `tasks/.cycles/` if it exists.
 
 Distil what generalises: a codebase convention, a recurring finding, a constraint, a reusable pattern. **Falsifiable filter** — keep a candidate only if you can name in one sentence the specific future mistake it prevents. Otherwise it is noise.
 
+**Include what step 3 turned up.** Audit findings and diffs only ever teach implementation conventions. A story mismatch — a criterion that measured a proxy, a task boundary drawn in the wrong place, an assumption the story made that the codebase contradicts — teaches how a story in this repo gets *decomposed* wrong, and the next run reads this file while planning, before any code exists. That is the more valuable class; write it so a planner can act on it. It is exempt from wanting two observations, not from the falsifiable filter.
+
 Dedup against the learnings file on substance, not wording.
 
 **GATE — approval loop.** Present the proposed additions as a diff. Do not write without explicit approval. On approval, append:

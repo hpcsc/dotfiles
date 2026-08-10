@@ -808,13 +808,27 @@ const reflectDigest = (results) =>
     })
     .join('\n')
 
-const reflectPrompt = (results) =>
+// Findings and diffs are verification-shaped, so a reflect fed only those can learn
+// implementation conventions and nothing else. The plan-level signals are the only
+// input here that can teach how a story in this repo gets DECOMPOSED wrong — which is
+// what steers the next run's decompose, where these doubts originated.
+const planSignalDigest = (validation, doubts) => {
+  const lines = [
+    ...doubts.map((d) => `  - [task ${d.task}, ${d.source}] ${d.note}`),
+    ...(validation?.questions ?? []).map((q) => `  - [validation, ${q.kind}] asked for "${q.asked_for}" — observed: ${q.observed}`),
+  ]
+  return lines.length ? `Doubts and open questions raised about the PLAN itself rather than the code:\n${lines.join('\n')}\n\n` : ''
+}
+
+const reflectPrompt = (results, validation, doubts) =>
   `Distil DURABLE learnings from this completed run so future runs in this repo start smarter — the self-improvement write-back. A learning is worth persisting only when it generalises beyond the one task that surfaced it.\n\n` +
   `Run digest:\n${reflectDigest(results)}\n\n` +
+  planSignalDigest(validation, doubts) +
   `1. Inspect what actually changed: \`git log --oneline\` for this run's commits and \`git diff\` of their contents. The reproduced reviewer findings above are the richest signal — a finding class that recurred is a candidate convention.\n` +
-  `2. Read \`${LEARNINGS_PATH}\` if it exists and dedup against it on substance, not wording — propose only genuinely new learnings.\n` +
-  `3. FALSIFIABLE FILTER: keep a learning only when you can name the specific future mistake it prevents (the \`prevents\` field). If you cannot, it is task-specific noise — drop it. Prefer learnings evidenced across >=2 tasks or flagged by a reviewer as a repo-wide convention.\n` +
-  `4. Append every surviving learning to \`${LEARNINGS_PATH}\` (create it if missing), each as:\n` +
+  `2. Weigh the plan-level signals separately and harder. A reviewer finding teaches an implementation convention; a premise doubt or a validation question teaches how a story in this repo gets DECOMPOSED wrong — a kind of acceptance criterion that reliably measures a proxy here, a domain area where task boundaries keep getting drawn in the wrong place, an assumption stories keep making that this codebase contradicts. That class is worth more than any number of naming conventions, because the next run reads these learnings while PLANNING, before any code exists. Write such a learning so a planner can act on it, not so an implementer can.\n` +
+  `3. Read \`${LEARNINGS_PATH}\` if it exists and dedup against it on substance, not wording — propose only genuinely new learnings.\n` +
+  `4. FALSIFIABLE FILTER: keep a learning only when you can name the specific future mistake it prevents (the \`prevents\` field). If you cannot, it is task-specific noise — drop it. Prefer learnings evidenced across >=2 tasks or flagged by a reviewer as a repo-wide convention. A plan-level learning is exempt from the >=2 preference but not from the filter: one mis-framed criterion is enough to name a repeatable mistake, provided you can name it.\n` +
+  `5. Append every surviving learning to \`${LEARNINGS_PATH}\` (create it if missing), each as:\n` +
   `   ## <title>\n   - Type: <kind>\n   - Learning: <the durable fact>\n   - Apply when: <future situation>\n` +
   `Write to \`${LEARNINGS_PATH}\` (create if missing) and do NOT commit it: when it is the in-tree \`tasks/learnings.md\` it lands in the post-run diff for your review; when the orchestrator resolved it to the out-of-tree per-project store it is private steering for the next run. Return the learnings you wrote; empty list if none survive the filter.`
 
@@ -1339,7 +1353,7 @@ if (allClosed && planFile) {
 // purpose (review surface = the post-run diff); an out-of-tree one is the private
 // per-project store. Either way the next run reads it back.
 const reflection = results.some((r) => r.status === 'closed')
-  ? await agent(reflectPrompt(results), { label: 'reflect', phase: 'Finalize', schema: REFLECT_SCHEMA })
+  ? await agent(reflectPrompt(results, validation, allPremiseDoubts), { label: 'reflect', phase: 'Finalize', schema: REFLECT_SCHEMA })
   : { learnings: [] }
 // agent() yields null when the subagent dies on a terminal API error, and reflect
 // runs last: without this the whole finalize phase is thrown away by a transient 529.

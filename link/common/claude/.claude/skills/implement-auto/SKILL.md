@@ -270,9 +270,14 @@ From the same scratch file's "Cycle summary" (review verdict, unresolved finding
 
 #### Plan validity check
 
-Inspect the "Learnings affecting remaining plan" section of the scratch file. If every field is "none" → continue silently to the next task.
+Inspect the "Learnings affecting remaining plan" section of the scratch file, **and the cycle's `premise_doubt` if it returned one**. If every field is "none" and there is no premise doubt → continue silently to the next task.
 
-If any field is non-"none" → **halt autonomous execution**. Spawn `decompose-to-tasks` with:
+Two different questions live here and they resolve differently:
+
+- **The remaining plan is wrong** (a task now unnecessary, missing, mis-scoped, dependencies shifted). Re-decomposing fixes this. Take the path below.
+- **The request's premise is wrong** — a `premise_doubt`, or a learning that contradicts something the story assumes. Re-decomposing cannot fix this, because every revision would inherit the same premise. Do NOT spawn `decompose-to-tasks`. Put the doubt to the user directly, in the story's own terms, and ask whether the premise holds. Their answer either revises the story (then re-decompose against the revised one) or confirms it (then continue, and note the doubt was considered).
+
+If the remaining plan must change → **halt autonomous execution**. Spawn `decompose-to-tasks` with:
 
 ```
 Original story: [user story from $ARGUMENTS]

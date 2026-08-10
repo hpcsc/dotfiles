@@ -41,6 +41,7 @@ Spawn the `decompose-to-prs` agent, passing the story **as data**. It explores t
 
 Present the slices, their **waves** (what runs in parallel), the **base/stacking** choice per dependent slice, and the branch names. The slice boundaries and merge order are expensive to get wrong once PRs are in flight and cheap to fix now, so this is the single gate:
 
+- Check each slice against the sizing rules in `decompose-to-prs` Step 3 — one-sentence title, 3–7 tasks, one aggregate, and a judgment-weighted file count in band — and surface any that miss rather than presenting the cut as settled.
 - Ask the user to approve or request changes.
 - On changes, either let the user edit `plan.yaml` directly, or re-spawn `decompose-to-prs` with the feedback, then re-present.
 - Loop until approved. Do NOT proceed to Phase 2 until the plan is approved.

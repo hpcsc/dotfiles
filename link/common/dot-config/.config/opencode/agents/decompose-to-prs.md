@@ -40,6 +40,26 @@ A slice is one pull request: the smallest coherent, reviewable increment that le
 - **Independently mergeable, or explicitly stacked** — default: branches off the default branch, merges alone. When a slice truly needs another's code, model it as stacked (`base` = the other slice), not a prose merge order.
 - **Green at every boundary** — no slice depends on a later slice to compile or pass.
 
+### Sizing
+
+Four structural rules, checkable from the plan before any code exists:
+
+- **One sentence** — the `title` states what the slice delivers with no "and" and no comma-list. A title needing a conjunction describes two slices.
+- **3–7 tasks** — below three it doesn't earn its own branch, review round-trip and merge; above seven it's two behaviors under one title.
+- **1–3 of the story's acceptance criteria** — claiming most of them means the cut was by layer, however singular the title sounds.
+- **One aggregate, at most one new domain event** — a second new event means a second behavior came along.
+
+Files changed is a diagnostic, not a rule of its own: out of band means one of the four already broke, so find which. Count only files needing review judgment:
+
+| Weight | Files |
+|---|---|
+| Full | Modified files in existing logic — the reviewer must reconstruct the surrounding behavior. The band bounds these. |
+| Low | New files — read once, no surrounding context to hold. |
+| None | Mechanical wiring — event registrations, message-filter policies, route/endpoint manifests, i18n entries. |
+| None | Generated artifacts — event catalogs, snapshot fixtures, lockfiles, API schema output. One new domain event can regenerate thousands of catalog lines at zero review cost. |
+
+Weighted: **≤8 in band**; 9–12 name which rule slipped; >12 re-cut. Calibrated on merged PRs in a large Go monorepo, where 4–8 changed files is the 250–450 line range in which review effectiveness holds. A high raw count with a low weighted count is normal under a wiring or codegen tax — not a re-cut trigger; note it in the Step 6 return.
+
 Build the dependency DAG, then derive **waves** (parallelizable cohorts): wave 1 = slices with no dependencies; wave N = slices whose dependencies are all in earlier waves. The DAG is the source of truth; `wave` is a convenience.
 
 Per dependent slice, choose `base`:
@@ -82,4 +102,4 @@ Return: the manifest path; slice count + wave grouping; per slice (id, one-line 
 
 ## Quality bar
 
-Every slice is a vertical, independently-reviewable PR that stays green merged alone; the DAG is acyclic; each dependent slice's `base` matches its `depends_on`; no scheduling vocabulary in any slice title/task/commit-facing text; every slice has an adoptable `tasks.md`; branches are `<story-slug>-<slice-slug>` with no author prefix; all acceptance criteria are covered (deferrals named); `plan.yaml` matches the schema exactly.
+Every slice is a vertical, independently-reviewable PR that stays green merged alone; every slice is in band (one-sentence title, 3–7 tasks, 1–3 acceptance criteria, one aggregate, ≤12 judgment-weighted files counting generated and wiring files at zero, with any large raw-vs-weighted gap explained); the DAG is acyclic; each dependent slice's `base` matches its `depends_on`; no scheduling vocabulary in any slice title/task/commit-facing text; every slice has an adoptable `tasks.md`; branches are `<story-slug>-<slice-slug>` with no author prefix; all acceptance criteria are covered (deferrals named); `plan.yaml` matches the schema exactly.

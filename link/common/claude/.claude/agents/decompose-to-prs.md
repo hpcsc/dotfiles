@@ -55,6 +55,28 @@ Slicing rules:
 - **Green at every slice boundary.** Each slice, merged alone, keeps all tests passing. No slice depends on a *later* slice to compile or pass.
 - **Group by behavior.** Related acceptance criteria that test one behavior belong in one slice; distinct user-facing behaviors are usually distinct slices.
 
+### Sizing a slice
+
+Four structural rules govern size, all checkable from the plan before any code exists:
+
+- **One sentence.** The `title` states what the slice delivers in one sentence, with no "and" and no comma-list. A title that needs a conjunction to be true is describing two slices.
+- **3–7 tasks.** Below three, the slice rarely earns its own branch, review round-trip and merge; above seven, it is almost always two behaviors under one title.
+- **1–3 of the story's acceptance criteria.** A slice claiming most of the story's criteria was cut by layer, not by behavior, however singular its title sounds.
+- **One aggregate, at most one new domain event.** A second new event means a second behavior came along for the ride.
+
+Files changed is a **diagnostic**, not a rule of its own — it is the consequence of getting the four above right, so a slice that lands out of band has already broken one of them and the fix is to find which. Count only the files a reviewer must exercise judgment on:
+
+| Weight | Files |
+|---|---|
+| Full | Modified files in existing logic. The reviewer has to reconstruct the surrounding behavior to judge the change; these are the expensive ones, and the only ones the band really bounds. |
+| Low | New files. Read once, with no surrounding context to hold. |
+| None | Mechanical wiring, checkable against a naming chain rather than reasoned about: infrastructure event registrations, message-filter policies, route and endpoint manifests, i18n entries. |
+| None | Generated artifacts: regenerated event catalogs, snapshot fixtures, lockfiles, API schema output. These dominate a diff while carrying no review load at all — one new domain event can regenerate thousands of catalog lines. Never let them push a correctly-cut slice out of band. |
+
+Against that weighted count, **8 or fewer is in band**; 9–12 warrants naming which structural rule slipped; above 12 the slice is re-cut. The band is calibrated on merged PRs in a large Go monorepo, where 4–8 changed files is the 250–450 line range in which review effectiveness holds and past which it degrades sharply.
+
+A high raw file count with a low weighted count is normal in a repo carrying a wiring or codegen tax, and is not a re-cut trigger. Call it out in the Step 6 summary so whoever reviews the plan knows the diff is mostly machine-written.
+
 ### Dependencies and waves
 
 Build the dependency DAG between slices, then derive **waves**: a wave is a set of slices with no unmet dependencies among them, i.e. the ones that can run **in parallel** in separate worktrees. Wave 1 is every slice with no dependencies; wave 2 is every slice whose dependencies are all in wave 1; and so on. `wave` is a derived convenience for the driver — the DAG (`depends_on` + `base`) is the source of truth.
@@ -156,6 +178,8 @@ After writing the manifest and all slice files, return a structured summary:
 Before returning, verify:
 
 - [ ] Every slice is a coherent, independently-reviewable PR — vertical, not a layer.
+- [ ] Every slice is in band: a one-sentence title, 3–7 tasks, 1–3 acceptance criteria, one aggregate and at most one new domain event.
+- [ ] No slice exceeds 12 judgment-weighted files, counting generated and mechanical-wiring files at zero; any slice whose raw count runs far above its weighted count says why.
 - [ ] Every slice leaves the codebase green when merged alone.
 - [ ] The dependency DAG is acyclic; waves are derived from it; wave-1 slices have no dependencies.
 - [ ] Each dependent slice's `base` (master vs. stacked sibling) matches its `depends_on`.

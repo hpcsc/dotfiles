@@ -139,7 +139,7 @@ is an explicit command rather than something `next` does behind your back.
 `clerk next` returns the first task whose dependencies are all checked off, and exits 3
 while the tree is dirty — one task in flight at a time is what keeps a run resumable.
 
-`clerk complete N -- <files>` ticks the checkbox and stages exactly those paths
+`clerk finish N -- <files>` ticks the checkbox and stages exactly those paths
 alongside the task file, so the box and the change it stands for land in one commit. It
 refuses a path that does not exist, refuses a task already checked off, and never runs
 `git add -A`.
@@ -205,7 +205,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars | 0 · **2** if nothing parses |
-| `complete <n> -- <files>` | Checkbox ticked, named paths staged with it | 0 · **2** refused |
+| `finish <n> -- <files>` | Checkbox ticked, named paths staged with it (`complete` is an accepted alias) | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
@@ -220,14 +220,26 @@ Three files get loosely called "state" and they are not interchangeable.
 
 | File | Holds | Written by |
 |---|---|---|
-| `tasks/<story>.md` | **Which tasks are done** — the `- [x]` checklist | `clerk complete`, and it is what `clerk next` reads |
-| `tasks/<story>.json` | Static structure: number, title, language, testability, dependency edges | `decompose-to-tasks` or `clerk sidecar`; never touched again |
-| `<git-dir>/clerk/*` | The suite receipt, the archive record, and each task's file list | `clerk receipt`, `clerk land`, `clerk complete` |
+| `tasks/<story>.md` | **Which tasks are done** — the `- [x]` checklist, and the authority | `clerk finish`; it is what `clerk next` reads |
+| `tasks/<story>.json` | The dependency graph, plus a `done` mirror of the checklist | `decompose-to-tasks`, `clerk sidecar`, and `clerk finish` |
+| `<git-dir>/clerk/*` | The suite receipt, the archive record, and each task's file list | `clerk receipt`, `clerk land`, `clerk finish` |
 
-**The sidecar does not track completion.** It carries the dependency graph and nothing
-that changes as work proceeds. Completion is the checkbox in the markdown, which is why
-the checkbox and the code it stands for must land in the same commit — that file is the
-progress record a resumed run reads, and it is the one a human reads too.
+**Both files carry completion, and the checkbox is the authority.** `clerk finish` ticks
+the box and sets `done: true` on that task in the sidecar, staging both with the code, so
+progress is readable by a tool without parsing markdown.
+
+The checkbox wins because it is the file a human edits. Making the sidecar authoritative
+would turn a hand-tick — an entirely natural thing to do — into a silent no-op, and
+silently ignoring a human's edit is worse than any parsing cost it saves.
+
+Which is why `clerk next` **refuses when the two disagree** rather than picking a winner.
+Divergence means one was edited by hand, and there is no safe guess: trusting the
+checkbox discards a machine update, trusting the sidecar discards a human one. It names
+the tasks and stops. A sidecar with no `done` fields at all predates the mirror and is
+read as unknown rather than as "nothing is done", so older breakdowns keep working.
+
+`clerk sidecar --force` carries `done` across a regeneration — it is the one field in
+there not derived from the markdown.
 
 The files under `<git-dir>/clerk` are internal bookkeeping, not an interface. They sit
 inside the git directory so they are per-worktree, never committed, and need no

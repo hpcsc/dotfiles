@@ -172,10 +172,10 @@ Four checks earlier runs paid for, each of which shipped a defect that a passing
 ### 4. Commit the task
 
 ```
-clerk complete <n> -- <every file this task changed>
+clerk finish <n> -- <every file this task changed>
 ```
 
-That ticks the checkbox and stages those paths together with the task file, so the checkbox and the change it stands for land in one commit. A checkbox committed without its code makes a later run redo the work; code without its checkbox makes it skip work it never did. `clerk complete` refuses a path that does not exist and refuses a task already checked off, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
+That ticks the checkbox, mirrors it as `done: true` in the sidecar, and stages both alongside those paths, so the progress record and the change it stands for land in one commit. The checkbox stays authoritative — it is the file you would edit by hand — and `clerk next` refuses outright if the two ever disagree rather than guessing which to believe. A checkbox committed without its code makes a later run redo the work; code without its checkbox makes it skip work it never did. `clerk finish` refuses a path that does not exist and refuses a task already checked off, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
 
 Then write the message, which is judgment rather than mechanics:
 
@@ -249,7 +249,7 @@ Do this **before** integrating, on the runs where you integrate at all: a mismat
 clerk verify --all-closed
 ```
 
-Staged-but-uncommitted tails, a vacuous or stale receipt, new exported symbols with no non-test caller, and commit-boundary arithmetic against the file lists `clerk complete` recorded. It reports what it could **not** check in `not_checked` rather than passing over it silently.
+Staged-but-uncommitted tails, a vacuous or stale receipt, new exported symbols with no non-test caller, and commit-boundary arithmetic against the file lists `clerk finish` recorded. It reports what it could **not** check in `not_checked` rather than passing over it silently.
 
 What `clerk verify` leaves in `not_checked` is the residue that still needs judgment — chiefly whether a commit mixes unrelated concerns, and reachability for languages whose exported symbols it does not extract. Spawn the `run-verifier` subagent via the `task` tool for that residue only when `not_checked` is non-empty.
 

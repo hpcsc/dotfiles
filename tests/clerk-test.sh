@@ -129,18 +129,18 @@ run "$R5" next >/dev/null 2>&1
 eq "refuses to start a task while one is in flight" "3" "$?"
 eq "unless explicitly allowed" "1" "$(run "$R5" next --allow-dirty | jq -r '.task.n')"
 
-C=$(run "$R5" complete 1 -- a.go)
-eq "complete stages exactly the named files" "a.go" "$(printf '%s' "$C" | jq -r '.staged | join(",")')"
+C=$(run "$R5" finish 1 -- a.go)
+eq "finish stages exactly the named files" "a.go" "$(printf '%s' "$C" | jq -r '.staged | join(",")')"
 eq "and ticks the checkbox"                  "1"    "$(grep -c '^- \[x\] Task 1:' "$R5/tasks/story.md" | tr -d ' ')"
-eq "and stages the task file with the code"  "2"    "$(git -C "$R5" diff --cached --name-only | wc -l | tr -d ' ')"
+eq "and stages the task file and sidecar with the code" "3" "$(git -C "$R5" diff --cached --name-only | wc -l | tr -d ' ')"
 
-run "$R5" complete 1 -- a.go >/dev/null 2>&1
+run "$R5" finish 1 -- a.go >/dev/null 2>&1
 eq "a completed task is never redone" "2" "$?"
 
-run "$R5" complete 2 -- does-not-exist.go >/dev/null 2>&1
+run "$R5" finish 2 -- does-not-exist.go >/dev/null 2>&1
 eq "refuses to stage a path that does not exist" "2" "$?"
 
-run "$R5" complete 2 >/dev/null 2>&1
+run "$R5" finish 2 >/dev/null 2>&1
 eq "refuses to run without an explicit file list" "2" "$?"
 
 git -C "$R5" commit -qm "Task 1"
@@ -148,8 +148,8 @@ J=$(run "$R5" next)
 eq "the dependency unblocks once its task is checked off" "2" "$(printf '%s' "$J" | jq -r '.task.n')"
 eq "and blocked drops accordingly"                        "1" "$(printf '%s' "$J" | jq -r '.blocked')"
 
-run "$R5" complete 2 -- b.go >/dev/null && git -C "$R5" commit -qm "Task 2"
-run "$R5" complete 3 -- README.md >/dev/null && git -C "$R5" commit -qm "Task 3"
+run "$R5" finish 2 -- b.go >/dev/null && git -C "$R5" commit -qm "Task 2"
+run "$R5" finish 3 -- README.md >/dev/null && git -C "$R5" commit -qm "Task 3"
 J=$(run "$R5" next)
 eq "reports done when every task is checked" "true" "$(printf '%s' "$J" | jq -r '.done')"
 eq "and hands back no task"                  "null" "$(printf '%s' "$J" | jq -r '.task')"
@@ -273,7 +273,7 @@ eq "land refuses while the gate is shut" "false" "$(printf '%s' "$L" | jq -r '.l
 eq "and says the gate is why"            "gate did not open" "$(printf '%s' "$L" | jq -r '.reason')"
 eq "and exits non-zero"                  "1" "$RC"
 
-run "$R8" complete 1 -- tasks/feature.md >/dev/null 2>&1
+run "$R8" finish 1 -- tasks/feature.md >/dev/null 2>&1
 git -C "$R8" add -A && git -C "$R8" commit -qm "Do task 1"
 run "$R8" receipt --command "go test ./..." --passed >/dev/null
 
@@ -459,9 +459,9 @@ eq "prepare finds the breakdown in the worktree" "$(cd "$WT2" && pwd -P)/tasks/w
 eq "next reads the worktree's sidecar" "1" "$(run "$WT2" next | jq -r '.task.n')"
 
 printf 'edit\n' >> "$WT2/a.go"
-C=$(run "$WT2" complete 1 -- a.go); RC=$?
+C=$(run "$WT2" finish 1 -- a.go); RC=$?
 eq "complete succeeds inside a worktree" "0" "$RC"
-eq "and stages the worktree's task file" "2" "$(git -C "$WT2" diff --cached --name-only | wc -l | tr -d ' ')"
+eq "and stages the worktree's task file" "3" "$(git -C "$WT2" diff --cached --name-only | wc -l | tr -d ' ')"
 eq "and records its state under the worktree git dir" "1" \
    "$(ls "$(git -C "$WT2" rev-parse --absolute-git-dir)/clerk/tasks"/*.json 2>/dev/null | wc -l | tr -d ' ')"
 eq "the main checkout's copy is untouched" "1" \
@@ -487,7 +487,46 @@ esac
 
 git -C "$R13" worktree remove --force "$WT2" 2>/dev/null
 
+
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$WT" 2>/dev/null
+printf '\ncompletion in both files\n'
+
+R14=$(new_repo); mkdir -p "$R14/tasks"
+printf -- '- [ ] Task 1: One\n- [ ] Task 2: Two\n' > "$R14/tasks/both.md"
+printf '{"tasks":[{"n":1,"title":"One","depends_on":[]},{"n":2,"title":"Two","depends_on":[1]}]}\n' > "$R14/tasks/both.json"
+printf 'package a\n' > "$R14/a.go"
+git -C "$R14" add -A && git -C "$R14" commit -qm Plan
+
+printf 'edit\n' >> "$R14/a.go"
+F=$(run "$R14" finish 1 -- a.go)
+eq "finish reports the sidecar it updated" "$R14/tasks/both.json" "$(printf '%s' "$F" | jq -r '.sidecar')"
+eq "and marks the task done there"        "true" "$(jq -r '.tasks[0].done' "$R14/tasks/both.json")"
+eq "leaving the other alone"              "null" "$(jq -r '.tasks[1].done' "$R14/tasks/both.json")"
+eq "and stages the sidecar with the rest" "3" "$(git -C "$R14" diff --cached --name-only | wc -l | tr -d ' ')"
+git -C "$R14" commit -qm "Task 1"
+eq "next still advances"                  "2" "$(run "$R14" next | jq -r '.task.n')"
+
+# A hand-edit to either file must not be guessed at.
+sed -i.bak 's/- \[x\] Task 1/- [ ] Task 1/' "$R14/tasks/both.md" && rm -f "$R14/tasks/both.md.bak"
+run "$R14" next --allow-dirty >/dev/null 2>&1
+eq "next refuses when the two disagree" "4" "$?"
+E=$(run "$R14" next --allow-dirty 2>&1 >/dev/null)
+eq "naming the task that diverged" "1" "$(printf '%s' "$E" | jq -r '.tasks[0].n')"
+eq "and which side says what"      "unchecked|done" \
+   "$(printf '%s' "$E" | jq -r '.tasks[0].checklist')|$(printf '%s' "$E" | jq -r '.tasks[0].sidecar')"
+
+# Regenerating must not throw progress away.
+run "$R14" sidecar --force --tasks-file "$R14/tasks/both.md" >/dev/null
+eq "sidecar --force preserves what was already done" "true" "$(jq -r '.tasks[0].done' "$R14/tasks/both.json")"
+
+# A sidecar with no done fields at all is an older one; it must not trip the check.
+R15=$(new_repo); mkdir -p "$R15/tasks"
+printf -- '- [x] Task 1: One\n- [ ] Task 2: Two\n' > "$R15/tasks/old.md"
+printf '{"tasks":[{"n":1,"title":"One","depends_on":[]},{"n":2,"title":"Two","depends_on":[1]}]}\n' > "$R15/tasks/old.json"
+git -C "$R15" add -A && git -C "$R15" commit -qm Plan
+eq "an older sidecar without done fields still works" "2" "$(run "$R15" next | jq -r '.task.n')"
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

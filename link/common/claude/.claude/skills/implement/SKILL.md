@@ -248,11 +248,24 @@ It fans the applicable lenses over the diff in parallel, reproduces every runtim
 
 Fix findings **directly**. Do not launch a workflow to apply them — you have the context and they are usually small.
 
-### 3. Verify the run
+### 3. Validate against the story
+
+The audit checked whether the code is correct and whether it matches the brief. Neither it nor `run-verifier` checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a decomposition you approved before any code existed.
+
+This costs a read, not an agent, because you are already here. Re-read the story from `$ARGUMENTS` **verbatim** — not your memory of it, and not the brief you wrote from it — then read `git log --oneline` and the branch diff, and answer two questions:
+
+- What does the story ask for that this branch does not do?
+- Where does the branch satisfy a task's acceptance criteria by measuring a **proxy** for what was asked rather than the thing itself?
+
+Quote the story's own words for anything you raise; if you cannot point at the phrase, you are inventing a requirement. Put mismatches to the user as questions and let them decide — you wrote this code, which makes you the worst-placed reader of your own interpretation of the request. Finding nothing is the common result; say so in a line.
+
+Do this **before** integrating: a mismatch found after the fast-forward is a mismatch found too late.
+
+### 4. Verify the run
 
 Spawn `run-verifier` in the main tree: staged-but-uncommitted tails, new public symbols with no live caller, a vacuous full-suite, collapsed commit boundaries. If `clean`, say so in one line. If not, surface each finding — a `block` means "done" does not hold.
 
-### 4. Integrate the branch
+### 5. Integrate the branch
 
 Land the work on the default branch, **local only — never push**. Skip when `--no-integrate` is given, and hold off when anything below fails; a branch left standing is always recoverable, a bad fast-forward is not.
 
@@ -273,7 +286,7 @@ Report the resulting `git log` on the default branch, and say plainly that nothi
 
 Do this **before** reflecting. Reflect leaves the in-tree `tasks/learnings.md` modified and uncommitted by design, and a dirty tracked file blocks a rebase.
 
-### 5. Close out
+### 6. Close out
 
 Create the directory if needed and move the task file — commit it separately:
 
@@ -285,7 +298,7 @@ git commit -m "Archive completed task: <feature-name>"
 
 Delete `tasks/.cycles/` if it exists.
 
-### 6. Reflect and persist learnings
+### 7. Reflect and persist learnings
 
 Distil what generalises: a codebase convention, a recurring finding, a constraint, a reusable pattern. **Falsifiable filter** — keep a candidate only if you can name in one sentence the specific future mistake it prevents. Otherwise it is noise.
 

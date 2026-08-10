@@ -304,7 +304,18 @@ After all tasks complete:
 
 2. **Verify the run (review by exception).** Spawn the `run-verifier` agent in the main tree — it independently checks the finished run for staged-but-uncommitted tails, new public symbols with no live caller (dead code), a vacuous full-suite, and collapsed commit boundaries, and returns `{ clean, findings }`. If `clean`, note it and move on. If it has findings, surface each (file/symbol + severity) to the user before summarizing — a `block` means the run's "done" does not hold and needs a fix, even though every commit was individually approved.
 
-3. **Reflect and persist learnings (human-gated write-back)**
+3. **Validate against the story (questions, not blockers).**
+
+   Everything up to here — every gate, the reviewers, the run-verifier — has checked that the code obeys its acceptance criteria. Nothing has checked that those were the right criteria. Do that now, before the summary, while the branch is still fresh:
+
+   Re-read the original story from `$ARGUMENTS` **verbatim**, not your memory of it, then read `git log --oneline` and the branch diff, and answer two questions only:
+
+   - What does the story ask for that this branch does not do? Asked for, and absent — not "could be better".
+   - Where does the branch satisfy a criterion by measuring a **proxy** for what was asked rather than the thing itself? This is the failure that survives every other check in this skill: the receipts are real, the suite is green, each commit was approved, and the wrong thing is built correctly.
+
+   Quote the story's own words for each mismatch and name the file that shows it — if you cannot point at the phrase, you are inventing a requirement. Also revisit any `premise_doubt` a cycle raised. Present what you find as **questions to the user**, alongside the summary. Do not block, revert, or re-open a task on your own judgment; the branch is committed and the user decides. Finding nothing is a good and common result — say so in one line and move on.
+
+4. **Reflect and persist learnings (human-gated write-back)**
 
    The self-improvement step — it turns this run's execution into durable steering for the next one. Do it **before** cleanup, because the candidates live in `tasks/.checkpoint`.
 
@@ -324,9 +335,9 @@ After all tasks complete:
 
    If no candidates survive the filter, say so and skip — a clean run produces no learnings, and that's fine. The learnings file is durable project knowledge; if it's the in-tree `tasks/learnings.md`, offer to commit it so teammates inherit it — if it resolved out-of-tree, it's already private steering for the next run, nothing to commit.
 
-4. **Clean up** — delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (cycle scratch files are per-cycle; by this point they should all be gone, but remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist). **Never delete the learnings file** — it persists across runs.
+5. **Clean up** — delete `tasks/.checkpoint` if it exists. Delete `tasks/.cycles/` (cycle scratch files are per-cycle; by this point they should all be gone, but remove the directory if it lingers). Move the task markdown file to `tasks/completed/` (create the directory if it doesn't exist). **Never delete the learnings file** — it persists across runs.
 
-5. **Summarize**
+6. **Summarize**
    ```markdown
    ## Feature Complete: [Feature Name]
 

@@ -273,7 +273,25 @@ Do this **before** integrating, on the runs where you integrate at all: a mismat
 
 Spawn `run-verifier` **in the tree that holds this run's commits** — tell it to resolve that tree with `git rev-parse --show-toplevel` rather than assume the main checkout, which does not have the branch yet. Pointed at the wrong tree it finds no commits to check and reports clean, which is the one failure mode a verifier must not have. It checks staged-but-uncommitted tails, new public symbols with no live caller, a vacuous full-suite, and collapsed commit boundaries. If `clean`, say so in one line. If not, surface each finding — a `block` means "done" does not hold.
 
-### 5. Integrate the branch
+### 5. Close out
+
+Archive the task file **on the feature branch, before any integration**, so the archive commit rides with the feature it belongs to rather than landing on the default branch behind it. `implement-flow` archives in its Finalize ahead of the optional rebase for the same reason; this is that ordering.
+
+There is a mechanical reason too: `git mv` leaves a dirty tracked file, and a dirty tree blocks the rebase in step 6. Archive-then-integrate is the only order in which both steps work.
+
+From inside the worktree:
+
+```
+mkdir -p tasks/completed
+git mv tasks/<story-name>.md tasks/completed/<story-name>.md
+git commit -m "Archive completed task: <feature-name>"
+```
+
+That subject faces the same commit rules as every other — imperative, ≤50 chars, capitalized, no trailing period — and `Archive completed task: ` already spends 24 of them, so shorten the feature name rather than overflow.
+
+Delete `tasks/.cycles/` if it exists.
+
+### 6. Integrate the branch
 
 **Integration is opt-in. By default this step does not run** — the work stays on its branch, in its worktree, and you hand it over. Land it only when `$ARGUMENTS` explicitly asks: `--integrate`, or the user saying so in words.
 
@@ -295,19 +313,7 @@ Report the resulting `git log` on the default branch, and say plainly that nothi
 
 **When you did NOT integrate** (the default), say so explicitly rather than letting silence imply it landed: name the branch, its worktree path, and the one command that lands it — `git merge --ff-only <feature-branch>` from the main checkout, after a `git rebase <default-branch>` if the base has moved. Leave the worktree in place; the user may want to run the code before landing it.
 
-Integrating, when it happens, must come **before** reflecting. Reflect leaves the in-tree `tasks/learnings.md` modified and uncommitted by design, and a dirty tracked file blocks a rebase.
-
-### 6. Close out
-
-Create the directory if needed and move the task file — commit it separately:
-
-```
-mkdir -p tasks/completed
-git mv tasks/<story-name>.md tasks/completed/<story-name>.md
-git commit -m "Archive completed task: <feature-name>"
-```
-
-Delete `tasks/.cycles/` if it exists.
+Integrating, when it happens, must come **before** reflecting. Reflect leaves the in-tree `tasks/learnings.md` modified and uncommitted by design, and a dirty tracked file blocks a rebase — the same constraint that puts the archive commit ahead of it.
 
 ### 7. Reflect and persist learnings
 

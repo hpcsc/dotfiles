@@ -30,7 +30,7 @@ Run `git diff --staged` and analyze ALL staged changes:
 
 ### Step 3: Incorporate Context
 
-If additional context was provided via $ARGUMENTS:
+If the caller supplied additional context (a ticket, a step description):
 - Use it to enhance the commit description
 - Incorporate it naturally into the message
 - Do NOT mention it came from user input

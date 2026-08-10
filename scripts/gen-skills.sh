@@ -17,10 +17,16 @@ METHOD="$ROOT/link/common/dot-config/.config/ai/method"
 CHECK=false
 [ "${1:-}" = "--check" ] && CHECK=true
 
-# method-name  tool  output-path
+# source-dir (under $METHOD)  tool  output-path
 TARGETS="
 implement claude   $ROOT/link/common/claude/.claude/skills/implement/SKILL.md
 implement opencode $ROOT/link/common/dot-config/.config/opencode/skills/implement/SKILL.md
+agents/decompose-to-tasks claude   $ROOT/link/common/claude/.claude/agents/decompose-to-tasks.md
+agents/decompose-to-tasks opencode $ROOT/link/common/dot-config/.config/opencode/agents/decompose-to-tasks.md
+agents/commit claude   $ROOT/link/common/claude/.claude/agents/commit.md
+agents/commit opencode $ROOT/link/common/dot-config/.config/opencode/agents/commit.md
+agents/run-verifier claude   $ROOT/link/common/claude/.claude/agents/run-verifier.md
+agents/run-verifier opencode $ROOT/link/common/dot-config/.config/opencode/agents/run-verifier.md
 "
 
 fail=0

@@ -24,10 +24,33 @@ Resolve the plan the run will deliver, in this order:
 3. **`$ARGUMENTS` is empty and exactly one `tasks/**/plan.yaml` exists** → **adopt it** (the "deliver the next wave" shorthand).
 4. **Otherwise** → no plan yet; **decompose** (below).
 
-**On adopt:** read the plan and present its current state — one row per deliverable (`id`, `wave`, `base`, `status`) — so the user sees what's merged, running, and still pending. Skip `decompose-to-deliverables` entirely and go to Phase 2. A quick way to render the table:
+**On adopt:** present the story's current state, then skip `decompose-to-deliverables` entirely and go to Phase 2.
+
 ```
-yq -r '.deliverables[] | .id + "  wave=" + (.wave|tostring) + "  base=" + .base + "  " + .status' tasks/<slug>/plan.yaml
+clerk story --table              # every unarchived plan in the repo
+clerk story tasks/<slug>/plan.yaml --table
 ```
+
+Each deliverable comes back as `merged`, `awaiting-merge`, `in-progress`, `blocked` (naming what it waits on) or `ready`. **Do not read `status:` out of the plan to answer this.** The plan records the cut and the dependency order, which are decisions; whether a deliverable has started or landed is an observation, and `clerk story` derives it from the sidecar, the branch, and the worktree list. The field in the plan is a latch the driver sets — it goes stale the moment anyone starts a deliverable by hand, and a stale mirror still reads as authoritative.
+
+Two derivations worth knowing, because both have already been wrong in practice: *merged* is decided by patch id (`git cherry`), not by ancestry, so a rebase- or squash-merged branch is recognised rather than reported as unmerged forever; and a deliverable whose worktree exists on a branch other than the one the plan names is flagged, because that is what makes a driver scaffold a second worktree for work already under way.
+
+### Start one deliverable by hand
+
+To build a single `ready` deliverable yourself with `implement` rather than firing a whole wave through `implement-flow`:
+
+```
+clerk story --table                                  # pick a `ready` one
+bash "$HOME/.claude/skills/deliver-story/deliver.sh" tasks/<slug>/plan.yaml --only <id> --dry-run
+```
+
+The dry run prints the worktree name, the resolved base commit and the absolute task-file path. Create the worktree from that, then in the new session:
+
+```
+/implement <absolute path to that deliverable's tasks.md>
+```
+
+The path must be absolute, or relative to the main checkout: a worktree branches from the default branch and does not contain a gitignored `tasks/` tree. `clerk` resolves a relative one against the main root, but the deliverable's own breakdown is never in the worktree itself.
 
 ### Decompose (first run only)
 

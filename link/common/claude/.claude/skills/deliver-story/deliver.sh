@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 # deliver-story — the automated form of workmux-new-form, driven by a plan.yaml.
 #
-# Reads a decompose-to-prs delivery plan and, for every slice that is ready,
+# Reads a decompose-to-deliverables delivery plan and, for every deliverable that is ready,
 # creates a git worktree + tmux session via `workmux` and launches
-# `implement-flow` inside it against that slice's task file. Independent slices
-# fire in parallel (own worktree each); dependent slices wait for their
+# `implement-flow` inside it against that deliverable's task file. Independent deliverables
+# fire in parallel (own worktree each); dependent deliverables wait for their
 # prerequisites to merge (base: master) or stack on the prerequisite's branch
-# (base: <slice-id>). Watch progress with `workmux dashboard`.
+# (base: <deliverable-id>). Watch progress with `workmux dashboard`.
 #
 # Usage:
 #   deliver.sh [PLAN] [--wave N] [--only id[,id...]] [--mode session|window] [--dry-run]
 #
 #   PLAN        path to plan.yaml (auto-discovered under tasks/ if a single one exists)
-#   --wave N    only fire slices in wave N (default: every ready slice)
-#   --only ids  comma-separated slice ids to restrict to
+#   --wave N    only fire deliverables in wave N (default: every ready deliverable)
+#   --only ids  comma-separated deliverable ids to restrict to
 #   --mode      workmux target mode (default: window, falls back to session
 #               when not running inside tmux)
 #   --dry-run   print the workmux commands and status changes without running them
 #
 # Ready = status pending AND either (base is the default branch and every
-# depends_on slice is merged) OR (base is a sibling slice whose branch carries
+# depends_on deliverable is merged) OR (base is a sibling deliverable whose branch carries
 # commits of its own).
-# A ready slice is launched and its status set to running. Before launching,
-# running/in-review slices whose branch has merged into the default branch are
+# A ready deliverable is launched and its status set to running. Before launching,
+# running/in-review deliverables whose branch has merged into the default branch are
 # advanced to merged (best-effort, no gh dependency), so the next wave unlocks.
 #
-# Each slice gets a single agent pane. The shared workmux config asks for an
+# Each deliverable gets a single agent pane. The shared workmux config asks for an
 # agent pane plus a shell pane below it; the extra pane is collapsed here rather
 # than in that config, which every other workmux entry point still relies on.
 set -euo pipefail
@@ -55,7 +55,7 @@ command -v workmux >/dev/null 2>&1 || die "workmux not found on PATH"
 command -v yq      >/dev/null 2>&1 || die "yq not found on PATH"
 command -v git     >/dev/null 2>&1 || die "git not found on PATH"
 
-# Window mode puts each slice in a window of the session this runs from, so it
+# Window mode puts each deliverable in a window of the session this runs from, so it
 # needs a session to attach to. Resolve it from tmux rather than passing
 # --parent-session, which workmux lowercases (a capitalised "Work" would spawn a
 # detached "work" holder session).
@@ -89,33 +89,40 @@ DEFAULT=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null | sed 's#^origin/##
 [ -n "$DEFAULT" ] || DEFAULT=master
 git fetch --quiet origin "$DEFAULT" 2>/dev/null || true
 
-status_of() { yq -r ".slices[] | select(.id==\"$1\") | .status" "$PLAN"; }
-branch_of() { yq -r ".slices[] | select(.id==\"$1\") | .branch" "$PLAN"; }
-is_slice()  { yq -e ".slices[] | select(.id==\"$1\")" "$PLAN" >/dev/null 2>&1; }
+status_of() { yq -r ".deliverables[] | select(.id==\"$1\") | .status" "$PLAN"; }
+branch_of() { yq -r ".deliverables[] | select(.id==\"$1\") | .branch" "$PLAN"; }
+is_deliverable()  { yq -e ".deliverables[] | select(.id==\"$1\")" "$PLAN" >/dev/null 2>&1; }
 set_status() {
   if [ "$DRY" -eq 1 ]; then say "would set $1 -> $2"; return; fi
-  yq -i "(.slices[] | select(.id==\"$1\").status) = \"$2\"" "$PLAN"
+  yq -i "(.deliverables[] | select(.id==\"$1\").status) = \"$2\"" "$PLAN"
 }
 
-# Reconcile: advance running/in-review slices whose branch is now an ancestor of
-# origin/DEFAULT (i.e. their PR merged) to merged, so dependents can unlock.
+# Reconcile: advance running/in-review deliverables whose work is now in the default
+# branch to merged, so dependents unlock.
+#
+# `--is-ancestor` asks whether the branch TIP is in the default branch's history, which
+# is false for every rebase- or squash-merged branch: the work landed under new SHAs and
+# the branch still points at the originals. A whole wave stays "running" forever and the
+# next wave never fires. `git cherry` compares patch ids instead, marking `+` only for
+# commits with no counterpart upstream — none of those means everything here has landed,
+# however it got there.
 while IFS='|' read -r id branch status; do
   case "$status" in running|in-review) ;; *) continue ;; esac
   git rev-parse --verify --quiet "$branch" >/dev/null 2>&1 || continue
-  # A branch that has not committed anything yet is trivially an ancestor of the default branch.
-  # Without this guard a slice still being worked on reconciles to merged and unlocks dependents.
+  # A branch that has committed nothing yet has no patches to be missing, so it would
+  # reconcile to merged while the deliverable is still being worked on.
   [ -n "$(git rev-list -n1 "origin/$DEFAULT..$branch" 2>/dev/null)" ] || continue
-  if git merge-base --is-ancestor "$branch" "origin/$DEFAULT" 2>/dev/null; then
-    say "reconcile: $id merged into $DEFAULT"
+  if ! git cherry "origin/$DEFAULT" "$branch" 2>/dev/null | grep -q '^+'; then
+    say "reconcile: $id merged into $DEFAULT (every commit patch-present)"
     set_status "$id" merged
   fi
-done < <(yq -r '.slices[] | [.id, .branch, .status] | join("|")' "$PLAN")
+done < <(yq -r '.deliverables[] | [.id, .branch, .status] | join("|")' "$PLAN")
 
-# A slice's base commit: a sibling slice id -> that branch's tip (stacked);
+# A deliverable's base commit: a sibling deliverable id -> that branch's tip (stacked);
 # otherwise the default/remote branch tip.
 base_commit() {
   local base="$1"
-  if is_slice "$base"; then
+  if is_deliverable "$base"; then
     git rev-parse --verify "$(branch_of "$base")^{commit}"
   else
     git rev-parse --verify "origin/$base^{commit}" 2>/dev/null \
@@ -126,7 +133,7 @@ base_commit() {
 # Ready to launch now?
 ready() {
   local base="$1" deps="$2"
-  if is_slice "$base"; then
+  if is_deliverable "$base"; then
     # stacked: the prerequisite branch must exist AND carry work of its own. A branch created
     # earlier in this same pass still points at the default branch, so stacking on it would
     # branch off the default branch and the prerequisite's code would be absent.
@@ -165,10 +172,31 @@ launched=0
 waiting=0
 launched_handles=""
 
+# The plan's `status` is a latch this script sets; it is not evidence. A run started by
+# hand, or one whose worktree took a different branch name than the plan chose, leaves
+# the latch on `pending` while the work is well under way — and launching then scaffolds
+# a second worktree for a deliverable someone is already building. `clerk story` derives
+# state from the sidecar, the branch and the worktree list, so ask it before firing.
+CLERK_STATE=""
+if command -v clerk >/dev/null 2>&1; then
+  CLERK_STATE=$(clerk story "$PLAN" 2>/dev/null |
+    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // "")] | join("|")' 2>/dev/null) || CLERK_STATE=""
+fi
+clerk_state_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" '$1 == i {print $2; exit}'; }
+clerk_where_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" '$1 == i {print $3; exit}'; }
+
 while IFS='|' read -r id branch base wave deps tasks status; do
   [ "$status" = "pending" ] || continue
   in_only "$id" || continue
   [ -n "$WAVE" ] && [ "$wave" != "$WAVE" ] && continue
+
+  cs=$(clerk_state_of "$id")
+  case "$cs" in
+    in-progress|awaiting-merge|merged)
+      where=$(clerk_where_of "$id")
+      say "skip: $id is already $cs${where:+ at $where} — the plan still says pending, clerk is right"
+      continue ;;
+  esac
 
   if ! ready "$base" "$deps"; then
     say "waiting: $id (base=$base deps=[${deps}] not satisfied)"
@@ -177,15 +205,15 @@ while IFS='|' read -r id branch base wave deps tasks status; do
   fi
 
   tasks_abs="$MAIN_ROOT/$tasks"
-  [ -f "$tasks_abs" ] || die "slice $id: task file missing: $tasks_abs"
-  bc=$(base_commit "$base") || die "slice $id: cannot resolve base '$base'"
+  [ -f "$tasks_abs" ] || die "deliverable $id: task file missing: $tasks_abs"
+  bc=$(base_commit "$base") || die "deliverable $id: cannot resolve base '$base'"
 
   learnings="$LEARN_DIR/$id.md"
   handle="$STORY_SLUG-$id"
   prompt="/implement-flow $tasks_abs (adopt this task file; persist run learnings to $learnings; leave the branch for review, do not integrate)"
 
   # The agent pane workmux focuses; killing every other pane in that window
-  # leaves the slice with a single pane. In window mode the slice is a window of
+  # leaves the deliverable with a single pane. In window mode the deliverable is a window of
   # the session this runs from; in session mode it is its own session.
   if [ "$MODE" = "window" ]; then
     pane_target="$PARENT:$handle.{top-left}"
@@ -202,7 +230,7 @@ while IFS='|' read -r id branch base wave deps tasks status; do
     launched_handles="$launched_handles $handle"
   else
     mkdir -p "$LEARN_DIR"
-    # stdin is the slice-list pipe feeding this loop; workmux reads a non-tty stdin as a
+    # stdin is the deliverable-list pipe feeding this loop; workmux reads a non-tty stdin as a
     # worktree list and then rejects --name as multi-worktree generation.
     if workmux add "$branch" --name "$handle" --base "$bc" --mode "$MODE" --background --prompt "$prompt" </dev/null; then
       tmux kill-pane -a -t "$pane_target" 2>/dev/null || true
@@ -213,7 +241,7 @@ while IFS='|' read -r id branch base wave deps tasks status; do
       say "workmux add failed for $id — left pending"
     fi
   fi
-done < <(yq -r '.slices[] | [.id, .branch, .base, (.wave | tostring), (.depends_on | join(",")), .tasks, .status] | join("|")' "$PLAN")
+done < <(yq -r '.deliverables[] | [.id, .branch, .base, (.wave | tostring), (.depends_on | join(",")), .tasks, .status] | join("|")' "$PLAN")
 
 say "done: $launched launched, $waiting waiting. Watch with: workmux dashboard"
 
@@ -221,8 +249,8 @@ say "done: $launched launched, $waiting waiting. Watch with: workmux dashboard"
 # early wake, not a completion signal: workmux reports "done" whenever the agent
 # goes idle, which happens between turns, while a workflow of its own runs, and
 # after a crash that committed nothing. Verify commits and the task file's
-# checkboxes on wake before calling a slice deliverable.
+# checkboxes on wake before calling a deliverable deliverable.
 if [ -n "$launched_handles" ]; then
-  say "wake when a slice goes idle (run in the background, then verify):"
+  say "wake when a deliverable goes idle (run in the background, then verify):"
   printf '  workmux wait%s --any --status done --timeout 5400\n' "$launched_handles"
 fi

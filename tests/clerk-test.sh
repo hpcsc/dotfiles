@@ -795,7 +795,8 @@ mk_deliverable() {  # repo id total done
   done
   printf '{"story":"%s","tasks":[%s]}\n' "$id" "${body%,}" > "$r/tasks/story-a/$id/tasks.json"
 }
-plan_row() { printf '  - id: %s\n    branch: br-%s\n    base: main\n    wave: %s\n    depends_on: [%s]\n    tasks: tasks/story-a/%s/tasks.md\n    status: %s\n' "$1" "$1" "$2" "$3" "$1" "$4"; }
+# plan_row <id> <wave> <deps> <status> [base]  — base defaults to the default branch
+plan_row() { printf '  - id: %s\n    branch: br-%s\n    base: %s\n    wave: %s\n    depends_on: [%s]\n    tasks: tasks/story-a/%s/tasks.md\n    status: %s\n' "$1" "$1" "${5:-main}" "$2" "$3" "$1" "$4"; }
 
 mkdir -p "$R22/tasks/story-a"
 { printf 'story: "A story"\nstory_slug: story-a\ndeliverables:\n'
@@ -805,6 +806,7 @@ mkdir -p "$R22/tasks/story-a"
   plan_row waiting   2 'rebased,building' pending
   plan_row unblocked 2 'rebased,gone'     pending
   plan_row finished  1 ''        pending
+  plan_row stacked   2 'building'  pending   building
 } > "$R22/tasks/story-a/plan.yaml"
 mk_deliverable "$R22" rebased   3 3
 mk_deliverable "$R22" gone      2 2
@@ -812,6 +814,7 @@ mk_deliverable "$R22" building  3 1
 mk_deliverable "$R22" waiting   2 0
 mk_deliverable "$R22" unblocked 2 0
 mk_deliverable "$R22" finished  2 2
+mk_deliverable "$R22" stacked   2 0
 git -C "$R22" add -A && git -C "$R22" commit -qm "Plan the story"
 
 # rebased: its patch is in main under a different sha — the shape --is-ancestor gets wrong
@@ -848,6 +851,15 @@ eq "merged says how it was established" "every commit on the branch is patch-pre
 eq "the plan's own status field is never read" "0" \
    "$(printf '%s' "$S" | jq -r '[.[0].deliverables[] | select(has("status"))] | length')"
 
+# A deliverable with no depends_on used to lose its base: tab is IFS whitespace, so a
+# run of them collapsed and every later field shifted left by one.
+eq "a deliverable with no dependencies still carries its base" "main" \
+   "$(printf '%s' "$S" | jq -r '.[0].deliverables[] | select(.id=="rebased") | .base')"
+eq "and the base resolves to a commit a worktree can branch from" "$(git -C "$R22" rev-parse main)" \
+   "$(printf '%s' "$S" | jq -r '.[0].deliverables[] | select(.id=="rebased") | .base_commit')"
+eq "a stacked base resolves to its sibling's branch tip" "$(git -C "$R22" rev-parse br-building)" \
+   "$(run "$R22" story tasks/story-a/plan.yaml | jq -r '.[0].deliverables[] | select(.id=="stacked") | .base_commit')"
+
 # The drift that makes a driver scaffold a second worktree for work already under way.
 git -C "$R22" branch waiting-something-else main
 eq "a branch that is not the planned name is called out" "waiting-something-else" \
@@ -868,7 +880,7 @@ printf 'story: "Older"\nstory_slug: older\ndeliverables: []\n' > "$R22/tasks/com
 eq "with no plan named, archived plans are left out" "1" "$(run "$R22" story | jq -r 'length')"
 eq "and naming one directly still works" "story-a" \
    "$(run "$R22" story tasks/story-a/plan.yaml | jq -r '.[0].story_slug')"
-eq "--table renders a row per deliverable" "6" \
+eq "--table renders a row per deliverable" "7" \
    "$(run "$R22" story --table | rg -c '^  (merged|ready|blocked|in-progress|awaiting-merge)')"
 
 # --------------------------------------------------------------------------------

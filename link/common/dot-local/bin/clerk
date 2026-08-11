@@ -1121,10 +1121,24 @@ cmd_story() {
     local story sslug rows
     story=$(yq -r '.story // ""' "$p" 2>/dev/null)
     sslug=$(yq -r '.story_slug // ""' "$p" 2>/dev/null)
-    rows=$(yq -r '.deliverables[] | [.id, (.wave // 1 | tostring), (.branch // ""), (.tasks // ""), ((.depends_on // []) | join(","))] | @tsv' "$p" 2>/dev/null |
-      while IFS=$'\t' read -r id wave branch tasks deps; do
+    local siblings
+    # yq extracts, jq shapes. yq's own object-construction syntax diverges from jq's and
+    # errors on it, so every query here stays a plain path.
+    siblings=$(yq -o=json -I=0 '.deliverables' "$p" 2>/dev/null)
+    # One JSON object per deliverable rather than a delimited row. Tab is IFS whitespace,
+    # so `read` collapses a run of them: a deliverable with no `depends_on` shifted every
+    # later field left by one and silently lost its base.
+    rows=$(yq -o=json -I=0 '.deliverables[]' "$p" 2>/dev/null |
+      while IFS= read -r row; do
+        local id wave branch tasks deps base
+        local spath total done_n exists ahead unmerged alias_b a wt w eff bbranch bcommit
+        id=$(printf '%s' "$row" | jq -r '.id // ""')
         [ -n "$id" ] || continue
-        local spath total done_n exists ahead unmerged alias_b a wt w eff
+        wave=$(printf '%s' "$row" | jq -r '.wave // 1')
+        branch=$(printf '%s' "$row" | jq -r '.branch // ""')
+        tasks=$(printf '%s' "$row" | jq -r '.tasks // ""')
+        deps=$(printf '%s' "$row" | jq -r '(.depends_on // []) | join(",")')
+        base=$(printf '%s' "$row" | jq -r '.base // ""')
         spath="$th/${tasks%.md}.json"
         total=0; done_n=0
         if [ -f "$spath" ]; then
@@ -1151,12 +1165,28 @@ cmd_story() {
             /^worktree /{p=$2} $0 == "branch " b {print p; exit}')
           [ -n "$w" ] && wt=$(jq -n --arg w "$w" '$w')
         fi
+        # A base naming a sibling deliverable means this one stacks on that branch;
+        # anything else names a ref, preferring its remote — local and origin can
+        # diverge, and branching from the wrong one silently omits work that is
+        # already pushed.
+        bcommit=
+        bbranch=$(printf '%s' "$siblings" | jq -r --arg b "$base" 'map(select(.id == $b)) | .[0].branch // ""' 2>/dev/null)
+        if [ -n "$bbranch" ]; then
+          bcommit=$(git rev-parse --verify --quiet "$bbranch^{commit}" 2>/dev/null)
+        elif [ -n "$base" ]; then
+          bcommit=$(git rev-parse --verify --quiet "origin/$base^{commit}" 2>/dev/null) \
+            || bcommit=$(git rev-parse --verify --quiet "$base^{commit}" 2>/dev/null)
+        fi
+
         jq -n --arg id "$id" --argjson wave "${wave:-1}" --arg branch "$branch" \
+          --arg base "$base" --arg bcommit "${bcommit:-}" \
           --arg tasks "$th/$tasks" --arg deps "$deps" \
           --argjson exists "$exists" --argjson ahead "${ahead:-0}" --argjson unmerged "${unmerged:-0}" \
           --argjson total "${total:-0}" --argjson done "${done_n:-0}" --argjson alias "$alias_b" \
           --argjson worktree "$wt" \
           '{id: $id, wave: $wave, branch: $branch, tasks_file: $tasks,
+            base: (if $base == "" then null else $base end),
+            base_commit: (if $bcommit == "" then null else $bcommit end),
             depends_on: ($deps | split(",") | map(select(length > 0))),
             branch_exists: $exists, branch_alias: $alias, worktree: $worktree,
             ahead: $ahead, unmerged_commits: $unmerged, total: $total, done: $done}'

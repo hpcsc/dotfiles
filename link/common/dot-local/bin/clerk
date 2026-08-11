@@ -1076,6 +1076,133 @@ cmd_land() {
 
 # --------------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------------
+# story — a story's deliverables, with their state DERIVED rather than read
+# --------------------------------------------------------------------------------
+
+# A plan records the cut and the dependency order. Those are decisions, and they belong
+# in a file. Whether a deliverable has started, finished or landed is an observation, and
+# an observation copied into the plan is a mirror that goes stale while still reading as
+# authoritative — the same trap the markdown checkbox was. Nothing below reads `status:`.
+story_plans() {
+  local home=$1 p
+  find "$home/tasks" \( -name 'plan.yaml' -o -name 'plan.yml' \) -type f 2>/dev/null | sort | while IFS= read -r p; do
+    case "$p" in */completed/*) continue ;; esac
+    printf '%s\n' "$p"
+  done
+}
+
+cmd_story() {
+  local plan= table=false root th def plans out
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --table) table=true; shift ;;
+      -*) die "story: unknown argument '$1'" ;;
+      *) plan=$1; shift ;;
+    esac
+  done
+  need yq
+  root=$(repo_root) || die "not a git repository"
+  th=$(tasks_home)
+  def=$(default_branch)
+  [ -n "$def" ] || die "story: no default branch resolved, and every merged test is taken against one"
+
+  if [ -n "$plan" ]; then
+    plan=$(resolve_tasks_arg "$plan")
+    [ -f "$plan" ] || die "story: plan not found: $plan"
+    plans=$plan
+  else
+    plans=$(story_plans "$th")
+    [ -n "$plans" ] || die "story: no plan.yaml under $th/tasks outside completed/ — name one, or decompose a story first"
+  fi
+
+  out=$(printf '%s\n' "$plans" | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    local story sslug rows
+    story=$(yq -r '.story // ""' "$p" 2>/dev/null)
+    sslug=$(yq -r '.story_slug // ""' "$p" 2>/dev/null)
+    rows=$(yq -r '.deliverables[] | [.id, (.wave // 1 | tostring), (.branch // ""), (.tasks // ""), ((.depends_on // []) | join(","))] | @tsv' "$p" 2>/dev/null |
+      while IFS=$'\t' read -r id wave branch tasks deps; do
+        [ -n "$id" ] || continue
+        local spath total done_n exists ahead unmerged alias_b a wt w eff
+        spath="$th/${tasks%.md}.json"
+        total=0; done_n=0
+        if [ -f "$spath" ]; then
+          total=$(jq -r '.tasks | length' "$spath" 2>/dev/null) || total=0
+          done_n=$(jq -r '[.tasks[] | select(.done == true)] | length' "$spath" 2>/dev/null) || done_n=0
+        fi
+        exists=false; ahead=0; unmerged=0; alias_b=null; wt=null; eff=$branch
+        if git show-ref --verify --quiet "refs/heads/$branch"; then
+          exists=true
+        else
+          # A branch not carrying the planned name is what makes a driver scaffold a
+          # second worktree for work already under way. Find the one that looks like it
+          # and answer for that, rather than reporting the deliverable as untouched.
+          a=$(git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null | grep -F "$id" | head -1)
+          if [ -n "$a" ]; then alias_b=$(jq -n --arg a "$a" '$a'); eff=$a; exists=true; fi
+        fi
+        if [ "$exists" = true ]; then
+          ahead=$(git rev-list --count "$def..$eff" 2>/dev/null) || ahead=0
+          unmerged=$(git cherry "$def" "$eff" 2>/dev/null | grep -c '^+')
+          # A scaffolded worktree with no commit in it yet is indistinguishable from
+          # untouched work by branch and sidecar alone, and a driver that cannot tell
+          # them apart launches a second run for a deliverable already under way.
+          w=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$eff" '
+            /^worktree /{p=$2} $0 == "branch " b {print p; exit}')
+          [ -n "$w" ] && wt=$(jq -n --arg w "$w" '$w')
+        fi
+        jq -n --arg id "$id" --argjson wave "${wave:-1}" --arg branch "$branch" \
+          --arg tasks "$th/$tasks" --arg deps "$deps" \
+          --argjson exists "$exists" --argjson ahead "${ahead:-0}" --argjson unmerged "${unmerged:-0}" \
+          --argjson total "${total:-0}" --argjson done "${done_n:-0}" --argjson alias "$alias_b" \
+          --argjson worktree "$wt" \
+          '{id: $id, wave: $wave, branch: $branch, tasks_file: $tasks,
+            depends_on: ($deps | split(",") | map(select(length > 0))),
+            branch_exists: $exists, branch_alias: $alias, worktree: $worktree,
+            ahead: $ahead, unmerged_commits: $unmerged, total: $total, done: $done}'
+      done | jq -s -c .)
+    jq -n --arg p "$p" --arg s "$story" --arg g "$sslug" --arg d "$def" --argjson ds "${rows:-[]}" \
+      '{plan: $p, story: $s, story_slug: $g, default_branch: $d, deliverables: $ds}'
+  done | jq -s -c .)
+
+  # `--is-ancestor` answers "is this branch's tip in the default branch's history", which
+  # is false for every rebase- or squash-merged branch: the work is in, under new SHAs.
+  # `git cherry` compares patch ids instead and marks `+` only what has no counterpart
+  # upstream, so no `+` lines means everything on this branch already landed. A branch
+  # deleted after merging leaves nothing to compare, so the sidecar answers for it.
+  out=$(printf '%s' "$out" | jq -c '
+    map(. as $s
+      | ($s.deliverables | map(. + {merged: (
+          if .branch_exists then (if .ahead == 0 then (.total > 0 and .done >= .total) else (.unmerged_commits == 0) end)
+          else (.total > 0 and .done >= .total) end)})) as $ds
+      | ([$ds[] | select(.merged) | .id]) as $landed
+      | $s + {deliverables: [$ds[] | . as $d | (($d.depends_on) - $landed) as $blocked
+          | $d + {
+              blocked_by: $blocked,
+              state: (if $d.merged then "merged"
+                      elif $d.total > 0 and $d.done >= $d.total then "awaiting-merge"
+                      elif $d.done > 0 or $d.ahead > 0 or ($d.worktree != null) then "in-progress"
+                      elif ($blocked | length) > 0 then "blocked"
+                      else "ready" end),
+              evidence: (if ($d.merged | not) then null
+                         elif ($d.branch_exists | not) then "branch \($d.branch) is gone and the sidecar reports \($d.done)/\($d.total)"
+                         elif $d.ahead == 0 then "branch carries no commit the default branch lacks"
+                         else "every commit on the branch is patch-present in the default branch" end)
+            }]})')
+
+  if [ "$table" != true ]; then printf '%s\n' "$out" | jq .; return 0; fi
+
+  printf '%s' "$out" | jq -r '.[] |
+    "\(.story_slug // .plan)   (\(.story))",
+    (.deliverables[] |
+      "  \(.state | (. + "            ")[0:14])w\(.wave)  \(.done)/\(.total)  \(.id)"
+      + (if (.blocked_by | length) > 0 then "  blocked by \(.blocked_by | join(", "))" else "" end)
+      + (if .branch_alias then "  ** plan names \(.branch), on disk \(.branch_alias) **"
+         elif (.branch_exists | not) and .state != "merged" then "  (no branch yet)"
+         else "" end)),
+    ""'
+}
+
 usage() {
   cat <<'EOF'
 clerk — deterministic mechanics for an implementation run
@@ -1090,6 +1217,11 @@ USAGE
   clerk sidecar [--force]            recover tasks/<story>.json from a breakdown
                                      written before sidecars existed
   clerk status                       progress from the sidecar, for a human
+  clerk story [<plan.yaml>] [--table]
+                                     a story's deliverables and their derived state:
+                                     ready / blocked / in-progress / awaiting-merge /
+                                     merged. Without a plan, every plan under tasks/
+                                     that has not been archived
   clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
                                      record a suite run against the SHA it describes
   clerk gate [--audit-accepted] [--tasks-file <f>]
@@ -1113,6 +1245,7 @@ case "${1:-}" in
   prepare)  shift; cmd_prepare "$@" ;;
   next)     shift; cmd_next "$@" ;;
   status)   shift; cmd_status "$@" ;;
+  story)    shift; cmd_story "$@" ;;
   sidecar)  shift; cmd_sidecar "$@" ;;
   finish|complete) shift; cmd_finish "$@" ;;
   receipt)  shift; cmd_receipt "$@" ;;

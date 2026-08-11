@@ -781,8 +781,100 @@ eq "an absolute one keeps working" "1" \
 eq "and no --tasks-file at all works too" "1" "$(run "$WT3" next | jq -r '.task.n')"
 
 # --------------------------------------------------------------------------------
+printf '\nstory — deliverable state derived, never read from the plan\n'
+
+R22=$(new_repo)
+mk_deliverable() {  # repo id total done
+  local r=$1 id=$2 total=$3 done=$4 i body=
+  mkdir -p "$r/tasks/story-a/$id"
+  printf '# %s\n' "$id" > "$r/tasks/story-a/$id/tasks.md"
+  i=1
+  while [ "$i" -le "$total" ]; do
+    body="$body{\"n\":$i,\"title\":\"t$i\",\"depends_on\":[],\"done\":$([ "$i" -le "$done" ] && echo true || echo false)},"
+    i=$((i + 1))
+  done
+  printf '{"story":"%s","tasks":[%s]}\n' "$id" "${body%,}" > "$r/tasks/story-a/$id/tasks.json"
+}
+plan_row() { printf '  - id: %s\n    branch: br-%s\n    base: main\n    wave: %s\n    depends_on: [%s]\n    tasks: tasks/story-a/%s/tasks.md\n    status: %s\n' "$1" "$1" "$2" "$3" "$1" "$4"; }
+
+mkdir -p "$R22/tasks/story-a"
+{ printf 'story: "A story"\nstory_slug: story-a\ndeliverables:\n'
+  plan_row rebased   1 ''        merged
+  plan_row gone      1 ''        pending
+  plan_row building  1 ''        pending
+  plan_row waiting   2 'rebased,building' pending
+  plan_row unblocked 2 'rebased,gone'     pending
+  plan_row finished  1 ''        pending
+} > "$R22/tasks/story-a/plan.yaml"
+mk_deliverable "$R22" rebased   3 3
+mk_deliverable "$R22" gone      2 2
+mk_deliverable "$R22" building  3 1
+mk_deliverable "$R22" waiting   2 0
+mk_deliverable "$R22" unblocked 2 0
+mk_deliverable "$R22" finished  2 2
+git -C "$R22" add -A && git -C "$R22" commit -qm "Plan the story"
+
+# rebased: its patch is in main under a different sha — the shape --is-ancestor gets wrong
+git -C "$R22" checkout -q -b br-rebased
+printf 'one\n' > "$R22/r.txt"; git -C "$R22" add -A; git -C "$R22" commit -qm "Rebased work"
+git -C "$R22" checkout -q main
+# The same diff under a different commit message: a different SHA carrying an identical
+# patch, which is what a rebase- or squash-merge leaves behind. Cherry-picking would not
+# do it — same tree, parent, author and second produces a byte-identical commit object.
+printf 'one\n' > "$R22/r.txt"; git -C "$R22" add -A; git -C "$R22" commit -qm "Rebased work, as it landed"
+eq "fixture: the merged branch really does have a distinct sha" "1" \
+   "$(git -C "$R22" rev-list --count main..br-rebased)"
+# building: real commits, not in main
+git -C "$R22" checkout -q -b br-building
+printf 'two\n' > "$R22/b.txt"; git -C "$R22" add -A; git -C "$R22" commit -qm "Half done"
+# finished: every task done but nothing merged
+git -C "$R22" checkout -q main && git -C "$R22" checkout -q -b br-finished
+printf 'three\n' > "$R22/f.txt"; git -C "$R22" add -A; git -C "$R22" commit -qm "All done"
+git -C "$R22" checkout -q main
+# gone: branch br-gone never created, sidecar says 2/2
+
+S=$(run "$R22" story)
+st() { printf '%s' "$S" | jq -r --arg i "$1" '.[0].deliverables[] | select(.id == $i) | .state'; }
+eq "a rebase-merged branch reads as merged, not as unmerged work" "merged"         "$(st rebased)"
+eq "a branch deleted after merging is settled by its sidecar"     "merged"         "$(st gone)"
+eq "part-done work in flight is in-progress"                      "in-progress"    "$(st building)"
+eq "all tasks done but nothing landed is awaiting-merge"          "awaiting-merge" "$(st finished)"
+eq "a deliverable whose dependency is still building is blocked"  "blocked"        "$(st waiting)"
+eq "and one whose dependencies all landed is ready"               "ready"          "$(st unblocked)"
+eq "blocked names only the dependency that is not landed" "building" \
+   "$(printf '%s' "$S" | jq -r '.[0].deliverables[] | select(.id=="waiting") | .blocked_by | join(",")')"
+eq "merged says how it was established" "every commit on the branch is patch-present in the default branch" \
+   "$(printf '%s' "$S" | jq -r '.[0].deliverables[] | select(.id=="rebased") | .evidence')"
+eq "the plan's own status field is never read" "0" \
+   "$(printf '%s' "$S" | jq -r '[.[0].deliverables[] | select(has("status"))] | length')"
+
+# The drift that makes a driver scaffold a second worktree for work already under way.
+git -C "$R22" branch waiting-something-else main
+eq "a branch that is not the planned name is called out" "waiting-something-else" \
+   "$(run "$R22" story | jq -r '.[0].deliverables[] | select(.id=="waiting") | .branch_alias')"
+
+# A worktree exists but nothing is committed in it yet. Branch and sidecar both say
+# untouched; only the worktree says a run already has this deliverable.
+WT4="$R22/.wt/unblocked"
+eq "before it is scaffolded, it reads as ready" "ready" "$(st unblocked)"
+git -C "$R22" worktree add -q -b br-unblocked "$WT4" >/dev/null 2>&1
+S=$(run "$R22" story)   # st() reads this snapshot; the worktree is new since the last one
+eq "a scaffolded but empty worktree still reads as in-progress" "in-progress" "$(st unblocked)"
+eq "and names the worktree that claimed it" "$WT4" \
+   "$(run "$R22" story | jq -r '.[0].deliverables[] | select(.id=="unblocked") | .worktree')"
+
+mkdir -p "$R22/tasks/completed/older-story"
+printf 'story: "Older"\nstory_slug: older\ndeliverables: []\n' > "$R22/tasks/completed/older-story/plan.yaml"
+eq "with no plan named, archived plans are left out" "1" "$(run "$R22" story | jq -r 'length')"
+eq "and naming one directly still works" "story-a" \
+   "$(run "$R22" story tasks/story-a/plan.yaml | jq -r '.[0].story_slug')"
+eq "--table renders a row per deliverable" "6" \
+   "$(run "$R22" story --table | rg -c '^  (merged|ready|blocked|in-progress|awaiting-merge)')"
+
+# --------------------------------------------------------------------------------
+git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

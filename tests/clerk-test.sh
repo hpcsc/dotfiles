@@ -294,6 +294,35 @@ eq "lands with --integrate"          "true"    "$(printf '%s' "$L" | jq -r '.lan
 eq "onto the default branch"         "main"    "$(printf '%s' "$L" | jq -r '.base_branch')"
 eq "deletes the feature branch"      "0"       "$(git -C "$R8" branch --list feature | wc -l | tr -d ' ')"
 eq "and never pushes"                "false"   "$(printf '%s' "$L" | jq -r '.pushed')"
+# deleted_branch is reported from what git actually did, not assumed from having asked.
+eq "names the branch it deleted"     "feature" "$(printf '%s' "$L" | jq -r '.deleted_branch')"
+eq "with nothing left behind to say" "null"    "$(printf '%s' "$L" | jq -r '.branch_left')"
+
+# Landing from inside a worktree stops before the merge, and says what has to happen to
+# the worktree first — `git worktree prune` leaves one whose directory still exists, so a
+# next_step that ends at prune sends the caller into a branch delete git will refuse.
+R23=$(new_repo)
+mkdir -p "$R23/tasks"
+printf '# S\n\n## Task 1: A\n' > "$R23/tasks/s.md"
+printf '{"story":"s","tasks":[{"n":1,"title":"A","depends_on":[],"done":true}]}\n' > "$R23/tasks/s.json"
+git -C "$R23" add -A && git -C "$R23" commit -qm "Plan"
+WT5="$R23/.wt/feat"
+git -C "$R23" worktree add -q -b feat "$WT5" >/dev/null 2>&1
+printf 'x\n' > "$WT5/x.txt"; git -C "$WT5" add -A && git -C "$WT5" commit -qm "Work"
+run "$WT5" receipt --command "true" --passed >/dev/null
+L=$(run "$WT5" land --integrate --audit-accepted)
+eq "landing from inside a worktree does not land"  "false" "$(printf '%s' "$L" | jq -r '.landed')"
+eq "it names the worktree standing in the way"     "$WT5"  "$(printf '%s' "$L" | jq -r '.worktree')"
+eq "and removes it before deleting the branch"     "true" \
+   "$(printf '%s' "$L" | jq -r '.command | test("worktree remove.*branch -d")')"
+
+# Run what it printed, rather than only matching its text. The order is the whole point,
+# and an instruction that reads plausibly and fails on contact is the thing to catch.
+CMD=$(printf '%s' "$L" | jq -r '.command')
+(cd "$R23" && eval "$CMD") >/dev/null 2>&1
+eq "running that command lands the work"     "1" "$(git -C "$R23" log --oneline main | rg -c 'Work')"
+eq "removes the worktree"                    "1" "$(git -C "$R23" worktree list | wc -l | tr -d ' ')"
+eq "and deletes the branch it was holding"   "0" "$(git -C "$R23" branch --list feat | wc -l | tr -d ' ')"
 
 
 # --------------------------------------------------------------------------------
@@ -480,9 +509,9 @@ eq "and the archive landed on the worktree branch" "1" \
 run "$WT2" receipt --command "go test ./..." --passed >/dev/null
 L=$(run "$WT2" land --integrate --audit-accepted)
 eq "integrating from inside a worktree stops before the merge" "false" "$(printf '%s' "$L" | jq -r '.landed')"
-case "$(printf '%s' "$L" | jq -r '.next_step')" in
+case "$(printf '%s' "$L" | jq -r '.command')" in
   *"merge --ff-only"*) ok "and prints the command to run in the main checkout" ;;
-  *) bad "and prints the command to run in the main checkout" "a merge --ff-only hint" "$(printf '%s' "$L" | jq -r '.next_step')" ;;
+  *) bad "and prints the command to run in the main checkout" "a merge --ff-only hint" "$(printf '%s' "$L" | jq -r '.command')" ;;
 esac
 
 git -C "$R13" worktree remove --force "$WT2" 2>/dev/null
@@ -894,6 +923,6 @@ eq "--table renders a row per deliverable" "7" \
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -1054,9 +1054,19 @@ cmd_land() {
   fi
 
   if [ "$root" != "$wt" ]; then
-    jq -n --arg b "$branch" --arg d "$def" --arg root "$root" \
-      '{landed: false, rebased: false, reason: "this is a worktree; the branch is checked out here so it cannot be merged and deleted from inside it",
-        next_step: ("leave the worktree keeping the branch, then in " + $root + ": git merge --ff-only " + $b + " && git worktree prune && git branch -d " + $b)}'
+    # The order is the whole point. `git branch -d` refuses while a worktree has the
+    # branch checked out, and `git worktree prune` does not remove one whose directory is
+    # still there — so instructions that end at prune walk the caller into a refusal with
+    # no explanation. Remove the worktree first. `git worktree remove` refuses a dirty
+    # one, which is the safety check worth keeping rather than working around.
+    jq -n --arg b "$branch" --arg d "$def" --arg root "$root" --arg wt "$wt" \
+      '{landed: false, rebased: false,
+        reason: "this is a worktree; the branch is checked out here so it cannot be merged and deleted from inside it",
+        next_step: ("leave the worktree with the branch KEPT (removing it here would delete the branch about to be merged), then run the command below from anywhere"),
+        command: ("git -C " + $root + " merge --ff-only " + $b
+                  + " && git -C " + $root + " worktree remove " + $wt
+                  + " && git -C " + $root + " branch -d " + $b),
+        worktree: $wt}'
     return 3
   fi
 
@@ -1066,11 +1076,24 @@ cmd_land() {
     jq -n '{landed: false, reason: "merge --ff-only refused: the base moved again", next_step: "rebase and re-run the suite, then retry"}'
     return 1
   fi
-  git branch -d "$branch" >/dev/null 2>&1
+  # `git branch -d` refuses while any worktree has the branch checked out. Discarding that
+  # failure reported the branch as deleted when it was still there, so the caller believed
+  # a cleanup that never happened. Report what actually holds it.
+  local deleted=true holder=
+  if ! git branch -d "$branch" >/dev/null 2>&1; then
+    deleted=false
+    holder=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$branch" '
+      /^worktree /{p=$2} $0 == "branch " b {print p; exit}')
+  fi
 
   jq -n --arg d "$def" --arg b "$branch" --argjson archived "$archived" \
+    --argjson deleted "$deleted" --arg holder "$holder" \
     --arg log "$(git log --oneline -5)" \
-    '{landed: true, archived: $archived, base_branch: $d, deleted_branch: $b,
+    '{landed: true, archived: $archived, base_branch: $d, branch: $b,
+      deleted_branch: (if $deleted then $b else null end),
+      branch_left: (if $deleted then null
+                    elif $holder != "" then ($b + " still exists: the worktree at " + $holder + " has it checked out. Remove that worktree, then: git branch -d " + $b)
+                    else ($b + " still exists: git branch -d refused it. Find out why before deleting it by hand.") end),
       pushed: false, log: ($log | split("\n"))}'
 }
 

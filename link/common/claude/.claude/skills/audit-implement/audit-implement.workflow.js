@@ -481,16 +481,43 @@ log(`running ${lenses.length} lens(es): ${lenses.map((l) => l.key).join(', ')}`)
 for (const e of scope.by_language ?? []) log(`  ${canonicalLang(e.language)} remit: ${(e.files ?? []).length} file(s)`)
 for (const g of notRun) log(`skipped ${g}`)
 
+// A lens that dies to a transport error used to be dropped by `.filter(Boolean)`, and a
+// dropped lens is indistinguishable from one that looked and found nothing — the whole
+// panel could thin out and the report would still read as full coverage. So: retry, and
+// when it still returns nothing, say which lens went unrun rather than quietly shipping
+// an audit that lost one. Every thunk resolves to an object carrying its own lens key,
+// so no path through here can lose track of which lens a result belongs to.
 const reviews = (await parallel(
   lenses.map((l) => () =>
-    agent(l.prompt, { label: `review:${l.key}`, phase: 'Review', agentType: l.agentType, schema: REVIEW_SCHEMA })
-      .then((rv) => (rv ? { ...rv, lens: l.key } : null)),
+    agentOrRetry(l.prompt, { label: `review:${l.key}`, phase: 'Review', agentType: l.agentType, schema: REVIEW_SCHEMA }, `review:${l.key}`)
+      .then((rv) => (rv ? { ...rv, lens: l.key } : { lens: l.key, failed: true }))
+      .catch(() => ({ lens: l.key, failed: true })),
   ),
 )).filter(Boolean)
 
-const raw = reviews.flatMap((rv) => (rv.findings ?? []).map((f) => ({ ...f, lens: rv.lens })))
-const lensNotes = reviews.filter((rv) => rv.note).map((rv) => `${rv.lens}: ${rv.note}`)
-log(`${raw.length} candidate finding(s) from ${reviews.length} lens(es)`)
+const ran = reviews.filter((rv) => !rv.failed)
+for (const rv of reviews.filter((x) => x.failed)) {
+  notRun.push(`${rv.lens} — returned no result after ${INFRA_RETRIES} infrastructure retries, so whatever it would have found is missing from this report`)
+  log(`${rv.lens}: no result after retries — recorded as a coverage gap`)
+}
+
+const raw = ran.flatMap((rv) => (rv.findings ?? []).map((f) => ({ ...f, lens: rv.lens })))
+const lensNotes = ran.filter((rv) => rv.note).map((rv) => `${rv.lens}: ${rv.note}`)
+log(`${raw.length} candidate finding(s) from ${ran.length} of ${lenses.length} lens(es)`)
+
+// Every lens failing produces the same empty `raw` as every lens passing, and the two
+// could not be further apart. Say which one happened; "no lens raised a finding" about
+// an audit nobody performed is the worst sentence this workflow could return.
+if (!ran.length) {
+  return {
+    error: `all ${lenses.length} lens(es) failed with infrastructure errors after retries — this is not a clean audit, nothing was reviewed`,
+    scope: { base: scope.base, head: scope.head, files: scope.files.length, languages: scope.languages },
+    lenses_attempted: lenses.map((l) => l.key),
+    findings: [],
+    coverage_gaps: notRun,
+    summary: 'The audit did not run. Re-run it; do not read this as a pass.',
+  }
+}
 
 if (!raw.length) {
   return {
@@ -498,7 +525,7 @@ if (!raw.length) {
     findings: [],
     coverage_gaps: notRun,
     lens_notes: lensNotes,
-    summary: `No lens raised a finding across ${scope.files.length} changed file(s). Lenses run: ${lenses.map((l) => l.key).join(', ')}.`,
+    summary: `No lens raised a finding across ${scope.files.length} changed file(s). Lenses run: ${ran.map((rv) => rv.lens).join(', ')}.`,
   }
 }
 
@@ -597,7 +624,8 @@ const report = await agentOrRetry(synthPrompt(scope, confirmed, refuted, lensNot
 
 return {
   scope: { base: scope.base, head: scope.head, files: scope.files.length, languages: scope.languages, summary: scope.summary },
-  lenses: lenses.map((l) => l.key),
+  lenses: ran.map((rv) => rv.lens),
+  lenses_attempted: lenses.map((l) => l.key),
   lenses_not_run: notRun,
   candidates: raw.length,
   distinct: candidates.length,

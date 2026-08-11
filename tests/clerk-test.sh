@@ -739,7 +739,50 @@ eq "and its sidecar still lands with the code"        "a.go,tasks/story.json" \
    "$(git -C "$R20" diff --cached --name-only | sort | tr '\n' ',' | sed 's/,$//')"
 
 # --------------------------------------------------------------------------------
+printf '\nnested breakdowns and the paths that reach them\n'
+
+# decompose-to-deliverables writes tasks/<story>/<deliverable>/tasks.md. A flat glob over
+# tasks/*.md sees none of them, which reads as "no breakdown" and sends a run off to
+# decompose a story that was already decomposed.
+R21=$(new_repo)
+printf 'tasks\n' > "$R21/.gitignore"
+git -C "$R21" add -A && git -C "$R21" commit -qm "Exclude tasks"
+mkdir -p "$R21/tasks/the-story/first-deliverable"
+printf '# D\n\n## Task 1: A\n**Depends on:** None\n' > "$R21/tasks/the-story/first-deliverable/tasks.md"
+printf '{"story":"first","tasks":[{"n":1,"title":"A","language":"Go","testable":true,"depends_on":[],"affected_files":["a.go"]}]}\n' > "$R21/tasks/the-story/first-deliverable/tasks.json"
+printf 'package a\n' > "$R21/a.go"
+git -C "$R21" add -A && git -C "$R21" commit -qm "Add code"
+
+eq "a breakdown nested under a story is found without being named" \
+   "$R21/tasks/the-story/first-deliverable/tasks.md" "$(run "$R21" prepare | jq -r '.tasks_file')"
+eq "and next resolves from it"     "1" "$(run "$R21" next | jq -r '.task.n')"
+eq "prepare lists it as a breakdown" "1" "$(run "$R21" prepare | jq -r '.breakdowns | length')"
+
+# Archiving must not make the repo look ambiguous. Archived breakdowns are still .md
+# files under tasks/, so a recursive walk that counted them would refuse to resolve
+# anything the moment a run had ever landed.
+mkdir -p "$R21/tasks/completed"
+printf '# Old\n' > "$R21/tasks/completed/older-story.md"
+printf '{"story":"older","tasks":[{"n":1,"title":"X","depends_on":[],"done":true}]}\n' > "$R21/tasks/completed/older-story.json"
+eq "an archived breakdown does not make the live one ambiguous" \
+   "$R21/tasks/the-story/first-deliverable/tasks.md" "$(run "$R21" prepare | jq -r '.tasks_file')"
+eq "though status --all still walks it" "2" \
+   "$(run "$R21" status --all | jq -r '.breakdowns | length')"
+
+# The path a person writes is relative to how the repo reads on disk. Inside a worktree
+# that is not where an excluded breakdown lives, so the natural path missed and the error
+# said the file did not exist — true of the path, false of the file.
+WT3="$R21/.wt/feature"
+git -C "$R21" worktree add -q -b feature "$WT3" >/dev/null 2>&1
+eq "a relative --tasks-file resolves from inside a worktree" "1" \
+   "$(run "$WT3" next --tasks-file tasks/the-story/first-deliverable/tasks.md | jq -r '.task.n')"
+eq "an absolute one keeps working" "1" \
+   "$(run "$WT3" next --tasks-file "$R21/tasks/the-story/first-deliverable/tasks.md" | jq -r '.task.n')"
+eq "and no --tasks-file at all works too" "1" "$(run "$WT3" next | jq -r '.task.n')"
+
+# --------------------------------------------------------------------------------
+git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

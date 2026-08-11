@@ -186,13 +186,62 @@ tasks_home() {
   if is_ignored "$root" tasks; then printf '%s' "$root"; else printf '%s' "$wt"; fi
 }
 
+# find, not a glob: `decompose-to-deliverables` puts one breakdown per deliverable under
+# tasks/<story>/<deliverable>/tasks.md, and a glob over tasks/*.md sees none of them —
+# which reads as "this repo has no breakdown" rather than as a miss, and sends a run off
+# to decompose a story that was already decomposed.
+#
+# Archived breakdowns are excluded unless asked for. They are still .md files under
+# tasks/, so counting them would make a repo with any history look ambiguous to
+# find_tasks_file and refuse to resolve at all.
+breakdown_paths() {
+  local home=$1 include_archived=${2:-no} f
+  find "$home/tasks" -name '*.md' -type f 2>/dev/null | sort | while IFS= read -r f; do
+    case "$(basename "$f")" in learnings.md) continue ;; esac
+    if [ "$include_archived" != yes ]; then
+      case "$f" in */completed/*) continue ;; esac
+    fi
+    printf '%s\n' "$f"
+  done
+}
+
+# A relative --tasks-file is written the way the repo reads on disk, but cwd inside a
+# worktree is not where an excluded breakdown lives — so the natural path misses and the
+# error says the file does not exist, which is true of the path and false of the file.
+# Try the breakdown home before giving up.
+resolve_tasks_arg() {
+  local p=$1 th
+  case "$p" in /*) printf '%s' "$p"; return ;; esac
+  [ -f "$p" ] && { printf '%s' "$p"; return; }
+  th=$(tasks_home) || { printf '%s' "$p"; return; }
+  if [ -f "$th/$p" ]; then printf '%s' "$th/$p"; else printf '%s' "$p"; fi
+}
+
+# "no single task file" was one message for two opposite situations — nothing to work
+# from, and several to choose between — which left the caller unable to tell whether the
+# fix was to decompose or to name one. In a repo planned as deliverables, several IS the
+# normal state, so the ambiguous case has to name the candidates rather than read as an
+# absence.
+tasks_hint() {
+  local home=$1 cmd=$2 paths n
+  paths=$(breakdown_paths "$home")
+  n=$(printf '%s\n' "$paths" | grep -c '[^[:space:]]')
+  if [ "${n:-0}" -eq 0 ]; then
+    printf '%s: no breakdown under %s/tasks — decompose the story first, or name one with --tasks-file' "$cmd" "$home"
+  else
+    printf '%s: %s breakdowns under %s/tasks; name the one this run is building with --tasks-file:\n%s' \
+      "$cmd" "$n" "$home" "$(printf '%s\n' "$paths" | sed 's/^/  /')"
+  fi
+}
+
 find_tasks_file() {
   local root=$1 f n=0 found=
-  for f in "$root"/tasks/*.md; do
-    [ -f "$f" ] || continue
-    case "$(basename "$f")" in learnings.md) continue ;; esac
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
     found=$f; n=$((n + 1))
-  done
+  done <<EOF
+$(breakdown_paths "$root")
+EOF
   [ "$n" -eq 1 ] && { printf '%s' "$found"; return 0; }
   [ "$n" -eq 0 ] && return 1
   return 3
@@ -207,9 +256,8 @@ find_tasks_file() {
 # guessing, and what stops it decomposing a story that is already half built.
 list_breakdowns() {
   local wt=$1 f side
-  for f in "$wt"/tasks/*.md; do
+  breakdown_paths "$wt" | while IFS= read -r f; do
     [ -f "$f" ] || continue
-    case "$(basename "$f")" in learnings.md) continue ;; esac
     side="${f%.md}.json"
     if [ -f "$side" ]; then
       jq -c --arg p "$f" --arg s "$side" \
@@ -322,8 +370,8 @@ cmd_sidecar() {
 
   root=$(repo_root) || die "not a git repository"
   wt=$(work_tree); th=$(tasks_home)
-  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$th") || die "sidecar: no single task file under $th/tasks (pass --tasks-file)"
+  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else
+    tasks=$(find_tasks_file "$th") || die "$(tasks_hint "$th" sidecar)"
   fi
   [ -f "$tasks" ] || die "sidecar: task file not found: $tasks"
   out="${tasks%.md}.json"
@@ -440,8 +488,8 @@ cmd_next() {
 
   root=$(repo_root) || die "not a git repository"
   wt=$(work_tree); th=$(tasks_home)
-  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$th") || die "next: no single task file under $th/tasks (pass --tasks-file)"
+  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else
+    tasks=$(find_tasks_file "$th") || die "$(tasks_hint "$th" next)"
   fi
   [ -f "$tasks" ] || die "next: task file not found: $tasks"
   side=$(sidecar_for "$tasks") || die "next: no sidecar beside $tasks — run 'clerk sidecar' to recover one from the breakdown, or let decompose-to-tasks write ${tasks%.md}.json"
@@ -495,8 +543,8 @@ cmd_finish() {
 
   root=$(repo_root) || die "not a git repository"
   wt=$(work_tree); th=$(tasks_home)
-  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$th") || die "finish: no single task file under $th/tasks (pass --tasks-file)"
+  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else
+    tasks=$(find_tasks_file "$th") || die "$(tasks_hint "$th" finish)"
   fi
   [ -f "$tasks" ] || die "finish: task file not found: $tasks"
   side=$(sidecar_for "$tasks") || die "finish: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
@@ -615,12 +663,8 @@ cmd_status() {
 
   if [ "$all" = true ]; then
     {
-      # find, not a glob: decompose-to-prs puts one breakdown per slice under
-      # tasks/<story>/<slice>/tasks.md, and a glob over tasks/*.md sees none of them —
-      # which reads as "this repo has no breakdowns" rather than as a miss.
-      for f in $(find "$wt/tasks" -name '*.md' -type f 2>/dev/null | sort); do
+      for f in $(breakdown_paths "$th" yes); do
         [ -f "$f" ] || continue
-        case "$(basename "$f")" in learnings.md) continue ;; esac
         side="${f%.md}.json"
         [ -f "$side" ] || continue
         case "$f" in */completed/*) arch=true ;; *) arch=false ;; esac
@@ -633,8 +677,8 @@ cmd_status() {
     return
   fi
 
-  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else
-    tasks=$(find_tasks_file "$th") || die "status: no single task file under $th/tasks (pass --tasks-file)"
+  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else
+    tasks=$(find_tasks_file "$th") || die "$(tasks_hint "$th" status)"
   fi
   side=$(sidecar_for "$tasks") || die "status: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
   status_of "$tasks" "$side" false
@@ -709,7 +753,7 @@ cmd_gate() {
 
   # 1. every task checked off
   local tasks unchecked detail passed
-  if [ -n "$tasks_override" ]; then tasks=$tasks_override; else tasks=$(find_tasks_file "$th") || tasks=""; fi
+  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else tasks=$(find_tasks_file "$th") || tasks=""; fi
   if [ -z "$tasks" ] && [ -f "$dir/archived.json" ]; then
     # The breakdown having been archived IS the evidence every task closed — archiving
     # is gated on it. Without this, a second `land` (say, to integrate after a rebase)

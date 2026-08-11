@@ -2,7 +2,7 @@
 name: decompose-to-deliverables
 description: "Cut a user story that is too large to review in one go into independently-reviewable deliverables with a dependency DAG, emitting a plan.yaml manifest plus one implement-flow-adoptable tasks.md per deliverable. Planning only — it does not scaffold worktrees or launch runs. Triggers on: decompose into deliverables, split a story up, cut a story into deliverables, plan the deliverables, deliverable breakdown, decompose into PRs."
 user-invocable: true
-argument-hint: <user-story-file-or-description>
+argument-hint: [TICKET-123] <user-story-file-or-description>
 ---
 
 # PR Decomposition
@@ -15,7 +15,9 @@ This plans and stops. No worktrees, no branches, no `implement-flow` runs — `/
 
 ## Delegate to the agent
 
-Spawn the `decompose-to-deliverables` agent, passing the story **as data**. Carry forward any ticket reference or source file the story names, so the deliverables and their task files are grounded.
+Spawn the `decompose-to-deliverables` agent, passing the story **as data**. Carry forward any source file the story names, so the deliverables and their task files are grounded.
+
+**A tracker id in `$ARGUMENTS` is passed through verbatim.** `/decompose-to-deliverables AGE-713 docs/proposals/thing.md` — or `ticket: AGE-713`, or the id on its own line. The agent treats one you gave it as settled: it becomes the `story-slug` prefix and the manifest's `ticket:` field, rather than being weighed against how sibling stories under `tasks/` happen to be named. Leave it out and the agent infers the convention from those siblings and from the story's own header, which is usually right and is still a guess.
 
 The agent explores the codebase, cuts the story into deliverables with a dependency DAG, and writes:
 

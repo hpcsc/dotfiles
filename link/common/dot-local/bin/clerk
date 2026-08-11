@@ -1118,9 +1118,10 @@ cmd_story() {
 
   out=$(printf '%s\n' "$plans" | while IFS= read -r p; do
     [ -n "$p" ] || continue
-    local story sslug rows
+    local story sslug ticket rows
     story=$(yq -r '.story // ""' "$p" 2>/dev/null)
     sslug=$(yq -r '.story_slug // ""' "$p" 2>/dev/null)
+    ticket=$(yq -r '.ticket // ""' "$p" 2>/dev/null)
     local siblings
     # yq extracts, jq shapes. yq's own object-construction syntax diverges from jq's and
     # errors on it, so every query here stays a plain path.
@@ -1191,8 +1192,9 @@ cmd_story() {
             branch_exists: $exists, branch_alias: $alias, worktree: $worktree,
             ahead: $ahead, unmerged_commits: $unmerged, total: $total, done: $done}'
       done | jq -s -c .)
-    jq -n --arg p "$p" --arg s "$story" --arg g "$sslug" --arg d "$def" --argjson ds "${rows:-[]}" \
-      '{plan: $p, story: $s, story_slug: $g, default_branch: $d, deliverables: $ds}'
+    jq -n --arg p "$p" --arg s "$story" --arg g "$sslug" --arg t "$ticket" --arg d "$def" --argjson ds "${rows:-[]}" \
+      '{plan: $p, story: $s, story_slug: $g, ticket: (if $t == "" then null else $t end),
+        default_branch: $d, deliverables: $ds}'
   done | jq -s -c .)
 
   # `--is-ancestor` answers "is this branch's tip in the default branch's history", which

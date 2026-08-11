@@ -41,7 +41,13 @@ These mirror `decompose-to-tasks` because each deliverable's `tasks.md` must be 
 
 Accept a file path to a story, an inline description with acceptance criteria, or a free-text feature description. If it references a file, read it. Extract the goal, acceptance criteria, dependencies/constraints, and non-goals.
 
-Derive a `story-slug` (kebab-case) from the story title. If a ticket id is present, it may seed the slug, but do not let ticket/position numbering leak past the manifest and branch names (see the restriction above).
+**A ticket id given in the request settles this.** `ticket: AGE-713`, "ticket AGE-713", or a bare tracker id alongside the story all count as the caller telling you what this work is called. Use it, lowercased, as the slug prefix and record it as `ticket:` in the manifest — do not weigh it against what the siblings look like, and do not replace it with a different id found in the story text. When one is given, the rest of this section does not apply.
+
+Otherwise derive a `story-slug` (kebab-case) from the story title, then **look at the sibling directories under `tasks/` (including `tasks/completed/`) and match how they are named.** A repo that tracks work in a tracker names them `age-713-edit-the-drafted-reply`; one that does not names them `edit-the-drafted-reply`. Both are correct in their own repo, and the existing ones are the only evidence of which this is. A bare slug sitting among a dozen ticket-prefixed siblings is the failure to avoid.
+
+If they carry a ticket prefix, find this story's id before concluding it has none: the story file's header or status line, a tracker URL anywhere in it, the id named in the request, the branch you are standing on. A story written up as a proposal document usually carries its ticket in the first few lines.
+
+A ticket id is identity rather than scheduling, which is why it belongs in the slug at all while a wave number does not. It still stays out of deliverable titles, task text and commit messages — those describe behaviour.
 
 ---
 
@@ -172,6 +178,7 @@ Write `tasks/<story-slug>/plan.yaml`:
 # deliver-story reads this to scaffold worktrees and launch implement-flow per wave.
 story: "<Story Title>"
 story_slug: <story-slug>
+ticket: "<tracker id, e.g. AGE-713>"     # omit the line entirely when the story has none
 source: "<path to the story file, or 'inline'>"
 deliverables:
   - id: <deliverable-slug>                        # stable id; used in paths and the tmux/worktree handle
@@ -215,5 +222,6 @@ Before returning, verify:
 - [ ] No scheduling vocabulary ("PR N", wave numbers) in any deliverable title, task, or text that reaches a commit/PR — only in `plan.yaml` and branch names.
 - [ ] Every deliverable has a `tasks.md` in `decompose-to-tasks` format, adoptable by `implement-flow` unchanged.
 - [ ] Branch names are `<story-slug>-<deliverable-slug>` with no author prefix.
+- [ ] The `story-slug` uses the ticket the caller gave, or — none given — is named the way its siblings under `tasks/` are, with the id looked for in the story's header and URLs rather than only its title.
 - [ ] All of the story's acceptance criteria are covered across the deliverables; any deferred ones are named.
 - [ ] `plan.yaml` matches the schema above exactly (the driver parses it with `yq`).

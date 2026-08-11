@@ -55,6 +55,8 @@ The path must be absolute, or relative to the main checkout: a worktree branches
 ### Decompose (first run only)
 
 Spawn the `decompose-to-deliverables` agent, passing the story **as data**. It explores the codebase, cuts the story into independently-reviewable deliverables with a dependency DAG, and writes:
+
+**Pass a ticket id through if `$ARGUMENTS` carries one** — `/deliver-story AGE-713 <story>`, or a bare tracker id anywhere in the request. The agent takes an explicitly-given id as settled: it becomes the `story-slug` prefix and the manifest's `ticket:` field, without being weighed against how sibling stories happen to be named. Left out, the agent infers the convention from the siblings, which is right far more often than not but is still an inference.
 - `tasks/<story-slug>/plan.yaml` — the delivery manifest the driver reads.
 - `tasks/<story-slug>/<deliverable-slug>/tasks.md` — one `implement-flow`-adoptable task file per deliverable.
 

@@ -880,6 +880,13 @@ printf 'story: "Older"\nstory_slug: older\ndeliverables: []\n' > "$R22/tasks/com
 eq "with no plan named, archived plans are left out" "1" "$(run "$R22" story | jq -r 'length')"
 eq "and naming one directly still works" "story-a" \
    "$(run "$R22" story tasks/story-a/plan.yaml | jq -r '.[0].story_slug')"
+
+# A tracker id the caller gave decompose-to-deliverables survives as a field, not only as
+# a slug prefix -- a prefix cannot be told apart from a title that happens to start with one.
+eq "a plan with no ticket reports none" "null" "$(run "$R22" story | jq -r '.[0].ticket')"
+printf 'ticket: "AGE-713"\n' >> "$R22/tasks/story-a/plan.yaml"
+eq "and one that records a ticket carries it through" "AGE-713" \
+   "$(run "$R22" story | jq -r '.[0].ticket')"
 eq "--table renders a row per deliverable" "7" \
    "$(run "$R22" story --table | rg -c '^  (merged|ready|blocked|in-progress|awaiting-merge)')"
 

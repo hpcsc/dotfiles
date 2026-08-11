@@ -51,17 +51,19 @@ Neither present means a fresh start. `clerk status --tasks-file <path>` shows ex
 | **Performance reviewer** | `go-performance-reviewer` | `js-performance-reviewer` | `elixir-performance-reviewer` | `performance-reviewer` |
 | **Guidelines reviewer** | `go-guidelines-reviewer` | `js-guidelines-reviewer` | `elixir-guidelines-reviewer` | _(skip)_ |
 
-### Testing Guidelines
+### Guidelines
 
 | Language | Required reading |
 |---|---|---|
-| All | `~/.config/ai/guidelines/testing/caller-patterns.md` |
+| All | `~/.config/ai/guidelines/testing/caller-patterns.md`, `~/.config/ai/guidelines/comments.md` |
 | Go | `~/.config/ai/guidelines/go/testing-patterns.md` |
 | JavaScript/TypeScript | `~/.config/ai/guidelines/javascript/testing-patterns.md` |
 | Elixir | `~/.config/ai/guidelines/elixir/testing-patterns.md` |
 | (others) | _(none beyond caller-patterns)_ |
 
-These guidelines are long. Instruct subagents to use progressive disclosure — read the Section Index first, then only the sections relevant to the task. Do NOT ask them to read the full file.
+Most of these are long. Instruct subagents to use progressive disclosure — read the Section Index first, then only the sections relevant to the task. Do NOT ask them to read the full file.
+
+`comments.md` is the exception: 45 lines with no Section Index, so index-hunting it wastes a turn and returns nothing. Have subagents read it whole. It earns its place here because a comment that restates the code, or names it by its position in a plan ("task 3", "the new helper") rather than its domain role, is the most common thing a review of this work turns up — and the reviewers downstream will flag it whether or not the implementer was told.
 
 **How to read a Section Index efficiently.** Each guideline starts with an HTML comment on line 1 of the form `<!-- index: 1-N -->` giving the exact line range of the Section Index. Agents should:
 

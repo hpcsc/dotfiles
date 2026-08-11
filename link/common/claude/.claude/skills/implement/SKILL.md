@@ -82,7 +82,7 @@ Neither present means a fresh start. `clerk status --tasks-file <path>` shows ex
 
 A short file with no index comment (e.g. `javascript/naming-patterns.md`, 64 lines) is cheap — just read it.
 
-At minimum load: the caller pattern that fits this work (UI / Inbound / Outbound / Async / Exported API) plus the Quick Reference from `caller-patterns.md`; "What to Test", "Unit of Behavior" and "Assertion Strictness" from the language testing guideline; and the whole naming guideline, which is short and is the one most often broken by default.
+At minimum load: the caller pattern that fits this work (UI / Inbound / Outbound / Async / Exported API) plus the Quick Reference from `caller-patterns.md`; "What to Test", "Unit of Behavior" and "Assertion Strictness" from the language testing guideline; and the whole of `comments.md` and the naming guideline. Those last two are short, and they are the two most often broken by default — a comment that restates the code, or names it by its position in a plan ("task 3", "the new helper") rather than its domain role, is the single most common finding an audit of this work returns.
 
 ### Set up an isolated worktree
 

@@ -1,0 +1,94 @@
+# fzf-pick a deliverable of an in-flight story; enter starts it or opens the run already on it.
+# Display: <state> w<wave> <done/total> <id>  <story>; hidden tail fields drive preview and action.
+# State comes from `clerk story`, which derives it from the sidecar, the branch and the worktree
+# list — never from the plan's own status field, which is a latch the driver sets and nothing
+# updates when a deliverable is started by hand.
+local rows
+rows=$(clerk story 2>/dev/null | jq -r '
+  .[] | .story_slug as $story | .deliverables[] |
+  [ .state, "w\(.wave)", "\(.done)/\(.total)", .id, $story,
+    .tasks_file, (.worktree // ""), (.base_commit // ""), (.blocked_by | join(",")) ] | @tsv')
+
+if [ -z "${rows}" ]; then
+  echo "no deliverable found — no unarchived plan.yaml under tasks/, or not in a git repo" >&2
+  return 1
+fi
+
+local selected=$(
+  printf '%s\n' "${rows}" | fzf --ansi --delimiter='\t' --with-nth=1,2,3,4,5 \
+    --header='deliverables — enter: open or start with /implement · tasks preview →' \
+    --preview='bat --style=plain --color=always {6} 2>/dev/null || cat {6}' \
+    --preview-window=right,60%
+)
+
+if [ -z "${selected}" ]; then
+  return
+fi
+
+local state id story tasks worktree base blocked
+state=$(printf '%s' "${selected}" | cut -f1)
+id=$(printf '%s' "${selected}" | cut -f4)
+story=$(printf '%s' "${selected}" | cut -f5)
+tasks=$(printf '%s' "${selected}" | cut -f6)
+worktree=$(printf '%s' "${selected}" | cut -f7)
+base=$(printf '%s' "${selected}" | cut -f8)
+blocked=$(printf '%s' "${selected}" | cut -f9)
+
+case "${state}" in
+  merged|awaiting-merge)
+    echo "${id} is ${state} — nothing to start. Review or land it instead." >&2
+    return 1
+    ;;
+  blocked)
+    echo "${id} is blocked by ${blocked} — finish those first, or start one of them." >&2
+    return 1
+    ;;
+esac
+
+# Opening beats starting whenever a worktree already exists: `workmux add` would scaffold a
+# second one for a deliverable someone is already building, and the first one's commits would
+# be stranded on a branch nobody is looking at.
+local handle="${story}-${id}"
+
+# Find the window already showing this worktree, by the path its panes sit in. workmux
+# identifies a tmux target by NAME — with `window_prefix: ""` the worktree handle is the
+# session name — and keeps no worktree-to-target registry. An agent working in a worktree
+# from a window named anything else is invisible to that lookup, so `workmux open` sees no
+# target, honours `mode: session`, and starts a second session beside the running work.
+local target
+if [ -n "${worktree}" ]; then
+  target=$(tmux list-panes -a -F '#{session_name}:#{window_index}|#{pane_current_path}' 2>/dev/null |
+    awk -F'|' -v w="${worktree}" '$2 == w || index($2, w "/") == 1 { print $1; exit }')
+fi
+
+if [ -n "${target}" ]; then
+  echo "${id} is already running in ${target} — switching to it"
+  tmux select-window -t "${target}" 2>/dev/null
+  if [ -n "${TMUX}" ]; then
+    tmux switch-client -t "${target%%:*}"
+  else
+    tmux attach -t "${target%%:*}"
+  fi
+  return
+fi
+
+if [ -n "${worktree}" ]; then
+  echo "${id} has a worktree at ${worktree} but nothing running in it — opening it"
+  workmux open "$(basename -- "${worktree}")"
+  return
+fi
+
+if [ "${state}" != "ready" ]; then
+  echo "${id} is ${state} but has no worktree — its branch carries commits made elsewhere. Check it out yourself." >&2
+  return 1
+fi
+
+# The task file is passed absolute on purpose. A deliverable's worktree branches from the
+# default branch and does not contain a gitignored tasks/ tree, so a path relative to the
+# worktree resolves to nothing.
+# No --mode here: the global config asks for one session per worktree, and a single
+# deliverable started by hand has no reason to override that. `deliver-story` does force
+# window mode, because a whole wave firing at once is better read side by side.
+echo "starting ${id} on ${base:0:10} — /implement ${tasks}"
+workmux add "${handle}" --name "${handle}" ${base:+--base "${base}"} \
+  --prompt "/implement ${tasks}"

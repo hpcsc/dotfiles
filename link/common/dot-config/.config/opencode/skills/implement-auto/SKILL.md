@@ -19,13 +19,15 @@ clerk prepare
 
 One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, and whether the tree is `clean`.
 
-Read the values rather than re-deriving them. Three of them have precedence rules that are easy to get subtly wrong and were previously prose you had to execute correctly:
+Read the values rather than re-deriving them. Three carry precedence rules subtle enough that resolving them by hand goes wrong quietly, which is why a command settles them and reports the answer:
 
 - **`test_command`** — `tasks/test-commands.json` (tracked, a team decision) beats `tasks/.environment` (a gitignored machine-local cache) beats detection. A cached command must never shadow one the team committed. Use the entry for the task's language while working on it; use `default` before committing anything that spans languages, and again in Phase 3.
 - **`go_tool_prefix`** — whether *this machine* runs Go through mise. Decided once, applied to every Go command, never double-wrapped on a project command that already says `mise exec --`.
 - **`learnings_path`** — in-tree when the repo tracks `tasks/`, out-of-tree per-project when it gitignores it, so a shared repo gets steering without polluting teammates' checkouts.
 
 **Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
+
+**A learnings path named in the request wins over the resolved one.** `learnings_path` is keyed on the repository, and every worktree of one repo shares a git-common-dir — so several runs dispatched over one story would read and append to a single file at once, each overwriting what the others just added. A caller that fans runs out gives each its own path for that reason. Use the one you were given, for both the read here and the write at the end.
 
 If `clerk` is not installed, its resolutions are documented in `~/.config/ai/method/implement/` — but install it rather than hand-executing them; getting `test_command` precedence wrong silently tests the wrong thing.
 

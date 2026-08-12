@@ -840,19 +840,27 @@ cmd_verify() {
 # --------------------------------------------------------------------------------
 
 cmd_land() {
-  local integrate=false audit=false name= root wt th tasks def branch before after dir
+  local integrate=false audit=false name= tasks_override= root wt th tasks def branch before after dir
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --integrate) integrate=true; shift ;;
       --audit-accepted) audit=true; shift ;;
       --feature-name) name=${2:-}; shift 2 ;;
+      --tasks-file) tasks_override=${2:-}; shift 2 ;;
       *) die "land: unknown argument '$1'" ;;
     esac
   done
 
+  # The gate resolves the breakdown itself, so it has to be told which one when the repo
+  # holds several. Unforwarded, its tasks-complete predicate fails asking to be passed
+  # --tasks-file, on a command that then refuses the flag — a dead end reached with the
+  # work finished and every other predicate green.
   local gate_out gate_rc
-  if [ "$audit" = true ]; then gate_out=$(cmd_gate --audit-accepted); else gate_out=$(cmd_gate); fi
+  set --
+  [ "$audit" = true ] && set -- "$@" --audit-accepted
+  [ -n "$tasks_override" ] && set -- "$@" --tasks-file "$tasks_override"
+  gate_out=$(cmd_gate "$@")
   gate_rc=$?
   if [ "$gate_rc" -ne 0 ]; then
     printf '%s' "$gate_out" | jq '{landed: false, reason: "gate did not open", gate: .}'
@@ -861,7 +869,7 @@ cmd_land() {
 
   root=$(repo_root); wt=$(work_tree); th=$(tasks_home); dir=$(state_dir)
   def=$(default_branch); branch=$(git rev-parse --abbrev-ref HEAD)
-  tasks=$(find_tasks_file "$th") || tasks=""
+  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else tasks=$(find_tasks_file "$th") || tasks=""; fi
 
   # Archive first, on the feature branch, so the archive commit rides with the work it
   # belongs to instead of landing on the default branch behind it. It also has to come
@@ -993,7 +1001,9 @@ USAGE
   clerk verify [--all-closed]        the mechanical half of run-verifier
   clerk version
 
-Every command takes --tasks-file to name the breakdown when tasks/ holds more than one.
+The commands that resolve a breakdown — next, status, finish, gate, land, story,
+sidecar — all take --tasks-file to name it when tasks/ holds more than one. verify
+reads this run's own records instead, and prepare reports every breakdown it found.
 
 Everything here is mechanical. Judgment — writing code, reviewing it, deciding a fix
 is right — stays with the caller.

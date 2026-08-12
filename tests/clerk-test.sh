@@ -325,6 +325,28 @@ eq "removes the worktree"                    "1" "$(git -C "$R23" worktree list 
 eq "and deletes the branch it was holding"   "0" "$(git -C "$R23" branch --list feat | wc -l | tr -d ' ')"
 
 
+# The usage text promises every command takes --tasks-file. land did not, and its gate —
+# which resolves the breakdown itself — failed asking to be passed the flag land refused.
+# A dead end reached with the work finished and every other predicate green.
+R25=$(new_repo)
+mkdir -p "$R25/tasks"
+printf '# A\n\n## Task 1: A\n' > "$R25/tasks/alpha.md"
+printf '{"story":"alpha","tasks":[{"n":1,"title":"A","depends_on":[],"done":true}]}\n' > "$R25/tasks/alpha.json"
+printf '# B\n\n## Task 1: B\n' > "$R25/tasks/beta.md"
+printf '{"story":"beta","tasks":[{"n":1,"title":"B","depends_on":[],"done":false}]}\n' > "$R25/tasks/beta.json"
+git -C "$R25" add -A && git -C "$R25" commit -qm "Two breakdowns"
+git -C "$R25" switch -qc feat
+printf 'x\n' > "$R25/x.txt"; git -C "$R25" add -A && git -C "$R25" commit -qm "Work"
+run "$R25" receipt --command "true" --passed >/dev/null
+
+run "$R25" land --audit-accepted --tasks-file tasks/alpha.md >/dev/null 2>&1
+eq "land accepts --tasks-file like every other command" "0" "$?"
+L=$(run "$R25" land --audit-accepted --tasks-file tasks/alpha.md)
+eq "its gate resolves the breakdown it was named" "true" \
+   "$(printf '%s' "$L" | jq -r '[.gate.checks[]? | select(.name=="tasks-complete") | .ok] | first // true')"
+eq "and it archives that one"      "yes" "$([ -f "$R25/tasks/completed/alpha.md" ] && echo yes || echo no)"
+eq "leaving the other where it was" "yes" "$([ -f "$R25/tasks/beta.md" ] && echo yes || echo no)"
+
 # --------------------------------------------------------------------------------
 printf '\nsidecar recovery\n'
 
@@ -960,6 +982,6 @@ eq "--table renders a row per deliverable" "7" \
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -767,6 +767,43 @@ eq "a tracked breakdown is still reported as tracked" "true" "$(printf '%s' "$C"
 eq "and its sidecar still lands with the code"        "a.go,tasks/story.json" \
    "$(git -C "$R20" diff --cached --name-only | sort | tr '\n' ',' | sed 's/,$//')"
 
+# A local default branch left unpulled sits behind the remote, and every branch cut from
+# the remote measures as that many commits ahead of it. Counted against the wrong ref, a
+# worktree nobody has built anything in reports as work under way and can never be resumed.
+R24=$(new_repo)
+ORIGIN=$(cd "$(mktemp -d)" && pwd -P)
+git init -q --bare "$ORIGIN"
+git -C "$R24" remote add origin "$ORIGIN"
+mkdir -p "$R24/tasks/s/one"
+printf '# D\n' > "$R24/tasks/s/one/tasks.md"
+printf '{"story":"one","tasks":[{"n":1,"title":"A","depends_on":[],"done":false}]}\n' > "$R24/tasks/s/one/tasks.json"
+cat > "$R24/tasks/s/plan.yaml" <<'EOF'
+story: "S"
+story_slug: s
+deliverables:
+  - id: one
+    branch: s-one
+    base: main
+    wave: 1
+    depends_on: []
+    tasks: tasks/s/one/tasks.md
+    status: pending
+EOF
+git -C "$R24" add -A && git -C "$R24" commit -qm "Plan"
+printf 'moved on\n' > "$R24/moved.txt"
+git -C "$R24" add -A && git -C "$R24" commit -qm "Work others pushed"
+git -C "$R24" push -q origin main
+git -C "$R24" reset -q --hard HEAD~1          # local main now trails origin/main
+git -C "$R24" worktree add -q -b s-one "$R24/.wt/one" origin/main >/dev/null 2>&1
+eq "fixture: the branch is ahead of the stale local default" "1" \
+   "$(git -C "$R24" rev-list --count main..s-one)"
+eq "but a worktree cut from the remote default is scaffolded, not in-progress" "scaffolded" \
+   "$(run "$R24" story | jq -r '.[0].deliverables[0].state')"
+eq "and carries no phantom commits of its own" "0" \
+   "$(run "$R24" story | jq -r '.[0].deliverables[0].ahead')"
+git -C "$R24" worktree remove --force "$R24/.wt/one" 2>/dev/null
+rm -rf "$ORIGIN"
+
 # --------------------------------------------------------------------------------
 printf '\nnested breakdowns and the paths that reach them\n'
 
@@ -900,7 +937,7 @@ WT4="$R22/.wt/unblocked"
 eq "before it is scaffolded, it reads as ready" "ready" "$(st unblocked)"
 git -C "$R22" worktree add -q -b br-unblocked "$WT4" >/dev/null 2>&1
 S=$(run "$R22" story)   # st() reads this snapshot; the worktree is new since the last one
-eq "a scaffolded but empty worktree still reads as in-progress" "in-progress" "$(st unblocked)"
+eq "a worktree with nothing in it reads as scaffolded, not in-progress" "scaffolded" "$(st unblocked)"
 eq "and names the worktree that claimed it" "$WT4" \
    "$(run "$R22" story | jq -r '.[0].deliverables[] | select(.id=="unblocked") | .worktree')"
 
@@ -917,12 +954,12 @@ printf 'ticket: "AGE-713"\n' >> "$R22/tasks/story-a/plan.yaml"
 eq "and one that records a ticket carries it through" "AGE-713" \
    "$(run "$R22" story | jq -r '.[0].ticket')"
 eq "--table renders a row per deliverable" "7" \
-   "$(run "$R22" story --table | rg -c '^  (merged|ready|blocked|in-progress|awaiting-merge)')"
+   "$(run "$R22" story --table | rg -c '^  (merged|ready|blocked|scaffolded|in-progress|awaiting-merge)')"
 
 # --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -1116,7 +1116,7 @@ story_plans() {
 }
 
 cmd_story() {
-  local plan= table=false root th def plans out
+  local plan= table=false root th def ref plans out
   while [ $# -gt 0 ]; do
     case "$1" in
       --table) table=true; shift ;;
@@ -1129,6 +1129,12 @@ cmd_story() {
   th=$(tasks_home)
   def=$(default_branch)
   [ -n "$def" ] || die "story: no default branch resolved, and every merged test is taken against one"
+  # Compare against origin/<default> when it exists, not the local branch of that name.
+  # A local default left unpulled is behind the remote, and every branch cut from the
+  # remote then measures as that many commits "ahead" — work that is really the gap
+  # between the two, which reads as a deliverable under way when nothing has been built.
+  ref=$def
+  git rev-parse --verify --quiet "origin/$def^{commit}" >/dev/null 2>&1 && ref="origin/$def"
 
   if [ -n "$plan" ]; then
     plan=$(resolve_tasks_arg "$plan")
@@ -1180,11 +1186,13 @@ cmd_story() {
           if [ -n "$a" ]; then alias_b=$(jq -n --arg a "$a" '$a'); eff=$a; exists=true; fi
         fi
         if [ "$exists" = true ]; then
-          ahead=$(git rev-list --count "$def..$eff" 2>/dev/null) || ahead=0
-          unmerged=$(git cherry "$def" "$eff" 2>/dev/null | grep -c '^+')
-          # A scaffolded worktree with no commit in it yet is indistinguishable from
-          # untouched work by branch and sidecar alone, and a driver that cannot tell
-          # them apart launches a second run for a deliverable already under way.
+          ahead=$(git rev-list --count "$ref..$eff" 2>/dev/null) || ahead=0
+          unmerged=$(git cherry "$ref" "$eff" 2>/dev/null | grep -c '^+')
+          # A worktree is a claim on the deliverable, not evidence of work in it. One
+          # standing at the base with no commits is scaffolding a launch left behind —
+          # resumable, and reported apart from work genuinely under way, because a caller
+          # that reads the two as the same thing can neither relaunch the dead one nor
+          # avoid double-launching the live one.
           w=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$eff" '
             /^worktree /{p=$2} $0 == "branch " b {print p; exit}')
           [ -n "$w" ] && wt=$(jq -n --arg w "$w" '$w')
@@ -1236,8 +1244,9 @@ cmd_story() {
               blocked_by: $blocked,
               state: (if $d.merged then "merged"
                       elif $d.total > 0 and $d.done >= $d.total then "awaiting-merge"
-                      elif $d.done > 0 or $d.ahead > 0 or ($d.worktree != null) then "in-progress"
+                      elif $d.done > 0 or $d.ahead > 0 then "in-progress"
                       elif ($blocked | length) > 0 then "blocked"
+                      elif $d.worktree != null then "scaffolded"
                       else "ready" end),
               evidence: (if ($d.merged | not) then null
                          elif ($d.branch_exists | not) then "branch \($d.branch) is gone and the sidecar reports \($d.done)/\($d.total)"

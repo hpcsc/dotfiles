@@ -89,6 +89,9 @@ fi
 # No --mode here: the global config asks for one session per worktree, and a single
 # deliverable started by hand has no reason to override that. `deliver-story` does force
 # window mode, because a whole wave firing at once is better read side by side.
+# --in-place because workmux is making the worktree: without it the run scaffolds a second
+# one for the work it is already standing in. No --unattended — you picked this one to
+# watch it, so its plan gate is worth keeping.
 echo "starting ${id} on ${base:0:10} — /implement ${tasks}"
 workmux add "${handle}" --name "${handle}" ${base:+--base "${base}"} \
-  --prompt "/implement ${tasks}"
+  --prompt "/implement ${tasks} --in-place"

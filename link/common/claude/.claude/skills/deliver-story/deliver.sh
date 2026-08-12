@@ -3,7 +3,7 @@
 #
 # Reads a decompose-to-deliverables delivery plan and, for every deliverable that is ready,
 # creates a git worktree + tmux session via `workmux` and launches
-# `implement-flow` inside it against that deliverable's task file. Independent deliverables
+# `implement` inside it against that deliverable's task file. Independent deliverables
 # fire in parallel (own worktree each); dependent deliverables wait for their
 # prerequisites to merge (base: master) or stack on the prerequisite's branch
 # (base: <deliverable-id>). Watch progress with `workmux dashboard`.
@@ -210,7 +210,11 @@ while IFS='|' read -r id branch base wave deps tasks status; do
 
   learnings="$LEARN_DIR/$id.md"
   handle="$STORY_SLUG-$id"
-  prompt="/implement-flow $tasks_abs (adopt this task file; persist run learnings to $learnings; leave the branch for review, do not integrate)"
+  # --in-place because workmux already made the worktree and started this agent inside it;
+  # without it the run would scaffold a second one for work it is already standing in.
+  # --unattended because nobody is reading this window while a wave runs: it drops the plan
+  # gate (the breakdown was written and approved before dispatch) and the learnings gate.
+  prompt="/implement $tasks_abs --in-place --unattended (adopt this task file; persist run learnings to $learnings; leave the branch for review, do not integrate)"
 
   # The agent pane workmux focuses; killing every other pane in that window
   # leaves the deliverable with a single pane. In window mode the deliverable is a window of

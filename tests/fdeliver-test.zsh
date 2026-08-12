@@ -82,7 +82,7 @@ TMUX=/tmp/fake out=$(run_with fresh)
 eq "a ready one launches implement against its absolute task file" \
    "starting fresh on ddd4444444 — /implement /t/d.md" "${out%%$'\n'*}"
 eq "on the resolved base, leaving mode to the global config" \
-   "workmux add s-fresh --name s-fresh --base ddd4444444 --prompt /implement /t/d.md" \
+   "workmux add s-fresh --name s-fresh --base ddd4444444 --prompt /implement /t/d.md --in-place" \
    "${out##*$'\n'}"
 
 

@@ -1,11 +1,11 @@
 ---
 name: deliver-story
-description: Deliver a large user story as several independently-reviewable deliverables, in parallel. On first run it decomposes the story into review-sized deliverables with a dependency DAG (decompose-to-deliverables) and, after you review the plan, scaffolds a git worktree per deliverable and launches implement-flow in each via workmux. Re-run it to deliver later waves — it adopts the existing plan instead of re-planning. Use when a story is too big to review in one go.
+description: Deliver a large user story as several independently-reviewable deliverables, in parallel. On first run it decomposes the story into review-sized deliverables with a dependency DAG (decompose-to-deliverables) and, after you review the plan, scaffolds a git worktree per deliverable and launches implement in each via workmux. Re-run it to deliver later waves — it adopts the existing plan instead of re-planning. Use when a story is too big to review in one go.
 ---
 
 Deliver a story that is too large for one PR as several reviewable pull requests, some in parallel: $ARGUMENTS
 
-This is the layer above `implement-flow`. `implement-flow` delivers one story on one branch; `deliver-story` cuts the story into deliverables — each landing as its own pull request — and runs an `implement-flow` per deliverable, each in its own git worktree + single-pane tmux window, dispatched from here. It is the automated form of the `workmux-new-form` you fill in by hand — the plan fills the fields the TUI used to.
+This is the layer above `implement`. `implement` delivers one story on one branch; `deliver-story` cuts the story into deliverables — each landing as its own pull request — and runs an `implement` per deliverable, each in its own git worktree + single-pane tmux window, dispatched from here. It is the automated form of the `workmux-new-form` you fill in by hand — the plan fills the fields the TUI used to.
 
 **It is the single entry point for every wave.** The first run plans (with a review gate) and delivers the first wave; each later run adopts the existing plan and delivers the next ready wave. You never drop down to the raw driver.
 
@@ -37,7 +37,7 @@ Two derivations worth knowing, because both have already been wrong in practice:
 
 ### Start one deliverable by hand
 
-To build a single `ready` deliverable yourself with `implement` rather than firing a whole wave through `implement-flow`:
+To build a single `ready` deliverable yourself, in front of you, rather than firing a whole wave into background windows:
 
 ```
 clerk story --table                                  # pick a `ready` one
@@ -47,8 +47,10 @@ bash "$HOME/.claude/skills/deliver-story/deliver.sh" tasks/<slug>/plan.yaml --on
 The dry run prints the worktree name, the resolved base commit and the absolute task-file path. Create the worktree from that, then in the new session:
 
 ```
-/implement <absolute path to that deliverable's tasks.md>
+/implement <absolute path to that deliverable's tasks.md> --in-place
 ```
+
+`--in-place` because the worktree already exists — without it the run scaffolds a second one for the work it is standing in. No `--unattended`: you are watching this one, so its plan and learnings gates are worth having.
 
 The path must be absolute, or relative to the main checkout: a worktree branches from the default branch and does not contain a gitignored `tasks/` tree. `clerk` resolves a relative one against the main root, but the deliverable's own breakdown is never in the worktree itself.
 
@@ -58,7 +60,7 @@ Spawn the `decompose-to-deliverables` agent, passing the story **as data**. It e
 
 **Pass a ticket id through if `$ARGUMENTS` carries one** — `/deliver-story AGE-713 <story>`, or a bare tracker id anywhere in the request. The agent takes an explicitly-given id as settled: it becomes the `story-slug` prefix and the manifest's `ticket:` field, without being weighed against how sibling stories happen to be named. Left out, the agent infers the convention from the siblings, which is right far more often than not but is still an inference.
 - `tasks/<story-slug>/plan.yaml` — the delivery manifest the driver reads.
-- `tasks/<story-slug>/<deliverable-slug>/tasks.md` — one `implement-flow`-adoptable task file per deliverable.
+- `tasks/<story-slug>/<deliverable-slug>/tasks.md` — one `implement`-adoptable task file per deliverable.
 
 **Carry forward context.** If the story references a ticket or a source file, include it so the deliverables and their task files are grounded.
 
@@ -83,8 +85,8 @@ bash "<resolved path>" tasks/<story-slug>/plan.yaml            # fire every read
 ```
 
 The driver, in one pass:
-1. **Reconciles** — any `running`/`in-review` deliverable whose branch has merged into the default branch is advanced to `merged` (best-effort local ancestor check against `origin/<default>`; no `gh` needed), which unlocks its dependents.
-2. **Launches every ready deliverable** — for each, `workmux add` creates a worktree and a tmux window in the session the driver runs from, then starts `implement-flow` in it against that deliverable's task file, in the background. The window is collapsed to the single agent pane; the shared workmux config's extra shell pane is dropped here rather than in that config, which every other workmux entry point still relies on. Outside tmux the driver falls back to one session per deliverable. Ready = status `pending` and either its `base` is the default branch with all `depends_on` merged, or its `base` is a sibling deliverable whose branch already carries commits of its own (stacked). A prerequisite branch that exists but is still empty is not ready: branching off it would silently branch off the default branch, leaving the prerequisite's code absent. It sets each launched deliverable's `status` to `running`.
+1. **Reconciles** — any `running`/`in-review` deliverable whose branch has merged into the default branch is advanced to `merged` — decided by patch id (`git cherry`), so a rebase- or squash-merged branch is recognised rather than reported as unmerged forever; no `gh` needed. That unlocks its dependents.
+2. **Launches every ready deliverable** — for each, `workmux add` creates a worktree and a tmux window in the session the driver runs from, then starts `implement` in it against that deliverable's task file, in the background. The window is collapsed to the single agent pane; the shared workmux config's extra shell pane is dropped here rather than in that config, which every other workmux entry point still relies on. Outside tmux the driver falls back to one session per deliverable. Ready = status `pending` and either its `base` is the default branch with all `depends_on` merged, or its `base` is a sibling deliverable whose branch already carries commits of its own (stacked). A prerequisite branch that exists but is still empty is not ready: branching off it would silently branch off the default branch, leaving the prerequisite's code absent. It sets each launched deliverable's `status` to `running`.
 
 Independent deliverables (wave 1) fire together; dependent deliverables that aren't ready are reported as waiting.
 
@@ -161,16 +163,16 @@ When a deliverable finishes, review its branch and open its PR as usual (its `ta
 ## Why it's wired this way
 
 - **Plan once, deliver many.** Planning is idempotent: the plan is a durable on-disk artifact, and every wave after the first adopts it. This is the same adopt-don't-re-decompose contract `implement` uses for `tasks/*.md`.
-- **Task files are passed as absolute main-tree paths.** A deliverable's worktree branches off the default branch and does **not** contain the (often gitignored) `tasks/` tree, so the driver hands `implement-flow` the absolute path into the main checkout. The run reads and checks off its task file there.
-- **Per-deliverable learnings path.** All worktrees of one repo share a git-common-dir, so `implement-flow`'s repo-keyed learnings default would make parallel deliverables collide on one file. The driver passes an explicit per-deliverable path (`~/.claude/implement-learnings/<repo>/<story-slug>/<deliverable-id>.md`); `implement-flow` honors an explicitly-provided path over its recipe.
-- **No auto-integrate.** Each deliverable stays on its branch for review as a PR — the driver launches `implement-flow` with integrate off.
+- **Task files are passed as absolute main-tree paths.** A deliverable's worktree branches off the default branch and does **not** contain the (often gitignored) `tasks/` tree, so the driver hands `implement` the absolute path into the main checkout. The run reads and checks off its task file there.
+- **Per-deliverable learnings path.** All worktrees of one repo share a git-common-dir, so the repo-keyed learnings default would make parallel deliverables read and append to one file at once. The driver passes an explicit per-deliverable path (`~/.claude/implement-learnings/<repo>/<story-slug>/<deliverable-id>.md`); `implement` takes a path named in the request over the one `clerk prepare` resolved.
+- **No auto-integrate.** Each deliverable stays on its branch for review as a PR — the driver launches `implement` without `--integrate`, which is already its default.
 - **Verify in the worktree.** Each run is isolated in its own worktree and its `run-verifier` pass runs there; re-check any deliverable by hand with `/verify-run` in its worktree.
 
 ---
 
 ## Caveats to check on first use
 
-- **Smoke-test the prompt injection once.** The driver launches each run by injecting `/implement-flow <path>` as Claude's initial prompt via `workmux --prompt`. Confirm the slash command fires from the initial prompt on one deliverable (`--dry-run` shows the exact command) before trusting a whole wave. Fallback: `workmux add -C` (plain shell) then `workmux send` the invocation once the pane is up.
+- **Smoke-test the prompt injection once.** The driver launches each run by injecting `/implement <path> --in-place --unattended` as Claude's initial prompt via `workmux --prompt`. Confirm the slash command fires from the initial prompt on one deliverable (`--dry-run` shows the exact command) before trusting a whole wave. Fallback: `workmux add -C` (plain shell) then `workmux send` the invocation once the pane is up.
 - **Default branch.** The driver derives it from `origin/HEAD` (then local `main`/`master`). If a repo's default differs, set each deliverable's `base` explicitly in `plan.yaml`.
 
 ---

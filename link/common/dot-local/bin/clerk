@@ -346,135 +346,6 @@ sidecar_for() {
   printf '%s' "$j"
 }
 
-# Task numbers ticked in a legacy checklist. Breakdowns no longer carry checkboxes;
-# this exists so recovering a sidecar from one that predates the change picks the
-# progress up rather than declaring everything unstarted.
-checklist_done() {
-  sed -n 's/^[[:space:]]*- \[[xX]\][[:space:]]*Task \([0-9][0-9]*\).*/\1/p' "$1"
-}
-
-# Recover a sidecar from a breakdown written before sidecars existed. The markdown is
-# regular enough for this — `### Task N: title` sections with `**Depends on:**` lines —
-# but it is a recovery path, not the source of truth: a dependency edge this misreads
-# would silently reorder the work. So it is an explicit command that shows what it
-# extracted, never something `next` does behind your back.
-cmd_sidecar() {
-  local force=false tasks_override= root wt th tasks out rows n
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --force) force=true; shift ;;
-      --tasks-file) tasks_override=${2:-}; shift 2 ;;
-      *) die "sidecar: unknown argument '$1'" ;;
-    esac
-  done
-
-  root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree); th=$(tasks_home)
-  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else
-    tasks=$(find_tasks_file "$th") || die "$(tasks_hint "$th" sidecar)"
-  fi
-  [ -f "$tasks" ] || die "sidecar: task file not found: $tasks"
-  out="${tasks%.md}.json"
-
-  # Regenerating must not discard progress. `done` is the one field in here that is not
-  # derived from the markdown, so it is carried across a --force rewrite.
-  # Two sources of prior progress: a sidecar being regenerated, and — for a breakdown
-  # written when the checklist still carried it — the ticks in the markdown.
-  local prior= ticked=
-  [ -f "$out" ] && prior=$(jq -c '[.tasks[] | select(.done == true) | .n]' "$out" 2>/dev/null)
-  [ -n "$prior" ] || prior="[]"
-  ticked=$(checklist_done "$tasks" | jq -R -s -c 'split("\n") | map(select(length > 0) | tonumber)')
-  prior=$(jq -n -c --argjson a "$prior" --argjson b "$ticked" '$a + $b | unique')
-
-  if [ -f "$out" ] && [ "$force" != true ]; then
-    jq -n --arg p "$out" '{written: false, path: $p, note: "already exists; pass --force to rewrite"}'
-    return 0
-  fi
-
-  # n \t title \t depends \t testable \t files(space-separated)
-  rows=$(awk '
-    function flush() {
-      if (n != "") printf "%s\t%s\t%s\t%s\t%s\n", n, title, deps, testable, files
-      n = ""; title = ""; deps = ""; testable = ""; files = ""; mode = ""
-    }
-    /^###[[:space:]]+Task[[:space:]]+[0-9]+:/ {
-      flush()
-      line = $0
-      sub(/^###[[:space:]]+Task[[:space:]]+/, "", line)
-      n = line; sub(/:.*$/, "", n)
-      title = line; sub(/^[0-9]+:[[:space:]]*/, "", title)
-      next
-    }
-    /^\*\*Depends on:\*\*/ { deps = $0; sub(/^\*\*Depends on:\*\*[[:space:]]*/, "", deps); mode = ""; next }
-    /^\*\*Testable:\*\*/   { testable = $0; sub(/^\*\*Testable:\*\*[[:space:]]*/, "", testable); mode = ""; next }
-    /^\*\*Affected Files/  { mode = "files"; next }
-    /^\*\*/                { mode = ""; next }
-    mode == "files" && /`/ {
-      f = $0
-      sub(/^[^`]*`/, "", f); sub(/`.*$/, "", f)
-      if (f != "") files = (files == "" ? f : files " " f)
-      next
-    }
-    END { flush() }
-  ' "$tasks")
-
-  # No task sections at all: fall back to the checklist, which gives numbers and titles
-  # but no edges. That is safe here — a breakdown is emitted in dependency order, and
-  # this skill runs one task at a time — but it is reported rather than passed off as a
-  # recovered graph.
-  local from=sections
-  if [ -z "$rows" ]; then
-    rows=$(sed -n 's/^[[:space:]]*- \[[ xX]\][[:space:]]*Task \([0-9][0-9]*\):[[:space:]]*\(.*\)$/\1\t\2\t\t\t/p' "$tasks")
-    from=checklist
-  fi
-  [ -n "$rows" ] || die "sidecar: found no 'Task N' sections or checklist entries in $(basename "$tasks") — write the sidecar by hand"
-
-  printf '%s\n' "$rows" | jq -R -s --arg tasks "$tasks" --arg from "$from" --argjson prior "$prior" '
-    # A **Depends on:** line is prose, and three shapes in it will produce wrong edges if
-    # you just harvest digits. "None — ... Independent of Task 1" names a task it is
-    # explicitly NOT waiting on. "US-007 Task 5" is a dependency on another breakdown
-    # entirely, not on task 5 of this one. And "Tasks 1-4" is a range, not two numbers.
-    def deps($raw):
-      ($raw | gsub("\\*"; "") | gsub("^\\s+"; "")) as $s
-      | if ($s | ascii_downcase | startswith("none")) then []
-        else
-          ($s | gsub("US-[0-9]+\\s*Tasks?\\s*[0-9]+(\\s*(,|and)\\s*[0-9]+)*"; " ")) as $t
-          | [ $t | scan("Tasks?\\s+([0-9]+(?:\\s*[,-]\\s*[0-9]+)*(?:\\s*,?\\s*and\\s*[0-9]+)*)") | .[0] ]
-          | map(gsub("\\s*and\\s*"; ",") | gsub("\\s"; "")
-                | split(",") | map(select(length > 0))
-                | map(if test("-")
-                      then (split("-") | map(tonumber)) as $r | [range($r[0]; $r[1] + 1)]
-                      else [tonumber] end)
-                | flatten)
-          | flatten | unique
-        end;
-    def lang($files):
-      if   ($files | test("\\.go$|\\.go ")) then "Go"
-      elif ($files | test("\\.tsx?$|\\.jsx?$|\\.tsx? |\\.jsx? ")) then "JavaScript/TypeScript"
-      elif ($files | test("\\.exs?$|\\.exs? ")) then "Elixir"
-      else "Generic" end;
-    split("\n") | map(select(length > 0) | split("\t"))
-    | map({
-        n: (.[0] | tonumber),
-        title: (.[1] // "" | gsub("^\\s+|\\s+$"; "")),
-        language: lang(.[4] // ""),
-        testable: ((.[3] // "") | ascii_downcase | startswith("no") | not),
-        depends_on: deps(.[2] // ""),
-        affected_files: ((.[4] // "") | split(" ") | map(select(length > 0)))
-      })
-    | map(.done = ([.n] | inside($prior)))
-    | {story: ($tasks | split("/") | last | sub("\\.md$"; "")),
-       tasks_file: $tasks, recovered_from: $from, tasks: .}' > "$out"
-
-  n=$(jq -r '.tasks | length' "$out")
-  jq -n --arg p "$out" --argjson n "$n" --arg from "$from" --argjson tasks "$(jq -c '[.tasks[] | {n, title, depends_on}]' "$out")" \
-    '{written: true, path: $p, tasks: $n, recovered_from: $from,
-      note: (if $from == "checklist"
-             then "no Task sections found; numbers and titles came from the checklist and every depends_on is empty — check the order before relying on it"
-             else "check the extracted dependencies against the breakdown before relying on them" end),
-      next_step: "commit it alongside the breakdown it describes — until then it is loose in the tree and `clerk next` will read that as work in flight",
-      extracted: $tasks}'
-}
 
 cmd_next() {
   local allow_dirty=false tasks_override= root wt th tasks side donej
@@ -1099,174 +970,6 @@ cmd_land() {
 
 # --------------------------------------------------------------------------------
 
-# --------------------------------------------------------------------------------
-# story — a story's deliverables, with their state DERIVED rather than read
-# --------------------------------------------------------------------------------
-
-# A plan records the cut and the dependency order. Those are decisions, and they belong
-# in a file. Whether a deliverable has started, finished or landed is an observation, and
-# an observation copied into the plan is a mirror that goes stale while still reading as
-# authoritative — the same trap the markdown checkbox was. Nothing below reads `status:`.
-story_plans() {
-  local home=$1 p
-  find "$home/tasks" \( -name 'plan.yaml' -o -name 'plan.yml' \) -type f 2>/dev/null | sort | while IFS= read -r p; do
-    case "$p" in */completed/*) continue ;; esac
-    printf '%s\n' "$p"
-  done
-}
-
-cmd_story() {
-  local plan= table=false root th def ref plans out
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --table) table=true; shift ;;
-      -*) die "story: unknown argument '$1'" ;;
-      *) plan=$1; shift ;;
-    esac
-  done
-  need yq
-  root=$(repo_root) || die "not a git repository"
-  th=$(tasks_home)
-  def=$(default_branch)
-  [ -n "$def" ] || die "story: no default branch resolved, and every merged test is taken against one"
-  # Compare against origin/<default> when it exists, not the local branch of that name.
-  # A local default left unpulled is behind the remote, and every branch cut from the
-  # remote then measures as that many commits "ahead" — work that is really the gap
-  # between the two, which reads as a deliverable under way when nothing has been built.
-  ref=$def
-  git rev-parse --verify --quiet "origin/$def^{commit}" >/dev/null 2>&1 && ref="origin/$def"
-
-  if [ -n "$plan" ]; then
-    plan=$(resolve_tasks_arg "$plan")
-    [ -f "$plan" ] || die "story: plan not found: $plan"
-    plans=$plan
-  else
-    plans=$(story_plans "$th")
-    [ -n "$plans" ] || die "story: no plan.yaml under $th/tasks outside completed/ — name one, or decompose a story first"
-  fi
-
-  out=$(printf '%s\n' "$plans" | while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    local story sslug ticket rows
-    story=$(yq -r '.story // ""' "$p" 2>/dev/null)
-    sslug=$(yq -r '.story_slug // ""' "$p" 2>/dev/null)
-    ticket=$(yq -r '.ticket // ""' "$p" 2>/dev/null)
-    local siblings
-    # yq extracts, jq shapes. yq's own object-construction syntax diverges from jq's and
-    # errors on it, so every query here stays a plain path.
-    siblings=$(yq -o=json -I=0 '.deliverables' "$p" 2>/dev/null)
-    # One JSON object per deliverable rather than a delimited row. Tab is IFS whitespace,
-    # so `read` collapses a run of them: a deliverable with no `depends_on` shifted every
-    # later field left by one and silently lost its base.
-    rows=$(yq -o=json -I=0 '.deliverables[]' "$p" 2>/dev/null |
-      while IFS= read -r row; do
-        local id wave branch tasks deps base
-        local spath total done_n exists ahead unmerged alias_b a wt w eff bbranch bcommit
-        id=$(printf '%s' "$row" | jq -r '.id // ""')
-        [ -n "$id" ] || continue
-        wave=$(printf '%s' "$row" | jq -r '.wave // 1')
-        branch=$(printf '%s' "$row" | jq -r '.branch // ""')
-        tasks=$(printf '%s' "$row" | jq -r '.tasks // ""')
-        deps=$(printf '%s' "$row" | jq -r '(.depends_on // []) | join(",")')
-        base=$(printf '%s' "$row" | jq -r '.base // ""')
-        spath="$th/${tasks%.md}.json"
-        total=0; done_n=0
-        if [ -f "$spath" ]; then
-          total=$(jq -r '.tasks | length' "$spath" 2>/dev/null) || total=0
-          done_n=$(jq -r '[.tasks[] | select(.done == true)] | length' "$spath" 2>/dev/null) || done_n=0
-        fi
-        exists=false; ahead=0; unmerged=0; alias_b=null; wt=null; eff=$branch
-        if git show-ref --verify --quiet "refs/heads/$branch"; then
-          exists=true
-        else
-          # A branch not carrying the planned name is what makes a driver scaffold a
-          # second worktree for work already under way. Find the one that looks like it
-          # and answer for that, rather than reporting the deliverable as untouched.
-          a=$(git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null | grep -F "$id" | head -1)
-          if [ -n "$a" ]; then alias_b=$(jq -n --arg a "$a" '$a'); eff=$a; exists=true; fi
-        fi
-        if [ "$exists" = true ]; then
-          ahead=$(git rev-list --count "$ref..$eff" 2>/dev/null) || ahead=0
-          unmerged=$(git cherry "$ref" "$eff" 2>/dev/null | grep -c '^+')
-          # A worktree is a claim on the deliverable, not evidence of work in it. One
-          # standing at the base with no commits is scaffolding a launch left behind —
-          # resumable, and reported apart from work genuinely under way, because a caller
-          # that reads the two as the same thing can neither relaunch the dead one nor
-          # avoid double-launching the live one.
-          w=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$eff" '
-            /^worktree /{p=$2} $0 == "branch " b {print p; exit}')
-          [ -n "$w" ] && wt=$(jq -n --arg w "$w" '$w')
-        fi
-        # A base naming a sibling deliverable means this one stacks on that branch;
-        # anything else names a ref, preferring its remote — local and origin can
-        # diverge, and branching from the wrong one silently omits work that is
-        # already pushed.
-        bcommit=
-        bbranch=$(printf '%s' "$siblings" | jq -r --arg b "$base" 'map(select(.id == $b)) | .[0].branch // ""' 2>/dev/null)
-        if [ -n "$bbranch" ]; then
-          bcommit=$(git rev-parse --verify --quiet "$bbranch^{commit}" 2>/dev/null)
-        elif [ -n "$base" ]; then
-          bcommit=$(git rev-parse --verify --quiet "origin/$base^{commit}" 2>/dev/null) \
-            || bcommit=$(git rev-parse --verify --quiet "$base^{commit}" 2>/dev/null)
-        fi
-
-        jq -n --arg id "$id" --argjson wave "${wave:-1}" --arg branch "$branch" \
-          --arg base "$base" --arg bcommit "${bcommit:-}" \
-          --arg tasks "$th/$tasks" --arg deps "$deps" \
-          --argjson exists "$exists" --argjson ahead "${ahead:-0}" --argjson unmerged "${unmerged:-0}" \
-          --argjson total "${total:-0}" --argjson done "${done_n:-0}" --argjson alias "$alias_b" \
-          --argjson worktree "$wt" \
-          '{id: $id, wave: $wave, branch: $branch, tasks_file: $tasks,
-            base: (if $base == "" then null else $base end),
-            base_commit: (if $bcommit == "" then null else $bcommit end),
-            depends_on: ($deps | split(",") | map(select(length > 0))),
-            branch_exists: $exists, branch_alias: $alias, worktree: $worktree,
-            ahead: $ahead, unmerged_commits: $unmerged, total: $total, done: $done}'
-      done | jq -s -c .)
-    jq -n --arg p "$p" --arg s "$story" --arg g "$sslug" --arg t "$ticket" --arg d "$def" --argjson ds "${rows:-[]}" \
-      '{plan: $p, story: $s, story_slug: $g, ticket: (if $t == "" then null else $t end),
-        default_branch: $d, deliverables: $ds}'
-  done | jq -s -c .)
-
-  # `--is-ancestor` answers "is this branch's tip in the default branch's history", which
-  # is false for every rebase- or squash-merged branch: the work is in, under new SHAs.
-  # `git cherry` compares patch ids instead and marks `+` only what has no counterpart
-  # upstream, so no `+` lines means everything on this branch already landed. A branch
-  # deleted after merging leaves nothing to compare, so the sidecar answers for it.
-  out=$(printf '%s' "$out" | jq -c '
-    map(. as $s
-      | ($s.deliverables | map(. + {merged: (
-          if .branch_exists then (if .ahead == 0 then (.total > 0 and .done >= .total) else (.unmerged_commits == 0) end)
-          else (.total > 0 and .done >= .total) end)})) as $ds
-      | ([$ds[] | select(.merged) | .id]) as $landed
-      | $s + {deliverables: [$ds[] | . as $d | (($d.depends_on) - $landed) as $blocked
-          | $d + {
-              blocked_by: $blocked,
-              state: (if $d.merged then "merged"
-                      elif $d.total > 0 and $d.done >= $d.total then "awaiting-merge"
-                      elif $d.done > 0 or $d.ahead > 0 then "in-progress"
-                      elif ($blocked | length) > 0 then "blocked"
-                      elif $d.worktree != null then "scaffolded"
-                      else "ready" end),
-              evidence: (if ($d.merged | not) then null
-                         elif ($d.branch_exists | not) then "branch \($d.branch) is gone and the sidecar reports \($d.done)/\($d.total)"
-                         elif $d.ahead == 0 then "branch carries no commit the default branch lacks"
-                         else "every commit on the branch is patch-present in the default branch" end)
-            }]})')
-
-  if [ "$table" != true ]; then printf '%s\n' "$out" | jq .; return 0; fi
-
-  printf '%s' "$out" | jq -r '.[] |
-    "\(.story_slug // .plan)   (\(.story))",
-    (.deliverables[] |
-      "  \(.state | (. + "            ")[0:14])w\(.wave)  \(.done)/\(.total)  \(.id)"
-      + (if (.blocked_by | length) > 0 then "  blocked by \(.blocked_by | join(", "))" else "" end)
-      + (if .branch_alias then "  ** plan names \(.branch), on disk \(.branch_alias) **"
-         elif (.branch_exists | not) and .state != "merged" then "  (no branch yet)"
-         else "" end)),
-    ""'
-}
-
 usage() {
   cat <<'EOF'
 clerk — deterministic mechanics for an implementation run
@@ -1281,11 +984,6 @@ USAGE
   clerk sidecar [--force]            recover tasks/<story>.json from a breakdown
                                      written before sidecars existed
   clerk status                       progress from the sidecar, for a human
-  clerk story [<plan.yaml>] [--table]
-                                     a story's deliverables and their derived state:
-                                     ready / blocked / in-progress / awaiting-merge /
-                                     merged. Without a plan, every plan under tasks/
-                                     that has not been archived
   clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
                                      record a suite run against the SHA it describes
   clerk gate [--audit-accepted] [--tasks-file <f>]
@@ -1300,6 +998,27 @@ Every command takes --tasks-file to name the breakdown when tasks/ holds more th
 Everything here is mechanical. Judgment — writing code, reviewing it, deciding a fix
 is right — stays with the caller.
 EOF
+  list_plugins
+}
+
+# An executable named clerk-<name> on PATH is a subcommand. Listing what is actually
+# installed beats naming them here, which would go stale the moment one is added.
+list_plugins() {
+  local dir f name found=
+  printf '\nSUBCOMMANDS ON PATH\n'
+  IFS=:
+  for dir in $PATH; do
+    [ -d "$dir" ] || continue
+    for f in "$dir"/clerk-*; do
+      [ -x "$f" ] && [ -f "$f" ] || continue
+      name=$(basename "$f"); name=${name#clerk-}
+      case " $found " in *" $name "*) continue ;; esac
+      found="$found $name"
+      printf '  clerk %-24s %s\n' "$name" "$f"
+    done
+  done
+  unset IFS
+  [ -n "$found" ] || printf '  (none installed)\n'
 }
 
 need git
@@ -1309,8 +1028,6 @@ case "${1:-}" in
   prepare)  shift; cmd_prepare "$@" ;;
   next)     shift; cmd_next "$@" ;;
   status)   shift; cmd_status "$@" ;;
-  story)    shift; cmd_story "$@" ;;
-  sidecar)  shift; cmd_sidecar "$@" ;;
   finish|complete) shift; cmd_finish "$@" ;;
   receipt)  shift; cmd_receipt "$@" ;;
   verify)   shift; cmd_verify "$@" ;;
@@ -1318,5 +1035,13 @@ case "${1:-}" in
   gate)    shift; cmd_gate "$@" ;;
   version) printf 'clerk %s\n' "$CLERK_VERSION" ;;
   ''|-h|--help|help) usage ;;
-  *) die "unknown command '$1' (try: clerk help)" ;;
+  *)
+    # git's model: an executable named clerk-<name> on PATH becomes `clerk <name>`. exec,
+    # not a call, so the plugin owns stdio and its exit status is clerk's. Built-ins are
+    # matched first, above — a plugin cannot shadow one, so what `clerk next` does never
+    # depends on what happens to be on PATH.
+    if command -v "clerk-$1" >/dev/null 2>&1; then
+      sub="clerk-$1"; shift; exec "$sub" "$@"
+    fi
+    die "unknown command '$1' (try: clerk help)" ;;
 esac

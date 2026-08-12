@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""clerk sidecar — recover tasks/<story>.json from a breakdown written without one.
+
+The markdown stays the human artifact; the sidecar carries what tooling needs, so
+`clerk next` looks up a dependency rather than parsing prose for it. Recovery is the one
+place that parsing still has to happen, and it happens once.
+
+Dispatched to by `clerk` when invoked as `clerk sidecar`, and runnable on its own.
+"""
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+CLERK = Path(__file__).resolve().parent / "clerk"
+
+TASK_HEADING = re.compile(r"^###\s+Task\s+(\d+):\s*(.*)$")
+FIELD = re.compile(r"^\*\*([^*]+):?\*\*\s*(.*)$")
+CHECKLIST = re.compile(r"^\s*-\s*\[([ xX])\]\s*Task\s+(\d+):\s*(.*)$")
+BACKTICKED = re.compile(r"`([^`]+)`")
+
+
+def die(msg):
+    print(f"clerk: sidecar: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def facts():
+    exe = str(CLERK) if CLERK.exists() else "clerk"
+    p = subprocess.run([exe, "prepare"], capture_output=True, text=True, check=False)
+    if p.returncode != 0:
+        sys.stderr.write(p.stderr)
+        sys.exit(p.returncode)
+    return json.loads(p.stdout)
+
+
+def resolve_tasks_arg(arg, tasks_home):
+    """A relative path is written the way the repo reads on disk, but cwd inside a
+    worktree is not where an excluded breakdown lives."""
+    p = Path(arg)
+    if p.is_absolute() or p.exists():
+        return p
+    candidate = Path(tasks_home) / arg
+    return candidate if candidate.exists() else p
+
+
+def parse_deps(raw):
+    """A **Depends on:** line is prose, and three shapes in it produce wrong edges if you
+    just harvest digits. "None — ... Independent of Task 1" names a task it is explicitly
+    NOT waiting on. "US-007 Task 5" is a dependency on another breakdown entirely, not on
+    task 5 of this one. And "Tasks 1-4" is a range, not two numbers."""
+    text = raw.replace("*", "").strip()
+    if text.lower().startswith("none"):
+        return []
+    text = re.sub(r"US-\d+\s*Tasks?\s*\d+(\s*(?:,|and)\s*\d+)*", " ", text, flags=re.I)
+
+    found = []
+    for match in re.finditer(
+        r"Tasks?\s+(\d+(?:\s*[,-]\s*\d+)*(?:\s*,?\s*and\s*\d+)*)", text, flags=re.I
+    ):
+        group = re.sub(r"\s*and\s*", ",", match.group(1), flags=re.I)
+        group = re.sub(r"\s", "", group)
+        for part in group.split(","):
+            if not part:
+                continue
+            if "-" in part:
+                low, high = part.split("-", 1)
+                found.extend(range(int(low), int(high) + 1))
+            else:
+                found.append(int(part))
+    return sorted(set(found))
+
+
+def language_of(files):
+    if any(f.endswith(".go") for f in files):
+        return "Go"
+    if any(f.endswith((".ts", ".tsx", ".js", ".jsx")) for f in files):
+        return "JavaScript/TypeScript"
+    if any(f.endswith((".ex", ".exs")) for f in files):
+        return "Elixir"
+    return "Generic"
+
+
+def parse_sections(text):
+    """One record per `### Task N:` heading. Fields are the bolded labels under it; the
+    file list is whatever sits in backticks until the next label."""
+    tasks = []
+    current = None
+    in_files = False
+
+    for line in text.splitlines():
+        heading = TASK_HEADING.match(line)
+        if heading:
+            if current:
+                tasks.append(current)
+            current = {
+                "n": int(heading.group(1)),
+                "title": heading.group(2).strip(),
+                "deps_raw": "",
+                "testable_raw": "",
+                "files": [],
+            }
+            in_files = False
+            continue
+
+        if current is None:
+            continue
+
+        field = FIELD.match(line)
+        if field:
+            label = field.group(1).strip().rstrip(":").lower()
+            value = field.group(2).strip()
+            in_files = label.startswith("affected files")
+            if label == "depends on":
+                current["deps_raw"] = value
+            elif label == "testable":
+                current["testable_raw"] = value
+            continue
+
+        if in_files:
+            hit = BACKTICKED.search(line)
+            if hit:
+                current["files"].append(hit.group(1))
+
+    if current:
+        tasks.append(current)
+    return tasks
+
+
+def parse_checklist(text):
+    """Numbers and titles but no edges. Safe, because a breakdown is emitted in dependency
+    order and this skill runs one task at a time — but reported rather than passed off as
+    a recovered graph."""
+    return [
+        {"n": int(m.group(2)), "title": m.group(3).strip(), "deps_raw": "", "testable_raw": "", "files": []}
+        for m in (CHECKLIST.match(line) for line in text.splitlines())
+        if m
+    ]
+
+
+def ticked(text):
+    return {int(m.group(2)) for line in text.splitlines() if (m := CHECKLIST.match(line)) and m.group(1) in "xX"}
+
+
+def main(argv):
+    force = False
+    override = None
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--force":
+            force = True
+            i += 1
+        elif argv[i] == "--tasks-file":
+            override = argv[i + 1] if i + 1 < len(argv) else ""
+            i += 2
+        else:
+            die(f"unknown argument '{argv[i]}'")
+
+    f = facts()
+    tasks_home = f.get("tasks_home") or f.get("repo_root")
+
+    if override:
+        tasks = resolve_tasks_arg(override, tasks_home)
+    elif f.get("tasks_file"):
+        tasks = Path(f["tasks_file"])
+    else:
+        # Two opposite situations wear the same shape here: nothing to work from, and
+        # several to choose between. In a repo planned as deliverables the second is
+        # normal, so name the candidates rather than reading as an absence.
+        paths = [b["path"] for b in (f.get("breakdowns") or [])]
+        if not paths:
+            die(f"no breakdown under {tasks_home}/tasks — decompose the story first, or name one with --tasks-file")
+        listing = "\n".join(f"  {p}" for p in paths)
+        die(f"{len(paths)} breakdowns under {tasks_home}/tasks; name the one this run is building with --tasks-file:\n{listing}")
+
+    if not tasks.is_file():
+        die(f"task file not found: {tasks}")
+
+    out = tasks.with_suffix(".json")
+    text = tasks.read_text()
+
+    # Regenerating must not discard progress. `done` is the one field here not derived
+    # from the markdown, so it is carried across a --force rewrite. Two sources of prior
+    # progress: a sidecar being regenerated, and — for a breakdown written when the
+    # checklist still carried it — the ticks in the markdown.
+    prior = set(ticked(text))
+    if out.exists():
+        try:
+            prior |= {t["n"] for t in json.loads(out.read_text()).get("tasks", []) if t.get("done") is True}
+        except (OSError, json.JSONDecodeError, KeyError):
+            pass
+
+    if out.exists() and not force:
+        print(json.dumps({"written": False, "path": str(out), "note": "already exists; pass --force to rewrite"}, indent=2))
+        return 0
+
+    parsed = parse_sections(text)
+    source = "sections"
+    if not parsed:
+        parsed = parse_checklist(text)
+        source = "checklist"
+    if not parsed:
+        die(f"found no 'Task N' sections or checklist entries in {tasks.name} — write the sidecar by hand")
+
+    tasks_json = [
+        {
+            "n": t["n"],
+            "title": t["title"],
+            "language": language_of(t["files"]),
+            "testable": not t["testable_raw"].lower().startswith("no"),
+            "depends_on": parse_deps(t["deps_raw"]),
+            "affected_files": t["files"],
+            "done": t["n"] in prior,
+        }
+        for t in parsed
+    ]
+
+    out.write_text(
+        json.dumps(
+            {
+                "story": tasks.stem,
+                "tasks_file": str(tasks),
+                "recovered_from": source,
+                "tasks": tasks_json,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+    note = (
+        "no Task sections found; numbers and titles came from the checklist and every "
+        "depends_on is empty — check the order before relying on it"
+        if source == "checklist"
+        else "check the extracted dependencies against the breakdown before relying on them"
+    )
+    print(
+        json.dumps(
+            {
+                "written": True,
+                "path": str(out),
+                "tasks": len(tasks_json),
+                "recovered_from": source,
+                "note": note,
+                "next_step": "commit it alongside the breakdown it describes — until then it is loose in the tree and `clerk next` will read that as work in flight",
+                "extracted": [{"n": t["n"], "title": t["title"], "depends_on": t["depends_on"]} for t in tasks_json],
+            },
+            indent=2,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

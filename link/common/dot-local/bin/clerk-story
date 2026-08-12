@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+"""clerk story — a story's deliverables, with their state DERIVED rather than read.
+
+A plan records the cut and the dependency order. Those are decisions, and they belong in
+a file. Whether a deliverable has started, finished or landed is an observation, and an
+observation copied into the plan is a mirror that goes stale while still reading as
+authoritative. Nothing below reads `status:`.
+
+Dispatched to by `clerk` when invoked as `clerk story`, and runnable on its own.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+CLERK = Path(__file__).resolve().parent / "clerk"
+
+
+def die(msg):
+    print(f"clerk: story: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def git(*args, cwd=None):
+    """stdout, stripped. A failing git call answers with the empty string: every caller
+    here is asking a question whose 'no' is an empty answer, not an error."""
+    try:
+        out = subprocess.run(
+            ("git",) + args, capture_output=True, text=True, cwd=cwd, check=False
+        )
+    except OSError:
+        return ""
+    return out.stdout.strip() if out.returncode == 0 else ""
+
+
+def git_ok(*args):
+    """For the questions git answers with an exit code and no output — `show-ref --quiet`
+    prints nothing whether or not the ref exists, so stdout cannot stand in for success."""
+    try:
+        return subprocess.run(("git",) + args, capture_output=True, check=False).returncode == 0
+    except OSError:
+        return False
+
+
+def facts():
+    """Repo facts from `clerk prepare` rather than re-derived here. It already resolves
+    the ones with precedence rules subtle enough to get wrong twice — where the breakdown
+    lives when tasks/ is excluded, which branch is default, where the work tree is."""
+    exe = str(CLERK) if CLERK.exists() else "clerk"
+    p = subprocess.run([exe, "prepare"], capture_output=True, text=True, check=False)
+    if p.returncode != 0:
+        sys.stderr.write(p.stderr)
+        sys.exit(p.returncode)
+    return json.loads(p.stdout)
+
+
+def resolve_plan_arg(arg, tasks_home):
+    """A relative path is written the way the repo reads on disk, but cwd inside a
+    worktree is not where an excluded plan lives. Try the breakdown home before failing."""
+    p = Path(arg)
+    if p.is_absolute() or p.exists():
+        return str(p)
+    candidate = Path(tasks_home) / arg
+    return str(candidate if candidate.exists() else p)
+
+
+def find_plans(tasks_home):
+    """Every plan under tasks/ that has not been archived. Archived ones are still plans;
+    they describe work that is over, and listing them would bury the live ones."""
+    root = Path(tasks_home) / "tasks"
+    found = []
+    for path in sorted(root.rglob("*")):
+        if path.name not in ("plan.yaml", "plan.yml") or not path.is_file():
+            continue
+        if "completed" in path.parts:
+            continue
+        found.append(str(path))
+    return found
+
+
+def load_plan(path):
+    """yq parses, this shapes. The only YAML in clerk's world is the plan, and one
+    conversion to JSON is cheaper than teaching every reader about YAML."""
+    try:
+        p = subprocess.run(
+            ["yq", "-o=json", "-I=0", ".", path], capture_output=True, text=True, check=False
+        )
+    except FileNotFoundError:
+        die("missing required tool: yq")
+    if p.returncode != 0:
+        die(f"could not read {path}: {p.stderr.strip()}")
+    try:
+        return json.loads(p.stdout or "{}") or {}
+    except json.JSONDecodeError:
+        die(f"{path} is not valid YAML")
+
+
+def sidecar_progress(tasks_home, tasks_rel):
+    """(total, done) from the breakdown's sidecar, which is the run's own record of what
+    it finished — written in the same commit as the code it stands for."""
+    if not tasks_rel:
+        return 0, 0
+    side = Path(tasks_home) / (tasks_rel[:-3] + ".json" if tasks_rel.endswith(".md") else tasks_rel + ".json")
+    try:
+        data = json.loads(side.read_text())
+    except (OSError, json.JSONDecodeError):
+        return 0, 0
+    tasks = data.get("tasks") or []
+    return len(tasks), sum(1 for t in tasks if t.get("done") is True)
+
+
+def worktree_for(branch):
+    """The worktree holding a branch, if any. A worktree is a claim on the deliverable,
+    not evidence of work in it — one standing at the base with no commits is scaffolding
+    a launch left behind, which is resumable and must not read as work under way."""
+    out = git("worktree", "list", "--porcelain")
+    path = None
+    for line in out.splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line == f"branch refs/heads/{branch}":
+            return path
+    return None
+
+
+def branch_alias_for(deliverable_id):
+    """A branch not carrying the planned name is what makes a driver scaffold a second
+    worktree for work already under way. Find the one that looks like it and answer for
+    that, rather than reporting the deliverable as untouched."""
+    for name in git("for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines():
+        if deliverable_id in name:
+            return name
+    return None
+
+
+def unmerged_count(ref, branch):
+    """`--is-ancestor` asks whether the branch TIP is in the default branch's history,
+    which is false for every rebase- or squash-merged branch: the work is in, under new
+    SHAs. `git cherry` compares patch ids and marks `+` only what has no counterpart
+    upstream, so no `+` lines means everything here already landed, however it got there."""
+    out = git("cherry", ref, branch)
+    return sum(1 for line in out.splitlines() if line.startswith("+"))
+
+
+def base_commit(base, siblings):
+    """A base naming a sibling deliverable means this one stacks on that branch; anything
+    else names a ref, preferring its remote — local and origin can diverge, and branching
+    from the wrong one silently omits work that is already pushed."""
+    if not base:
+        return None
+    for sib in siblings:
+        if sib.get("id") == base:
+            return git("rev-parse", "--verify", "--quiet", f"{sib.get('branch', '')}^{{commit}}") or None
+    return (
+        git("rev-parse", "--verify", "--quiet", f"origin/{base}^{{commit}}")
+        or git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
+        or None
+    )
+
+
+def describe(deliverable, siblings, tasks_home, ref):
+    d = deliverable
+    did = d.get("id") or ""
+    branch = d.get("branch") or ""
+    tasks_rel = d.get("tasks") or ""
+    total, done = sidecar_progress(tasks_home, tasks_rel)
+
+    alias = None
+    effective = branch
+    exists = bool(branch) and git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{branch}")
+    if not exists:
+        alias = branch_alias_for(did)
+        if alias:
+            effective, exists = alias, True
+
+    ahead = unmerged = 0
+    worktree = None
+    if exists:
+        ahead = int(git("rev-list", "--count", f"{ref}..{effective}") or 0)
+        unmerged = unmerged_count(ref, effective)
+        worktree = worktree_for(effective)
+
+    return {
+        "id": did,
+        "wave": d.get("wave", 1),
+        "branch": branch,
+        "tasks_file": str(Path(tasks_home) / tasks_rel) if tasks_rel else "",
+        "base": d.get("base") or None,
+        "base_commit": base_commit(d.get("base") or "", siblings),
+        "depends_on": list(d.get("depends_on") or []),
+        "branch_exists": exists,
+        "branch_alias": alias,
+        "worktree": worktree,
+        "ahead": ahead,
+        "unmerged_commits": unmerged,
+        "total": total,
+        "done": done,
+    }
+
+
+def settle(deliverables):
+    """Merged first, because it decides what unblocks everything else. A branch deleted
+    after merging leaves nothing to compare, so its sidecar answers for it."""
+    for d in deliverables:
+        if d["branch_exists"]:
+            d["merged"] = (d["total"] > 0 and d["done"] >= d["total"]) if d["ahead"] == 0 else d["unmerged_commits"] == 0
+        else:
+            d["merged"] = d["total"] > 0 and d["done"] >= d["total"]
+
+    landed = {d["id"] for d in deliverables if d["merged"]}
+    for d in deliverables:
+        blocked = [dep for dep in d["depends_on"] if dep not in landed]
+        d["blocked_by"] = blocked
+        if d["merged"]:
+            d["state"] = "merged"
+        elif d["total"] > 0 and d["done"] >= d["total"]:
+            d["state"] = "awaiting-merge"
+        elif d["done"] > 0 or d["ahead"] > 0:
+            d["state"] = "in-progress"
+        elif blocked:
+            d["state"] = "blocked"
+        elif d["worktree"] is not None:
+            d["state"] = "scaffolded"
+        else:
+            d["state"] = "ready"
+
+        if not d["merged"]:
+            d["evidence"] = None
+        elif not d["branch_exists"]:
+            d["evidence"] = f"branch {d['branch']} is gone and the sidecar reports {d['done']}/{d['total']}"
+        elif d["ahead"] == 0:
+            d["evidence"] = "branch carries no commit the default branch lacks"
+        else:
+            d["evidence"] = "every commit on the branch is patch-present in the default branch"
+    return deliverables
+
+
+def render_table(stories):
+    lines = []
+    for s in stories:
+        lines.append(f"{s['story_slug'] or s['plan']}   ({s['story']})")
+        for d in s["deliverables"]:
+            # 15, not 14: `awaiting-merge` is exactly 14 characters and would touch the
+            # column beside it.
+            row = f"  {d['state']:<15}w{d['wave']}  {d['done']}/{d['total']}  {d['id']}"
+            if d["blocked_by"]:
+                row += "  blocked by " + ", ".join(d["blocked_by"])
+            if d["branch_alias"]:
+                row += f"  ** plan names {d['branch']}, on disk {d['branch_alias']} **"
+            elif not d["branch_exists"] and d["state"] != "merged":
+                row += "  (no branch yet)"
+            lines.append(row)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def main(argv):
+    table = False
+    plan_arg = None
+    for arg in argv:
+        if arg == "--table":
+            table = True
+        elif arg.startswith("-"):
+            die(f"unknown argument '{arg}'")
+        else:
+            plan_arg = arg
+
+    if not git_ok("rev-parse", "--git-dir"):
+        die("not a git repository")
+
+    f = facts()
+    tasks_home = f.get("tasks_home") or f.get("repo_root")
+    default_branch = f.get("default_branch")
+    if not default_branch:
+        die("no default branch resolved, and every merged test is taken against one")
+
+    # Compare against origin/<default> when it exists, not the local branch of that name.
+    # A local default left unpulled is behind the remote, and every branch cut from the
+    # remote then measures as that many commits "ahead" — work that is really the gap
+    # between the two, which reads as a deliverable under way when nothing was built.
+    ref = default_branch
+    if git("rev-parse", "--verify", "--quiet", f"origin/{default_branch}^{{commit}}"):
+        ref = f"origin/{default_branch}"
+
+    if plan_arg:
+        plan = resolve_plan_arg(plan_arg, tasks_home)
+        if not Path(plan).is_file():
+            die(f"plan not found: {plan}")
+        plans = [plan]
+    else:
+        plans = find_plans(tasks_home)
+        if not plans:
+            die(f"no plan.yaml under {tasks_home}/tasks outside completed/ — name one, or decompose a story first")
+
+    stories = []
+    for path in plans:
+        doc = load_plan(path)
+        siblings = doc.get("deliverables") or []
+        described = [describe(d, siblings, tasks_home, ref) for d in siblings if d.get("id")]
+        stories.append(
+            {
+                "plan": path,
+                "story": doc.get("story") or "",
+                "story_slug": doc.get("story_slug") or "",
+                "ticket": doc.get("ticket") or None,
+                "default_branch": default_branch,
+                "deliverables": settle(described),
+            }
+        )
+
+    if table:
+        print(render_table(stories))
+    else:
+        print(json.dumps(stories, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -17,7 +17,8 @@ STORY_JSON='[{"story_slug":"s","deliverables":[
  {"id":"done-one","wave":1,"state":"merged","done":3,"total":3,"tasks_file":"/t/a.md","worktree":null,"base_commit":"aaa1111111","blocked_by":[]},
  {"id":"held","wave":2,"state":"blocked","done":0,"total":4,"tasks_file":"/t/b.md","worktree":null,"base_commit":"bbb2222222","blocked_by":["live"]},
  {"id":"live","wave":1,"state":"in-progress","done":1,"total":4,"tasks_file":"/t/c.md","worktree":"/wt/live","base_commit":"ccc3333333","blocked_by":[]},
- {"id":"fresh","wave":1,"state":"ready","done":0,"total":5,"tasks_file":"/t/d.md","worktree":null,"base_commit":"ddd4444444","blocked_by":[]}]}]'
+ {"id":"fresh","wave":1,"state":"ready","done":0,"total":5,"tasks_file":"/t/d.md","worktree":null,"base_commit":"ddd4444444","blocked_by":[]},
+ {"id":"empty","wave":1,"state":"scaffolded","done":0,"total":3,"tasks_file":"/t/e.md","worktree":"/wt/empty","base_commit":"eee5555555","blocked_by":[]}]}]'
 
 clerk()   { print -r -- "$STORY_JSON" }
 PICK=""
@@ -85,6 +86,21 @@ eq "on the resolved base, leaving mode to the global config" \
    "workmux add s-fresh --name s-fresh --base ddd4444444 --prompt /implement /t/d.md --in-place" \
    "${out##*$'\n'}"
 
+
+# A worktree a dead launch left behind: right branch, right base, nothing built. It needs
+# the prompt that starts the run, which an open alone would never deliver.
+PANES=""
+TMUX=/tmp/fake out=$(run_with empty)
+eq "an empty worktree is started in place, not left sitting" \
+   "empty has an empty worktree at /wt/empty — starting the run in it" "${out%%$'\n'*}"
+eq "opening it with the prompt that begins the work" \
+   "workmux open empty --prompt /implement /t/e.md --in-place" "${out##*$'\n'}"
+
+# One with commits behind it is opened bare: a fresh /implement would restart its story.
+PANES=""
+TMUX=/tmp/fake out=$(run_with live)
+eq "a worktree with work in it is opened without a prompt" \
+   "workmux open live" "${out##*$'\n'}"
 
 PICK=""
 eq "picking nothing does nothing" "" "$( ( source $FN ) 2>&1 )"

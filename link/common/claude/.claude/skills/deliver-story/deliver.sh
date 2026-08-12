@@ -185,17 +185,56 @@ fi
 clerk_state_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" '$1 == i {print $2; exit}'; }
 clerk_where_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" '$1 == i {print $3; exit}'; }
 
+# Whether anything is still sitting in that worktree. clerk answers what the WORK looks
+# like — commits, ticked tasks, a branch — and cannot answer whether a process is alive,
+# which is not a fact about the repository. Without asking, a run that died after three of
+# seven tasks looks exactly like one still working through task four, and gets skipped
+# forever. A pane's cwd drifts into subdirectories as a run works, so match those too.
+agent_running_in() {
+  local wt="$1"
+  [ -n "$wt" ] || return 1
+  tmux list-panes -a -F '#{pane_current_path}' 2>/dev/null |
+    awk -v w="$wt" '$0 == w || index($0, w "/") == 1 { found = 1 } END { exit !found }'
+}
+
 while IFS='|' read -r id branch base wave deps tasks status; do
   [ "$status" = "pending" ] || continue
   in_only "$id" || continue
   [ -n "$WAVE" ] && [ "$wave" != "$WAVE" ] && continue
 
   cs=$(clerk_state_of "$id")
+  resume=""
   case "$cs" in
-    in-progress|awaiting-merge|merged)
+    awaiting-merge|merged)
       where=$(clerk_where_of "$id")
       say "skip: $id is already $cs${where:+ at $where} — the plan still says pending, clerk is right"
       continue ;;
+    in-progress)
+      where=$(clerk_where_of "$id")
+      if [ -z "$where" ]; then
+        say "skip: $id has commits but no worktree to resume in — check out its branch yourself"
+        continue
+      fi
+      if agent_running_in "$where"; then
+        say "skip: $id is being worked on at $where — the plan still says pending, clerk is right"
+        continue
+      fi
+      # Resuming is safe because the run reads its own sidecar: `clerk next` hands back the
+      # first unblocked task that is not already done, so the same prompt continues from
+      # where it stopped instead of rebuilding what landed. A tree left dirty mid-task
+      # stops it again on arrival, which is the report you want rather than a run that
+      # builds on top of someone else's half-finished edit.
+      resume="$where"
+      say "resume: $id stopped partway at $where with nothing running — restarting the run there"
+      ;;
+    scaffolded)
+      # A worktree standing at its base with no commits is a launch that died before doing
+      # anything. Its worktree is fine — right branch, right base, clean — so open it and
+      # start the run inside it. Creating a second one would strand this one, and skipping
+      # it outright leaves a deliverable nothing can ever pick up.
+      resume=$(clerk_where_of "$id")
+      say "resume: $id has an empty worktree at $resume — starting the run in it"
+      ;;
   esac
 
   if ! ready "$base" "$deps"; then
@@ -226,9 +265,16 @@ while IFS='|' read -r id branch base wave deps tasks status; do
   fi
 
   say "launch: $id  branch=$branch  base=$base@${bc%${bc#??????????}}  handle=$handle"
+  # `open` for a worktree that already exists, `add` for one that does not. `add` on an
+  # existing worktree would make a second, and `open` on a missing one has nothing to open.
+  if [ -n "$resume" ]; then
+    set -- open "$(basename -- "$resume")" --prompt "$prompt"
+  else
+    set -- add "$branch" --name "$handle" --base "$bc" --mode "$MODE" --background --prompt "$prompt"
+  fi
+
   if [ "$DRY" -eq 1 ]; then
-    printf '  workmux add %q --name %q --base %q --mode %q --background --prompt %q\n' \
-      "$branch" "$handle" "$bc" "$MODE" "$prompt"
+    printf '  workmux'; printf ' %q' "$@"; printf '\n'
     printf '  tmux kill-pane -a -t %q\n' "$pane_target"
     set_status "$id" running
     launched_handles="$launched_handles $handle"
@@ -236,7 +282,7 @@ while IFS='|' read -r id branch base wave deps tasks status; do
     mkdir -p "$LEARN_DIR"
     # stdin is the deliverable-list pipe feeding this loop; workmux reads a non-tty stdin as a
     # worktree list and then rejects --name as multi-worktree generation.
-    if workmux add "$branch" --name "$handle" --base "$bc" --mode "$MODE" --background --prompt "$prompt" </dev/null; then
+    if workmux "$@" </dev/null; then
       tmux kill-pane -a -t "$pane_target" 2>/dev/null || true
       set_status "$id" running
       launched=$((launched + 1))

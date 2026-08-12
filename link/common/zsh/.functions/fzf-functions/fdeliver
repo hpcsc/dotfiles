@@ -73,8 +73,16 @@ if [ -n "${target}" ]; then
 fi
 
 if [ -n "${worktree}" ]; then
-  echo "${id} has a worktree at ${worktree} but nothing running in it — opening it"
-  workmux open "$(basename -- "${worktree}")"
+  # Scaffolded means the worktree exists and nothing was ever built in it, so it needs the
+  # prompt that starts the run. A worktree with commits in it has an agent's work behind
+  # it; open that one bare, because a fresh /implement would start its story over.
+  if [ "${state}" = "scaffolded" ]; then
+    echo "${id} has an empty worktree at ${worktree} — starting the run in it"
+    workmux open "$(basename -- "${worktree}")" --prompt "/implement ${tasks} --in-place"
+  else
+    echo "${id} has a worktree at ${worktree} but nothing running in it — opening it"
+    workmux open "$(basename -- "${worktree}")"
+  fi
   return
 fi
 

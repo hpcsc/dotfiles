@@ -136,6 +136,10 @@ The markdown:
 ## Story Reference
 [the deliverable's own scope — the behavior this PR delivers. Described standalone; no "deliverable N of M".]
 
+## Boundaries
+**Out of scope:** [behaviour this deliverable does not deliver, named in domain terms]
+**Deferred:** [behaviour that is wanted but not here]
+
 ## Codebase Context
 [the subset of the Step 2 findings relevant to this deliverable: affected modules, patterns, types.]
 
@@ -165,6 +169,10 @@ The markdown:
 ```
 
 The tasks within a deliverable follow all the `decompose-to-tasks` rules (baby steps, vertical, each independently committable and green, tests in the same task as their behavior, `Testable: Yes` only when testable through a public API). Cross-deliverable dependencies are captured in `plan.yaml`, not inside a deliverable's task file — a deliverable's `tasks.md` never references another deliverable.
+
+**Boundaries carries the story's non-goals plus the cut you just made.** Splitting a story creates boundaries that did not exist in it: each deliverable now stops somewhere the story did not. Write those down here, because this is the section the audit reads to ask whether anything out of scope was built, and a boundary nobody wrote cannot be checked.
+
+Name the boundary by the behaviour, never by what owns it: "the send path does not read attachment bytes" and not "attachment reading lands in the next PR". The second is scheduling vocabulary, it reaches the PR description, and it goes stale the moment the plan is re-cut. A reviewer needs to know where this change stops; they do not need to know what comes after it.
 
 ---
 
@@ -220,6 +228,7 @@ Before returning, verify:
 - [ ] The dependency DAG is acyclic; waves are derived from it; wave-1 deliverables have no dependencies.
 - [ ] Each dependent deliverable's `base` (master vs. stacked sibling) matches its `depends_on`.
 - [ ] No scheduling vocabulary ("PR N", wave numbers) in any deliverable title, task, or text that reaches a commit/PR — only in `plan.yaml` and branch names.
+- [ ] Every deliverable's Boundaries names where it stops, in behavioural terms, without naming the deliverable that picks it up.
 - [ ] Every deliverable has a `tasks.md` in `decompose-to-tasks` format, adoptable by `implement-flow` unchanged.
 - [ ] Branch names are `<story-slug>-<deliverable-slug>` with no author prefix.
 - [ ] The `story-slug` uses the ticket the caller gave, or — none given — is named the way its siblings under `tasks/` are, with the id looked for in the story's header and URLs rather than only its title.

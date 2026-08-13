@@ -76,6 +76,10 @@ A changed file that lands under no language — prose documentation, a lockfile 
 >
 > Do NOT inflate severity to be taken seriously — everything you raise is verified and reported, and severity only ranks. Do NOT pad: an empty findings array is a real result. If it is useful, say what you looked at and deliberately did not flag.
 
+**The correctness lens gets more**, because scope breaches and narrowed contracts are invisible to a diff — code delivering a declared non-goal looks like extra work rather than the breach it is:
+
+> If the request names a breakdown, open it and read its Boundaries — the out-of-scope and deferred lists. Code that delivers something declared out of scope is a finding, however well written it is; so is a boundary the change set contradicts. Judge the same way in the other direction: a contract the breakdown pinned and the code narrowed — a list that became a single value, a field that gained a caller-supplied input the breakdown said would be resolved server-side — is a finding even when every test passes.
+
 **The test-integrity lens gets more**, because it is the highest-yield one — a suite that passes tells you nothing about whether it *could* fail:
 
 > For every test the diff adds or changes, and every test in the changed area the diff could have invalidated, ask whether it can still fail for the reason its name gives. Hunt specifically:

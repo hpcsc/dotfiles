@@ -90,10 +90,25 @@ This section is updated externally (by the orchestrator or human) as tasks compl
 ### 2. Story Reference
 Which user story this task list is derived from (file path or inline summary).
 
-### 3. Codebase Context
+### 3. Boundaries
+
+The story's non-goals, plus anything the decomposition itself pushed out. Two lists, either of which may be empty:
+
+```markdown
+## Boundaries
+
+**Out of scope:** behaviour this work deliberately does not deliver.
+**Deferred:** behaviour that is wanted, but not here — say where it went if you know.
+```
+
+Carry the story's non-goals verbatim rather than summarising them, and add the ones you created: a capability you declined to build, a case you decided not to handle, an extension the tasks stop short of. If the story named none and the decomposition created none, say so — an empty section is an answer, a missing one is a silence a reader has to interpret.
+
+This is the section the audit reads to ask whether anything out of scope was built. Unwritten boundaries cannot be checked, and code that quietly delivers a non-goal reads as a bonus rather than as the scope breach it is.
+
+### 4. Codebase Context
 Brief summary of the exploration findings: affected modules, existing patterns, relevant types.
 
-### 4. Tasks
+### 5. Tasks
 
 Each task includes:
 
@@ -122,7 +137,7 @@ Each task includes:
 
 Every acceptance criterion must be checkable by someone standing in the working tree with the task's changes applied and nothing committed yet — reading a file, running a command, inspecting output. If checking one would mean consulting `git log`, a branch, a remote, or a tag, it is describing the orchestrator's job rather than the task's, and belongs nowhere in the list.
 
-### 5. Summary
+### 6. Summary
 - Total number of tasks
 - Estimated task ordering rationale (risk-first, dependency-first, etc.)
 - Which acceptance criteria from the story are covered and any that are deferred
@@ -192,6 +207,7 @@ Before saving, verify:
 - [ ] No test plans included — Behavior and Acceptance Criteria are sufficient
 - [ ] Every task with `Testable: Yes` includes its tests — no separate "add tests" tasks
 - [ ] Dependencies between tasks are explicit
+- [ ] Boundaries carries the story's non-goals plus any the decomposition added, or says there are none
 - [ ] Each task is independently committable (codebase stays green)
 - [ ] No code samples, implementation logic, or control flow suggestions included
 - [ ] All acceptance criteria from the story are accounted for

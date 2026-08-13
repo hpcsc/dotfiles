@@ -1,0 +1,369 @@
+#!/usr/bin/env python3
+"""clerk lint — the conventions that can be checked rather than reviewed.
+
+Every rule here was already written down and already enforced by a reviewer reading code
+and forming a judgment. That works, and it is the most expensive way to apply a rule that
+a regex settles: an audit raised 773 findings to confirm 282, and each refuted one cost a
+verifier agent minutes of execution to establish that nothing was wrong. A rule checked
+here never enters that pipeline — no agent, no verification, no false positive to refute.
+
+So the bar for adding a rule is not "is this in the guidelines" but "does this decide
+without judgment". A check that needs a human to say "well, it depends" belongs in a
+guideline for a reviewer to weigh, not in this file.
+
+Rules:
+  comment-plan-position   a comment naming code by its plan position, ticket or task
+  test-umbrella           scenario-named sibling tests that belong under one umbrella
+  type-methods-split      a method living apart from the file declaring its type
+
+Dispatched to by `clerk` when invoked as `clerk lint`, and runnable on its own.
+"""
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+def die(msg):
+    print(f"clerk: lint: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def run(*args, cwd=None):
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, cwd=cwd, check=False)
+    except OSError as e:
+        return 1, "", str(e)
+    return p.returncode, p.stdout, p.stderr.strip()
+
+
+def facts():
+    exe = str(HERE / "clerk") if (HERE / "clerk").exists() else "clerk"
+    code, out, err = run(exe, "prepare")
+    if code != 0:
+        sys.stderr.write(err + "\n")
+        sys.exit(code)
+    return json.loads(out)
+
+
+# ---------------------------------------------------------------------------
+# What to look at
+# ---------------------------------------------------------------------------
+
+def diff_range(root, base, staged):
+    if staged:
+        return ["--cached"]
+    if base:
+        return [f"{base}...HEAD"]
+    for ref in ("origin/HEAD", "origin/main", "origin/master", "main", "master"):
+        code, out, _ = run("git", "-C", root, "merge-base", "HEAD", ref)
+        if code == 0 and out.strip():
+            return [f"{out.strip()}...HEAD"]
+    return ["--cached"]
+
+
+def changed_files(root, rng):
+    code, out, _ = run("git", "-C", root, "diff", "--name-only", "--diff-filter=ACMR", *rng)
+    if code != 0:
+        return []
+    return [l for l in out.splitlines() if l]
+
+
+def added_lines(root, path, rng):
+    """(line number in the new file, text) for lines this change introduced. Linting whole
+    files instead would report every comment written before the rule existed, which is the
+    fastest way to have a check switched off."""
+    code, out, _ = run("git", "-C", root, "diff", "-U0", *rng, "--", path)
+    if code != 0:
+        return []
+    lines, n = [], 0
+    for raw in out.splitlines():
+        h = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
+        if h:
+            n = int(h.group(1))
+            continue
+        if raw.startswith("+++") or raw.startswith("---"):
+            continue
+        if raw.startswith("+"):
+            lines.append((n, raw[1:]))
+            n += 1
+    return lines
+
+
+# ---------------------------------------------------------------------------
+# comment-plan-position
+# ---------------------------------------------------------------------------
+
+LINE_COMMENT = {".go": "//", ".js": "//", ".jsx": "//", ".ts": "//", ".tsx": "//",
+                ".java": "//", ".rs": "//", ".c": "//", ".h": "//", ".cpp": "//",
+                ".py": "#", ".sh": "#", ".bash": "#", ".zsh": "#", ".rb": "#",
+                ".yaml": "#", ".yml": "#", ".ex": "#", ".exs": "#", ".cue": "//"}
+
+STRINGS = re.compile(r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|`[^`]*`')
+
+# Standards that read exactly like a ticket id. Without these, every mention of UTF-8 or
+# RFC 2616 is reported as a ticket reference.
+NOT_A_TICKET = {"UTF", "SHA", "RFC", "ISO", "HTTP", "HTTPS", "MD", "AES", "RSA", "PKCS",
+                "IEEE", "ANSI", "ASCII", "UTC", "GMT", "ISBN", "EAN", "SP", "NIST",
+                "FIPS", "CVE", "IPV", "TLS", "SSL", "X", "EC", "PBKDF", "HMAC", "BASE"}
+
+PATTERNS = [
+    (re.compile(r"\b(?:PR|pr)\s+\d+\b"), "names a pull request"),
+    (re.compile(r"\b[Tt]ask\s+\d+\b"), "names a task by its number"),
+    (re.compile(r"\b[Ss]tep\s+\d+\b"), "names a step by its number"),
+    (re.compile(r"\b[Pp]hase\s+\d+\b"), "names a phase by its number"),
+    (re.compile(r"\b[Ww]ave\s+\d+\b"), "names a wave by its number"),
+    (re.compile(r"\b(?:deliverable|slice)\s+\d+\b", re.I), "names a deliverable by its position"),
+    (re.compile(r"\bdesign\s+(?:note|doc|document)\b", re.I), "cites a design document"),
+    (re.compile(r"\bthe\s+new\s+(?:helper|function|func|method|type|struct|interface|field|"
+                r"var|variable|param|parameter|arg|argument|file|package|test|case|branch|"
+                r"flag|hook|handler|column|table|endpoint|route)\b", re.I),
+     "names code as \"the new\" one, which stops being true"),
+    (re.compile(r"\b(?:added|removed|renamed|changed|updated)\s+(?:for|the\s+old|in\s+this\s+(?:PR|commit|change))\b", re.I),
+     "narrates the change rather than the code"),
+]
+
+TICKET = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-(\d+)\b")
+
+
+def comment_text(line, marker):
+    """The comment part of a line, or None. String literals are stripped first so a URL
+    containing // is not read as the start of a comment."""
+    stripped = STRINGS.sub(lambda m: " " * len(m.group(0)), line)
+    i = stripped.find(marker)
+    if i < 0:
+        # /* ... */ on one line, the other shape a reviewer would call a comment.
+        m = re.search(r"/\*(.*?)\*/", stripped)
+        return m.group(1) if m else None
+    return line[i + len(marker):]
+
+
+def check_comments(root, path, rng):
+    marker = LINE_COMMENT.get(Path(path).suffix)
+    if not marker:
+        return []
+    out = []
+    for n, line in added_lines(root, path, rng):
+        text = comment_text(line, marker)
+        if not text or not text.strip():
+            continue
+        for pat, why in PATTERNS:
+            m = pat.search(text)
+            if m:
+                out.append((path, n, "comment-plan-position",
+                            f"{why}: \"{m.group(0).strip()}\""))
+                break
+        else:
+            m = TICKET.search(text)
+            if m and m.group(1) not in NOT_A_TICKET:
+                out.append((path, n, "comment-plan-position",
+                            f"cites a ticket id: \"{m.group(0)}\""))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# test-umbrella
+# ---------------------------------------------------------------------------
+
+GO_TEST = re.compile(r"^func\s+(Test[A-Z]\w*)\s*\(")
+CAMEL = re.compile(r"[A-Z][a-z0-9]*")
+
+# Third-person verbs that start a scenario name. Precision matters more than recall here:
+# TestUser / TestUserService / TestUserRepo are three types and must not be reported, while
+# TestReactorOpensNewCase / TestReactorAttachesToExistingCase are one type's scenarios.
+SCENARIO_VERBS = {
+    "Opens", "Closes", "Returns", "Creates", "Rejects", "Accepts", "Handles", "Sends",
+    "Fails", "Succeeds", "Adds", "Removes", "Updates", "Deletes", "Marks", "Skips",
+    "Ignores", "Keeps", "Stops", "Starts", "Emits", "Writes", "Reads", "Parses",
+    "Validates", "Attaches", "Detaches", "Sets", "Gets", "Finds", "Lists", "Counts",
+    "Applies", "Records", "Reports", "Resolves", "Carries", "Drops", "Allows", "Denies",
+    "Refuses", "Raises", "Panics", "Waits", "Retries", "Loads", "Saves", "Stores",
+    "Fetches", "Renders", "Formats", "Encodes", "Decodes", "Filters", "Sorts", "Merges",
+    "Splits", "Copies", "Moves", "Locks", "Unlocks", "Flushes", "Truncates", "Expires",
+}
+
+
+def check_test_umbrella(root, path):
+    if not path.endswith("_test.go"):
+        return []
+    try:
+        text = (Path(root) / path).read_text()
+    except OSError:
+        return []
+    tests = []
+    for i, line in enumerate(text.splitlines(), 1):
+        m = GO_TEST.match(line)
+        if m:
+            tests.append((m.group(1), i))
+    groups = {}
+    for name, ln in tests:
+        words = CAMEL.findall(name[len("Test"):])
+        if words:
+            groups.setdefault(words[0], []).append((name, ln, words))
+    out = []
+    for head, members in sorted(groups.items()):
+        if len(members) < 3:
+            continue
+        scenarios = [m for m in members if len(m[2]) > 1 and m[2][1] in SCENARIO_VERBS]
+        if len(scenarios) < 2:
+            continue
+        names = ", ".join(m[0] for m in members)
+        out.append((path, members[0][1], "test-umbrella",
+                    f"{len(members)} top-level tests share Test{head} and read as scenarios "
+                    f"({names}) — one Test{head} wrapping them with t.Run is the convention"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# type-methods-split
+# ---------------------------------------------------------------------------
+
+# These two see a line, not a declaration, and two idiomatic shapes get past them: a
+# grouped `type ( ... )` block, where the names are indented and `type` is on its own
+# line, and a generic `type Box[T any]`, where no space follows the name. Both produce a
+# FALSE NEGATIVE — the rule reports clean rather than reporting a doubt — so read a clean
+# result here as "no split found in the shapes below", not as "no split". Fixing it means
+# a go/ast pass, where TypeSpec and FuncDecl.Recv answer both without string handling.
+GO_TYPE = re.compile(r"^type\s+(\w+)\s")
+GO_METHOD = re.compile(r"^func\s+\(\s*\w*\s*\*?(\w+)")
+GENERATED = re.compile(r"^//\s*Code generated .* DO NOT EDIT\.", re.M)
+BUILD_TAG = re.compile(r"^//(?:go:build|\s*\+build)", re.M)
+
+
+def go_package_files(root, path):
+    d = (Path(root) / path).parent
+    try:
+        return sorted(p for p in d.glob("*.go") if not p.name.endswith("_test.go"))
+    except OSError:
+        return []
+
+
+def check_type_methods(root, path, seen_pkgs, scope):
+    """A method on T living outside T's file. Reported against the file holding the stray
+    method, since that is the one to move it out of.
+
+    The whole package has to be read to know where a type is declared, but only splits
+    touching a file under review are reported: a package can hold a layout that predates
+    this rule, and re-reporting all of it on every unrelated change is how a check gets
+    switched off."""
+    if not path.endswith(".go") or path.endswith("_test.go"):
+        return []
+    d = str((Path(root) / path).parent)
+    if d in seen_pkgs:
+        return []
+    seen_pkgs.add(d)
+
+    declared, methods = {}, []
+    for f in go_package_files(root, path):
+        try:
+            text = f.read_text()
+        except OSError:
+            continue
+        # Both exemptions the guideline names: neither can live in the declaring file.
+        if GENERATED.search(text) or BUILD_TAG.search(text):
+            continue
+        for i, line in enumerate(text.splitlines(), 1):
+            t = GO_TYPE.match(line)
+            if t:
+                declared.setdefault(t.group(1), (f.name, i))
+                continue
+            m = GO_METHOD.match(line)
+            if m:
+                methods.append((m.group(1), f.name, i))
+
+    # One finding per (stray file, declaring file). Five methods moved out of one type's
+    # file is one structural decision and one fix; reporting it five times would bury the
+    # rest of the run under a single problem.
+    groups = {}
+    for recv, fname, ln in methods:
+        home = declared.get(recv)
+        if home and home[0] != fname:
+            g = groups.setdefault((fname, home[0]), {"line": ln, "types": []})
+            g["line"] = min(g["line"], ln)
+            if recv not in g["types"]:
+                g["types"].append(recv)
+
+    out = []
+    parent = Path(path).parent
+    for (fname, home), g in sorted(groups.items()):
+        if str(parent / fname) not in scope and str(parent / home) not in scope:
+            continue
+        types = ", ".join(g["types"])
+        out.append((str(parent / fname), g["line"], "type-methods-split",
+                    f"adds methods to {types}, declared in {home} — extract a collaborator "
+                    f"with its own name and constructor instead of a second file carrying "
+                    f"the same receiver"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+
+RULES = ("comment-plan-position", "test-umbrella", "type-methods-split")
+
+
+def main(argv):
+    staged = as_json = False
+    base = None
+    only = []
+    paths = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--staged":
+            staged = True
+        elif a == "--json":
+            as_json = True
+        elif a == "--base":
+            base = argv[i + 1] if i + 1 < len(argv) else die("--base needs a ref")
+            i += 1
+        elif a == "--rule":
+            r = argv[i + 1] if i + 1 < len(argv) else die("--rule needs a name")
+            if r not in RULES:
+                die(f"unknown rule '{r}' (known: {', '.join(RULES)})")
+            only.append(r)
+            i += 1
+        elif a.startswith("-"):
+            die(f"unknown argument '{a}'")
+        else:
+            paths.append(a)
+        i += 1
+
+    root = facts().get("repo_root")
+    if not root:
+        die("not a git repository")
+
+    rng = diff_range(root, base, staged)
+    # dict.fromkeys, not set(): overlapping roots on the command line hand the same file
+    # in twice, and every finding in it would be reported twice.
+    files = list(dict.fromkeys(p.lstrip("./") for p in (paths or changed_files(root, rng))))
+    wanted = set(only or RULES)
+    scope = set(files)
+
+    findings, seen_pkgs = [], set()
+    for f in files:
+        if "comment-plan-position" in wanted:
+            findings += check_comments(root, f, rng)
+        if "test-umbrella" in wanted:
+            findings += check_test_umbrella(root, f)
+        if "type-methods-split" in wanted:
+            findings += check_type_methods(root, f, seen_pkgs, scope)
+
+    findings.sort(key=lambda x: (x[0], x[1]))
+
+    if as_json:
+        print(json.dumps([{"file": f, "line": n, "rule": r, "message": m}
+                          for f, n, r, m in findings], indent=2))
+    else:
+        for f, n, r, m in findings:
+            print(f"{f}:{n}: [{r}] {m}")
+        if not findings:
+            print(f"clean — {len(files)} file(s), {len(wanted)} rule(s)")
+    return 1 if findings else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

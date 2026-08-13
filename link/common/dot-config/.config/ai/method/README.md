@@ -68,7 +68,7 @@ flowchart TD
   end
   subgraph P1["Phase 1 · Plan"]
     C --> D["decompose-to-tasks<br/>writes the breakdown + JSON sidecar"]
-    D --> G1{{"HUMAN GATE<br/>approve the plan"}}
+    D --> G1["present the plan, then build<br/>--review-plan makes it a gate"]
   end
   subgraph P2["Phase 2 · Build, task by task"]
     G1 --> E{"clerk next<br/>first unblocked task<br/>exit 3 if one is in flight"}

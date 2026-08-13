@@ -52,7 +52,7 @@ The dry run prints the worktree name, the resolved base commit and the absolute 
 /implement <absolute path to that deliverable's tasks.md> --in-place
 ```
 
-`--in-place` because the worktree already exists — without it the run scaffolds a second one for the work it is standing in. No `--unattended`: you are watching this one, so its plan and learnings gates are worth having.
+`--in-place` because the worktree already exists — without it the run scaffolds a second one for the work it is standing in. The deliverable already has a breakdown, so there is nothing to decompose and no reason to add `--review-plan`.
 
 The path must be absolute, or relative to the main checkout: a worktree branches from the default branch and does not contain a gitignored `tasks/` tree. `clerk` resolves a relative one against the main root, but the deliverable's own breakdown is never in the worktree itself.
 
@@ -194,7 +194,7 @@ Once a PR merges, **just run `/deliver-story` again** — it finds the existing 
 
 ## Caveats to check on first use
 
-- **Smoke-test the prompt injection once.** The driver launches each run by injecting `/implement <path> --in-place --unattended` as Claude's initial prompt via `workmux --prompt`. Confirm the slash command fires from the initial prompt on one deliverable (`--dry-run` shows the exact command) before trusting a whole wave. Fallback: `workmux add -C` (plain shell) then `workmux send` the invocation once the pane is up.
+- **Smoke-test the prompt injection once.** The driver launches each run by injecting `/implement <path> --in-place` as Claude's initial prompt via `workmux --prompt`. Confirm the slash command fires from the initial prompt on one deliverable (`--dry-run` shows the exact command) before trusting a whole wave. Fallback: `workmux add -C` (plain shell) then `workmux send` the invocation once the pane is up.
 - **Default branch.** The driver derives it from `origin/HEAD` (then local `main`/`master`). If a repo's default differs, set each deliverable's `base` explicitly in `plan.yaml`.
 
 ---

@@ -5,7 +5,7 @@ description: Implement a feature fully autonomously in the background as a Workf
 
 Implement a feature autonomously in the background, with **no human gates** — the approval gate is replaced by an independent evidence-closure verifier: $ARGUMENTS
 
-This is the gate-free, background sibling of `implement` / `implement-auto`. Those pause at a plan gate and a per-commit gate; this one runs the whole story unattended as a single `Workflow` and closes each task on **executed evidence** (raw command output, reproduced findings) rather than a human judge. You review the result afterward as a branch/PR.
+This is the gate-free, background sibling of `implement` / `implement-auto`. `implement-auto` pauses at a plan gate and a per-commit gate, and `implement` pauses at a plan gate when asked to; this one runs the whole story unattended as a single `Workflow` and closes each task on **executed evidence** (raw command output, reproduced findings) rather than a human judge. You review the result afterward as a branch/PR.
 
 ---
 

@@ -251,9 +251,9 @@ while IFS='|' read -r id branch base wave deps tasks status; do
   handle="$STORY_SLUG-$id"
   # --in-place because workmux already made the worktree and started this agent inside it;
   # without it the run would scaffold a second one for work it is already standing in.
-  # --unattended because nobody is reading this window while a wave runs: it drops the plan
-  # gate (the breakdown was written and approved before dispatch) and the learnings gate.
-  prompt="/implement $tasks_abs --in-place --unattended (adopt this task file; persist run learnings to $learnings; leave the branch for review, do not integrate)"
+  # No --review-plan: a wave fires many of these at once and nobody is reading the panes,
+  # so each one builds against the breakdown it was handed rather than holding a plan up.
+  prompt="/implement $tasks_abs --in-place (adopt this task file; persist run learnings to $learnings; leave the branch for review, do not integrate)"
 
   # The agent pane workmux focuses; killing every other pane in that window
   # leaves the deliverable with a single pane. In window mode the deliverable is a window of

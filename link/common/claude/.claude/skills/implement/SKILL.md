@@ -1,12 +1,12 @@
 ---
 name: implement
-argument-hint: "<feature or tasks/*.md> [--in-place] [--integrate] [--unattended]"
+argument-hint: "<feature or tasks/*.md> [--in-place] [--integrate] [--review-plan]"
 description: Implement a feature directly — decompose into tasks, then build each one yourself against the project's guidelines, committing per task, and hand the finished branch to audit-implement for independent review. Use when you want the feature built quickly and reviewed thoroughly, rather than delegated to implementation agents.
 ---
 
 Implement a feature directly, then have it audited: $ARGUMENTS
 
-**The request** is everything the caller just handed you: the feature description, plus any flags such as `--in-place`, `--integrate` or `--unattended`. **Record it verbatim before you do anything else**, and refer to that record from here on. Several steps below need its exact words — the audit is given the request unsummarized, and the validation pass re-reads it against the finished branch — and two steps read flags out of it. Do not rely on being able to recover it later from memory or from a substituted token.
+**The request** is everything the caller just handed you: the feature description, plus any flags such as `--in-place`, `--integrate` or `--review-plan`. **Record it verbatim before you do anything else**, and refer to that record from here on. Several steps below need its exact words — the audit is given the request unsummarized, and the validation pass re-reads it against the finished branch — and two steps read flags out of it. Do not rely on being able to recover it later from memory or from a substituted token.
 
 **You write the code.** This skill does not delegate construction to implementation agents. Review is delegated, at the end, to `audit-implement`.
 
@@ -140,16 +140,20 @@ It does the codebase exploration and dependency analysis that makes the task lis
 
 **One judgment call.** Decomposition costs a full agent (~15 minutes measured). Work that is obviously a single slice does not need it — say so and go straight to building. Anything with more than one deliverable, real dependencies, or an unclear surface gets decomposed.
 
-### Present and gate
+### Present the plan, then build
 
-Show the task list, in order, with dependencies.
+Show the task list, in order, with dependencies — then start. **The plan is not a gate.**
 
-**GATE — approval loop** (the only gate before code):
-- Ask the user to approve or request changes.
+That follows from what this skill is for. Its whole claim is that at minutes per feature, building a version and looking at it is a cheaper way to find out whether a requirement is right than arguing about a task breakdown; stopping to debate the breakdown spends the advantage the speed was bought for. The branch is disposable, the audit reads the finished code against the request rather than against the plan, and a decomposition that turns out wrong costs one short run rather than a negotiation.
+
+**With `--review-plan`, it is a gate:**
+- Show the plan and ask the user to approve or request changes.
 - On changes, re-spawn the decompose agent with the feedback and present the revised plan. Repeat.
-- Do not start until the plan is explicitly approved.
+- Do not write code until the plan is explicitly approved.
 
-**With `--unattended`, this gate does not run** — nobody is reading the window it would stop in, and a run parked at an unanswered question is worse than one that never started. It is only skippable because the plan already exists: you adopted a breakdown someone wrote and approved before dispatching you. **If you would have to decompose the story yourself, stop instead** and say the request needs either a breakdown or a human. An unattended run must never approve its own plan; that is the one judgement this shape cannot borrow from evidence.
+Reach for it when the decomposition is the expensive part rather than the code — a migration whose slicing decides how reviewable the result is, work whose surface you are unsure of, anything where being wrong costs more than one run.
+
+Do not pass it to a run nobody is watching. A launcher firing a wave of deliverables in parallel wants each one building, not each one holding a plan up to an empty pane.
 
 ---
 
@@ -228,9 +232,9 @@ Two rules `clerk` cannot enforce for you:
 
 Tick the acceptance criteria you actually walked in this task's section of the breakdown — that is the only per-criterion evidence a reviewer of the finished branch gets, and `clerk finish` stages the file for you once you have edited it. `clerk status` counts them and flags any task marked done that still carries an unwalked criterion; it never gates on that, because whether a criterion is genuinely met is your judgment rather than a box count.
 
-Say what landed in one or two lines and go back to `clerk next`. The user is watching this happen — unlike a delegated run, there is nothing hidden that a per-commit gate would need to reveal. Stop and ask only when something genuinely needs a decision.
+Say what landed in one or two lines and go back to `clerk next`. There is nothing hidden here that a per-commit gate would need to reveal, so no gate. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
 
-Under `--unattended` nobody is reading those lines as they appear, so write them for someone reading the whole window afterwards, and treat "stop and ask" as "stop and say why" — leave the branch where it is, state what the decision was, and end. Do not guess your way past it to keep the run moving.
+Stop and ask only when something genuinely needs a decision, and when you do, **state the decision and stop** rather than asking and waiting. Leave the branch where it is and say what you would need to continue. Someone watching can answer and you carry on; nobody watching gets a window that ends on the question instead of a pane parked on it. Either way, do not guess your way past a decision to keep the run moving.
 
 ---
 
@@ -300,7 +304,7 @@ If the fixes were trivial and confined — a typo, a single call site — skip t
 
 ### 3. Validate against the story
 
-The audit checked whether the code is correct and whether it matches the brief. Neither it nor the verifier checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a decomposition you approved before any code existed.
+The audit checked whether the code is correct and whether it matches the brief. Neither it nor the verifier checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a decomposition written from the request rather than from the request itself. This is the only step that reads the request, so it is the only place a decomposition that quietly narrowed the story is caught.
 
 This costs a read, not an agent, because you are already here. Re-read the request **verbatim, from the record you made in Phase 0** — not your memory of it, and not the brief you wrote from it — then read `git log --oneline` and the branch diff, and answer two questions:
 

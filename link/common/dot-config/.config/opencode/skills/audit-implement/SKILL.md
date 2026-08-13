@@ -38,7 +38,9 @@ You have a shell. Do not spend a subagent on what a few git commands answer.
 
    Be strict. Each `true` costs a full agent, and a specialist lens with nothing to judge returns nothing — measured five times out of five in earlier runs. Each `false` is reported as a coverage gap, which is the honest way to skip something.
 
-6. **Write a two-sentence summary** of what the change set does. Every lens gets it.
+6. **Run `clerk lint --json`** over the same range — `--staged` for staged changes, otherwise `--base <the base you resolved>`. It exits 1 when it finds something, which is a result rather than a failure. Keep its findings; they are deterministic, need no verification, and go straight into the report with `lens: "clerk-lint"`. If the command does not exist, note that — a lens may only stand down on the strength of it having actually run.
+
+7. **Write a two-sentence summary** of what the change set does. Every lens gets it.
 
 ---
 
@@ -67,6 +69,12 @@ A changed file that lands under no language — prose documentation, a lockfile 
 > Read the diff **and the whole post-image of every changed file in your remit**, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.
 >
 > Open a file with `Read`, whole, and do not open it again — it stays in your context. A file taken in eight `sed -n` slices costs eight model round-trips and yields what one `Read` yields; tool calls run strictly one at a time, so every extra one is time no parallelism gets back. Use `rg` to locate a file or symbol you cannot name, not to re-read one you already opened.
+
+**When `clerk lint` ran**, add what it covers so no lens pays to re-derive a rule a regex already settled — and hand the two Go rules over with their limits named, since the checker matches lines rather than declarations:
+
+> ALREADY CHECKED MECHANICALLY. `clerk lint` ran over this whole diff before you started, so do not re-report what it covers. Comments naming code by plan position or citing a ticket id are covered completely — do not hunt for them. Sibling scenario tests belonging under one umbrella, and a method living apart from the file declaring its type, are covered only for the shapes it can see: a type inside a grouped `type ( ... )` block or a generic `type Box[T any]` is invisible to it, so report one of those yourself. It reported: [list, or "nothing"]. Every other convention in the guidelines is still yours to judge.
+
+Omit this block entirely when the checker did not run. A lens told to stand down on a check that never happened leaves the rule enforced by nobody.
 >
 > The other changed files are context, not remit. A lens of their own language is reviewing them right now, so a finding you raise there is one they are already raising. Read any your own files touch — you cannot judge a caller you have not seen — but do not review them for their own sake. If you spot something wrong in one its owner would plausibly miss, say so in your note rather than as a finding.
 >

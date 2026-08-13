@@ -153,6 +153,25 @@ const SCOPE_SCHEMA = {
       },
     },
     summary: { type: 'string', description: 'two sentences on what this change set does, for the lenses' },
+    // Two states an empty array cannot tell apart: the checker ran and the diff is clean,
+    // or the checker is not installed. Only the first lets a lens stand down, so the fact
+    // that it ran is recorded separately from what it found.
+    mechanical_ran: { type: 'boolean', description: 'true only if `clerk lint` actually executed; false when the command does not exist' },
+    mechanical: {
+      type: 'array',
+      description: 'findings from `clerk lint`, verbatim; empty when it ran and found nothing',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['file', 'rule', 'message'],
+        properties: {
+          file: { type: 'string' },
+          line: { type: ['integer', 'null'] },
+          rule: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+    },
   },
 }
 
@@ -268,6 +287,7 @@ const scopePrompt = () =>
   `- \`signals.concurrency\`: true ONLY if the diff itself adds or changes concurrent code — goroutines, threads, async/await over shared state, channels, locks, transactions, shared mutable state. A file that merely sits in a concurrent codebase is not a signal.\n` +
   `- \`signals.performance\`: true ONLY if the diff itself adds or changes I/O, database queries, loops over unbounded input, allocation in a hot path, or if a benchmark exists that could measure the change. Absent that, false — a performance lens with nothing to measure returns nothing, every time.\n` +
   `Be strict with both signals. Each true costs a full specialist pass; each false one that should have been true is a gap you will report at the end instead.\n\n` +
+  `Then run \`clerk lint --json\` over the same range — \`--staged\` when the target is the staged changes, otherwise \`--base <the base you resolved>\`. It exits 1 when it finds anything, which is a result and not a failure; copy its findings into \`mechanical\` verbatim and set \`mechanical_ran\` true. Set it false ONLY when the command does not exist: a lens stands down on the strength of that flag, so a false true means nobody looks.\n\n` +
   `Finally write \`summary\`: two sentences on what this change set actually does, which every lens reads before it starts.`
 
 // The scope agent writes `summary` FROM the diff, so a lens weighing the code against
@@ -310,11 +330,33 @@ const fileBlock = (scope, remit) => {
     `Context, not remit — the other ${rest.length} changed file(s). A lens of their own language is reviewing them right now, so a finding you raise here is one they are already raising. Read any of them your own files touch, because you cannot judge a caller you have not seen; do not review them for their own sake. If you spot something wrong in one that its owner would plausibly miss, put it in \`note\` and not in \`findings\`:\n${rest.map((f) => `  ${f}`).join('\n')}\n\n`
 }
 
+// Three guideline rules are now settled by `clerk lint` over the whole diff before any
+// lens starts. Telling the lenses that is worth real money — a rule re-derived here costs
+// a lens to find and a verifier to confirm what a regex already decided — but it is only
+// safe to the exact extent the checker is complete, so the two Go rules are handed over
+// with their blind spots named rather than as a blanket stand-down.
+const mechanicalBlock = (scope) => {
+  if (!scope?.mechanical_ran) return ''
+  const found = scope.mechanical ?? []
+  return (
+    `ALREADY CHECKED MECHANICALLY. \`clerk lint\` ran over this whole diff before you started, so do not re-report what it covers:\n` +
+    `- Comments naming code by plan position or citing a ticket id — covered completely. Do not hunt for them.\n` +
+    `- Sibling scenario tests that belong under one umbrella, and a method living apart from the file declaring its type — covered only for the shapes it can see. It matches lines rather than declarations, so a type inside a grouped \`type ( ... )\` block or a generic \`type Box[T any]\` is invisible to it. Report one of those yourself; it will not have been.\n` +
+    (found.length
+      ? `\nIt reported these, which are already on the record — raising them again buys nothing:\n${found
+          .map((m) => `  ${m.file}${m.line ? `:${m.line}` : ''} [${m.rule}] ${m.message}`)
+          .join('\n')}\n`
+      : `\nIt reported nothing.\n`) +
+    `\nEvery other convention in the guidelines is still yours to judge.\n\n`
+  )
+}
+
 const reviewPreamble = (scope, remit) =>
   `You are auditing finished, committed work — not a work-in-progress. Nobody is waiting to defend it, so judge it as it stands.\n\n` +
   `Change set, as summarized from the diff: ${scope.summary}\n` +
   intentBlock() +
   recheckBlock() +
+  mechanicalBlock(scope) +
   `Diff: \`git diff ${scope.base}...${scope.head}\`${scope.base === 'HEAD' ? ' (or `git diff --cached` — this target is the staged changes)' : ''}\n` +
   fileBlock(scope, remit) +
   `Read the diff AND the whole post-image of every changed file in your remit, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.\n\n` +
@@ -396,6 +438,12 @@ const synthPrompt = (scope, confirmed, refuted, lensNotes, gaps) =>
   `Assemble the final audit report from verified material only.\n\n` +
   `Change set: ${scope.summary}\nFiles: ${scope.files.length}\n\n` +
   `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens}) — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
+  // These reached the audit only by being skipped: the same checker runs at commit time.
+  // Nothing verifies them because a regex already decided, so they bypass the pipeline
+  // and would vanish from the report unless carried in here.
+  ((scope.mechanical ?? []).length
+    ? `REPORTED MECHANICALLY by \`clerk lint\` (${scope.mechanical.length}) — deterministic, already established, and NOT verified because there is nothing to verify. Include each one as a finding with \`confidence: "confirmed"\`, \`lens: "clerk-lint"\` and the rule name as its evidence. Do not reword the message, and do not merge them with a lens finding:\n${scope.mechanical.map((m) => `- ${m.file}${m.line ? `:${m.line}` : ''} [${m.rule}] ${m.message}`).join('\n')}\n\n`
+    : '') +
   `REFUTED and dropped (${refuted.length}) — for your judgment of coverage only, do NOT reinstate:\n${refuted.map((r) => `- [${r.finding.id}] ${r.finding.claim} — ${r.basis}`).join('\n') || '  (none)'}\n\n` +
   (lensNotes.length ? `What the lenses deliberately did not flag:\n${lensNotes.map((n) => `- ${n}`).join('\n')}\n\n` : '') +
   (gaps.length ? `Lenses NOT run on this diff:\n${gaps.map((g) => `- ${g}`).join('\n')}\n\n` : '') +
@@ -639,6 +687,7 @@ return {
   lenses_not_run: notRun,
   candidates: raw.length,
   distinct: candidates.length,
+  mechanical: scope.mechanical ?? [],
   upheld: confirmed.length,
   refuted: refuted.map((r) => ({ id: r.finding.id, claim: r.finding.claim, why: r.basis })),
   findings: report?.findings ?? confirmed.map((c) => ({ ...c.finding, confidence: 'confirmed', evidence: c.basis })),

@@ -158,20 +158,27 @@ Keep the timeout finite so a wedged run wakes you too, and on every wake read th
 
 A deliverable sitting at `waiting` is usually blocked on a permission prompt, not thinking — `workmux capture <handle>` shows the pane, and the run makes no progress until it is answered.
 
-### Open the stack
+### When a wave finishes: review it, then refresh the stack
+
+Review each finished deliverable's branch (its `tasks.md` and commits describe it by domain behavior — no "PR N" leaks in). Then show the stack:
 
 ```
-clerk stack tasks/<slug>/plan.yaml            # what it would open, bottom first
-clerk stack tasks/<slug>/plan.yaml --create   # push the branches and open the drafts
+clerk stack tasks/<slug>/plan.yaml
 ```
 
-The plan already decided the stack: `base: <sibling-id>` means that deliverable's PR targets the sibling's branch, and `base: <default-branch>` means it targets the mainline. `clerk stack` reads that DAG and opens one draft PR per deliverable in dependency order, so each PR carries its own diff against its predecessor rather than the sum of everything beneath it — which is what makes a five-deliverable story reviewable at all, and what lets the riskiest deliverable sit alone at the bottom where reverting it is one merge.
+The plan already decided the stack: `base: <sibling-id>` means that deliverable's PR targets the sibling's branch, and `base: <default-branch>` means it targets the mainline. `clerk stack` reads that DAG and lists one draft PR per deliverable in dependency order, so each PR would carry its own diff against its predecessor rather than the sum of everything beneath it — which is what makes a five-deliverable story reviewable at all, and what lets the riskiest deliverable sit alone at the bottom where reverting it is one merge.
 
-It opens nothing without `--create`, because a pull request is visible to everyone on the repo the moment it exists. Each PR's title is the deliverable's, and its body is that deliverable's own **Story Reference** and **Boundaries** taken verbatim out of its `tasks.md` — a description written to stand alone, with the out-of-scope list in front of the reviewer rather than in a file nobody opens.
+**Opening them is `--create`, and it is the user's call, not yours.** A pull request is visible to everyone on the repo the moment it exists, and this skill runs unattended for hours; show the plan and let the user run it, or ask. Once told to go ahead:
 
-Re-run it as the story lands: a deliverable whose prerequisite has merged is **retargeted** onto the default branch, because a PR still pointing at a merged branch shows a diff against code that is already in the mainline. Merged deliverables, branchless ones and branches carrying no commits are skipped with the reason named.
+```
+clerk stack tasks/<slug>/plan.yaml --create
+```
 
-Once its PR merges, **just run `/deliver-story` again** — it finds the existing plan, skips planning, reconciles the merge, and delivers the next ready wave. (Stacked deliverables don't wait for a merge; they fire as soon as their prerequisite's branch carries commits of its own, so an earlier wave may already have launched them.) Mark a deliverable `merged` in `plan.yaml` yourself only if the reconcile can't see it (e.g. it merged under a different branch name).
+Each PR's title is the deliverable's, and its body is that deliverable's own **Story Reference** and **Boundaries** taken verbatim out of its `tasks.md` — a description written to stand alone, with the out-of-scope list in front of the reviewer rather than in a file nobody opens.
+
+**Show it again after every merge.** A deliverable whose prerequisite has landed is **retargeted** onto the default branch, because a PR still pointing at a merged branch diffs against code already in the mainline. Merged deliverables, branchless ones and branches carrying no commits are skipped with the reason named, so a re-run is cheap and reads as a status board for the stack.
+
+Once a PR merges, **just run `/deliver-story` again** — it finds the existing plan, skips planning, reconciles the merge, and delivers the next ready wave. (Stacked deliverables don't wait for a merge; they fire as soon as their prerequisite's branch carries commits of its own, so an earlier wave may already have launched them.) Mark a deliverable `merged` in `plan.yaml` yourself only if the reconcile can't see it (e.g. it merged under a different branch name).
 
 ---
 

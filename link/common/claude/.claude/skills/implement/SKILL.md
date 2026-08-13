@@ -196,7 +196,17 @@ Four checks earlier runs paid for, each of which shipped a defect that a passing
 clerk finish <n> -- <every file this task changed>
 ```
 
-That sets `done: true` on the task in the sidecar and stages it alongside those paths, so the progress record and the change it stands for land in one commit. The sidecar is the only place completion is recorded; the breakdown is prose, and is not rewritten. `clerk status` prints progress when you want to read it. A sidecar committed without its code makes a later run skip work it never did; code committed without the sidecar makes it redo work. `clerk finish` refuses a path that does not exist and refuses a task already done, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
+Then check the staged set against the conventions that decide without judgment:
+
+```
+clerk lint --staged
+```
+
+It reports comments that name code by its plan position or cite a ticket, sibling tests that belong under one umbrella, and a method living apart from the file declaring its type. Each is a rule from the guidelines you already read, and each is settled by looking rather than weighing — so a finding here is a defect, not an opinion to argue with. Fix it and `git add` the file again; do not re-run `clerk finish`, which refuses a task already done.
+
+Run it here rather than leaving it to review. The audit will raise these anyway, and there it costs a lens to find, a verifier to confirm, and a `--fixup` rebase to fold the fix back into the commit that introduced it — against seconds now, while you are still holding the code in mind. If a finding is genuinely wrong, that is a bug in the rule: say so, and fix the rule rather than working around it.
+
+`clerk finish` sets `done: true` on the task in the sidecar and stages it alongside those paths, so the progress record and the change it stands for land in one commit. The sidecar is the only place completion is recorded; the breakdown is prose, and is not rewritten. `clerk status` prints progress when you want to read it. A sidecar committed without its code makes a later run skip work it never did; code committed without the sidecar makes it redo work. `clerk finish` refuses a path that does not exist and refuses a task already done, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
 
 Then write the message, which is judgment rather than mechanics:
 

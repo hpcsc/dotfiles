@@ -979,9 +979,80 @@ eq "--table renders a row per deliverable" "7" \
    "$(run "$R22" story --table | rg -c '^  (merged|ready|blocked|scaffolded|in-progress|awaiting-merge)')"
 
 # --------------------------------------------------------------------------------
+printf '\nstack — PR bases derived from the plan DAG\n'
+
+# The fixture has no origin, so no `gh` call is made and every openable deliverable
+# reads as "create". What is under test is the ordering and the base each PR targets,
+# which is decided before any network call.
+SK=$(run "$R22" stack --json)
+sk() { printf '%s' "$SK" | jq -r --arg i "$1" --arg f "$2" '.[0].deliverables[] | select(.id == $i) | .[$f]'; }
+
+eq "a deliverable based on the default branch targets it"  "main"        "$(sk building base)"
+eq "a stacked deliverable targets its prerequisite branch" "br-building" "$(sk stacked base)"
+eq "a merged deliverable is skipped"                       "skip"        "$(sk rebased action)"
+eq "with the reason given"                          "already merged"     "$(sk rebased skip)"
+eq "a deliverable whose branch was deleted after merging is skipped too" "already merged" \
+   "$(sk gone skip)"
+eq "a deliverable with no branch is skipped"        "no branch yet"      "$(sk stacked skip)"
+eq "a branch carrying no commits is skipped" "branch carries no commits" "$(sk unblocked skip)"
+# The head is the branch on disk, not the one the plan wished for: a PR opened against
+# the planned name would 404, and the work sitting on the real branch never gets reviewed.
+eq "a branch that drifted from its planned name is still the PR head" "waiting-something-else" \
+   "$(sk waiting branch)"
+eq "a finished but unlanded deliverable is opened"         "create"      "$(sk finished action)"
+
+eq "the stack is emitted bottom-first, so a base exists before the PR that targets it" \
+   "true" "$(printf '%s' "$SK" | jq -r '[.[0].deliverables[] | .id] | index("building") < index("stacked")')"
+
+eq "creating without an origin refuses rather than opening half a stack" "2" \
+   "$(run "$R22" stack --create >/dev/null 2>&1; echo $?)"
+
+# The retarget that makes a stack survive its own merges. Two real branches: `high` sits
+# on `low`, and once `low` lands, a PR still pointing at br-low diffs against code that
+# is already in main. Its own fixture because R22's deliverables are shaped for state
+# derivation — the one branch stacked there is deliberately never created.
+R27=$(new_repo); mkdir -p "$R27/tasks/stack-s/low" "$R27/tasks/stack-s/high"
+for d in low high; do
+  printf '# %s\n' "$d" > "$R27/tasks/stack-s/$d/tasks.md"
+  printf '{"story":"%s","tasks":[{"n":1,"title":"t","depends_on":[],"done":true}]}\n' "$d" \
+    > "$R27/tasks/stack-s/$d/tasks.json"
+done
+{ printf 'story: Stacked\nstory_slug: stack-s\ndeliverables:\n'
+  printf '  - id: low\n    branch: br-low\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/stack-s/low/tasks.md\n'
+  printf '  - id: high\n    branch: br-high\n    base: low\n    wave: 2\n    depends_on: [low]\n    tasks: tasks/stack-s/high/tasks.md\n'
+} > "$R27/tasks/stack-s/plan.yaml"
+git -C "$R27" add -A && git -C "$R27" commit -qm "Plan a stack"
+git -C "$R27" checkout -q -b br-low
+printf 'low\n' > "$R27/low.txt"; git -C "$R27" add -A; git -C "$R27" commit -qm "Low"
+git -C "$R27" checkout -q -b br-high
+printf 'high\n' > "$R27/high.txt"; git -C "$R27" add -A; git -C "$R27" commit -qm "High"
+git -C "$R27" checkout -q main
+
+eq "a stacked PR targets its prerequisite while that is unlanded" "br-low" \
+   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base')"
+eq "and is opened rather than skipped" "create" \
+   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .action')"
+
+git -C "$R27" merge -q --no-ff -m "Land low" br-low
+eq "once the prerequisite lands the stack retargets to the mainline" "main" \
+   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base')"
+eq "and says why it moved" "low has merged" \
+   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base_note')"
+eq "the landed prerequisite drops out of the stack" "already merged" \
+   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "low") | .skip')"
+
+R26=$(new_repo); mkdir -p "$R26/tasks/one" "$R26/tasks/two"
+printf 'story: One\nstory_slug: one\ndeliverables:\n  - id: a\n    branch: br-a\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/one/a.md\n' > "$R26/tasks/one/plan.yaml"
+printf 'story: Two\nstory_slug: two\ndeliverables:\n  - id: b\n    branch: br-b\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/two/b.md\n' > "$R26/tasks/two/plan.yaml"
+git -C "$R26" remote add origin git@github.com:example/repo.git
+eq "two plans is fine to look at" "2" "$(run "$R26" stack --json | jq 'length')"
+eq "and refused for --create, which would open another story's PRs" "2" \
+   "$(run "$R26" stack --create >/dev/null 2>&1; echo $?)"
+
+# --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""clerk stack — open a story's deliverables as stacked draft PRs, in dependency order.
+
+`plan.yaml` already says which deliverable branches off which: `base: <sibling-id>` is a
+stacked PR whose base is that sibling's branch, and `base: <default-branch>` targets the
+mainline. That is the whole stack, already decided at decomposition time and never acted
+on — the branches land and someone opens the PRs by hand, in an order they have to
+re-derive.
+
+A stack is worth the trouble because it is what makes a large story reviewable: each PR
+carries one deliverable's diff against its predecessor rather than against the mainline,
+so a reviewer reads the change and not the sum of everything under it. It also makes a
+revert surgical — the risky deliverable sits alone at the bottom of the stack.
+
+Opening PRs is outward-facing and visible to a team, so it never happens by default. With
+no flag this prints the stack it would open; `--create` is the explicit go-ahead.
+
+Dispatched to by `clerk` when invoked as `clerk stack`, and runnable on its own.
+"""
+
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+
+
+def die(msg):
+    print(f"clerk: stack: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def run(*args, cwd=None):
+    try:
+        p = subprocess.run(args, capture_output=True, text=True, cwd=cwd, check=False)
+    except OSError as e:
+        return 1, "", str(e)
+    return p.returncode, p.stdout.strip(), p.stderr.strip()
+
+
+def sibling(name, args):
+    """Run a sibling clerk executable and parse its JSON. Falling back to the bare name
+    keeps this working when only some of the family is on PATH."""
+    exe = str(HERE / name) if (HERE / name).exists() else name
+    code, out, err = run(exe, *args)
+    if code != 0:
+        sys.stderr.write(err + "\n")
+        sys.exit(code)
+    try:
+        return json.loads(out or "null")
+    except json.JSONDecodeError:
+        die(f"{name} did not return JSON")
+
+
+def order(deliverables):
+    """Dependency order, so a PR is never opened before the branch it targets exists on
+    the remote. Ties break on wave then id, which keeps the printed stack stable between
+    runs. A cycle cannot be ordered; plan.yaml is validated acyclic, so treat one as a
+    corrupt plan rather than silently emitting a partial stack."""
+    by_id = {d["id"]: d for d in deliverables}
+    done, out = set(), []
+    remaining = sorted(deliverables, key=lambda d: (d.get("wave", 1), d["id"]))
+    while remaining:
+        ready = [d for d in remaining if all(x in done or x not in by_id for x in d["depends_on"])]
+        if not ready:
+            die("dependency cycle among " + ", ".join(d["id"] for d in remaining))
+        for d in ready:
+            out.append(d)
+            done.add(d["id"])
+        remaining = [d for d in remaining if d["id"] not in done]
+    return out
+
+
+def pr_base(d, by_id, default_branch):
+    """A stacked deliverable targets its prerequisite's branch — but only while that
+    prerequisite is still unmerged. Once it lands, its branch is the mainline plus
+    nothing, and a PR still pointing at it shows an empty or misleading diff. That is
+    the retarget every stack needs and nobody remembers to do."""
+    base = d.get("base") or ""
+    prereq = by_id.get(base)
+    if prereq is None:
+        return default_branch, None
+    if prereq.get("merged"):
+        return default_branch, f"{base} has merged"
+    if not prereq.get("branch_exists"):
+        return default_branch, f"{base} has no branch yet"
+    return prereq.get("branch_alias") or prereq["branch"], None
+
+
+SECTIONS = ("Story Reference", "Boundaries")
+
+
+def pr_body(tasks_file):
+    """The breakdown's Story Reference and Boundaries are written to describe the
+    deliverable standalone, which is exactly what a PR description has to do. Taking them
+    verbatim beats generating prose about a diff, and it puts the out-of-scope list in
+    front of the reviewer rather than leaving it in a file they will not open."""
+    if not tasks_file:
+        return None
+    try:
+        text = Path(tasks_file).read_text()
+    except OSError:
+        return None
+    found, current = {}, None
+    for line in text.splitlines():
+        m = re.match(r"^##\s+(.*?)\s*$", line)
+        if m:
+            current = m.group(1) if m.group(1) in SECTIONS else None
+            continue
+        if current:
+            found.setdefault(current, []).append(line)
+    parts = []
+    for name in SECTIONS:
+        body = "\n".join(found.get(name, [])).strip()
+        if body:
+            parts.append(body if name == "Story Reference" else f"## {name}\n\n{body}")
+    return "\n\n".join(parts) or None
+
+
+def has_origin(repo_root):
+    return run("git", "-C", repo_root, "remote", "get-url", "origin")[0] == 0
+
+
+def existing_pr(branch, cwd):
+    code, out, _ = run(
+        "gh", "pr", "list", "--head", branch, "--state", "open",
+        "--json", "number,baseRefName,url,isDraft", cwd=cwd,
+    )
+    if code != 0:
+        return None
+    try:
+        rows = json.loads(out or "[]")
+    except json.JSONDecodeError:
+        return None
+    return rows[0] if rows else None
+
+
+def plan_stack(story):
+    by_id = {d["id"]: d for d in story["deliverables"]}
+    default_branch = story["default_branch"]
+    rows = []
+    for d in order(story["deliverables"]):
+        branch = d.get("branch_alias") or d["branch"]
+        base, note = pr_base(d, by_id, default_branch)
+        if d.get("merged"):
+            skip = "already merged"
+        elif not d.get("branch_exists"):
+            skip = "no branch yet"
+        elif d.get("ahead", 0) == 0:
+            skip = "branch carries no commits"
+        else:
+            skip = None
+        rows.append({
+            "id": d["id"], "title": d.get("title") or d["id"], "branch": branch,
+            "base": base, "base_note": note, "state": d.get("state"),
+            "tasks_file": d.get("tasks_file") or "", "skip": skip,
+            "done": d.get("done", 0), "total": d.get("total", 0),
+        })
+    return rows
+
+
+def annotate(rows, repo_root, origin):
+    for r in rows:
+        if r["skip"]:
+            r["action"] = "skip"
+            continue
+        # Without an origin there is no PR to find, and asking `gh` anyway costs a
+        # subprocess per deliverable to be told the same thing.
+        pr = existing_pr(r["branch"], repo_root) if origin else None
+        if pr is None:
+            r["action"] = "create"
+        elif pr["baseRefName"] != r["base"]:
+            r["action"] = "retarget"
+            r["pr"] = pr["number"]
+            r["url"] = pr["url"]
+            r["from_base"] = pr["baseRefName"]
+        else:
+            r["action"] = "current"
+            r["pr"] = pr["number"]
+            r["url"] = pr["url"]
+    return rows
+
+
+def apply(rows, repo_root):
+    for r in rows:
+        if r["action"] == "create":
+            code, _, err = run("git", "-C", repo_root, "push", "-u", "origin", r["branch"])
+            if code != 0:
+                print(f"  push failed for {r['branch']}: {err}", file=sys.stderr)
+                r["action"] = "failed"
+                continue
+            body = pr_body(r["tasks_file"]) or ""
+            args = ["gh", "pr", "create", "--draft", "--base", r["base"],
+                    "--head", r["branch"], "--title", r["title"]]
+            args += ["--body", body] if body else ["--body", ""]
+            code, out, err = run(*args, cwd=repo_root)
+            if code != 0:
+                print(f"  gh pr create failed for {r['branch']}: {err}", file=sys.stderr)
+                r["action"] = "failed"
+                continue
+            r["url"] = out.splitlines()[-1] if out else ""
+            print(f"  opened  {r['id']:<28} {r['url']}")
+        elif r["action"] == "retarget":
+            code, _, err = run("gh", "pr", "edit", str(r["pr"]), "--base", r["base"], cwd=repo_root)
+            if code != 0:
+                print(f"  gh pr edit failed for #{r['pr']}: {err}", file=sys.stderr)
+                r["action"] = "failed"
+                continue
+            print(f"  retargeted #{r['pr']} {r['from_base']} -> {r['base']}")
+    return rows
+
+
+def render(story, rows, will_create):
+    head = "opening" if will_create else "would open"
+    print(f"{story.get('story_slug') or story['plan']}   ({story.get('story') or ''})")
+    print(f"  {head} onto {story['default_branch']}, bottom of the stack first\n")
+    wid = max((len(r["id"]) for r in rows), default=0)
+    wbr = max((len(r["branch"]) for r in rows), default=0)
+    for r in rows:
+        mark = {"create": "+", "retarget": "~", "current": "=", "skip": " ", "failed": "!"}.get(r["action"], "?")
+        line = f"  {mark} {r['id']:<{wid}}  {r['branch']:<{wbr}}  ->  {r['base']}"
+        if r["action"] == "skip":
+            line += f"   ({r['skip']})"
+        elif r["action"] == "retarget":
+            line += f"   (#{r['pr']} currently on {r['from_base']})"
+        elif r["action"] == "current":
+            line += f"   (#{r['pr']} already correct)"
+        if r.get("base_note"):
+            line += f"   [{r['base_note']}]"
+        print(line)
+    counts = {}
+    for r in rows:
+        counts[r["action"]] = counts.get(r["action"], 0) + 1
+    print("\n  " + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())))
+    if not will_create and (counts.get("create") or counts.get("retarget")):
+        print("  nothing was opened — pass --create to act on this")
+
+
+def main(argv):
+    create = as_json = False
+    plan_arg = None
+    for a in argv:
+        if a == "--create":
+            create = True
+        elif a == "--json":
+            as_json = True
+        elif a.startswith("-"):
+            die(f"unknown argument '{a}'")
+        else:
+            plan_arg = a
+
+    facts = sibling("clerk", ["prepare"])
+    repo_root = facts.get("repo_root")
+    if not repo_root:
+        die("not a git repository")
+
+    stories = sibling("clerk-story", [plan_arg] if plan_arg else [])
+    if not stories:
+        die("no story to stack")
+
+    # Several plans at once is fine to look at and wrong to act on: the deliverables of
+    # two stories interleave in the printed order and a mis-typed --create would open
+    # someone else's PRs alongside yours.
+    if create and len(stories) > 1:
+        die(f"{len(stories)} plans found; name the one to open with `clerk stack <plan.yaml>`:\n"
+            + "\n".join(f"  {s['plan']}" for s in stories))
+
+    if create and run("gh", "--version")[0] != 0:
+        die("gh is not installed, and every PR here is opened through it")
+
+    origin = has_origin(repo_root)
+    if create and not origin:
+        die("no `origin` remote, and a stacked PR needs its base branch pushed")
+
+    out = []
+    for story in stories:
+        rows = annotate(plan_stack(story), repo_root, origin)
+        if create:
+            rows = apply(rows, repo_root)
+        if as_json:
+            out.append({"plan": story["plan"], "deliverables": rows})
+        else:
+            render(story, rows, create)
+            print()
+    if as_json:
+        print(json.dumps(out, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -184,6 +184,7 @@ def describe(deliverable, siblings, tasks_home, ref):
 
     return {
         "id": did,
+        "title": d.get("title") or "",
         "wave": d.get("wave", 1),
         "branch": branch,
         "tasks_file": str(Path(tasks_home) / tasks_rel) if tasks_rel else "",

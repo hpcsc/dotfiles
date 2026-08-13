@@ -317,7 +317,12 @@ const reviewPreamble = (scope, remit) =>
   recheckBlock() +
   `Diff: \`git diff ${scope.base}...${scope.head}\`${scope.base === 'HEAD' ? ' (or `git diff --cached` — this target is the staged changes)' : ''}\n` +
   fileBlock(scope, remit) +
-  `Read the diff AND the whole post-image of every changed file in your remit, together, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.\n\n` +
+  `Read the diff AND the whole post-image of every changed file in your remit, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.\n\n` +
+  // Measured across 133 lenses: 63% opened one file three or more times, one of them
+  // eight, and `sed`/`cat` outnumbered `Read` two to one. Tool calls here do not batch —
+  // each is its own model round-trip of several seconds — so slicing is the single
+  // largest cost in a review, and it buys nothing a whole-file read does not.
+  `Open a file with \`Read\`, whole, and do not open it again — it stays in your context. A file taken in eight \`sed -n\` slices costs eight model round-trips and yields what one \`Read\` yields; tool calls here are strictly sequential, so every extra one is time no parallelism gets back. Use \`rg\` to locate a file or symbol you cannot name, not to re-read one you already opened.\n\n` +
   `Do NOT run the full test suite — it already passes, that is why this work is finished. Run a scoped command only to demonstrate a specific finding.\n\n`
 
 const findingContract =
@@ -373,6 +378,7 @@ const verifyPrompt = (scope, f, i, n) =>
   `Claim: ${f.claim}\n` +
   (f.failure_scenario ? `Claimed failure: ${f.failure_scenario}\n` : '') +
   `\nDiff under audit: \`git diff ${scope.base}...${scope.head}\`\n\n` +
+  `Open a file with \`Read\`, whole, and do not reopen it — tool calls here run one at a time, so a file taken in \`sed -n\` slices costs a model round-trip per slice. Editing a file to mutate it and restoring it afterwards is a different thing and stays.\n\n` +
   (n > 1 ? `You are verifier ${i + 1} of ${n} working independently on this same claim; do not assume the others agree with you.\n\n` : '') +
   (f.nature === 'runtime'
     ? `Try to REFUTE it by execution. Write and run a failing test, a \`-race\` run, a benchmark, or a direct invocation that would demonstrate the defect. Test command for this project: \`${testCmdFor(scope.languages?.[0])}\`.\n` +

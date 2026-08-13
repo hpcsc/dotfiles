@@ -64,7 +64,9 @@ A changed file that lands under no language — prose documentation, a lockfile 
 
 > You are auditing finished, committed work. Nobody is waiting to defend it; judge it as it stands.
 >
-> Read the diff **and the whole post-image of every changed file in your remit**, together, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.
+> Read the diff **and the whole post-image of every changed file in your remit**, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.
+>
+> Open a file with `Read`, whole, and do not open it again — it stays in your context. A file taken in eight `sed -n` slices costs eight model round-trips and yields what one `Read` yields; tool calls run strictly one at a time, so every extra one is time no parallelism gets back. Use `rg` to locate a file or symbol you cannot name, not to re-read one you already opened.
 >
 > The other changed files are context, not remit. A lens of their own language is reviewing them right now, so a finding you raise there is one they are already raising. Read any your own files touch — you cannot judge a caller you have not seen — but do not review them for their own sake. If you spot something wrong in one its owner would plausibly miss, say so in your note rather than as a finding.
 >
@@ -107,6 +109,8 @@ Nothing reaches the report unverified. Spawn one verifier per **distinct** findi
 >
 > [finding id, severity, nature, file, line, claim, failure_scenario]
 > Diff under audit: `git diff <base>...<head>`
+>
+> Open a file with `Read`, whole, and do not reopen it — tool calls run one at a time, so a file taken in `sed -n` slices costs a model round-trip per slice. Editing a file to mutate it and restoring it afterwards is a different thing and stays.
 
 **For a `runtime` claim** — try to *refute* it by execution:
 

@@ -47,6 +47,18 @@
 - Interface-based dependencies for testability
 - Clear separation of concerns
 
+### 7. A Type and Its Methods Live in One File
+- The file that declares a type declares every method on it. Reading the type's file is reading everything it can do.
+- **A new file means a new type.** When the declaring file grows too large, extract a collaborator with its own name, its own dependencies and its own constructor — never move some of the methods sideways into a second file that keeps the same receiver.
+- A second file with the same receiver is the symptom, not the problem: a file named for one capability adding methods to a type named for another has already named the type it should have declared.
+
+**Extracting the collaborator:**
+- Give it only the dependencies its own methods use, construct it in the owner's constructor, and have the owner delegate.
+- That is what makes the split testable on its own, which moving methods between files never does. If the extracted type would need every field the original had, it was not a second responsibility — put the methods back and leave the file long.
+- Generated code and build-tagged variants are exempt; they cannot live in the declaring file.
+
+This is stricter than the standard library, which does spread large types across files. The strictness is deliberate: a receiver is not a namespace, and "which file does this method go in" should have exactly one answer.
+
 ## Application
 
 These principles work together to create:

@@ -2,7 +2,7 @@
 
 `clerk prepare` reported whether the tree is `clean`. If it is not, stop and ask — never build on top of someone else's loose work.
 
-Then **work in a worktree**, unless the request carries `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits. That sweep is a real failure mode, not a hypothetical.
+Then **work in a worktree**, unless `in_place` is on — from the request, or from the repo settings `clerk prepare` reported in `flags`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits. That sweep is a real failure mode, not a hypothetical.
 
 **If `clerk prepare` listed a worktree whose branch matches this feature**, that run already has a home: call **EnterWorktree** with its `path` to switch into it, and do not pass `name`. Creating a second one for the same feature is how the first one's commits get stranded.
 
@@ -28,4 +28,4 @@ Two consequences to hold onto:
 - **The main repo root is not your cwd.** Re-run `clerk prepare` after entering: it reports `repo_root` and `work_tree` separately for exactly this reason, and the learnings file and `tasks/test-commands.json` live under the former. So does the breakdown itself when `tasks_tracked` is false.
 - **The worktree branches from the current HEAD**, because `git worktree add` was given no other base — so the feature sits on whatever the main checkout had checked out, unpushed local commits included. The `worktree.baseRef` setting governs the tool's `name` mode only and has no say here. To branch from somewhere else, pass that ref as a final argument to `git worktree add`.
 
-With `--in-place`: no worktree. Create a feature branch if on the default branch, and build in the main checkout.
+With `in_place` on: no worktree. Create a feature branch if on the default branch, and build in the main checkout. Say so in your opening summary when a config file rather than the request is what turned it on, and name the file — `--worktree` in the request overrules it for one run.

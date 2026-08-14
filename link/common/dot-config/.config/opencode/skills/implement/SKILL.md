@@ -7,6 +7,16 @@ Implement a feature directly, then have it audited. The command that invoked thi
 
 **The request** is everything the caller just handed you: the feature description, plus any flags such as `--in-place`, `--integrate` or `--review-plan`. **Record it verbatim before you do anything else**, and refer to that record from here on. Several steps below need its exact words — the audit is given the request unsummarized, and the validation pass re-reads it against the finished branch — and two steps read flags out of it. Do not rely on being able to recover it later from memory or from a substituted token.
 
+**A flag not in the request may still be on.** All three are also repo settings, because each is as often a property of the repo as of the run: one whose build cannot work from a worktree wants `--in-place` every time. `clerk prepare` resolves them and reports the answers in `flags` — read those, not the request, wherever a step below turns on a flag. It also reports `flag_sources`, naming what decided each one, so a run that behaves unexpectedly can say which file to look in.
+
+| Flag | `flags` key | Off again with |
+|---|---|---|
+| `--in-place` | `in_place` | `--worktree` |
+| `--integrate` | `integrate` | `--no-integrate` |
+| `--review-plan` | `review_plan` | `--no-review-plan` |
+
+The request always outranks the files, in both directions — that is what the middle column is for, and why a repo may safely default one on. Say in your opening summary which of the three are on and what set them; a run that quietly builds in place because of a file the user forgot is a surprise they paid for with a dirty checkout.
+
 **You write the code.** This skill does not delegate construction to implementation agents. Review is delegated, at the end, to `audit-implement`.
 
 <!-- GENERATED from ~/.config/ai/method/implement/. Edit the body or a seam, then run
@@ -38,13 +48,14 @@ Use `implement-flow` instead for large mechanical migrations with genuinely disj
 clerk prepare
 ```
 
-One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, and whether the tree is `clean`.
+One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, `flags` with `flag_sources`, and whether the tree is `clean`.
 
 Read the values rather than re-deriving them. Three carry precedence rules subtle enough that resolving them by hand goes wrong quietly, which is why a command settles them and reports the answer:
 
 - **`test_command`** — `tasks/test-commands.json` (tracked, a team decision) beats `tasks/.environment` (a gitignored machine-local cache) beats detection. A cached command must never shadow one the team committed. Use the entry for the task's language while working on it; use `default` before committing anything that spans languages, and again in Phase 3.
 - **`go_tool_prefix`** — whether *this machine* runs Go through mise. Decided once, applied to every Go command, never double-wrapped on a project command that already says `mise exec --`.
 - **`learnings_path`** — in-tree when the repo tracks `tasks/`, out-of-tree per-project when it gitignores it, so a shared repo gets steering without polluting teammates' checkouts.
+- **`flags`** — the run's flags after the repo's own settings are applied: `tasks/clerk.json` (tracked, a team decision) beats `tasks/.environment` (gitignored, machine-local) beats off. `flag_sources` names what decided each. A flag in the request still outranks all of them, so combine the two yourself — this is the one resolution `clerk` cannot finish, because only you can see what was typed.
 
 **Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
 
@@ -90,7 +101,7 @@ At minimum load: the caller pattern that fits this work (UI / Inbound / Outbound
 
 `clerk prepare` reported whether the tree is `clean`. If it is not, stop and ask — never build on top of someone else's loose work.
 
-Then **work in a worktree**, unless the request carries `--in-place`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits.
+Then **work in a worktree**, unless `in_place` is on — from the request, or from the repo settings `clerk prepare` reported in `flags`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits.
 
 **If `clerk prepare` listed a worktree whose branch matches this feature**, that run already has a home — `cd` to its `path` and carry on. Do not `git worktree add` a second one; that is how the first one's commits get stranded.
 
@@ -110,7 +121,7 @@ Once inside, `git` and file operations run against the worktree naturally — no
 
 **A repo that keeps `tasks/` out of history is not a reason to skip the worktree.** A fresh checkout only ever materialises tracked files, so an excluded breakdown will not be in the new worktree — but `clerk` resolves it at the main repo root in that case and every command finds it there. `prepare` says which regime you are in: `tasks_tracked` and `tasks_home`. Building in the main checkout to stay near the breakdown trades the isolation for nothing, and it is the isolation that keeps the audit's verifiers from writing probe files into a tree you are also running a suite in.
 
-With `--in-place`: no worktree. `git switch -c <kebab-feature-name>` if on the default branch, and build in the main checkout.
+With `in_place` on: no worktree. `git switch -c <kebab-feature-name>` if on the default branch, and build in the main checkout. Say so in your opening summary when a config file rather than the request is what turned it on, and name the file — `--worktree` in the request overrules it for one run.
 
 ---
 
@@ -152,7 +163,7 @@ Show the task list, in order, with dependencies — then start. **The plan is no
 
 That follows from what this skill is for. Its whole claim is that at minutes per feature, building a version and looking at it is a cheaper way to find out whether a requirement is right than arguing about a task breakdown; stopping to debate the breakdown spends the advantage the speed was bought for. The branch is disposable, the audit reads the finished code against the request rather than against the plan, and a decomposition that turns out wrong costs one short run rather than a negotiation.
 
-**With `--review-plan`, it is a gate:**
+**With `review_plan` on, it is a gate:**
 - Show the plan and ask the user to approve or request changes.
 - On changes, re-spawn the decompose agent with the feedback and present the revised plan. Repeat.
 - Do not write code until the plan is explicitly approved.
@@ -243,7 +254,7 @@ Stop and ask only when something genuinely needs a decision, and when you do, **
 
 ### 1. Full suite
 
-Run the `default` test command **in the tree that holds this run's commits** — `clerk prepare` reported it as `work_tree`. Unless you passed `--in-place` you are in a worktree, and the main checkout is on the default branch without a line of this feature in it; a suite run there tests the wrong tree and passes for the wrong reason.
+Run the `default` test command **in the tree that holds this run's commits** — `clerk prepare` reported it as `work_tree`. Unless `in_place` was on you are in a worktree, and the main checkout is on the default branch without a line of this feature in it; a suite run there tests the wrong tree and passes for the wrong reason.
 
 Then record it:
 
@@ -329,15 +340,18 @@ What `clerk verify` leaves in `not_checked` is the residue that still needs judg
 ### 5. Close out and land
 
 ```
-clerk land                    # archive the breakdown; leave the branch standing
-clerk land --integrate        # …and put it on the default branch
+clerk land                    # archive the breakdown; integrate if the repo says so
+clerk land --integrate        # …and put it on the default branch regardless
+clerk land --no-integrate     # …and leave the branch standing regardless
 ```
 
 `land` runs the gate first and refuses if it does not open: every task checked off, the tree clean, a passing receipt **at the current HEAD**, and `--audit-accepted` asserted once the audit's findings are fixed or the user has accepted them. That last one is judgment, so it is asserted rather than inferred — without it the gate simply stays shut.
 
 It archives the breakdown to `tasks/completed/` **on the feature branch, before any integration**, so the archive commit rides with the work it belongs to rather than landing on the default branch behind it. That order is also the only one that works: `git mv` leaves a dirty tree and a dirty tree blocks the rebase.
 
-**Integration is opt-in.** Without `--integrate` the work stays on its branch and you hand it over, naming the branch and the one command that lands it. That default is not timidity: landing is the one irreversible step here and its inputs are all things you assessed about your own work. A branch left standing costs one `merge --ff-only` later; a bad fast-forward costs a history rewrite.
+**Integration is opt-in, and `land` resolves that itself** — bare `clerk land` reads the repo's `integrate` setting, so pass a flag only to overrule it. With integration off the work stays on its branch and you hand it over, naming the branch and the one command that lands it. That default is not timidity: landing is the one irreversible step here and its inputs are all things you assessed about your own work. A branch left standing costs one `merge --ff-only` later; a bad fast-forward costs a history rewrite.
+
+A repo that sets `integrate: true` has decided that trade for itself, and `land` reports `integrate_source` either way so the decision is never anonymous. **The stronger your doubt about the work, the more that setting is the wrong one to inherit silently** — `--no-integrate` overrules it for one run, and a branch handed over is the cheap outcome to be wrong about.
 
 With `--integrate` it rebases onto the default branch, and **stops if the rebase actually replayed commits onto a moved base** — green-before-rebase is not green-after, so it returns exit 3 and asks for a fresh suite run and receipt before it will fast-forward. On conflict it aborts the rebase and leaves the branch exactly as it was; do not resolve someone else's merge for them. It never pushes.
 

@@ -204,7 +204,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 
 | Command | What it settles | Exit |
 |---|---|---|
-| `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, plus every existing worktree and breakdown with its progress | 0 |
+| `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, resolved run flags with their sources, plus every existing worktree and breakdown with its progress | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
 | `status [--all]` | Progress from the sidecar, plus acceptance criteria walked per task; `--all` walks every breakdown in the repo, in flight and archived | 0 |
@@ -212,10 +212,36 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
-| `land [--integrate]` | Archive on the branch; integrate only when asked | 0 · **1** · **3** after a live rebase |
+| `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 
 Every command takes `--tasks-file` when `tasks/` holds more than one breakdown. Exit 2
 is a usage error throughout.
+
+### Per-repo flag defaults
+
+`--in-place`, `--integrate` and `--review-plan` are as often properties of the repo as
+of the run — a repo whose build cannot work from a worktree wants `--in-place` every
+time — so each is also a setting. Two files, highest first:
+
+```jsonc
+// tasks/clerk.json — tracked, a team decision
+{ "in_place": true }
+
+// tasks/.environment — gitignored, machine-local. JSON, or key=value.
+integrate=true
+```
+
+`prepare` reports the result as `flags` and what decided each one as `flag_sources`.
+Unrecognised values read as `false`: a typo must never be what turns integration on.
+
+**The request outranks both files, in both directions.** `--worktree`, `--no-integrate`
+and `--no-review-plan` turn off what a file switched on, which is what makes defaulting
+one on safe to begin with. `land` is the only command that consumes a flag itself, so it
+applies `integrate` in code; the other two are resolved by `prepare` and read by the
+prose, because they change what the model does rather than what a command does.
+
+> Precedence deliberately matches `test_command`: a tracked team decision beats a
+> machine-local preference beats a built-in default. One ladder, learned once.
 
 ### Where progress lives
 

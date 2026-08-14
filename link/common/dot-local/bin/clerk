@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-CLERK_VERSION=0.1.0
+CLERK_VERSION=0.2.0
 
 die() { printf 'clerk: %s\n' "$1" >&2; exit 2; }
 
@@ -97,7 +97,9 @@ env_get() {
   local file=$1 key=$2 v=
   [ -f "$file" ] || return 1
   if head -c1 "$file" 2>/dev/null | grep -q '{'; then
-    v=$(jq -r --arg k "$key" '.[$k] // empty' "$file" 2>/dev/null)
+    # `has` rather than `// empty`: jq's alternative operator treats a stored `false`
+    # as absent, so a boolean setting could never be turned off by the file that set it.
+    v=$(jq -r --arg k "$key" 'if has($k) then .[$k] else empty end' "$file" 2>/dev/null)
   else
     v=$(sed -n "s/^${key}=//p" "$file" 2>/dev/null | head -1 | sed 's/^"//; s/"$//')
   fi
@@ -153,6 +155,50 @@ resolve_learnings_path() {
   else
     printf '%s/tasks/learnings.md' "$root"
   fi
+}
+
+# --------------------------------------------------------------------------------
+# Run flags. A skill flag is often really a property of the repo: one whose build
+# cannot run from a worktree wants --in-place on every run, and saying so once in a
+# file beats remembering it every time. Precedence mirrors resolve_test_commands — a
+# tracked team decision beats a machine-local preference beats the built-in default.
+#
+# An explicit flag in the request outranks all three. Applying that part is the
+# caller's job, not this one's: only the caller can see what was actually typed, and
+# a resolver that guessed would make an unset flag indistinguishable from a false one.
+# --------------------------------------------------------------------------------
+
+FLAG_KEYS='in_place integrate review_plan'
+
+# Accepts what a hand-written config plausibly says. Anything unrecognised reads as
+# false rather than failing: a typo in this file must never be what turns integration
+# on, and the flags all default off precisely because their "on" is the costly side.
+truthy() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+    true|1|yes|on) printf 'true' ;;
+    *) printf 'false' ;;
+  esac
+}
+
+# Prints "<value>\t<source>". The source is reported, not decoration: a run that
+# integrated because of a file nobody remembers writing is the failure it prevents.
+resolve_flag() {
+  local root=$1 key=$2 cfg="$1/tasks/clerk.json" envf="$1/tasks/.environment" v=
+  if [ -f "$cfg" ] && jq -e . "$cfg" >/dev/null 2>&1; then
+    v=$(jq -r --arg k "$key" 'if has($k) then .[$k] else empty end' "$cfg" 2>/dev/null)
+    [ -n "$v" ] && { printf '%s\ttasks/clerk.json' "$(truthy "$v")"; return; }
+  fi
+  v=$(env_get "$envf" "$key") && { printf '%s\ttasks/.environment' "$(truthy "$v")"; return; }
+  printf 'false\tdefault'
+}
+
+resolve_flags() {
+  local root=$1 key
+  for key in $FLAG_KEYS; do
+    printf '%s\t%s\n' "$key" "$(resolve_flag "$root" "$key")"
+  done | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t"))
+    | {flags:        (map({key: .[0], value: (.[1] == "true")}) | from_entries),
+       flag_sources: (map({key: .[0], value: .[2]})             | from_entries)}'
 }
 
 # --------------------------------------------------------------------------------
@@ -272,7 +318,7 @@ list_breakdowns() {
 }
 
 cmd_prepare() {
-  local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees
+  local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees flags
   root=$(repo_root) || die "not a git repository"
   wt=$(work_tree); th=$(tasks_home)
   def=$(default_branch)
@@ -283,6 +329,7 @@ cmd_prepare() {
   cmds=$(resolve_test_commands "$root")
   prefix=$(resolve_go_prefix "$root")
   learn=$(resolve_learnings_path "$root")
+  flags=$(resolve_flags "$root")
   tasks=$(find_tasks_file "$th") || tasks=""
   breakdowns=$(list_breakdowns "$th")
   # Worktrees this repo already has. A resumed run must enter the one it left rather
@@ -310,6 +357,7 @@ cmd_prepare() {
     --argjson clean "$clean" \
     --argjson breakdowns "$breakdowns" \
     --argjson worktrees "$trees" \
+    --argjson flagobj "$flags" \
     '{
       version: $version,
       repo_root: $repo_root,
@@ -329,7 +377,7 @@ cmd_prepare() {
       tasks_tracked: $tasks_tracked,
       breakdowns: $breakdowns,
       worktrees: $worktrees
-    }'
+    } + $flagobj'
 }
 
 # --------------------------------------------------------------------------------
@@ -840,11 +888,14 @@ cmd_verify() {
 # --------------------------------------------------------------------------------
 
 cmd_land() {
-  local integrate=false audit=false name= tasks_override= root wt th tasks def branch before after dir
+  # Empty, not false: unset has to stay distinguishable from "asked for off", or the
+  # repo default would silently overrule a caller who typed --no-integrate.
+  local integrate= integrate_src=request resolved audit=false name= tasks_override= root wt th tasks def branch before after dir
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --integrate) integrate=true; shift ;;
+      --no-integrate) integrate=false; shift ;;
       --audit-accepted) audit=true; shift ;;
       --feature-name) name=${2:-}; shift 2 ;;
       --tasks-file) tasks_override=${2:-}; shift 2 ;;
@@ -869,6 +920,15 @@ cmd_land() {
 
   root=$(repo_root); wt=$(work_tree); th=$(tasks_home); dir=$(state_dir)
   def=$(default_branch); branch=$(git rev-parse --abbrev-ref HEAD)
+
+  # Nothing typed means the repo decides. This runs after the gate rather than before
+  # it because a config file cannot change whether the branch is fit to land — only
+  # whether a fit branch goes on to be merged.
+  if [ -z "$integrate" ]; then
+    resolved=$(resolve_flag "$root" integrate)
+    integrate=$(printf '%s' "$resolved" | cut -f1)
+    integrate_src=$(printf '%s' "$resolved" | cut -f2)
+  fi
   if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else tasks=$(find_tasks_file "$th") || tasks=""; fi
 
   # Archive first, on the feature branch, so the archive commit rides with the work it
@@ -902,9 +962,13 @@ cmd_land() {
   fi
 
   if [ "$integrate" != true ]; then
-    jq -n --arg b "$branch" --arg d "$def" --arg wt "$wt" --argjson archived "$archived" \
+    jq -n --arg b "$branch" --arg d "$def" --arg wt "$wt" --arg src "$integrate_src" \
+      --argjson archived "$archived" \
       '{landed: false, archived: $archived, branch: $b, default_branch: $d, work_tree: $wt,
-        note: "integration is opt-in and was not requested",
+        integrate: false, integrate_source: $src,
+        note: (if $src == "request" or $src == "default"
+               then "integration is opt-in and was not requested"
+               else "integration is off in " + $src end),
         to_land: ("git -C <main checkout> merge --ff-only " + $b + " (rebase onto " + $d + " first if the base moved)")}'
     return 0
   fi
@@ -966,9 +1030,9 @@ cmd_land() {
   fi
 
   jq -n --arg d "$def" --arg b "$branch" --argjson archived "$archived" \
-    --argjson deleted "$deleted" --arg holder "$holder" \
+    --argjson deleted "$deleted" --arg holder "$holder" --arg src "$integrate_src" \
     --arg log "$(git log --oneline -5)" \
-    '{landed: true, archived: $archived, base_branch: $d, branch: $b,
+    '{landed: true, integrate_source: $src, archived: $archived, base_branch: $d, branch: $b,
       deleted_branch: (if $deleted then $b else null end),
       branch_left: (if $deleted then null
                     elif $holder != "" then ($b + " still exists: the worktree at " + $holder + " has it checked out. Remove that worktree, then: git branch -d " + $b)
@@ -996,7 +1060,7 @@ USAGE
                                      record a suite run against the SHA it describes
   clerk gate [--audit-accepted] [--tasks-file <f>]
                                      report the landing predicates; exit 0 only if all pass
-  clerk land [--integrate] [--audit-accepted]
+  clerk land [--integrate|--no-integrate] [--audit-accepted]
                                      archive the breakdown; land the branch only if asked
   clerk verify [--all-closed]        the mechanical half of run-verifier
   clerk version
@@ -1004,6 +1068,12 @@ USAGE
 The commands that resolve a breakdown — next, status, finish, gate, land, story,
 sidecar — all take --tasks-file to name it when tasks/ holds more than one. verify
 reads this run's own records instead, and prepare reports every breakdown it found.
+
+Per-repo flag defaults — in_place, integrate, review_plan — come from tasks/clerk.json
+(tracked, a team decision) or tasks/.environment (gitignored, machine-local), in that
+order. prepare reports the resolved values as `flags` and where each came from as
+`flag_sources`; land applies `integrate` itself. A flag typed on the command line
+always wins, and --no-integrate turns off what a config file switched on.
 
 Everything here is mechanical. Judgment — writing code, reviewing it, deciding a fix
 is right — stays with the caller.

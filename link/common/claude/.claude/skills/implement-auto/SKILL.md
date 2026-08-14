@@ -17,13 +17,14 @@ Implement a feature autonomously with a single approval gate before each commit:
 clerk prepare
 ```
 
-One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, and whether the tree is `clean`.
+One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, `flags` with `flag_sources`, and whether the tree is `clean`.
 
 Read the values rather than re-deriving them. Three carry precedence rules subtle enough that resolving them by hand goes wrong quietly, which is why a command settles them and reports the answer:
 
 - **`test_command`** — `tasks/test-commands.json` (tracked, a team decision) beats `tasks/.environment` (a gitignored machine-local cache) beats detection. A cached command must never shadow one the team committed. Use the entry for the task's language while working on it; use `default` before committing anything that spans languages, and again in Phase 3.
 - **`go_tool_prefix`** — whether *this machine* runs Go through mise. Decided once, applied to every Go command, never double-wrapped on a project command that already says `mise exec --`.
 - **`learnings_path`** — in-tree when the repo tracks `tasks/`, out-of-tree per-project when it gitignores it, so a shared repo gets steering without polluting teammates' checkouts.
+- **`flags`** — the run's flags after the repo's own settings are applied: `tasks/clerk.json` (tracked, a team decision) beats `tasks/.environment` (gitignored, machine-local) beats off. `flag_sources` names what decided each. A flag in the request still outranks all of them, so combine the two yourself — this is the one resolution `clerk` cannot finish, because only you can see what was typed.
 
 **Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
 

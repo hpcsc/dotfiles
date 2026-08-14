@@ -253,7 +253,10 @@ while IFS='|' read -r id branch base wave deps tasks status; do
   # without it the run would scaffold a second one for work it is already standing in.
   # No --review-plan: a wave fires many of these at once and nobody is reading the panes,
   # so each one builds against the breakdown it was handed rather than holding a plan up.
-  prompt="/implement $tasks_abs --in-place (adopt this task file; persist run learnings to $learnings; leave the branch for review, do not integrate)"
+  # --no-integrate as a flag rather than only as prose: a repo may set integrate=true, and
+  # `clerk land` honours that in code, which would merge each deliverable into the default
+  # branch — dismantling the stack these runs exist to produce before anyone reviews it.
+  prompt="/implement $tasks_abs --in-place --no-integrate (adopt this task file; persist run learnings to $learnings; leave the branch for review)"
 
   # The agent pane workmux focuses; killing every other pane in that window
   # leaves the deliverable with a single pane. In window mode the deliverable is a window of

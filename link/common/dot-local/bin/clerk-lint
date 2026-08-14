@@ -332,7 +332,11 @@ def main(argv):
             paths.append(a)
         i += 1
 
-    root = facts().get("repo_root")
+    # work_tree, never repo_root: inside a worktree they differ, and repo_root is the main
+    # checkout. Linting there reads another branch's index and disk — --cached finds nothing
+    # staged, and the file rules parse files this branch already deleted.
+    repo = facts()
+    root = repo.get("work_tree") or repo.get("repo_root")
     if not root:
         die("not a git repository")
 

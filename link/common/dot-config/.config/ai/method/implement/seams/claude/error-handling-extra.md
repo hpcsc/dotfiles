@@ -1,2 +1,2 @@
-| `EnterWorktree` unavailable or refused | Fall back to `--in-place`: feature branch in the main checkout. Say which you used — it changes where the user finds the code. |
-| Worktree based on `origin/<default>` but the work needs unpushed local commits | Re-run with `--in-place`, or set `worktree.baseRef: head`. Do not cherry-pick around it. |
+| `git worktree add` fails, or `EnterWorktree` is unavailable | Fall back to `--in-place`: feature branch in the main checkout. Say which you used — it changes where the user finds the code. |
+| `EnterWorktree` refuses the path | It takes a path already in `git worktree list` for this repo, entered from the launch directory. Check `git worktree add` actually succeeded and that you have not already switched trees; failing that, `--in-place`. |

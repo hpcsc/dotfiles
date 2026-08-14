@@ -9,10 +9,14 @@ Then **work in a worktree**, unless the request carries `--in-place`. This is no
 Otherwise create it:
 
 ```
-WT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/../wt-<kebab-feature-name>"
+GIT_COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"
+WT="$(dirname "$GIT_COMMON")/.worktrees/<kebab-feature-name>"
+grep -qxF '.worktrees/' "$GIT_COMMON/info/exclude" 2>/dev/null || printf '.worktrees/\n' >> "$GIT_COMMON/info/exclude"
 git worktree add -b <kebab-feature-name> "$WT"
 cd "$WT"
 ```
+
+**The exclude line is not tidiness.** `.worktrees/` sits inside the repo, so without it the new directory shows up as untracked — and `clerk`'s `clean` is `git status --porcelain`, which counts untracked files. The next `clerk prepare` from the main checkout would report a dirty tree and this skill would stop and ask about loose work that is only its own worktree. It goes in `info/exclude` rather than `.gitignore` because editing a tracked file to hide a scratch directory is itself an uncommitted change, and `$GIT_COMMON` resolves to the main `.git` from inside any worktree, so the line is written once per repo.
 
 Once inside, `git` and file operations run against the worktree naturally — no `-C` prefix needed. Re-run `clerk prepare` after `cd`: it reports `repo_root` and `work_tree` separately, and the learnings file and `tasks/test-commands.json` live under the former, not under your cwd.
 

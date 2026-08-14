@@ -17,7 +17,7 @@
 
 set -uo pipefail
 
-CLERK_VERSION=0.2.0
+CLERK_VERSION=0.3.0
 
 die() { printf 'clerk: %s\n' "$1" >&2; exit 2; }
 
@@ -199,6 +199,47 @@ resolve_flags() {
   done | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t"))
     | {flags:        (map({key: .[0], value: (.[1] == "true")}) | from_entries),
        flag_sources: (map({key: .[0], value: .[2]})             | from_entries)}'
+}
+
+# Writes the tracked half of the pair above. It goes next to the resolver on purpose:
+# the two must agree on the filename and the key spelling, and a scaffold that writes
+# a key the resolver does not read is worse than no scaffold, because the setting then
+# appears to have been made.
+cmd_init() {
+  local force=false in_place=false integrate=false review_plan=false root path tracked=true
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --force)       force=true;       shift ;;
+      --in-place)    in_place=true;    shift ;;
+      --integrate)   integrate=true;   shift ;;
+      --review-plan) review_plan=true; shift ;;
+      *) die "init: unknown argument '$1'" ;;
+    esac
+  done
+
+  root=$(repo_root) || die "not a git repository"
+  path="$root/tasks/clerk.json"
+  [ -e "$path" ] && [ "$force" != true ] && die "init: $path already exists (--force overwrites it)"
+
+  mkdir -p "$root/tasks" || die "init: could not create $root/tasks"
+  # Every key is written, including the ones left false. JSON takes no comments, so
+  # listing them is the file's only way to tell a reader what it accepts — a scaffold
+  # holding just the one key you asked for teaches nothing about the other two.
+  jq -n --argjson in_place "$in_place" --argjson integrate "$integrate" \
+        --argjson review_plan "$review_plan" \
+    '{in_place: $in_place, integrate: $integrate, review_plan: $review_plan}' > "$path" \
+    || die "init: could not write $path"
+
+  # A repo that gitignores tasks/ cannot track this file, so the tracked tier is simply
+  # absent there and the settings are this machine's alone. Saying so at the moment of
+  # writing beats a teammate wondering why a committed decision never reached them.
+  if is_ignored "$root" tasks/clerk.json; then tracked=false; fi
+  jq -n --arg path "$path" --argjson tracked "$tracked" --argjson flags "$(jq -c . "$path")" \
+    '{created: $path, tracked: $tracked, flags: $flags,
+      note: (if $tracked
+             then "commit it to make these the defaults for everyone working in this repo"
+             else "this repo gitignores tasks/, so it stays machine-local, like tasks/.environment"
+             end)}'
 }
 
 # --------------------------------------------------------------------------------
@@ -1047,6 +1088,9 @@ usage() {
 clerk — deterministic mechanics for an implementation run
 
 USAGE
+  clerk init [--force] [--in-place] [--integrate] [--review-plan]
+                                     scaffold tasks/clerk.json with the flags named
+                                     set on and the rest written out off
   clerk prepare                      resolve the repo's facts as JSON
   clerk next [--allow-dirty]         the first task whose dependencies are all done;
                                      exit 3 if a task is still in flight
@@ -1071,9 +1115,10 @@ reads this run's own records instead, and prepare reports every breakdown it fou
 
 Per-repo flag defaults — in_place, integrate, review_plan — come from tasks/clerk.json
 (tracked, a team decision) or tasks/.environment (gitignored, machine-local), in that
-order. prepare reports the resolved values as `flags` and where each came from as
-`flag_sources`; land applies `integrate` itself. A flag typed on the command line
-always wins, and --no-integrate turns off what a config file switched on.
+order. `clerk init` scaffolds the first one. prepare reports the resolved values as
+`flags` and where each came from as `flag_sources`; land applies `integrate` itself. A
+flag typed on the command line always wins, and --no-integrate turns off what a config
+file switched on.
 
 Everything here is mechanical. Judgment — writing code, reviewing it, deciding a fix
 is right — stays with the caller.
@@ -1105,6 +1150,7 @@ need git
 need jq
 
 case "${1:-}" in
+  init)     shift; cmd_init "$@" ;;
   prepare)  shift; cmd_prepare "$@" ;;
   next)     shift; cmd_next "$@" ;;
   status)   shift; cmd_status "$@" ;;

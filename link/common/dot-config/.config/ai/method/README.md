@@ -204,6 +204,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 
 | Command | What it settles | Exit |
 |---|---|---|
+| `init [--force] [--in-place] [--integrate] [--review-plan]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
 | `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, resolved run flags with their sources, plus every existing worktree and breakdown with its progress | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
@@ -223,13 +224,24 @@ is a usage error throughout.
 of the run — a repo whose build cannot work from a worktree wants `--in-place` every
 time — so each is also a setting. Two files, highest first:
 
-```jsonc
-// tasks/clerk.json — tracked, a team decision
-{ "in_place": true }
+```console
+$ clerk init --in-place          # scaffolds the tracked file, in_place already on
+{"created": ".../tasks/clerk.json", "tracked": true,
+ "flags": {"in_place": true, "integrate": false, "review_plan": false}, ...}
+```
 
-// tasks/.environment — gitignored, machine-local. JSON, or key=value.
+```jsonc
+// tasks/clerk.json — tracked, a team decision. `clerk init` writes it.
+{ "in_place": true, "integrate": false, "review_plan": false }
+
+// tasks/.environment — gitignored, machine-local. JSON, or key=value. Hand-written.
 integrate=true
 ```
+
+`init` writes all three keys even when you name only one: JSON takes no comments, so
+listing them is the file's only way to say what it accepts. It refuses to overwrite
+without `--force`, and it tells you `tracked: false` in a repo that gitignores `tasks/`
+— there the tracked tier does not exist and the file is machine-local whatever it says.
 
 `prepare` reports the result as `flags` and what decided each one as `flag_sources`.
 Unrecognised values read as `false`: a typo must never be what turns integration on.

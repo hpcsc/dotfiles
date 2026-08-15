@@ -1377,6 +1377,32 @@ eq "--caller adds that pattern and only it" "1|0" \
 eq "a numbered pattern is found by name, not by number" "1" \
    "$(gl --language Go --caller exported | grep -c 'exported-body')"
 
+# Agents cite sections by name that no fixed slot list could anticipate.
+S=$(gl --language Go --section 'go/testing-patterns.md:Unrelated Section')
+eq "a section asked for by name is added to the bundle" "1" \
+   "$(printf '%s' "$S" | grep -c 'noise-body')"
+eq "without displacing the slots the bundle already had" "3" \
+   "$(printf '%s' "$S" | grep -cE 'what-body|unit-body|assert-body')"
+
+# Headings contain colons; filenames do not — so the spec splits on the first only.
+# Naming one the bundle already covers must also not print it twice.
+eq "a heading with a colon in it still resolves, once" "1" \
+   "$(gl --language Go --section "go/testing-patterns.md:Assertion Strictness: Match to What You're Testing" \
+      | grep -c 'assert-body')"
+
+# A file reached only this way is cut to what was asked, whatever its length.
+printf '# Shared\n\n## Coupling-Based Assertion Levels\ncoupling-body\n\n## Other\nother-body\n' \
+  > "$GD/testing/patterns.md"
+P=$(gl --language Go --section 'testing/patterns.md:Coupling-Based Assertion Levels')
+eq "a file outside every bundle gives only the section named" "1|0" \
+   "$(printf '%s|%s' "$(printf '%s' "$P" | grep -c 'coupling-body')" \
+      "$(printf '%s' "$P" | grep -c 'other-body')")"
+
+eq "a named section that no heading matches is reported" "1" \
+   "$(gl --language Go --section 'go/testing-patterns.md:Renamed Away' | grep -c 'no section matching .Renamed Away.')"
+eq "and a spec with no heading is refused outright" "2" \
+   "$(gl --language Go --section 'go/testing-patterns.md' >/dev/null 2>&1; printf '%s' $?)"
+
 eq "the DOM guideline is opt-in" "0" "$(gl --language JavaScript/TypeScript | grep -c 'dom-body')"
 eq "and arrives when asked for" "1" \
    "$(gl --language JavaScript/TypeScript --dom | grep -c 'dom-body')"

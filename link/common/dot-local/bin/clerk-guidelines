@@ -119,20 +119,30 @@ def emit_whole(path, lines, out):
     out.append("".join(lines))
 
 
-def emit_sections(path, lines, slots, out, missing):
+def emit_sections(path, lines, slots, out, missing, literals=()):
+    """`slots` are named sets of spellings; `literals` are headings a caller asked for."""
     sections = headings(lines)
     index = section_index(lines)
     if index:
         out.append(f"\n<!-- {path} — section index; read further sections from it as needed -->\n")
         out.append(index)
-    for slot in slots:
-        spellings = SLOTS[slot] if slot in SLOTS else CALLERS[slot]
+    seen = set()
+    for slot in list(slots) + [("literal", h) for h in literals]:
+        if isinstance(slot, tuple):
+            slot, spellings = slot[1], [slot[1].lower()]
+        else:
+            spellings = SLOTS[slot] if slot in SLOTS else CALLERS[slot]
         found = find_section(sections, spellings)
         if not found:
             missing.append({"file": path, "slot": slot,
                             "headings": [n for n, _, _ in sections]})
             continue
         name, start, end = found
+        # A caller naming a section the bundle already covers gets it once. Emitting it
+        # twice costs context to say the same thing, and reads as two different rules.
+        if name in seen:
+            continue
+        seen.add(name)
         out.append(f"\n<!-- {path} § {name} -->\n")
         out.append("".join(lines[start:end]).rstrip() + "\n")
 
@@ -158,6 +168,9 @@ def main():
                     help="repeatable; defaults to what `clerk prepare` detects")
     ap.add_argument("--caller", choices=sorted(CALLERS),
                     help="also emit this caller pattern's section")
+    ap.add_argument("--section", action="append", default=[], metavar="FILE:HEADING",
+                    help="repeatable; a section by name, e.g. "
+                         "go/testing-patterns.md:'Independent Verification'")
     ap.add_argument("--dom", action="store_true", help="add the DOM guideline")
     ap.add_argument("--state", action="store_true", help="add the shared-state guideline")
     ap.add_argument("--guidelines-dir", default=os.environ.get("CLERK_GUIDELINES_DIR"))
@@ -168,7 +181,8 @@ def main():
     if args.help:
         print(__doc__.strip())
         print("\nUSAGE\n  clerk guidelines [--language <L>]... [--caller ui|inbound|outbound|async|exported]"
-              "\n                   [--dom] [--state] [--list] [--guidelines-dir <d>]")
+              "\n                   [--section FILE:HEADING]... [--dom] [--state] [--list]"
+              "\n                   [--guidelines-dir <d>]")
         return 0
 
     root = Path(args.guidelines_dir) if args.guidelines_dir else DEFAULT_ROOT
@@ -190,6 +204,18 @@ def main():
         if getattr(args, flag) and f not in plan:
             plan.append(f)
 
+    # Split on the FIRST colon only: headings contain them ("Assertion Strictness:
+    # Match to What You're Testing"), filenames do not.
+    wanted = {}
+    for spec in args.section:
+        rel, sep, heading = spec.partition(":")
+        if not sep or not heading.strip():
+            die(f"--section {spec!r} needs the form FILE:HEADING")
+        wanted.setdefault(rel, []).append(heading.strip())
+    for rel in wanted:
+        if rel not in plan:
+            plan.append(rel)
+
     unknown = [l for l in languages if l not in LANGUAGE_FILES]
 
     out, missing, absent = [], [], []
@@ -201,22 +227,29 @@ def main():
             continue
         lines = path.read_text().splitlines(keepends=True)
 
+        literals = wanted.get(rel, [])
         if rel == "testing/caller-patterns.md":
             slots = ["identify-caller", "quick-reference"]
             if args.caller:
                 slots.insert(1, args.caller)
         elif rel.endswith("/testing-patterns.md"):
             slots = list(TESTING_SLOTS)
+        elif literals:
+            # Asked for by name and not otherwise in a bundle: give exactly that, whatever
+            # the file's length. testing/patterns.md is 1,279 lines and is only ever
+            # reached this way — emitting it whole would defeat the point of asking.
+            slots = []
         else:
             slots = None
 
-        listing.append({"file": rel, "sections": slots or "whole", "lines": len(lines)})
+        listing.append({"file": rel, "lines": len(lines),
+                        "sections": "whole" if slots is None else list(slots) + literals})
         if args.list:
             continue
         if slots is None:
             emit_whole(rel, lines, out)
         else:
-            emit_sections(rel, lines, slots, out, missing)
+            emit_sections(rel, lines, slots, out, missing, literals)
 
     if args.list:
         print(json.dumps({"files": listing, "languages": languages,

@@ -1409,6 +1409,29 @@ eq "a named section that no heading matches is reported" "1" \
 eq "and a spec with no heading is refused outright" "2" \
    "$(gl --language Go --section 'go/testing-patterns.md' >/dev/null 2>&1; printf '%s' $?)"
 
+# Files outside every language bundle — concurrency, performance, cue, architecture.
+printf '# Go Concurrency\nconcurrency-body\n' > "$GD/go/concurrency-patterns.md"
+F=$(gl --language Go --file go/concurrency-patterns.md)
+eq "--file adds a guideline no bundle contains" "1" "$(printf '%s' "$F" | grep -c 'concurrency-body')"
+eq "alongside everything the bundle already gave" "1" "$(printf '%s' "$F" | grep -c 'naming-body')"
+
+# A reviewer wants its own guideline, not everything its language has.
+O=$(gl --only --file go/concurrency-patterns.md)
+eq "--only emits what was named" "1" "$(printf '%s' "$O" | grep -c 'concurrency-body')"
+eq "and nothing that was not" "0" \
+   "$(printf '%s' "$O" | grep -cE 'naming-body|comments-body|identify-body|what-body')"
+eq "--only skips detection rather than falling back to it" "0" \
+   "$(cd "$GD" && gl --only --file comments.md | grep -c 'naming-body')"
+eq "--only with nothing named is refused" "2" \
+   "$(gl --only >/dev/null 2>&1; printf '%s' $?)"
+eq "--only still honours a caller pattern" "1|0" \
+   "$(C=$(gl --only --caller ui); printf '%s|%s' "$(printf '%s' "$C" | grep -c 'ui-body')" \
+      "$(printf '%s' "$C" | grep -c 'comments-body')")"
+eq "and --only composes with --section" "1|0" \
+   "$(C=$(gl --only --section 'go/testing-patterns.md:What to Test'); \
+      printf '%s|%s' "$(printf '%s' "$C" | grep -c 'what-body')" \
+      "$(printf '%s' "$C" | grep -c 'unit-body')")"
+
 eq "the DOM guideline is opt-in" "0" "$(gl --language JavaScript/TypeScript | grep -c 'dom-body')"
 eq "and arrives when asked for" "1" \
    "$(gl --language JavaScript/TypeScript --dom | grep -c 'dom-body')"

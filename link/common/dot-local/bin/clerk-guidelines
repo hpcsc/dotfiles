@@ -172,6 +172,11 @@ def main():
                     help="repeatable; defaults to what `clerk prepare` detects")
     ap.add_argument("--caller", choices=sorted(CALLERS),
                     help="also emit this caller pattern's section")
+    ap.add_argument("--file", action="append", default=[], dest="files", metavar="FILE",
+                    help="repeatable; a guideline file outside any language bundle")
+    ap.add_argument("--only", action="store_true",
+                    help="emit only what --file/--section/--caller named: no language "
+                         "bundle, no detection, no caller-patterns or comments by default")
     ap.add_argument("--section", action="append", default=[], metavar="FILE:HEADING",
                     help="repeatable; a section by name, e.g. "
                          "go/testing-patterns.md:'Independent Verification'")
@@ -185,28 +190,47 @@ def main():
     if args.help:
         print(__doc__.strip())
         print("\nUSAGE\n  clerk guidelines [--language <L>]... [--caller ui|inbound|outbound|async|exported]"
-              "\n                   [--section FILE:HEADING]... [--dom] [--state] [--list]"
-              "\n                   [--guidelines-dir <d>]")
+              "\n                   [--file FILE]... [--section FILE:HEADING]... [--only]"
+              "\n                   [--dom] [--state] [--list] [--guidelines-dir <d>]")
         return 0
 
     root = Path(args.guidelines_dir) if args.guidelines_dir else DEFAULT_ROOT
     if not root.is_dir():
         die(f"no guidelines directory at {root}")
 
-    languages = args.language or detect_languages(Path.cwd())
+    # --only is the reviewer's mode: name what you want and get that. Detection is
+    # skipped too, because a concurrency reviewer in a Go repo wants the concurrency
+    # guideline, not everything Go — and being handed the bundle anyway is how a precise
+    # request turns back into reading whatever was going.
+    if args.only and not (args.files or args.section or args.caller):
+        die("--only needs at least one --file, --section or --caller to emit")
+    languages = [] if args.only else (args.language or detect_languages(Path.cwd()))
 
     # Ordered, deduped: caller patterns and comments first because they apply whatever
     # the language is, and they are the two an audit most often finds broken.
-    plan = []
-    for f in ALWAYS:
-        plan.append(f)
+    # Files that arrived as part of a set get that set's treatment. A file reached ONLY
+    # by --section was asked for one section by name, and giving it the bundle's four
+    # instead answers a precise request with whatever was going.
+    plan, bundled = [], set()
+    if not args.only:
+        for f in ALWAYS:
+            plan.append(f); bundled.add(f)
+    elif args.caller:
+        plan.append("testing/caller-patterns.md"); bundled.add("testing/caller-patterns.md")
+    for f in args.files:
+        if f not in plan:
+            plan.append(f)
+        bundled.add(f)
     for lang in languages:
         for f in LANGUAGE_FILES.get(lang, []):
             if f not in plan:
                 plan.append(f)
+            bundled.add(f)
     for flag, f in OPTIONAL_FILES.items():
-        if getattr(args, flag) and f not in plan:
-            plan.append(f)
+        if getattr(args, flag):
+            if f not in plan:
+                plan.append(f)
+            bundled.add(f)
 
     # Split on the FIRST colon only: headings contain them ("Assertion Strictness:
     # Match to What You're Testing"), filenames do not.
@@ -232,7 +256,10 @@ def main():
         lines = path.read_text().splitlines(keepends=True)
 
         literals = wanted.get(rel, [])
-        if rel == "testing/caller-patterns.md":
+        if literals and rel not in bundled:
+            # Named by --section alone: exactly those sections, whatever the file is.
+            slots = []
+        elif rel == "testing/caller-patterns.md":
             slots = ["identify-caller", "quick-reference"]
             if args.caller:
                 slots.insert(1, args.caller)
@@ -260,11 +287,14 @@ def main():
                           "unknown_languages": unknown, "absent": absent}, indent=2))
         return 0
 
-    print(f"# Required reading for: {', '.join(languages) or 'no detected language'}")
+    if args.only:
+        print("# Required reading, as asked for")
+    else:
+        print(f"# Required reading for: {', '.join(languages) or 'no detected language'}")
     print("\nEverything below is the guideline text itself. Read it; do not re-fetch it.")
     if args.caller:
         print(f"Caller pattern requested: {args.caller}.")
-    else:
+    elif "testing/caller-patterns.md" in plan:
         print("No --caller given, so only the identification section and the Quick Reference "
               "are here.\nOnce you know which pattern this work is, re-run with --caller to "
               "get that section.")

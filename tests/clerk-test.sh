@@ -242,6 +242,35 @@ eq "a branch checked out in the main tree cannot be worktreed over" "2" \
    "$(run "$RW2" worktree main >/dev/null 2>&1; printf '%s' $?)"
 
 # --------------------------------------------------------------------------------
+printf '\nbranch — the in-place counterpart of a worktree\n'
+
+# With in_place on there is no worktree, and the method's "create a feature branch if you
+# are on the default branch" reads as optional. Skipped once, it put nine commits and two
+# audit rounds straight onto main with nothing reviewable to hand over.
+RB=$(new_repo)
+B=$(run "$RB" branch add-widget)
+eq "branches off the default branch" "add-widget|true|true" \
+   "$(printf '%s' "$B" | jq -r '[.branch, (.created|tostring), (.switched|tostring)] | join("|")')"
+eq "and the work lands there, not on main" "add-widget" \
+   "$(git -C "$RB" rev-parse --abbrev-ref HEAD)"
+
+eq "called again it is a no-op, not a second branch" "false|false" \
+   "$(run "$RB" branch add-widget | jq -r '[(.created|tostring), (.switched|tostring)] | join("|")')"
+eq "and says why it did nothing" "1" \
+   "$(run "$RB" branch add-widget | grep -c 'already off the default branch')"
+
+# A run resumed from the default branch finds its own commits rather than starting over.
+git -C "$RB" checkout -q main
+eq "an existing branch is switched to, not branched over" "false|true" \
+   "$(run "$RB" branch add-widget | jq -r '[(.created|tostring), (.switched|tostring)] | join("|")')"
+eq "leaving one branch, not two" "1" \
+   "$(git -C "$RB" branch --list 'add-widget*' | wc -l | tr -d ' ')"
+
+eq "a name git would refuse is refused here" "2" \
+   "$(run "$RB" branch 'bad name' >/dev/null 2>&1; printf '%s' $?)"
+eq "and so is no name at all" "2" "$(run "$RB" branch >/dev/null 2>&1; printf '%s' $?)"
+
+# --------------------------------------------------------------------------------
 printf '\ncommit skill\n'
 
 RC=$(new_repo)

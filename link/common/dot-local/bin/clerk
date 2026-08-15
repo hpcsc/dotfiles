@@ -624,6 +624,50 @@ cmd_worktree() {
 }
 
 # --------------------------------------------------------------------------------
+# The in-place counterpart of `clerk worktree`. With in_place on there is no worktree,
+# and the method says to create a feature branch when standing on the default one — a
+# sentence that reads as optional and got skipped, putting nine commits and two audit
+# rounds straight onto main with nothing reviewable to hand over. With --no-integrate the
+# same miss leaves unreviewed work on the default branch permanently.
+#
+# The flag turns off the worktree, not the branch. Same shape as `clerk worktree` so
+# neither path has a step the other lacks.
+# --------------------------------------------------------------------------------
+
+cmd_branch() {
+  # ${1:-} rather than $1: under `set -u` a missing argument aborts the shell before the
+  # check below can say what was missing.
+  local name=${1:-} def cur
+  [ -n "$name" ] || die "branch: name the feature, in kebab-case"
+  git check-ref-format --branch "$name" >/dev/null 2>&1 \
+    || die "branch: '$name' is not a usable branch name"
+  git rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository"
+
+  def=$(default_branch)
+  cur=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+  if [ "$cur" != "$def" ]; then
+    jq -n --arg branch "$cur" --arg default "$def" \
+      '{branch: $branch, default_branch: $default, created: false, switched: false,
+        note: "already off the default branch; the work has somewhere of its own to land"}'
+    return 0
+  fi
+
+  if git show-ref --verify --quiet "refs/heads/$name"; then
+    git switch -q "$name" || die "branch: could not switch to existing branch '$name'"
+    jq -n --arg branch "$name" --arg default "$def" \
+      '{branch: $branch, default_branch: $default, created: false, switched: true,
+        note: "the branch already existed; its commits are here"}'
+    return 0
+  fi
+
+  git switch -qc "$name" || die "branch: could not create '$name'"
+  jq -n --arg branch "$name" --arg default "$def" \
+    '{branch: $branch, default_branch: $default, created: true, switched: true,
+      note: "branched from the default branch; the work lands here rather than on it"}'
+}
+
+# --------------------------------------------------------------------------------
 # The sidecar. Reading `depends_on` out of markdown task bodies is a regex over prose;
 # `decompose-to-tasks` writes tasks/<story>.json beside the markdown so it is a lookup
 # instead. The markdown stays the human artifact and the progress record — the checkbox
@@ -1320,6 +1364,8 @@ USAGE
   clerk worktree <kebab-name> [--base <ref>]
                                      create (or adopt) this run's worktree under
                                      .worktrees/, excluded from the repo's status
+  clerk branch <kebab-name>          the in-place counterpart: a feature branch when
+                                     standing on the default one, else a no-op
   clerk next [--allow-dirty]         the first task whose dependencies are all done;
                                      exit 3 if a task is still in flight
   clerk finish <n> -- <files...>     tick the checkbox and stage those paths with it
@@ -1382,6 +1428,7 @@ case "${1:-}" in
   init)     shift; cmd_init "$@" ;;
   prepare)  shift; cmd_prepare "$@" ;;
   worktree) shift; cmd_worktree "$@" ;;
+  branch)   shift; cmd_branch "$@" ;;
   next)     shift; cmd_next "$@" ;;
   status)   shift; cmd_status "$@" ;;
   finish|complete) shift; cmd_finish "$@" ;;

@@ -126,7 +126,15 @@ Two consequences to hold onto:
 - **The main repo root is not your cwd.** Re-run `clerk prepare` after entering: it reports `repo_root` and `work_tree` separately for exactly this reason, and the learnings file and `tasks/test-commands.json` live under the former. So does the breakdown itself when `tasks_tracked` is false.
 - **The worktree branches from the current HEAD** unless you pass `--base` — so by default the feature sits on whatever the main checkout had checked out, unpushed local commits included. The `worktree.baseRef` setting governs the tool's `name` mode only and has no say here.
 
-With `in_place` on: no worktree. Create a feature branch if on the default branch, and build in the main checkout. Say so in your opening summary when a config file rather than the request is what turned it on, and name the file — `--worktree` in the request overrules it for one run.
+With `in_place` on: no worktree, but still a branch.
+
+```
+clerk branch <kebab-feature-name>
+```
+
+It branches off the default branch when that is where you are standing, switches to the branch if it already exists, and does nothing when you are already off the default branch. **The flag turns off the worktree, not the branch** — skipped once, it put a whole feature and both its audit rounds straight onto the default branch, with nothing reviewable to hand over and, had integration been off, unreviewed work left there permanently.
+
+Then build in the main checkout. Say so in your opening summary when a config file rather than the request is what turned `in_place` on, and name the file — `--worktree` in the request overrules it for one run.
 
 ---
 

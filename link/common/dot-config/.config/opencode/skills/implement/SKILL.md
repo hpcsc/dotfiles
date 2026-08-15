@@ -118,7 +118,15 @@ Once inside, `git` and file operations run against the worktree naturally — no
 
 **A repo that keeps `tasks/` out of history is not a reason to skip the worktree.** A fresh checkout only ever materialises tracked files, so an excluded breakdown will not be in the new worktree — but `clerk` resolves it at the main repo root in that case and every command finds it there. `prepare` says which regime you are in: `tasks_tracked` and `tasks_home`. Building in the main checkout to stay near the breakdown trades the isolation for nothing, and it is the isolation that keeps the audit's verifiers from writing probe files into a tree you are also running a suite in.
 
-With `in_place` on: no worktree. `git switch -c <kebab-feature-name>` if on the default branch, and build in the main checkout. Say so in your opening summary when a config file rather than the request is what turned it on, and name the file — `--worktree` in the request overrules it for one run.
+With `in_place` on: no worktree, but still a branch.
+
+```
+clerk branch <kebab-feature-name>
+```
+
+It branches off the default branch when that is where you are standing, switches to the branch if it already exists, and does nothing when you are already off the default branch. **The flag turns off the worktree, not the branch** — skipped once, it put a whole feature and both its audit rounds straight onto the default branch, with nothing reviewable to hand over and, had integration been off, unreviewed work left there permanently.
+
+Then build in the main checkout. Say so in your opening summary when a config file rather than the request is what turned `in_place` on, and name the file — `--worktree` in the request overrules it for one run.
 
 ---
 

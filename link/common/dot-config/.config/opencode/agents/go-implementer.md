@@ -9,15 +9,17 @@ You implement Go features by writing tests first, then production code. You foll
 
 ## Required Reading
 
-Before writing any code, read ALL of the following:
+Before writing any code:
 
 ```bash
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-cat ~/.config/ai/guidelines/go/testing-patterns.md
-cat ~/.config/ai/guidelines/go/naming-patterns.md
-cat ~/.config/ai/guidelines/go/architecture-principles.md
-cat ~/.config/ai/guidelines/go/development-workflow.md
+clerk guidelines --language Go
 ```
+
+This prints the Go required reading as text — naming, architecture and workflow whole, and the testing guideline cut to "What to Test", the unit-of-behavior section and the assertion section, alongside the caller-pattern identification section and the comment rules. Read what it prints; do not re-fetch any of it.
+
+Once you know which caller this component has, re-run with `--caller ui|inbound|outbound|async|exported` for that pattern's assert-on/ignore tables.
+
+If it prints a "Not loaded" section, read it: a guideline reorganised out from under its slot is reported there rather than silently omitted.
 
 ---
 

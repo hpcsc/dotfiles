@@ -535,7 +535,7 @@ eq "and removes it before deleting the branch"     "true" \
 # and an instruction that reads plausibly and fails on contact is the thing to catch.
 CMD=$(printf '%s' "$L" | jq -r '.command')
 (cd "$R23" && eval "$CMD") >/dev/null 2>&1
-eq "running that command lands the work"     "1" "$(git -C "$R23" log --oneline main | rg -c 'Work')"
+eq "running that command lands the work"     "1" "$(git -C "$R23" log --oneline main | grep -c 'Work')"
 eq "removes the worktree"                    "1" "$(git -C "$R23" worktree list | wc -l | tr -d ' ')"
 eq "and deletes the branch it was holding"   "0" "$(git -C "$R23" branch --list feat | wc -l | tr -d ' ')"
 
@@ -1191,7 +1191,7 @@ printf 'ticket: "AGE-713"\n' >> "$R22/tasks/story-a/plan.yaml"
 eq "and one that records a ticket carries it through" "AGE-713" \
    "$(run "$R22" story | jq -r '.[0].ticket')"
 eq "--table renders a row per deliverable" "7" \
-   "$(run "$R22" story --table | rg -c '^  (merged|ready|blocked|scaffolded|in-progress|awaiting-merge)')"
+   "$(run "$R22" story --table | grep -cE '^  (merged|ready|blocked|scaffolded|in-progress|awaiting-merge)')"
 
 # --------------------------------------------------------------------------------
 printf '\nstack — PR bases derived from the plan DAG\n'

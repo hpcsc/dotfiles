@@ -1,0 +1,77 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # Both, because the two suites are sensitive to different things. clerk targets bash
+    # 3.2 so that macOS runs it without a newer shell installed, and that floor only gets
+    # exercised on a macOS runner. The guideline tooling shells out to git, jq and
+    # ast-grep, where the GNU and BSD builds are what differ.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to the version mise pins for a working machine, so a parse difference in
+      # the markdown grammar shows up here rather than only in someone's editor.
+      - name: Install ast-grep
+        run: npm install -g @ast-grep/cli@0.45.1
+
+      - name: Install task
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          sh -c "$(curl -sSL https://taskfile.dev/install.sh)" -- -d -b "$HOME/.local/bin" v3.52.0
+
+      # `clerk story` shells out to yq to turn a deliverable plan into JSON. Both versions
+      # here match what mise pins for a working machine.
+      - name: Install yq
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          case "${{ runner.os }}-${{ runner.arch }}" in
+            Linux-X64)  asset=yq_linux_amd64 ;;
+            Linux-ARM64) asset=yq_linux_arm64 ;;
+            macOS-ARM64) asset=yq_darwin_arm64 ;;
+            macOS-X64)  asset=yq_darwin_amd64 ;;
+            *) echo "no yq asset for ${{ runner.os }}-${{ runner.arch }}" >&2; exit 1 ;;
+          esac
+          curl -sSLf "https://github.com/mikefarah/yq/releases/download/v4.53.3/$asset" \
+            -o "$HOME/.local/bin/yq"
+          chmod +x "$HOME/.local/bin/yq"
+
+      # clerk finds its own subcommands the way git does — an executable named clerk-<name>
+      # on PATH. Without the repo's bin directory there, every plugin dispatch fails.
+      - name: Put clerk and task on PATH
+        run: |
+          echo "$GITHUB_WORKSPACE/link/common/dot-local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # On a working machine this is a symlink into the repo. A runner has no home
+      # directory to link from, so the tests are pointed at the tracked copy directly.
+      - name: Point at the in-repo guidelines
+        run: |
+          echo "CLERK_GUIDELINES_DIR=$GITHUB_WORKSPACE/link/common/dot-config/.config/ai/guidelines" >> "$GITHUB_ENV"
+
+      - name: Versions
+        run: |
+          bash --version | head -1
+          git --version
+          jq --version
+          yq --version
+          python3 --version
+          ast-grep --version
+          task --version
+
+      # jq here is whatever the runner ships, which trails the version mise pins. That is
+      # deliberate: clerk claims to need only git and jq, so the older one is the floor it
+      # has to keep clearing.
+      - name: Run every suite
+        run: task common:test

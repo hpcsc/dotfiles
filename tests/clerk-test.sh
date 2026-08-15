@@ -165,6 +165,54 @@ eq "resolves the main repo root separately"   "$(cd "$R3" && pwd -P)" "$(printf 
 eq "reports the worktree's own branch"        "feature" "$(printf '%s' "$J" | jq -r '.branch')"
 
 # --------------------------------------------------------------------------------
+printf '\nworktree creation\n'
+
+RW=$(new_repo)
+W=$(run "$RW" worktree add-widget)
+eq "lands under .worktrees, beside the git dir" "$RW/.worktrees/add-widget" \
+   "$(printf '%s' "$W" | jq -r '.path')"
+eq "on a branch named for the feature" "add-widget" "$(printf '%s' "$W" | jq -r '.branch')"
+eq "and says it made it" "true" "$(printf '%s' "$W" | jq -r '.created')"
+eq "the checkout is real" "true" \
+   "$([ -f "$RW/.worktrees/add-widget/README.md" ] && echo true || echo false)"
+
+# The line the prose existed to defend: .worktrees/ is inside the repo, so without it
+# `clean` goes false and the next run stops to ask about a directory clerk made.
+eq "the exclude entry is written" "true" "$(printf '%s' "$W" | jq -r '.excluded')"
+eq "so the main checkout still reads clean" "true" "$(run "$RW" prepare | jq -r '.clean')"
+eq "and it goes in info/exclude, leaving no tracked file dirty" "1" \
+   "$(grep -cxF '.worktrees/' "$RW/.git/info/exclude")"
+
+W2=$(run "$RW" worktree add-widget)
+eq "a second call adopts rather than creating another" "true" \
+   "$(printf '%s' "$W2" | jq -r '.adopted')"
+eq "and points at the one that already exists" "$RW/.worktrees/add-widget" \
+   "$(printf '%s' "$W2" | jq -r '.path')"
+eq "the repo still has exactly one" "1" \
+   "$(git -C "$RW" worktree list | grep -c 'add-widget')"
+eq "and the exclude line is not written twice" "1" \
+   "$(grep -cxF '.worktrees/' "$RW/.git/info/exclude")"
+
+# A branch whose worktree was removed still carries the run's commits.
+git -C "$RW" worktree remove "$RW/.worktrees/add-widget"
+W3=$(run "$RW" worktree add-widget)
+eq "an orphaned branch is checked out, not branched over" "false|true" \
+   "$(printf '%s|%s' "$(printf '%s' "$W3" | jq -r '.created')" "$(printf '%s' "$W3" | jq -r '.adopted')")"
+
+RW2=$(new_repo)
+git -C "$RW2" checkout -q -b other && printf 'x\n' > "$RW2/x.md" \
+  && git -C "$RW2" add -A && git -C "$RW2" commit -qm "Other" && git -C "$RW2" checkout -q main
+eq "--base branches from the ref it is given" "true" \
+   "$(run "$RW2" worktree from-other --base other >/dev/null; \
+      git -C "$RW2/.worktrees/from-other" log --oneline -1 --format=%s | grep -qx Other && echo true || echo false)"
+
+eq "a name git would refuse is refused here, with a name in the message" "2" \
+   "$(run "$RW2" worktree 'bad name' >/dev/null 2>&1; printf '%s' $?)"
+eq "and so is no name at all" "2" "$(run "$RW2" worktree >/dev/null 2>&1; printf '%s' $?)"
+eq "a branch checked out in the main tree cannot be worktreed over" "2" \
+   "$(run "$RW2" worktree main >/dev/null 2>&1; printf '%s' $?)"
+
+# --------------------------------------------------------------------------------
 printf '\ncommit skill\n'
 
 RC=$(new_repo)

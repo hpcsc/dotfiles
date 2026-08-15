@@ -64,7 +64,7 @@ flowchart TD
   subgraph P0["Phase 0 · Ground yourself"]
     A["clerk prepare<br/>languages, test command, go prefix,<br/>learnings path, repo root vs work tree"]
     A --> B["clerk guidelines<br/>required reading, cut to its sections"]
-    B --> C["set up an isolated worktree"]
+    B --> C["clerk worktree <name><br/>.worktrees/, excluded, adopts an existing one"]
   end
   subgraph P1["Phase 1 · Plan"]
     C --> D["decompose-to-tasks<br/>writes the breakdown + JSON sidecar"]
@@ -93,8 +93,8 @@ flowchart TD
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:2px,color:#3A1A08
   classDef agent fill:#DBE3EE,stroke:#3E5C88,stroke-width:1.5px,color:#16233A
   classDef gate fill:#EFD9E4,stroke:#8A2E5D,stroke-width:2px,color:#3A1024
-  class A,B,E,H,K,N,P,R clerk
-  class C,F,M,O,S you
+  class A,B,C,E,H,K,N,P,R clerk
+  class F,M,O,S you
   class D,I,L,Q agent
   class G1 gate
   class J you
@@ -209,6 +209,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `init [--force] [--in-place] [--integrate] [--review-plan]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
 | `prepare [--request <text>]` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, which commit skill to invoke, resolved run flags with their sources, every existing worktree and breakdown with its progress, and `resume` — the part-built run to rejoin, paired with its worktree. Given the request, it applies the flags and `--learnings-path` typed in it as the top layer | 0 |
 | `guidelines [--language <L>]... [--caller <p>] [--dom] [--state]` | The required reading for those languages as text: short files whole, long ones cut to the sections a run must have loaded, and a "Not loaded" report for any slot a reorganised guideline no longer satisfies | 0 · **2** no guidelines dir |
+| `worktree <kebab-name> [--base <ref>]` | This run's worktree under `.worktrees/`, with `.worktrees/` written to `info/exclude` so it does not read as a dirty tree. Adopts an existing worktree or orphaned branch of that name; refuses the main checkout's own branch | 0 · **2** refused |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
 | `status [--all]` | Progress from the sidecar, plus acceptance criteria walked per task; `--all` walks every breakdown in the repo, in flight and archived | 0 |

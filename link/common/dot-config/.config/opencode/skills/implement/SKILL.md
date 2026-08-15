@@ -104,19 +104,15 @@ Add `--dom` or `--state` when the task touches the DOM or shared state.
 
 Then **work in a worktree**, unless `in_place` is on — from the request, or from the repo settings `clerk prepare` reported in `flags`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits.
 
-**If `clerk prepare` reported a `resume.worktree`**, that run already has a home — `cd` to its `path` and carry on. Do not `git worktree add` a second one; that is how the first one's commits get stranded.
+**If `clerk prepare` reported a `resume.worktree`**, that run already has a home — `cd` to its `path` and carry on. Do not create a second one; that is how the first one's commits get stranded.
 
-Otherwise create it:
+Otherwise create it and step into it:
 
 ```
-GIT_COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"
-WT="$(dirname "$GIT_COMMON")/.worktrees/<kebab-feature-name>"
-grep -qxF '.worktrees/' "$GIT_COMMON/info/exclude" 2>/dev/null || printf '.worktrees/\n' >> "$GIT_COMMON/info/exclude"
-git worktree add -b <kebab-feature-name> "$WT"
-cd "$WT"
+cd "$(clerk worktree <kebab-feature-name> | jq -r .path)"
 ```
 
-**The exclude line is not tidiness.** `.worktrees/` sits inside the repo, so without it the new directory shows up as untracked — and `clerk`'s `clean` is `git status --porcelain`, which counts untracked files. The next `clerk prepare` from the main checkout would report a dirty tree and this skill would stop and ask about loose work that is only its own worktree. It goes in `info/exclude` rather than `.gitignore` because editing a tracked file to hide a scratch directory is itself an uncommitted change, and `$GIT_COMMON` resolves to the main `.git` from inside any worktree, so the line is written once per repo.
+It puts the tree under `.worktrees/` beside the git dir, branches from HEAD (`--base <ref>` to branch from elsewhere), and adds `.worktrees/` to the repo's `info/exclude` so the directory it just made does not read as a dirty tree to the next `clerk prepare`. It reports whether it `created` the worktree or `adopted` one that was already there.
 
 Once inside, `git` and file operations run against the worktree naturally — no `-C` prefix needed. Re-run `clerk prepare` after `cd`: it reports `repo_root` and `work_tree` separately, and the learnings file and `tasks/test-commands.json` live under the former, not under your cwd.
 

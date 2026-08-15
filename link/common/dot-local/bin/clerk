@@ -527,6 +527,93 @@ cmd_prepare() {
 }
 
 # --------------------------------------------------------------------------------
+# The run's own worktree
+#
+# Four lines of shell that were pasted into the skill for the caller to retype every
+# run, one of them load-bearing for a reason nothing about it suggests: `.worktrees/`
+# sits inside the repo, so without the exclude line the new directory shows up as
+# untracked, `clean` is `git status --porcelain`, and the next `prepare` from the main
+# checkout reports a dirty tree over a directory this tool made. Thirty lines of prose
+# defended that line. It is one flag here.
+#
+# info/exclude rather than .gitignore because editing a tracked file to hide a scratch
+# directory is itself an uncommitted change, and the common dir resolves to the main
+# .git from inside any worktree, so the line is written once per repo.
+# --------------------------------------------------------------------------------
+
+cmd_worktree() {
+  local name= base= common parent path branch_exists=false existing created=false excluded=false
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --base) base=${2:-}; shift 2 ;;
+      --base=*) base=${1#--base=}; shift ;;
+      -*) die "worktree: unknown argument '$1'" ;;
+      *) [ -n "$name" ] && die "worktree: one name, not two ('$name' and '$1')"
+         name=$1; shift ;;
+    esac
+  done
+  [ -n "$name" ] || die "worktree: name the feature, in kebab-case"
+  # Refused here rather than three commands later as a git error about refs.
+  git check-ref-format --branch "$name" >/dev/null 2>&1 \
+    || die "worktree: '$name' is not a usable branch name"
+
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) \
+    || die "not a git repository"
+  parent=$(dirname "$common")
+  path="$parent/.worktrees/$name"
+
+  # Already has a home. Adopting it is the whole point: a second worktree for one
+  # feature strands the first one's commits somewhere nobody looks.
+  #
+  # The main checkout is in `git worktree list` too, and it is the one match that must
+  # not be adopted — handing it back as this run's tree is `--in-place` arrived at by
+  # accident, with none of the isolation the caller asked for and no note that it lost.
+  # One pass: the adoptable path, the sentinel, or nothing. Two passes would have to
+  # agree on what "no match" looks like, which is where the first version of this got
+  # it wrong — awk exits 0 having matched nothing, and every fresh name read as the
+  # main tree. A worktree path is absolute, so it can never collide with the sentinel.
+  existing=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$name" -v main="$parent" '
+    /^worktree /{p=$2} $0 == "branch " b {print (p == main ? "MAIN" : p); exit}')
+  if [ "$existing" = MAIN ]; then
+    die "worktree: '$name' is checked out in the main tree at $parent — switch it away, or build there with --in-place"
+  fi
+  if [ -n "$existing" ]; then
+    jq -n --arg path "$existing" --arg branch "$name" \
+      '{path: $path, branch: $branch, created: false, adopted: true, excluded: null,
+        note: "this feature already has a worktree; enter it rather than creating a second"}'
+    return 0
+  fi
+
+  if ! grep -qxF '.worktrees/' "$common/info/exclude" 2>/dev/null; then
+    mkdir -p "$common/info" && printf '.worktrees/\n' >> "$common/info/exclude" \
+      && excluded=true
+  fi
+
+  [ -e "$path" ] && die "worktree: $path exists but is not a worktree of this repo"
+
+  git show-ref --verify --quiet "refs/heads/$name" && branch_exists=true
+  if [ "$branch_exists" = true ]; then
+    # The branch is there without a worktree — a run whose tree was removed and whose
+    # commits are still on the branch. Checking it out is a resume, not a fresh start.
+    git worktree add "$path" "$name" >/dev/null 2>&1 || die "worktree: git worktree add failed for existing branch '$name'"
+  else
+    git worktree add -b "$name" "$path" ${base:+"$base"} >/dev/null 2>&1 \
+      || die "worktree: git worktree add failed (is '$name' checked out elsewhere?)"
+    created=true
+  fi
+
+  jq -n --arg path "$path" --arg branch "$name" --arg base "$base" \
+    --argjson created "$created" --argjson excluded "$excluded" \
+    --argjson adopted "$([ "$branch_exists" = true ] && printf true || printf false)" \
+    '{path: $path, branch: $branch, created: $created, adopted: $adopted, excluded: $excluded,
+      base: (if $base == "" then null else $base end),
+      note: (if $adopted
+             then "the branch already existed; its commits are here"
+             else "branched from HEAD" + (if $base == "" then "" else " via " + $base end)
+             end)}'
+}
+
+# --------------------------------------------------------------------------------
 # The sidecar. Reading `depends_on` out of markdown task bodies is a regex over prose;
 # `decompose-to-tasks` writes tasks/<story>.json beside the markdown so it is a lookup
 # instead. The markdown stays the human artifact and the progress record — the checkbox
@@ -1199,6 +1286,9 @@ USAGE
   clerk prepare [--request <text>]   resolve the repo's facts as JSON; the request is
                                      scanned for the flags and --learnings-path it
                                      carries, which outrank every config file
+  clerk worktree <kebab-name> [--base <ref>]
+                                     create (or adopt) this run's worktree under
+                                     .worktrees/, excluded from the repo's status
   clerk next [--allow-dirty]         the first task whose dependencies are all done;
                                      exit 3 if a task is still in flight
   clerk finish <n> -- <files...>     tick the checkbox and stage those paths with it
@@ -1260,6 +1350,7 @@ need jq
 case "${1:-}" in
   init)     shift; cmd_init "$@" ;;
   prepare)  shift; cmd_prepare "$@" ;;
+  worktree) shift; cmd_worktree "$@" ;;
   next)     shift; cmd_next "$@" ;;
   status)   shift; cmd_status "$@" ;;
   finish|complete) shift; cmd_finish "$@" ;;

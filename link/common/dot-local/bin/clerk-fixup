@@ -63,7 +63,16 @@ def resolve_base(explicit):
             mb = git("merge-base", "HEAD", cand, check=False)
             if mb.returncode == 0:
                 return mb.stdout.strip()
-    die("could not resolve a base; pass --base <ref>")
+    # Standing on the default branch there is no other branch to fork from, which is the
+    # ordinary shape of an --in-place run: the work is a run of local commits that have
+    # not been pushed. Their base is where the branch and its upstream last agreed.
+    up = git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}", check=False)
+    if up.returncode == 0:
+        mb = git("merge-base", "HEAD", up.stdout.strip(), check=False)
+        if mb.returncode == 0 and mb.stdout.strip():
+            return mb.stdout.strip()
+    die("could not resolve a base: this branch has no other branch to fork from and no "
+        "upstream to compare against. Pass --base <ref> — the commit the work started from")
 
 
 def commits_touching(base, path):

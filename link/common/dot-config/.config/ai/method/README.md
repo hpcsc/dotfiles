@@ -87,7 +87,7 @@ flowchart TD
     O --> P["clerk verify<br/>and what it could not settle"]
     P --> Q["run-verifier<br/>the judgment residue only"]
     Q --> R["clerk land --integrate<br/>gate, archive, rebase, ff-only"]
-    R --> S["reflect, then a gate<br/>before writing learnings"]
+    R --> S["reflect<br/>clerk learn appends what survives"]
   end
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:2px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:2px,color:#3A1A08
@@ -181,6 +181,8 @@ flowchart LR
     m4["whether the green<br/>describes this tree"]
     m5["whether the branch<br/>may land"]
     m6["staged tails, vacuous<br/>receipts, unreferenced symbols"]
+    m7["which sections of which<br/>guideline a language needs"]
+    m8["which commit a fix belongs to,<br/>when only one touched the file"]
   end
   subgraph J["the model · judgment"]
     direction TB
@@ -189,13 +191,14 @@ flowchart LR
     j3["whether a finding<br/>is real"]
     j4["whether the branch delivers<br/>what was asked"]
     j5["whether one commit<br/>mixes two concerns"]
+    j6["which commit a defect came in with,<br/>when several touched the file"]
   end
   M -.->|"facts, refusals,<br/>and what it could not settle"| J
   J -.->|"assertions it cannot infer<br/>--audit-accepted"| M
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
-  class m1,m2,m3,m4,m5,m6 clerk
-  class j1,j2,j3,j4,j5 you
+  class m1,m2,m3,m4,m5,m6,m7,m8 clerk
+  class j1,j2,j3,j4,j5,j6 you
 ```
 
 The right-to-left arrow matters as much as the other one. "The audit's findings are
@@ -217,6 +220,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
 | `fixup [--onto <sha>] -- <files>` · `fixup --replay [--force]` | Marks a fix for the commit that introduced it, refusing when several commits in range touch the file or when the files' targets differ; then one autosquash replay, aborted and reverted on conflict, refused on a published range | 0 · **3** needs your judgment |
+| `learn --type <t> --title <s> --learning <s> --apply-when <s>` · `learn --list` | Appends the block to the learnings file resolved from the **repo root**, not the worktree the run is standing in; refuses an exact title collision, leaving dedup on substance to the caller | 0 · **3** title exists |
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 

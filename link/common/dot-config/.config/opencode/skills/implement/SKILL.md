@@ -364,19 +364,21 @@ Dedup against the learnings file on substance, not wording.
 
 **Write what survives the filter, then show what you appended.** Nothing here waits on approval — the filter is the quality bar, and a learning that turns out to be wrong is cheaper to delete later than one that was never recorded.
 
-Append:
+```
+clerk learn --list          # what is already recorded, to dedup against
+clerk learn --type convention --title "<short title>" \
+            --learning "<the durable fact, 1–2 sentences>" \
+            --apply-when "<the future situation where this is relevant>" \
+            --task 3 --feature "<feature name>"
+```
 
-```
-## <short title>
-- Type: convention | recurring-finding | constraint | pattern
-- Observed: task N[, M] — [feature name]
-- Learning: <the durable fact, 1–2 sentences>
-- Apply when: <the future situation where this is relevant>
-```
+`--type` is one of `convention`, `recurring-finding`, `constraint`, `pattern`. Pass `--path` when this run was given its own learnings file; otherwise it writes to the one `clerk prepare` resolved, **which hangs off the repo root and not the worktree you are standing in** — hand-resolving it from here writes a file the next run will never read.
+
+**Dedup is still yours.** It refuses an exact title collision, and that is the whole of what a script can settle; matching on substance is judgment, which is what `--list` is for. `--replace` folds new wording into an entry that already exists.
 
 A clean run produces no learnings, and that is fine — say so rather than manufacturing one to fill the section.
 
-**Committing is a decision; writing is not.** If the file is the in-tree `tasks/learnings.md`, offer to commit so teammates inherit it — writing changes what your next run reads, committing changes what everyone's does. When you leave it uncommitted, say so: the next run in this repo finds the tree dirty and stops to ask about a file this one left there.
+**Committing is a decision; writing is not.** `in_tree` in the output says which regime you are in. When it is true the file is part of the repo's history: offer to commit so teammates inherit it — writing changes what your next run reads, committing changes what everyone's does — and when you leave it uncommitted, say so, because the next run in this repo finds the tree dirty and stops to ask about a file this one left there.
 
 Reflect comes **last** because it leaves that file modified and uncommitted by design, and a dirty tracked file blocks a rebase.
 

@@ -1475,6 +1475,73 @@ eq "--force is the caller asserting the branch is theirs alone" "1" \
    "$(run "$RX" fixup --base "$BASE" --replay --force | jq -r '.folded')"
 
 # --------------------------------------------------------------------------------
+printf '\nlearn — what the next run reads\n'
+
+RL=$(new_repo)
+L=$(run "$RL" learn --type convention --title "Handlers own their decoding" \
+      --learning "Every inbound handler decodes its own payload." \
+      --apply-when "Adding a handler that takes a request body." --task 3 --feature "sso")
+eq "written to the path clerk resolves" "$RL/tasks/learnings.md" "$(printf '%s' "$L" | jq -r '.path')"
+eq "and counted" "1" "$(printf '%s' "$L" | jq -r '.entries')"
+eq "the block carries every field" "4" \
+   "$(grep -cE '^- (Type|Observed|Learning|Apply when):' "$RL/tasks/learnings.md")"
+eq "the heading is the title" "## Handlers own their decoding" \
+   "$(grep -m1 '^## ' "$RL/tasks/learnings.md")"
+eq "task and feature land in one Observed line" "- Observed: task 3 — sso" \
+   "$(grep -m1 '^- Observed:' "$RL/tasks/learnings.md")"
+eq "a file created here gets a heading, not a bare block" "1" \
+   "$(head -1 "$RL/tasks/learnings.md" | grep -c '^# ')"
+
+run "$RL" learn --type pattern --title "Second thing" --learning "superseded wording" --apply-when "y" >/dev/null
+eq "a second entry appends rather than replacing" "2" \
+   "$(grep -c '^## ' "$RL/tasks/learnings.md")"
+
+# The path hangs off the repo root, and Phase 3 runs from a worktree that is not it.
+LWT="$RL/../wt-l-$(basename "$RL")"
+git -C "$RL" add -A && git -C "$RL" commit -qm "Learnings"
+git -C "$RL" worktree add -q -b learner "$LWT" >/dev/null 2>&1
+eq "resolved from the repo root even when called from a worktree" "$RL/tasks/learnings.md" \
+   "$(run "$LWT" learn --type constraint --title "From the worktree" --learning "x" \
+        --apply-when "y" | jq -r '.path')"
+eq "so the entry lands in the file the next run reads" "3" \
+   "$(grep -c '^## ' "$RL/tasks/learnings.md")"
+
+# Fanned-out runs share a git-common-dir, so each is given its own file.
+eq "--path overrides for a run that was given one" "$RL/other.md" \
+   "$(run "$RL" learn --path "$RL/other.md" --type pattern --title "Elsewhere" \
+        --learning "x" --apply-when "y" | jq -r '.path')"
+eq "and the default file is untouched by it" "3" "$(grep -c '^## ' "$RL/tasks/learnings.md")"
+
+# Substance is the caller's to judge; an exact title collision is not.
+eq "a repeated title is refused rather than doubled" "3" \
+   "$(run "$RL" learn --type pattern --title "Second thing" --learning "z" \
+        --apply-when "w" >/dev/null 2>&1; printf '%s' $?)"
+eq "--list is how substance gets judged before writing" "3" \
+   "$(run "$RL" learn --list | jq -r '.titles | length')"
+R=$(run "$RL" learn --replace --type pattern --title "Second thing" \
+      --learning "folded wording" --apply-when "y")
+eq "--replace rewrites in place" "true|3" \
+   "$(printf '%s|%s' "$(printf '%s' "$R" | jq -r '.replaced')" "$(grep -c '^## ' "$RL/tasks/learnings.md")")"
+eq "and the new wording is what is there" "1" \
+   "$(grep -c 'folded wording' "$RL/tasks/learnings.md")"
+eq "with the old wording gone" "0" "$(grep -c 'superseded wording' "$RL/tasks/learnings.md")"
+
+eq "an entry missing a field is refused, since it is the one nobody can act on" "2" \
+   "$(run "$RL" learn --type pattern --title "Partial" --learning "x" >/dev/null 2>&1; printf '%s' $?)"
+eq "and so is a type outside the four" "2" \
+   "$(run "$RL" learn --type invention --title "P" --learning "x" --apply-when "y" >/dev/null 2>&1; printf '%s' $?)"
+
+eq "a tracked file says committing is what shares it" "true" \
+   "$(run "$RL" learn --type pattern --title "Tracked check" --learning "x" \
+        --apply-when "y" | jq -r '.in_tree')"
+
+RL2=$(new_repo)
+printf 'tasks/\n' > "$RL2/.gitignore" && git -C "$RL2" add -A && git -C "$RL2" commit -qm "Ignore"
+eq "an out-of-tree file says nothing here dirties the tree" "false" \
+   "$(run "$RL2" learn --type pattern --title "Outside" --learning "x" \
+        --apply-when "y" | jq -r '.in_tree')"
+
+# --------------------------------------------------------------------------------
 printf '\nlint — the conventions a regex settles\n'
 
 R28=$(new_repo)

@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""clerk learn — append a run's learning to the file the next run reads.
+
+The block's shape is fixed, and so is where it goes. Neither was the hard part: the
+learnings path hangs off the *repo root*, and by the time this step runs the session is
+standing in a worktree, which is not that directory. A run that resolves it by hand from
+its cwd writes a file nothing will ever read again, and nothing about the result says so
+— the append succeeds, the text is there, and the next run reads the real file and finds
+it empty.
+
+So the path is asked for rather than derived, defaulting to what `clerk prepare` resolves
+(from the repo root, whatever the cwd) and taking --path for the case that override
+exists to serve: a caller fanning several runs over one story gives each its own file,
+because they share a git-common-dir and would otherwise append over each other.
+
+What stays judgment is the whole of the content — whether a candidate survives the
+falsifiable filter, and whether it duplicates an existing entry *in substance*. This only
+settles the mechanical half of that second one: an exact title collision, refused rather
+than appended twice. `--list` prints what is already there so substance can be judged
+before writing.
+
+Dispatched to by `clerk` when invoked as `clerk learn`, and runnable on its own.
+"""
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+TYPES = ["convention", "recurring-finding", "constraint", "pattern"]
+
+HEADER = "# Implementation learnings\n"
+
+TITLE = re.compile(r"^## +(.*?)\s*$")
+
+
+def die(msg, code=2):
+    print(json.dumps({"ok": False, "error": msg}, indent=2))
+    sys.exit(code)
+
+
+def out(payload, code=0):
+    print(json.dumps(payload, indent=2))
+    sys.exit(code)
+
+
+def resolve_path(explicit):
+    if explicit:
+        return Path(explicit).expanduser()
+    clerk = Path(__file__).resolve().parent / "clerk"
+    r = subprocess.run([str(clerk), "prepare"], capture_output=True, text=True)
+    if r.returncode != 0:
+        die("clerk prepare failed; pass --path with the learnings file this run was given")
+    p = json.loads(r.stdout).get("learnings_path")
+    if not p:
+        die("clerk prepare resolved no learnings_path; pass --path")
+    return Path(p)
+
+
+def in_repo_history(path):
+    """Whether git would ever track this file: inside the repo, and not ignored."""
+    r = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return False
+    root = Path(r.stdout.strip()).parent
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return subprocess.run(["git", "check-ignore", "-q", str(path)],
+                          cwd=root, capture_output=True).returncode != 0
+
+
+def existing_titles(path):
+    if not path.is_file():
+        return []
+    return [m.group(1) for line in path.read_text().splitlines() if (m := TITLE.match(line))]
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--type", choices=TYPES)
+    ap.add_argument("--title")
+    ap.add_argument("--learning")
+    ap.add_argument("--apply-when", dest="apply_when")
+    ap.add_argument("--task", default="", help="the task number(s) this was observed in")
+    ap.add_argument("--feature", default="", help="the feature the run was building")
+    ap.add_argument("--path", help="the learnings file; defaults to what clerk prepare resolves")
+    ap.add_argument("--replace", action="store_true", help="rewrite an entry with this title")
+    ap.add_argument("--list", action="store_true", help="what is already recorded")
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args()
+
+    if args.help:
+        print(__doc__.strip())
+        print("\nUSAGE\n  clerk learn --type <t> --title <s> --learning <s> --apply-when <s>"
+              "\n              [--task N[,M]] [--feature <s>] [--path <f>] [--replace]"
+              f"\n  clerk learn --list [--path <f>]\n\nTYPES\n  {' · '.join(TYPES)}")
+        return 0
+
+    path = resolve_path(args.path)
+
+    if args.list:
+        out({"ok": True, "path": str(path), "exists": path.is_file(),
+             "titles": existing_titles(path)})
+
+    missing = [n for n, v in (("--type", args.type), ("--title", args.title),
+                              ("--learning", args.learning),
+                              ("--apply-when", args.apply_when)) if not v]
+    if missing:
+        die(f"missing {', '.join(missing)} — every field of the block is required, because "
+            f"an entry without one is the entry a later run cannot act on")
+
+    titles = existing_titles(path)
+    if args.title in titles and not args.replace:
+        die(f"'{args.title}' is already recorded. Dedup on substance is yours to judge — "
+            f"read it with --list, then either fold your wording into it with --replace or "
+            f"give this one its own title", 3)
+
+    observed = " ".join(x for x in [
+        f"task {args.task}" if args.task else "",
+        f"— {args.feature}" if args.feature else "",
+    ] if x) or "this run"
+
+    block = (f"\n## {args.title}\n"
+             f"- Type: {args.type}\n"
+             f"- Observed: {observed}\n"
+             f"- Learning: {args.learning}\n"
+             f"- Apply when: {args.apply_when}\n")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    replaced = False
+    if args.replace and args.title in titles:
+        lines = path.read_text().splitlines(keepends=True)
+        starts = [i for i, l in enumerate(lines) if (m := TITLE.match(l)) and m.group(1) == args.title]
+        start = starts[0]
+        end = next((i for i in range(start + 1, len(lines)) if TITLE.match(lines[i])), len(lines))
+        path.write_text("".join(lines[:start]) + block.lstrip("\n") + "".join(lines[end:]))
+        replaced = True
+    else:
+        if not path.is_file():
+            path.write_text(HEADER)
+        with path.open("a") as fh:
+            fh.write(block)
+
+    # Whether to commit it is a decision and stays with the caller: writing changes what
+    # your next run reads, committing changes what everyone's does. Containment is asked
+    # first — `git check-ignore` answers "not ignored" for a path outside the repo
+    # entirely, which is the out-of-tree learnings file, and reading that as "tracked"
+    # would tell the caller to commit a file git has never heard of.
+    tracked = in_repo_history(path)
+    out({"ok": True, "path": str(path), "title": args.title, "type": args.type,
+         "replaced": replaced, "entries": len(existing_titles(path)),
+         "in_tree": tracked,
+         "note": ("this file is tracked, so committing it is what makes teammates inherit "
+                  "the learning — and leaving it uncommitted leaves the tree dirty for the "
+                  "next run" if tracked else
+                  "this file is outside the repo's history, so nothing here dirties the tree")})
+
+
+if __name__ == "__main__":
+    sys.exit(main())

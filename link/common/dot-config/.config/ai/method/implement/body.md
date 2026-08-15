@@ -4,7 +4,7 @@
 
 **The request** is everything the caller just handed you: the feature description, plus any flags such as `--in-place`, `--integrate` or `--review-plan`. **Record it verbatim before you do anything else**, and refer to that record from here on. Several steps below need its exact words — the audit is given the request unsummarized, and the validation pass re-reads it against the finished branch — and two steps read flags out of it. Do not rely on being able to recover it later from memory or from a substituted token.
 
-**A flag not in the request may still be on.** All three are also repo settings, because each is as often a property of the repo as of the run: one whose build cannot work from a worktree wants `--in-place` every time. `clerk prepare` resolves them and reports the answers in `flags` — read those, not the request, wherever a step below turns on a flag. It also reports `flag_sources`, naming what decided each one, so a run that behaves unexpectedly can say which file to look in.
+**A flag not in the request may still be on.** All three are also repo settings, because each is as often a property of the repo as of the run: one whose build cannot work from a worktree wants `--in-place` every time. Hand the request to `clerk prepare --request` and it resolves both layers at once, reporting the answers in `flags` — read those, not the request, wherever a step below turns on a flag. It also reports `flag_sources`, naming what decided each one, so a run that behaves unexpectedly can say which file to look in.
 
 | Flag | `flags` key | Off again with |
 |---|---|---|

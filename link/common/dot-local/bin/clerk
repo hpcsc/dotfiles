@@ -163,9 +163,10 @@ resolve_learnings_path() {
 # file beats remembering it every time. Precedence mirrors resolve_test_commands — a
 # tracked team decision beats a machine-local preference beats the built-in default.
 #
-# An explicit flag in the request outranks all three. Applying that part is the
-# caller's job, not this one's: only the caller can see what was actually typed, and
-# a resolver that guessed would make an unset flag indistinguishable from a false one.
+# An explicit flag in the request outranks all three, and `prepare --request` applies
+# that too. The caller records the request verbatim before anything else, so it can
+# hand it over intact; leaving the last step to a prompt made the one resolution that
+# had to be redone by hand every run also the one with no test behind it.
 # --------------------------------------------------------------------------------
 
 FLAG_KEYS='in_place integrate review_plan'
@@ -180,10 +181,39 @@ truthy() {
   esac
 }
 
+# Whether the request switched a flag on or off, or said nothing about it (exit 1).
+#
+# Matching is on whole whitespace-separated tokens. A request is mostly prose — the
+# feature description — and a substring match would let a sentence mentioning
+# integration switch integration on. Splitting on whitespace first also keeps a glob
+# character in the description from ever reaching the shell as a pattern.
+#
+# Off wins a request that says both, for the reason truthy() reads an unrecognised
+# value as false: "on" is the irreversible side of all three, so an ambiguous signal
+# must never be what turns one on.
+request_flag() {
+  local request=$1 on=$2 off=$3 toks
+  toks=$(printf '%s' "$request" | tr -s '[:space:]' '\n')
+  printf '%s\n' "$toks" | grep -Fxq -- "$off" && { printf 'false'; return 0; }
+  printf '%s\n' "$toks" | grep -Fxq -- "$on"  && { printf 'true';  return 0; }
+  return 1
+}
+
 # Prints "<value>\t<source>". The source is reported, not decoration: a run that
 # integrated because of a file nobody remembers writing is the failure it prevents.
 resolve_flag() {
-  local root=$1 key=$2 cfg="$1/tasks/clerk.json" envf="$1/tasks/.environment" v=
+  local root=$1 key=$2 request=$3 cfg="$1/tasks/clerk.json" envf="$1/tasks/.environment" v= on= off=
+  # The spelling a request uses for each flag. Kept beside the resolver because the
+  # two must agree: a token this does not list is a flag the caller can type and watch
+  # be ignored, which is worse than one that is not offered at all.
+  case "$key" in
+    in_place)    on='--in-place';    off='--worktree' ;;
+    integrate)   on='--integrate';   off='--no-integrate' ;;
+    review_plan) on='--review-plan'; off='--no-review-plan' ;;
+  esac
+  if [ -n "$request" ] && v=$(request_flag "$request" "$on" "$off"); then
+    printf '%s\trequest' "$v"; return
+  fi
   if [ -f "$cfg" ] && jq -e . "$cfg" >/dev/null 2>&1; then
     v=$(jq -r --arg k "$key" 'if has($k) then .[$k] else empty end' "$cfg" 2>/dev/null)
     [ -n "$v" ] && { printf '%s\ttasks/clerk.json' "$(truthy "$v")"; return; }
@@ -193,12 +223,29 @@ resolve_flag() {
 }
 
 resolve_flags() {
-  local root=$1 key
+  local root=$1 request=$2 key
   for key in $FLAG_KEYS; do
-    printf '%s\t%s\n' "$key" "$(resolve_flag "$root" "$key")"
+    printf '%s\t%s\n' "$key" "$(resolve_flag "$root" "$key" "$request")"
   done | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t"))
     | {flags:        (map({key: .[0], value: (.[1] == "true")}) | from_entries),
        flag_sources: (map({key: .[0], value: .[2]})             | from_entries)}'
+}
+
+# `--learnings-path <p>` / `--learnings-path=<p>`. A caller fanning several runs over
+# one story gives each its own file, because learnings_path is keyed on the repository
+# and every worktree of one repo shares a git-common-dir — left resolved, concurrent
+# runs would append to a single file at once and overwrite each other.
+#
+# The path is deliberately not required to sit inside the repo: the out-of-tree case is
+# the whole point of the override. A relative one resolves against the repo root rather
+# than the caller's cwd, which inside a worktree is not the same directory.
+request_learnings_path() {
+  local request=$1 root=$2 p
+  p=$(printf '%s' "$request" | tr -s '[:space:]' '\n' | awk '
+    /^--learnings-path=./ { sub(/^--learnings-path=/, ""); print; exit }
+    $0 == "--learnings-path" { if ((getline nxt) > 0 && nxt !~ /^--/) print nxt; exit }')
+  [ -n "$p" ] || return 1
+  case "$p" in /*) printf '%s' "$p" ;; *) printf '%s/%s' "$root" "$p" ;; esac
 }
 
 # Writes the tracked half of the pair above. It goes next to the resolver on purpose:
@@ -360,6 +407,14 @@ list_breakdowns() {
 
 cmd_prepare() {
   local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees flags
+  local request= learn_src=resolved
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --request)   request=${2:-}; shift 2 ;;
+      --request=*) request=${1#--request=}; shift ;;
+      *) die "prepare: unknown argument '$1'" ;;
+    esac
+  done
   root=$(repo_root) || die "not a git repository"
   wt=$(work_tree); th=$(tasks_home)
   def=$(default_branch)
@@ -370,7 +425,11 @@ cmd_prepare() {
   cmds=$(resolve_test_commands "$root")
   prefix=$(resolve_go_prefix "$root")
   learn=$(resolve_learnings_path "$root")
-  flags=$(resolve_flags "$root")
+  if [ -n "$request" ]; then
+    learn=$(request_learnings_path "$request" "$root") && learn_src=request \
+      || learn=$(resolve_learnings_path "$root")
+  fi
+  flags=$(resolve_flags "$root" "$request")
   tasks=$(find_tasks_file "$th") || tasks=""
   breakdowns=$(list_breakdowns "$th")
   # Worktrees this repo already has. A resumed run must enter the one it left rather
@@ -390,6 +449,7 @@ cmd_prepare() {
     --arg base "$base" \
     --arg go_tool_prefix "$prefix" \
     --arg learnings_path "$learn" \
+    --arg learnings_path_source "$learn_src" \
     --arg tasks_file "$tasks" \
     --arg tasks_home "$th" \
     --argjson tasks_tracked "$tracked" \
@@ -413,6 +473,7 @@ cmd_prepare() {
       test_command: ($test_commands.default // null),
       go_tool_prefix: $go_tool_prefix,
       learnings_path: $learnings_path,
+      learnings_path_source: $learnings_path_source,
       tasks_file: (if $tasks_file == "" then null else $tasks_file end),
       tasks_home: $tasks_home,
       tasks_tracked: $tasks_tracked,
@@ -1091,7 +1152,9 @@ USAGE
   clerk init [--force] [--in-place] [--integrate] [--review-plan]
                                      scaffold tasks/clerk.json with the flags named
                                      set on and the rest written out off
-  clerk prepare                      resolve the repo's facts as JSON
+  clerk prepare [--request <text>]   resolve the repo's facts as JSON; the request is
+                                     scanned for the flags and --learnings-path it
+                                     carries, which outrank every config file
   clerk next [--allow-dirty]         the first task whose dependencies are all done;
                                      exit 3 if a task is still in flight
   clerk finish <n> -- <files...>     tick the checkbox and stage those paths with it
@@ -1118,7 +1181,8 @@ Per-repo flag defaults — in_place, integrate, review_plan — come from tasks/
 order. `clerk init` scaffolds the first one. prepare reports the resolved values as
 `flags` and where each came from as `flag_sources`; land applies `integrate` itself. A
 flag typed on the command line always wins, and --no-integrate turns off what a config
-file switched on.
+file switched on. Pass the request to `prepare --request` and it applies that top layer
+too, reporting `request` as the source; a request saying both reads as off.
 
 Everything here is mechanical. Judgment — writing code, reviewing it, deciding a fix
 is right — stays with the caller.

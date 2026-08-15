@@ -205,7 +205,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | Command | What it settles | Exit |
 |---|---|---|
 | `init [--force] [--in-place] [--integrate] [--review-plan]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
-| `prepare` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, resolved run flags with their sources, plus every existing worktree and breakdown with its progress | 0 |
+| `prepare [--request <text>]` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, resolved run flags with their sources, plus every existing worktree and breakdown with its progress. Given the request, it applies the flags and `--learnings-path` typed in it as the top layer | 0 |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
 | `status [--all]` | Progress from the sidecar, plus acceptance criteria walked per task; `--all` walks every breakdown in the repo, in flight and archived | 0 |

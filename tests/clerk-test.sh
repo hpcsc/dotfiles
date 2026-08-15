@@ -73,6 +73,53 @@ eq "the cache is used when no config exists" \
    "cached-and-should-lose" "$(run "$R" prepare | jq -r '.test_command')"
 
 # --------------------------------------------------------------------------------
+printf '\nrun flags\n'
+
+RF=$(new_repo)
+J=$(run "$RF" prepare)
+eq "every flag is off with nothing set" "false false false" \
+   "$(printf '%s' "$J" | jq -r '[.flags.in_place, .flags.integrate, .flags.review_plan] | join(" ")')"
+eq "and the source says so" "default" "$(printf '%s' "$J" | jq -r '.flag_sources.integrate')"
+
+mkdir -p "$RF/tasks"
+printf '{"integrate": true}\n' > "$RF/tasks/clerk.json"
+J=$(run "$RF" prepare)
+eq "a tracked config switches one on" "true" "$(printf '%s' "$J" | jq -r '.flags.integrate')"
+eq "and is named as the source" "tasks/clerk.json" "$(printf '%s' "$J" | jq -r '.flag_sources.integrate')"
+
+J=$(run "$RF" prepare --request 'add a widget --no-integrate')
+eq "the request turns off what the config turned on" \
+   "false" "$(printf '%s' "$J" | jq -r '.flags.integrate')"
+eq "and takes the credit for it" "request" "$(printf '%s' "$J" | jq -r '.flag_sources.integrate')"
+
+J=$(run "$RF" prepare --request 'add a widget --in-place --review-plan')
+eq "several flags resolve from one request" "true true" \
+   "$(printf '%s' "$J" | jq -r '[.flags.in_place, .flags.review_plan] | join(" ")')"
+eq "a flag the request omits still falls through to the config" \
+   "tasks/clerk.json" "$(printf '%s' "$J" | jq -r '.flag_sources.integrate')"
+
+# Prose is the bulk of a request. A substring match here would read the sentence as an
+# instruction, which is the one way this parse can turn integration on by accident.
+J=$(run "$RF" prepare --request 'make the --no-integrate path integrate cleanly with sso')
+eq "a flag word in prose is not a flag" "false" "$(printf '%s' "$J" | jq -r '.flags.integrate')"
+eq "and neither is one embedded in a longer token" "false" \
+   "$(run "$RF" prepare --request 'rename --in-place-editing' | jq -r '.flags.in_place')"
+
+eq "a request saying both reads as off" "false" \
+   "$(run "$RF" prepare --request 'x --integrate --no-integrate' | jq -r '.flags.integrate')"
+eq "however it is ordered" "false" \
+   "$(run "$RF" prepare --request 'x --no-integrate --integrate' | jq -r '.flags.integrate')"
+
+# A description is arbitrary text: a glob in it must never reach the shell as a pattern.
+eq "a glob in the description is inert" "true" \
+   "$(run "$RF" prepare --request 'touch *.go and ./** --in-place' | jq -r '.flags.in_place')"
+eq "and so is an empty request" "false" \
+   "$(run "$RF" prepare --request '' | jq -r '.flags.in_place')"
+
+eq "an unknown argument is refused rather than ignored" "2" \
+   "$(run "$RF" prepare --nonsense >/dev/null 2>&1; printf '%s' $?)"
+
+# --------------------------------------------------------------------------------
 printf '\nlearnings path\n'
 
 R2=$(new_repo)
@@ -86,6 +133,24 @@ case "$(run "$R2" prepare | jq -r '.learnings_path')" in
   *) bad "out-of-tree when tasks/ is gitignored" "under ~/.claude/implement-learnings" \
          "$(run "$R2" prepare | jq -r '.learnings_path')" ;;
 esac
+eq "and says it resolved the path itself" "resolved" \
+   "$(run "$R2" prepare | jq -r '.learnings_path_source')"
+
+# A caller fanning runs over one story gives each its own file; they share a git-common
+# dir, so the resolved path would have them all appending to one.
+J=$(run "$R2" prepare --request 'build it --learnings-path /tmp/run-3.md')
+eq "the request names the learnings file" "/tmp/run-3.md" "$(printf '%s' "$J" | jq -r '.learnings_path')"
+eq "and is named as the source" "request" "$(printf '%s' "$J" | jq -r '.learnings_path_source')"
+eq "the = spelling works too" "/tmp/run-4.md" \
+   "$(run "$R2" prepare --request 'build it --learnings-path=/tmp/run-4.md' | jq -r '.learnings_path')"
+eq "a relative path resolves against the repo root, not the cwd" \
+   "$R2/notes/run.md" \
+   "$(run "$R2" prepare --request '--learnings-path notes/run.md' | jq -r '.learnings_path')"
+eq "a dangling --learnings-path falls back rather than eating the next flag" \
+   "resolved|true" \
+   "$(J=$(run "$R2" prepare --request 'x --learnings-path --in-place'); \
+      printf '%s|%s' "$(printf '%s' "$J" | jq -r '.learnings_path_source')" \
+                     "$(printf '%s' "$J" | jq -r '.flags.in_place')")"
 
 # --------------------------------------------------------------------------------
 printf '\nworktree\n'

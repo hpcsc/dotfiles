@@ -67,6 +67,10 @@ CALLERS = {
 # guidelines, and those carry a Section Index that says what else is in them.
 TESTING_SLOTS = ["what-to-test", "unit-of-behavior", "assertions", "independent-verification"]
 
+# The testing guidelines the slot list was written against. Membership, not the
+# filename, is what earns the slot treatment: `cue/testing-patterns.md` matches the same
+# suffix and shares none of the headings, so cutting it to slots emitted nothing at all
+# and four complaints about sections it never claimed to have.
 LANGUAGE_FILES = {
     "Go": ["go/testing-patterns.md", "go/naming-patterns.md",
            "go/architecture-principles.md", "go/development-workflow.md"],
@@ -85,6 +89,9 @@ OPTIONAL_FILES = {
 }
 
 ALWAYS = ["testing/caller-patterns.md", "comments.md"]
+
+SLOTTED_TESTING = {f for files in LANGUAGE_FILES.values() for f in files
+                   if f.endswith("/testing-patterns.md")}
 
 
 def die(msg):
@@ -263,7 +270,7 @@ def main():
             slots = ["identify-caller", "quick-reference"]
             if args.caller:
                 slots.insert(1, args.caller)
-        elif rel.endswith("/testing-patterns.md"):
+        elif rel in SLOTTED_TESTING:
             slots = list(TESTING_SLOTS)
         elif literals:
             # Asked for by name and not otherwise in a bundle: give exactly that, whatever

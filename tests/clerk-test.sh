@@ -1409,6 +1409,19 @@ eq "a named section that no heading matches is reported" "1" \
 eq "and a spec with no heading is refused outright" "2" \
    "$(gl --language Go --section 'go/testing-patterns.md' >/dev/null 2>&1; printf '%s' $?)"
 
+# A file whose name ends the same way but which no bundle contains. Cutting it to the
+# slot list emits nothing and complains four times about headings it never claimed.
+mkdir -p "$GD/cue"
+printf '# CUE Testing\n\n## Critical Rule: Verify Tests Can Fail\ncue-test-body\n' \
+  > "$GD/cue/testing-patterns.md"
+C=$(gl --only --file cue/testing-patterns.md)
+eq "a testing guideline outside every bundle comes whole" "1" \
+   "$(printf '%s' "$C" | grep -c 'cue-test-body')"
+eq "and is not reported as missing the bundle's sections" "0" \
+   "$(printf '%s' "$C" | grep -c 'no section matching')"
+eq "while a bundle's own testing guideline stays cut to its slots" "4" \
+   "$(gl --only --file go/testing-patterns.md | grep -c '^<!-- go/testing-patterns.md §')"
+
 # Files outside every language bundle — concurrency, performance, cue, architecture.
 printf '# Go Concurrency\nconcurrency-body\n' > "$GD/go/concurrency-patterns.md"
 F=$(gl --language Go --file go/concurrency-patterns.md)

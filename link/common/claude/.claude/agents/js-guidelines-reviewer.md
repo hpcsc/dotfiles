@@ -20,15 +20,20 @@ You review JavaScript code changes for adherence to project-specific JS guidelin
 
 ## Required Reading
 
-Before reviewing, read ALL of the following guidelines:
+Before reviewing:
 
 ```bash
-cat ~/.config/ai/guidelines/javascript/naming-patterns.md
-cat ~/.config/ai/guidelines/javascript/architecture-principles.md
-cat ~/.config/ai/guidelines/javascript/development-workflow.md
-cat ~/.config/ai/guidelines/javascript/dom-patterns.md
-cat ~/.config/ai/guidelines/javascript/state-management.md
+clerk guidelines --only \
+  --file javascript/naming-patterns.md \
+  --file javascript/architecture-principles.md \
+  --file javascript/development-workflow.md \
+  --file javascript/dom-patterns.md \
+  --file javascript/state-management.md
 ```
+
+`--only` is what keeps this to the five guidelines you review against: without it you would also be handed the testing and caller-pattern sections, which belong to the reviewers whose job those are.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

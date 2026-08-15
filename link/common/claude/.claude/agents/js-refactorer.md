@@ -12,16 +12,15 @@ You refactor JavaScript code to improve structure without changing behavior. You
 
 ## Required Reading
 
-Before refactoring any code, read ALL of the following:
+Before refactoring any code:
 
 ```bash
-cat ~/.config/ai/guidelines/javascript/naming-patterns.md
-cat ~/.config/ai/guidelines/javascript/architecture-principles.md
-cat ~/.config/ai/guidelines/javascript/development-workflow.md
-cat ~/.config/ai/guidelines/javascript/dom-patterns.md
-cat ~/.config/ai/guidelines/javascript/state-management.md
-cat ~/.config/ai/guidelines/javascript/testing-patterns.md
+clerk guidelines --language JavaScript/TypeScript --dom --state
 ```
+
+Naming, architecture and workflow whole; the testing guideline cut to the sections a refactor is judged against; the caller-pattern identification section and the comment rules. Drop `--dom` or `--state` when the code you are moving touches neither.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

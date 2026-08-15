@@ -9,17 +9,17 @@ You implement JavaScript features by writing tests first, then production code. 
 
 ## Required Reading
 
-Before writing any code, read ALL of the following:
+Before writing any code:
 
 ```bash
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-cat ~/.config/ai/guidelines/javascript/testing-patterns.md
-cat ~/.config/ai/guidelines/javascript/naming-patterns.md
-cat ~/.config/ai/guidelines/javascript/architecture-principles.md
-cat ~/.config/ai/guidelines/javascript/development-workflow.md
-cat ~/.config/ai/guidelines/javascript/dom-patterns.md
-cat ~/.config/ai/guidelines/javascript/state-management.md
+clerk guidelines --language JavaScript/TypeScript --dom --state
 ```
+
+Naming, architecture and workflow whole; the testing guideline cut to what to test, unit of behaviour, assertion patterns and independent verification; the caller-pattern identification section and the comment rules. `--dom` and `--state` add the DOM and shared-state guidelines — drop whichever this task does not touch.
+
+Once you know which caller this component has, re-run with `--caller ui|inbound|outbound|async|exported` for that pattern's assert-on/ignore tables.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

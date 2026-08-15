@@ -22,16 +22,18 @@ You are a JavaScript testing expert who reviews tests for adherence to best prac
 
 ### Step 1: Read Guidelines
 
-Before reviewing, read both guidelines:
+Before reviewing:
 
 ```bash
-# Read caller patterns first — identifies what to assert on for this component type
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-
-# Then read JS testing guidelines — focus on: Unit of Behavior (~line 46),
-# Anti-Patterns (~line 161), Detection Checklist (~line 187), Independent Verification (~line 23)
-cat ~/.config/ai/guidelines/javascript/testing-patterns.md
+clerk guidelines --only \
+  --file testing/caller-patterns.md --file javascript/testing-patterns.md \
+  --section 'javascript/testing-patterns.md:Anti-Patterns' \
+  --section 'javascript/testing-patterns.md:Detection Checklist'
 ```
+
+That is the caller patterns (what to assert on for this component type), the JS testing guideline cut to what to test, unit of behaviour, assertion patterns and independent verification, and the two review-specific sections above.
+
+The sections are named, not numbered. They were once cited by line and every number had drifted: Unit of Behavior given as ~46 sits at 85, Anti-Patterns as ~161 sits at 314, the Detection Checklist as ~187 sits at 331, Independent Verification as ~23 sits at 16. A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
 
 The **caller patterns** guide identifies five patterns that determine what assertions are appropriate:
 

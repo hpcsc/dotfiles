@@ -17,19 +17,18 @@ You review JavaScript code changes for semantic correctness and test quality. Yo
 
 ## Required Reading
 
-Before reviewing, read the caller patterns, JS testing guidelines, and comment-usage guideline:
+Before reviewing:
 
 ```bash
-# Read caller patterns — identifies what to assert on for this component type
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-
-# Then read JS testing guidelines — focus on: Independent Verification (~line 23),
-# Unit of Behavior (~line 46), Assertion Patterns (~line 82), Anti-Patterns (~line 161)
-cat ~/.config/ai/guidelines/javascript/testing-patterns.md
-
-# Then read comment-usage rules — gate any new/modified comments in the diff
-cat ~/.config/ai/guidelines/comments.md
+clerk guidelines --language JavaScript/TypeScript \
+  --section 'javascript/testing-patterns.md:Anti-Patterns'
 ```
+
+That prints, as text: the caller-pattern identification section and Quick Reference (what to assert on for this component type), the JS testing guideline cut to what to test, unit of behaviour, assertion patterns and independent verification, plus the anti-patterns above. The comment rules come with it, to gate any new or modified comment in the diff.
+
+The sections are named, not numbered. They were once cited by line and every number had drifted: Independent Verification given as ~23 sits at 16, Unit of Behavior as ~46 sits at 85, Assertion Patterns as ~82 sits at 151, Anti-Patterns as ~161 sits at 314. A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

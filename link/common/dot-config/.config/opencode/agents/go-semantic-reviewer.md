@@ -17,19 +17,17 @@ You review Go code changes for semantic correctness and test quality. You do NOT
 
 ## Required Reading
 
-Before reviewing, read the caller patterns, Go testing guidelines, and comment-usage guideline:
+Before reviewing:
 
 ```bash
-# Read caller patterns — identifies what to assert on for this component type
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-
-# Then read Go testing guidelines — focus on: Independent Verification (~line 40),
-# Detecting Implementation Details (~line 239), Unit of Behavior (~line 191)
-cat ~/.config/ai/guidelines/go/testing-patterns.md
-
-# Then read comment-usage rules — gate any new/modified comments in the diff
-cat ~/.config/ai/guidelines/comments.md
+clerk guidelines --language Go \
+  --section 'go/testing-patterns.md:Independent Verification' \
+  --section 'go/testing-patterns.md:Detecting Implementation Detail'
 ```
+
+That prints, as text: the caller-pattern identification section and Quick Reference (what to assert on for this component type), the Go testing guideline cut to what to test, unit of behaviour and assertion strictness, plus the two sections above — independent verification, for whether an expected value is grounded in the domain or copied from the implementation, and implementation-detail detection, for tests a harmless refactor would break. The comment rules come with it, to gate any new or modified comment in the diff.
+
+Sections are asked for **by name**. They were once cited by line number, and every one of those numbers had drifted — Independent Verification was said to be at ~40 and is at 46, Detecting Implementation Details at ~239 and is at 303, Unit of Behavior at ~191 and is at 253. A name that stops matching is reported under "Not loaded"; a line number that stops matching just points somewhere else.
 
 ---
 

@@ -332,6 +332,11 @@ Reflect comes **last** because it leaves that file modified and uncommitted by d
 | Dirty tree at start | Stop; ask the user to stash or commit. Never build on top of someone else's loose work. |
 | `clerk` not installed | Stop and say so. Its resolutions have precedence rules that are easy to execute wrongly and silently. |
 | `clerk next` exits 3 | A task is in flight. Commit it, or discard it deliberately — do not pass `--allow-dirty` to get past your own unfinished work. |
+| `clerk guidelines` prints a "Not loaded" section | A guideline has been reorganised out from under its slot, or a language has no guideline set. Read the headings it lists and load what you need by hand — do not proceed as though the section did not exist. |
+| `clerk fixup` exits 3 as `ambiguous` | Several commits in range touch the file. Read the finding's evidence for which one the defect came in with, then pass it as `--onto`. Do not take the newest to get moving. |
+| `clerk fixup` exits 3 as `spans-commits` | The files belong to different task commits. Run it once per group it printed. |
+| `clerk fixup --replay` refuses or aborts | A conflict, a dirty tree, or a range already pushed. Keep the fix as its own commit and say why in the message — the branch is exactly as it was. |
+| `clerk learn` exits 3 on a repeated title | That title is already recorded. Read it with `--list` and decide on substance: fold your wording in with `--replace`, or give this one its own title. |
 | `clerk land` reports the gate shut | Read which predicate failed; each names its own evidence. Fix that, do not work around it. |
 | `clerk land --integrate` exits 3 after a rebase | The base moved and the receipt is stale. Re-run the suite, record it, run it again. |
 | Rebase conflicts at integrate | Left aborted and the branch untouched. Hand it over; do not resolve someone else's merge for them. |

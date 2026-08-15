@@ -1,2 +1,3 @@
-| `git worktree add` fails, or `EnterWorktree` is unavailable | Fall back to `--in-place`: feature branch in the main checkout. Say which you used — it changes where the user finds the code. |
-| `EnterWorktree` refuses the path | It takes a path already in `git worktree list` for this repo, entered from the launch directory. Check `git worktree add` actually succeeded and that you have not already switched trees; failing that, `--in-place`. |
+| `clerk worktree` fails, or `EnterWorktree` is unavailable | Fall back to `--in-place`: feature branch in the main checkout. Say which you used — it changes where the user finds the code. |
+| `clerk worktree` refuses the branch as checked out in the main tree | Something has that branch open already. Switch the main checkout away, or build there deliberately with `--in-place` — do not create a second tree for one feature. |
+| `EnterWorktree` refuses the path | It takes a path already in `git worktree list` for this repo, entered from the launch directory. Check `clerk worktree` actually reported a path and that you have not already switched trees; failing that, `--in-place`. |

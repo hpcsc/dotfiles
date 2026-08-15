@@ -145,7 +145,10 @@ def detect_languages(cwd):
     except OSError as e:
         die(f"could not run clerk prepare: {e}")
     if r.returncode != 0:
-        die("clerk prepare failed; pass --language explicitly")
+        # Pass its reason through. "clerk prepare failed" sent the reader looking at this
+        # command, when what it actually says is "not a git repository".
+        why = r.stderr.strip() or f"exit {r.returncode}"
+        die(f"{why} — pass --language explicitly to skip detection")
     return json.loads(r.stdout).get("languages", [])
 
 

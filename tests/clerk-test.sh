@@ -503,6 +503,33 @@ eq "and it does not land without being asked" "false" "$(printf '%s' "$L" | jq -
 eq "but it says how to land it"               "true"  \
    "$(printf '%s' "$L" | jq -r '.to_land | test("merge --ff-only")')"
 
+# A repo whose tasks/ holds several breakdowns. Every other command refuses that and
+# says to name one. land used to archive nothing and still report the landing worked,
+# leaving the breakdown behind for the next run to count as in-flight — and the gate does
+# not catch it, because once any run has archived something the gate passes on that
+# record rather than on a breakdown it resolved itself.
+RAMB=$(new_repo)
+mkdir -p "$RAMB/tasks"
+for story in alpha beta gamma; do
+  printf '### Task 1: Do it\n' > "$RAMB/tasks/$story.md"
+  printf '{"story":"%s","tasks_file":"tasks/%s.md","tasks":[{"n":1,"title":"Do it","language":"Go","testable":true,"depends_on":[],"affected_files":["a.go"],"done":true}]}\n' \
+    "$story" "$story" > "$RAMB/tasks/$story.json"
+done
+printf 'package a\n' > "$RAMB/a.go"
+git -C "$RAMB" add -A && git -C "$RAMB" commit -qm "Three breakdowns"
+git -C "$RAMB" checkout -q -b feature
+run "$RAMB" receipt --command "go test ./..." --passed >/dev/null
+eq "fixture: naming one archives it and records that it did" "tasks/completed/alpha.md" \
+   "$(run "$RAMB" land --no-integrate --audit-accepted --tasks-file tasks/alpha.md | jq -r '.archived')"
+
+run "$RAMB" receipt --command "go test ./..." --passed >/dev/null
+A=$(run "$RAMB" land --no-integrate --audit-accepted 2>&1); RC=$?
+eq "land refuses while tasks/ still holds several" "2" "$RC"
+eq "and names them rather than archiving nothing" "1" \
+   "$(printf '%s' "$A" | grep -c 'name the one this run is building')"
+eq "both breakdowns are still there to be named" "2" \
+   "$(ls "$RAMB"/tasks/beta.md "$RAMB"/tasks/gamma.md 2>/dev/null | wc -l | tr -d ' ')"
+
 run "$R8" receipt --command "go test ./..." --passed >/dev/null
 L=$(run "$R8" land --integrate --audit-accepted)
 eq "lands with --integrate"          "true"    "$(printf '%s' "$L" | jq -r '.landed')"
@@ -1594,6 +1621,27 @@ eq "with no fixup! left in history" "0" \
    "$(git -C "$RX" log --format=%s "$BASE"..HEAD | grep -c '^fixup!')"
 git -C "$RX" checkout -q -- task1.go
 
+# An --in-place run commits to the default branch, where there is no other branch to
+# fork from. The base is then where the branch and its upstream last agreed.
+RUP=$(cd "$(mktemp -d)" && pwd -P)
+git init -q --bare "$RUP/remote.git"
+git clone -q "$RUP/remote.git" "$RUP/work" 2>/dev/null
+git -C "$RUP/work" config user.email clerk@test
+git -C "$RUP/work" config user.name Clerk
+git -C "$RUP/work" config commit.gpgsign false
+printf 'seed\n' > "$RUP/work/R.md"
+git -C "$RUP/work" add -A && git -C "$RUP/work" commit -qm Seed
+git -C "$RUP/work" push -q -u origin main 2>/dev/null
+printf 'one\n' > "$RUP/work/a.txt"; git -C "$RUP/work" add -A; git -C "$RUP/work" commit -qm "Work one"
+printf 'two\n' > "$RUP/work/b.txt"; git -C "$RUP/work" add -A; git -C "$RUP/work" commit -qm "Work two"
+printf 'one fixed\n' > "$RUP/work/a.txt"
+eq "on the default branch the base comes from the upstream" "Work one" \
+   "$(run "$RUP/work" fixup -- a.txt | jq -r '.subject')"
+eq "and the replay folds against it" "1" \
+   "$(run "$RUP/work" fixup --replay --force | jq -r '.folded')"
+eq "leaving the two commits it started with" "2" \
+   "$(git -C "$RUP/work" rev-list --count origin/main..HEAD)"
+
 # Rewriting what someone else may already have is the one case to keep separate.
 RM=$(cd "$(mktemp -d)" && pwd -P)
 git -C "$RM" init -q --bare
@@ -1672,6 +1720,21 @@ eq "a tracked file says committing is what shares it" "true" \
 
 RL2=$(new_repo)
 printf 'tasks/\n' > "$RL2/.gitignore" && git -C "$RL2" add -A && git -C "$RL2" commit -qm "Ignore"
+# A run that names its feature and not a task is ordinary — the learning came from the
+# whole of it. The dash joins two parts, so it has to disappear when there is one.
+eq "a feature without a task number carries no dangling dash" "- Observed: US-014 formatting" \
+   "$(run "$RL" learn --type constraint --title "Feature only" --learning "x" --apply-when "y" \
+        --feature "US-014 formatting" >/dev/null; \
+      grep -A2 '^## Feature only' "$RL/tasks/learnings.md" | grep '^- Observed:')"
+eq "a task without a feature still reads as one" "- Observed: task 4" \
+   "$(run "$RL" learn --type constraint --title "Task only" --learning "x" --apply-when "y" \
+        --task 4 >/dev/null; \
+      grep -A2 '^## Task only' "$RL/tasks/learnings.md" | grep '^- Observed:')"
+eq "and both are joined by it" "- Observed: task 5 — US-015 wiring" \
+   "$(run "$RL" learn --type constraint --title "Both" --learning "x" --apply-when "y" \
+        --task 5 --feature "US-015 wiring" >/dev/null; \
+      grep -A2 '^## Both' "$RL/tasks/learnings.md" | grep '^- Observed:')"
+
 eq "an out-of-tree file says nothing here dirties the tree" "false" \
    "$(run "$RL2" learn --type pattern --title "Outside" --learning "x" \
         --apply-when "y" | jq -r '.in_tree')"

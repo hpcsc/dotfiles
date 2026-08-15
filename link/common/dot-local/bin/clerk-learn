@@ -120,9 +120,13 @@ def main():
             f"read it with --list, then either fold your wording into it with --replace or "
             f"give this one its own title", 3)
 
-    observed = " ".join(x for x in [
+    # The dash joins two parts, so it only belongs when there are two. A run that names
+    # its feature and not a task is ordinary — the learning came from the whole of it
+    # rather than one step — and it was rendering as "Observed: — US-014", which reads
+    # like the task number went missing.
+    observed = " — ".join(x for x in [
         f"task {args.task}" if args.task else "",
-        f"— {args.feature}" if args.feature else "",
+        args.feature,
     ] if x) or "this run"
 
     block = (f"\n## {args.title}\n"

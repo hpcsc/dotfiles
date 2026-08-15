@@ -1384,6 +1384,17 @@ eq "listing every section, including ones no role reads" "1" \
 eq "carrying each section's own Use when line" "1" \
    "$(printf '%s' "$B" | grep -c '| What to Test | deciding whether something is worth testing |')"
 
+# The shared guideline backs up whatever a language does not carry, without shadowing
+# what it does: a concept comes from the first file in the plan that declares it, and
+# language bundles are planned ahead of --file extras for exactly that reason.
+BK=$(gl --language Go --file testing/patterns.md --concept assertions --concept coupling-levels)
+eq "a language's own treatment of a concept wins" "1" \
+   "$(printf '%s' "$BK" | grep -c 'go/testing-patterns.md § Assertion Strictness')"
+eq "and the shared guideline is not asked twice for it" "0" \
+   "$(printf '%s' "$BK" | grep -c 'testing/patterns.md § Assertion')"
+eq "while a concept the language lacks comes from the shared one" "1" \
+   "$(printf '%s' "$BK" | grep -c 'testing/patterns.md § Coupling-Based')"
+
 # Which caller a component has is a per-task judgment, so it stays a flag.
 eq "--caller is sugar for the caller concept" "1|0" \
    "$(C=$(gl --language Go --caller ui); printf '%s|%s' "$(printf '%s' "$C" | grep -c 'ui-body')" \

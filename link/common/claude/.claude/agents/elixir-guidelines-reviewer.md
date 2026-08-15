@@ -29,7 +29,7 @@ clerk guidelines --only \
 
 `--only` is what keeps this to the three guidelines you review against: without it you would also be handed the testing and caller-pattern sections, which belong to the reviewers whose job those are.
 
-If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
+If it prints a "Not loaded" section, read it — a concept no loaded guideline declares is reported there rather than silently omitted.
 
 ---
 

@@ -20,16 +20,17 @@ You review Elixir code changes for semantic correctness and test quality. You do
 Before reviewing:
 
 ```bash
-clerk guidelines --only \
-  --file testing/caller-patterns.md --file comments.md \
-  --file elixir/testing-patterns.md \
-  --section 'elixir/testing-patterns.md:Anti-Patterns' \
-  --section 'elixir/testing-patterns.md:Detection Checklist'
+clerk guidelines --only --file testing/caller-patterns.md --file comments.md --file elixir/testing-patterns.md --file testing/patterns.md \
+  --concept public-api-only --concept what-to-test --concept unit-of-behavior \
+  --concept assertions --concept independent-verification --concept test-qualities \
+  --concept implementation-detail-tests --concept negative-paths \
+  --concept no-caller-cases --concept identify-caller \
+  --concept caller-quick-reference
 ```
 
-That prints, as text: the caller-pattern identification section and Quick Reference (what to assert on for this component type), the Elixir testing guideline cut to what to test, unit of behaviour, assertion strictness and **independent verification** — which carries the substitution test, the one that extends change detectors to catch constant pins and collaborator passthroughs — plus the anti-patterns and detection checklist above. The comment rules come with it, to gate any new or modified comment in the diff.
+That prints the caller-pattern identification section and Quick Reference (what to assert on for this component type), then each concept above from whichever guideline declares it — the Elixir one first, the language-agnostic set for anything it does not carry. The comment rules come with it, to gate any new or modified comment in the diff. Each `--concept` names a section by the name its guideline declares, so it arrives whatever its heading happens to be called. Read what it prints; do not re-fetch any of it.
 
-If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
+If it prints a "Not loaded" section, read it — a concept no loaded guideline declares is reported there rather than silently omitted.
 
 ---
 

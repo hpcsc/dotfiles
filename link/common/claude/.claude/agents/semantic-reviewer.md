@@ -22,11 +22,11 @@ You review code changes for semantic correctness. You do NOT modify code.
 Before reviewing:
 
 ```bash
-clerk guidelines --only \
-  --file testing/caller-patterns.md --file comments.md \
-  --section 'testing/patterns.md:Independent Verification' \
-  --section 'testing/patterns.md:What is a Unit of Behavior' \
-  --section 'testing/patterns.md:Detecting Implementation Detail'
+clerk guidelines --only --file testing/caller-patterns.md --file comments.md --file testing/patterns.md \
+  --concept public-api-only --concept what-to-test --concept unit-of-behavior \
+  --concept assertions --concept independent-verification --concept test-qualities \
+  --concept implementation-detail-tests --concept no-caller-cases \
+  --concept identify-caller --concept caller-quick-reference
 ```
 
 That is the caller patterns (what to assert on for this component type), three sections of the language-agnostic testing guideline, and the comment rules to gate any new or modified comment in the diff. `--only` is deliberate: this reviewer is the language-agnostic one, so it takes the shared guideline rather than whichever language the repo happens to be in.

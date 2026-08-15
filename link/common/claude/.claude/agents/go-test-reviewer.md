@@ -27,14 +27,18 @@ You are a Go testing expert who reviews tests for adherence to best practices. Y
 Before reviewing:
 
 ```bash
-clerk guidelines --only \
-  --file testing/caller-patterns.md --file go/testing-patterns.md \
-  --section 'go/testing-patterns.md:Detecting Implementation Detail' \
-  --section 'go/testing-patterns.md:Common Anti-Patterns' \
-  --section 'go/testing-patterns.md:Quick Testing Checklist'
+clerk guidelines --only --file testing/caller-patterns.md --file go/testing-patterns.md --file testing/patterns.md \
+  --concept public-api-only --concept what-to-test --concept unit-of-behavior \
+  --concept assertions --concept independent-verification --concept test-qualities \
+  --concept implementation-detail-tests --concept negative-paths \
+  --concept no-caller-cases --concept identify-caller \
+  --concept caller-quick-reference --concept anti-patterns --concept checklist \
+  --concept test-clarity --concept test-doubles --concept test-helpers \
+  --concept contract-tests --concept http-handler-scope \
+  --concept no-test-only-exposure
 ```
 
-That is the caller patterns (what to assert on for this component type), the Go testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification, and the three review-specific sections above. Read what it prints; do not re-fetch any of it.
+That is the caller patterns (what to assert on for this component type), then each concept above from whichever guideline declares it — the Go one first, the language-agnostic set for anything it does not carry. Each `--concept` names a section by the name its guideline declares, so it arrives whatever its heading happens to be called. Read what it prints; do not re-fetch any of it. Read what it prints; do not re-fetch any of it.
 
 Sections are named rather than numbered, because a name that stops matching is reported under "Not loaded" where a line number that stops matching just points somewhere else.
 

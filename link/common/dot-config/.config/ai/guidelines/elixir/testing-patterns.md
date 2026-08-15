@@ -397,7 +397,7 @@ When reviewing a test, check for these red flags:
 ---
 
 ## Quick Reference
-<!-- concept: testing-quick-reference -->
+<!-- concept: summary -->
 > Use when: Reference table of practices
 
 | Practice | Rule |

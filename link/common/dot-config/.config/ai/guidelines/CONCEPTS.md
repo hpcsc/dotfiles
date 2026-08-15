@@ -60,7 +60,7 @@ absence of a marker means two different things.
 | `no-test-only-exposure` | Never widening visibility just to let a test reach something | go, testing |
 | `test-clarity` | Including only the details the test's own failure depends on | go, testing |
 | `negative-paths` | Error paths and the invariants that must hold on them | go, elixir |
-| `summary` | The guideline's closing recap | go, testing |
+| `summary` | The closing table of practices — titled "Summary" in two guidelines and "Quick Reference" in the others | all 4 |
 | `contract-tests` | One suite run against every implementation of an interface | go |
 | `test-helpers` | Helpers that build fixtures without hiding the assertion | go |
 | `observable-behavior-examples` | Worked examples of asserting on outcomes | testing |
@@ -69,7 +69,6 @@ absence of a marker means two different things.
 | `async-testing` | Waiting on outcomes rather than timers | js |
 | `concurrency-testing` | Processes, messages and supervision under test | elixir |
 | `database-testing` | Transactions, sandboxes and fixtures against a real store | elixir |
-| `testing-quick-reference` | The guideline's own lookup table | js, elixir |
 | `identify-caller` | Working out whose expectations define correctness | caller-patterns |
 | `caller-ui` | User → page: assert on visible content, not markup | caller-patterns |
 | `caller-inbound` | External system → handler: assert on acceptance and side effects | caller-patterns |
@@ -91,7 +90,7 @@ own language's treatment of the same concepts.
 | **refactorer** | `public-api-only` `unit-of-behavior` `test-structure` `no-test-only-exposure` `implementation-detail-tests` `test-clarity` |
 | **test designer** | `identify-caller` `caller-quick-reference` `no-caller-cases` `what-to-test` `unit-of-behavior` `independent-verification` `coupling-levels` `test-qualities` `assertions` `observable-behavior-examples` `http-handler-scope` |
 | **semantic reviewer** | `public-api-only` `what-to-test` `unit-of-behavior` `assertions` `independent-verification` `test-qualities` `implementation-detail-tests` `negative-paths` `no-caller-cases` `identify-caller` `caller-quick-reference` |
-| **test reviewer** | everything the semantic reviewer reads, plus `anti-patterns` `checklist` `test-clarity` `test-doubles` `test-helpers` `contract-tests` `http-handler-scope` `no-test-only-exposure` `testing-quick-reference` |
+| **test reviewer** | everything the semantic reviewer reads, plus `anti-patterns` `checklist` `test-clarity` `test-doubles` `test-helpers` `contract-tests` `http-handler-scope` `no-test-only-exposure` `summary` |
 | **concurrency reviewer** | `concurrency-testing`, alongside its language's concurrency guideline |
 
 Two additions are conditional rather than role-wide: `dom-testing` and `async-testing`
@@ -102,9 +101,26 @@ consumer identifies its caller first, then asks for that one with `--caller`.
 
 ### Unclaimed
 
-`benefits` and `summary` are read by no role. Both are closing recaps of material the
-concepts above already deliver, so nothing is missing — but they are the two to look at
-first if a guideline starts feeling like it is being ignored.
+`benefits` is read by no role. It is a closing recap of material the concepts above
+already deliver, so nothing is missing — but it is the first place to look if a guideline
+starts feeling like it is being ignored.
+
+### Where a role wants more than its guideline carries
+
+The guidelines are not uniform, so a role's list is the concepts it reads **that its own
+guidelines declare**. `testing/patterns.md` backs up whatever a language guideline lacks,
+and a concept comes from the first guideline in the plan that declares it, so a language's
+own treatment always wins. What that still leaves:
+
+| Concept | Carried by | Absent from |
+|---|---|---|
+| `negative-paths` | go, elixir | javascript, the shared set — error-path testing is not language-specific, so both are real gaps |
+| `test-doubles` | go, javascript, elixir | the shared set |
+| `contract-tests` · `test-helpers` | go | the others — both are Go idioms (interface contract suites, table-driven helpers), so not gaps |
+
+Filling the first two rows would let every role read its full list. Until then a role
+simply does not ask for what its guidelines do not have, which keeps "Not loaded" meaning
+drift rather than a standing complaint.
 
 ## Adding to a guideline
 

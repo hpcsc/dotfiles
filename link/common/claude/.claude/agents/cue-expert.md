@@ -20,7 +20,7 @@ clerk guidelines --only \
 `--only` is what stops detection adding the guidelines of whatever language the repo is
 written in: CUE work is judged against CUE's own set, and nothing else here applies.
 
-If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
+If it prints a "Not loaded" section, read it — a concept no loaded guideline declares is reported there rather than silently omitted.
 
 1. **Fundamentals** (`~/.config/ai/guidelines/cue/fundamentals.md`)
    - Definitions, constraints, and unification

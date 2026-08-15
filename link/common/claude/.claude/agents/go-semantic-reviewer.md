@@ -23,12 +23,15 @@ You review Go code changes for semantic correctness and test quality. You do NOT
 Before reviewing:
 
 ```bash
-clerk guidelines --only \
-  --file testing/caller-patterns.md --file comments.md --file go/testing-patterns.md \
-  --section 'go/testing-patterns.md:Detecting Implementation Detail'
+clerk guidelines --only --file testing/caller-patterns.md --file comments.md --file go/testing-patterns.md --file testing/patterns.md \
+  --concept public-api-only --concept what-to-test --concept unit-of-behavior \
+  --concept assertions --concept independent-verification --concept test-qualities \
+  --concept implementation-detail-tests --concept negative-paths \
+  --concept no-caller-cases --concept identify-caller \
+  --concept caller-quick-reference
 ```
 
-That prints, as text: the caller-pattern identification section and Quick Reference (what to assert on for this component type), the Go testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification — that last one for whether an expected value is grounded in the domain or copied out of the implementation — plus the implementation-detail detection named above, for tests a harmless refactor would break. The comment rules come with it, to gate any new or modified comment in the diff.
+That prints the caller-pattern identification section and Quick Reference (what to assert on for this component type), then each concept above from whichever guideline declares it — the Go one first, the language-agnostic set for anything it does not carry. The comment rules come with it, to gate any new or modified comment in the diff. Each `--concept` names a section by the name its guideline declares, so it arrives whatever its heading happens to be called. Read what it prints; do not re-fetch any of it.
 
 Sections are named rather than numbered, because a name that stops matching is reported under "Not loaded" where a line number that stops matching just points somewhere else.
 

@@ -25,7 +25,7 @@ clerk guidelines --only --file go/performance-patterns.md
 
 `--only` keeps this to the performance guideline rather than everything Go.
 
-If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
+If it prints a "Not loaded" section, read it — a concept no loaded guideline declares is reported there rather than silently omitted.
 
 ---
 

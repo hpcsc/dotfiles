@@ -201,7 +201,7 @@ def emit_sections(path, lines, wanted, out, resolved, literals=(), h2=None):
     available = concepts_in(sections, lines)
     seen = set()
     for concept in wanted:
-        if concept not in available:
+        if concept not in available or concept in resolved:
             continue
         name, start, end = available[concept]
         if name in seen:
@@ -291,15 +291,18 @@ def main():
             plan.append(f); bundled.add(f)
     elif args.caller:
         plan.append("testing/caller-patterns.md"); bundled.add("testing/caller-patterns.md")
-    for f in args.files:
-        if f not in plan:
-            plan.append(f)
-        bundled.add(f)
     for lang in languages:
         for f in LANGUAGE_FILES.get(lang, []):
             if f not in plan:
                 plan.append(f)
             bundled.add(f)
+    # After the language bundle, not before: a concept is taken from the first file in
+    # the plan that declares it, so `--file testing/patterns.md` backs up whatever the
+    # language guideline does not carry rather than shadowing what it does.
+    for f in args.files:
+        if f not in plan:
+            plan.append(f)
+        bundled.add(f)
     for flag, f in OPTIONAL_FILES.items():
         if getattr(args, flag):
             if f not in plan:

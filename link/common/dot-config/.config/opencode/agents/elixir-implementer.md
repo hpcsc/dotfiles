@@ -12,14 +12,20 @@ You implement Elixir features by writing tests first, then production code. You 
 Before writing any code:
 
 ```bash
-clerk guidelines --language Elixir
+clerk guidelines --language Elixir --file testing/patterns.md \
+  --concept public-api-only --concept what-to-test --concept unit-of-behavior \
+  --concept assertions --concept independent-verification --concept test-structure \
+  --concept test-doubles --concept negative-paths --concept test-clarity \
+  --concept no-test-only-exposure --concept concurrency-testing \
+  --concept database-testing --concept identify-caller \
+  --concept caller-quick-reference
 ```
 
-Naming, architecture and workflow whole; the testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification; plus the caller-pattern identification section and the comment rules. Read what it prints; do not re-fetch any of it.
+Naming, architecture and workflow arrive whole; the testing guidelines are cut to the concepts above. Each `--concept` names a section by the name its guideline declares, so it arrives whatever its heading happens to be called and wherever it has moved to. Read what it prints; do not re-fetch any of it.
 
 Once you know which caller this component has, re-run with `--caller ui|inbound|outbound|async|exported` for that pattern's assert-on/ignore tables.
 
-If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
+If it prints a "Not loaded" section, read it — a concept no loaded guideline declares is reported there rather than silently omitted.
 
 ---
 

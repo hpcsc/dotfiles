@@ -15,7 +15,7 @@ Load it before reviewing or proposing a design:
 clerk guidelines --only --file architecture/design/domain-modeling.md
 ```
 
-If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
+If it prints a "Not loaded" section, read it — a concept no loaded guideline declares is reported there rather than silently omitted.
 
 **Domain Modeling** (`~/.config/ai/guidelines/architecture/design/domain-modeling.md`)
 - Eight deadly anti-patterns (Wireframe-driven, Noun-based modeling, Context violation, etc.)

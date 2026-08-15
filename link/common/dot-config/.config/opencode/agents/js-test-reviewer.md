@@ -25,13 +25,17 @@ You are a JavaScript testing expert who reviews tests for adherence to best prac
 Before reviewing:
 
 ```bash
-clerk guidelines --only \
-  --file testing/caller-patterns.md --file javascript/testing-patterns.md \
-  --section 'javascript/testing-patterns.md:Anti-Patterns' \
-  --section 'javascript/testing-patterns.md:Detection Checklist'
+clerk guidelines --only --file testing/caller-patterns.md --file javascript/testing-patterns.md --file testing/patterns.md \
+  --concept public-api-only --concept what-to-test --concept unit-of-behavior \
+  --concept assertions --concept independent-verification --concept test-qualities \
+  --concept implementation-detail-tests --concept no-caller-cases \
+  --concept identify-caller --concept caller-quick-reference \
+  --concept anti-patterns --concept checklist --concept test-clarity \
+  --concept test-doubles --concept http-handler-scope \
+  --concept no-test-only-exposure --concept summary
 ```
 
-That is the caller patterns (what to assert on for this component type), the JS testing guideline cut to what to test, unit of behaviour, assertion patterns and independent verification, and the two review-specific sections above.
+That is the caller patterns (what to assert on for this component type), then each concept above from whichever guideline declares it — the JS one first, the language-agnostic set for anything it does not carry. Each `--concept` names a section by the name its guideline declares, so it arrives whatever its heading happens to be called. Read what it prints; do not re-fetch any of it.
 
 Sections are named rather than numbered, because a name that stops matching is reported under "Not loaded" where a line number that stops matching just points somewhere else.
 

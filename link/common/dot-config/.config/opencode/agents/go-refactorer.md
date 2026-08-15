@@ -12,12 +12,15 @@ You refactor Go code to improve structure without changing behavior. You follow 
 Before refactoring any code:
 
 ```bash
-clerk guidelines --language Go
+clerk guidelines --language Go --file testing/patterns.md \
+  --concept public-api-only --concept unit-of-behavior --concept test-structure \
+  --concept no-test-only-exposure --concept implementation-detail-tests \
+  --concept test-clarity
 ```
 
-Naming, architecture and workflow whole; the testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification; plus the caller-pattern identification section and the comment rules. Read what it prints; do not re-fetch any of it.
+Naming, architecture and workflow arrive whole; the testing guidelines are cut to the concepts above. Each `--concept` names a section by the name its guideline declares, so it arrives whatever its heading happens to be called and wherever it has moved to. Read what it prints; do not re-fetch any of it.
 
-If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
+If it prints a "Not loaded" section, read it — a concept no loaded guideline declares is reported there rather than silently omitted.
 
 ---
 

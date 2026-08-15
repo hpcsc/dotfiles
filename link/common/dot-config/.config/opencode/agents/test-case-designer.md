@@ -28,16 +28,21 @@ Patterns to Follow: [from task list]
 Before designing test cases:
 
 ```bash
-clerk guidelines --section 'testing/patterns.md:Coupling-Based Assertion Levels'
+clerk guidelines --file testing/patterns.md \
+  --concept identify-caller --concept caller-quick-reference \
+  --concept no-caller-cases --concept what-to-test --concept unit-of-behavior \
+  --concept independent-verification --concept coupling-levels \
+  --concept test-qualities --concept assertions \
+  --concept observable-behavior-examples --concept http-handler-scope
 ```
 
 **In a repo with more than one language, add `--language <L>` for this task's** — read it off the Affected Files above. Detection is per repo, not per task, so a Go task in a repo that also carries a package.json is otherwise handed the JavaScript and Elixir guidelines too, and designs against whichever it read last.
 
-It prints, as text: how to identify the caller plus the Quick Reference across all five patterns (**what to assert on vs. ignore**, which is what Step 1b turns on), the language testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification (Step 2), and the coupling levels Step 1c classifies against. Read what it prints; do not re-fetch any of it.
+It prints how to identify the caller plus the Quick Reference across all five patterns (**what to assert on vs. ignore**, which is what Step 1b turns on), the testing concepts Step 2 judges scenarios by, and the coupling levels Step 1c classifies against. Each `--concept` names a section by the name its guideline declares, so it arrives whatever its heading happens to be called. Read what it prints; do not re-fetch any of it.
 
 Once Step 1b has named the caller, re-run with `--caller ui|inbound|outbound|async|exported` for that pattern's own assert-on/don't-assert-on tables.
 
-If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
+If it prints a "Not loaded" section, read it — a concept no loaded guideline declares is reported there rather than silently omitted.
 
 ---
 

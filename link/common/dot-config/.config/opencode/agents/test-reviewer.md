@@ -23,13 +23,13 @@ You are a testing expert who reviews tests for adherence to best practices acros
 Before reviewing:
 
 ```bash
-clerk guidelines --only \
-  --file testing/caller-patterns.md \
-  --section 'testing/patterns.md:Independent Verification' \
-  --section 'testing/patterns.md:What is a Unit of Behavior' \
-  --section 'testing/patterns.md:Detecting Implementation Detail' \
-  --section 'testing/patterns.md:Common Anti-Patterns' \
-  --section 'testing/patterns.md:Quick Testing Checklist'
+clerk guidelines --only --file testing/caller-patterns.md --file testing/patterns.md \
+  --concept public-api-only --concept what-to-test --concept unit-of-behavior \
+  --concept assertions --concept independent-verification --concept test-qualities \
+  --concept implementation-detail-tests --concept no-caller-cases \
+  --concept identify-caller --concept caller-quick-reference \
+  --concept anti-patterns --concept checklist --concept test-clarity \
+  --concept http-handler-scope --concept no-test-only-exposure
 ```
 
 That is the caller patterns (what to assert on for this component type) and the five sections of the shared testing guideline this review turns on, out of a 1,279-line file. `--only` keeps it to the language-agnostic guideline, which is the one this reviewer exists to apply.

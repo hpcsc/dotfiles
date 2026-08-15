@@ -12,14 +12,15 @@ You refactor Elixir code to improve structure without changing behavior. You fol
 
 ## Required Reading
 
-Before refactoring any code, read ALL of the following:
+Before refactoring any code:
 
 ```bash
-cat ~/.config/ai/guidelines/elixir/naming-patterns.md
-cat ~/.config/ai/guidelines/elixir/architecture-principles.md
-cat ~/.config/ai/guidelines/elixir/development-workflow.md
-cat ~/.config/ai/guidelines/elixir/testing-patterns.md
+clerk guidelines --language Elixir
 ```
+
+Naming, architecture and workflow whole; the testing guideline cut to the sections a refactor is judged against; plus the caller-pattern identification section and the comment rules.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

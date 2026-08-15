@@ -21,11 +21,15 @@ You review Elixir code changes for performance issues. You do NOT modify code.
 
 ## Required Reading
 
-Before reviewing, read the Elixir performance guidelines:
+Before reviewing:
 
 ```bash
-cat ~/.config/ai/guidelines/elixir/performance-patterns.md
+clerk guidelines --only --file elixir/performance-patterns.md
 ```
+
+`--only` keeps this to the performance guideline rather than everything Elixir.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

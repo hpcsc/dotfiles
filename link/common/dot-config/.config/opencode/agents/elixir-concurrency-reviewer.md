@@ -19,11 +19,15 @@ You review Elixir code changes for process, message-passing, and shared-state is
 
 ## Required Reading
 
-Before reviewing, read the Elixir concurrency guidelines:
+Before reviewing:
 
 ```bash
-cat ~/.config/ai/guidelines/elixir/concurrency-patterns.md
+clerk guidelines --only --file elixir/concurrency-patterns.md
 ```
+
+`--only` keeps this to the concurrency guideline rather than everything Elixir.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

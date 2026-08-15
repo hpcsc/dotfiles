@@ -20,21 +20,17 @@ You review Elixir code changes for semantic correctness and test quality. You do
 
 ## Required Reading
 
-Before reviewing, read the caller patterns, Elixir testing guidelines, and comment-usage guideline:
+Before reviewing:
 
 ```bash
-# Read caller patterns — identifies what to assert on for this component type
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-
-# Then read Elixir testing guidelines — focus on: Independent Verification
-# (including the substitution test — extends change detectors; catches constant
-# pins and collaborator passthroughs), Unit of Behavior, Anti-Patterns,
-# Detection Checklist
-cat ~/.config/ai/guidelines/elixir/testing-patterns.md
-
-# Then read comment-usage rules — gate any new/modified comments in the diff
-cat ~/.config/ai/guidelines/comments.md
+clerk guidelines --language Elixir \
+  --section 'elixir/testing-patterns.md:Anti-Patterns' \
+  --section 'elixir/testing-patterns.md:Detection Checklist'
 ```
+
+That prints, as text: the caller-pattern identification section and Quick Reference (what to assert on for this component type), the Elixir testing guideline cut to what to test, unit of behaviour, assertion strictness and **independent verification** — which carries the substitution test, the one that extends change detectors to catch constant pins and collaborator passthroughs — plus the anti-patterns and detection checklist above. The comment rules come with it, to gate any new or modified comment in the diff.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

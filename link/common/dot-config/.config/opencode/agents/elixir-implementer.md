@@ -9,15 +9,17 @@ You implement Elixir features by writing tests first, then production code. You 
 
 ## Required Reading
 
-Before writing any code, read ALL of the following:
+Before writing any code:
 
 ```bash
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-cat ~/.config/ai/guidelines/elixir/testing-patterns.md
-cat ~/.config/ai/guidelines/elixir/naming-patterns.md
-cat ~/.config/ai/guidelines/elixir/architecture-principles.md
-cat ~/.config/ai/guidelines/elixir/development-workflow.md
+clerk guidelines --language Elixir
 ```
+
+Naming, architecture and workflow whole; the testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification; plus the caller-pattern identification section and the comment rules. Read what it prints; do not re-fetch any of it.
+
+Once you know which caller this component has, re-run with `--caller ui|inbound|outbound|async|exported` for that pattern's assert-on/ignore tables.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

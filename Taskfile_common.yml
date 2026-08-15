@@ -19,6 +19,18 @@ tasks:
     cmds:
       - ./tests/clerk-test.sh
 
+  test:guidelines:
+    desc: Check the live guidelines and agents against each other
+    cmds:
+      - ./tests/guidelines-test.sh
+
+  test:
+    desc: Run every test suite
+    cmds:
+      - task: test:clerk
+      - task: test:guidelines
+      - task: gen:skills:check
+
   base:
     desc: Common scripts with no dependencies (parallel)
     run: once

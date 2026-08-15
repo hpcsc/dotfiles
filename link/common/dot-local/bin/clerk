@@ -672,7 +672,7 @@ cmd_next() {
     | [$all[] | select(([.n] | inside($done)) | not)] as $open
     | [$open[] | select([.depends_on // [] | .[] | select(([.] | inside($done)) | not)] | length == 0)] as $ready
     | {
-        done: ($open | length) == 0,
+        done: (($open | length) == 0),
         remaining: ($open | length),
         blocked: (($open | length) - ($ready | length)),
         task: ($ready | sort_by(.n) | first // null)

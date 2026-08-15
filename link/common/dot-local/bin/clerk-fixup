@@ -134,8 +134,15 @@ def cmd_apply(args):
 def cmd_replay(args):
     base = resolve_base(args.base)
 
-    if git("status", "--porcelain").stdout.strip():
-        die("the tree is dirty; a rebase needs it clean", 3)
+    # A rebase needs a clean tree, and in a repo with unrelated work always in flight —
+    # a dotfiles checkout, a shared branch mid-experiment — that refusal makes the
+    # command unusable rather than safe. --autostash is git's own answer: it sets the
+    # loose work aside and puts it back. Opt-in, because if the replay touches a file
+    # the working tree also modifies, restoring it can conflict and the caller is the
+    # one who knows whether that is likely.
+    if git("status", "--porcelain").stdout.strip() and not args.autostash:
+        die("the tree is dirty; a rebase needs it clean. Commit or stash the loose work, "
+            "or pass --autostash to set it aside and put it back around the replay", 3)
 
     pending = [l for l in git("log", "--format=%s", f"{base}..HEAD").stdout.splitlines()
                if l.startswith("fixup!") or l.startswith("squash!")]
@@ -159,7 +166,8 @@ def cmd_replay(args):
     before = git("rev-parse", "HEAD").stdout.strip()
     # Both editors, because --autosquash opens the sequence editor and a fixup commit
     # being folded can still reach the message editor on some configurations.
-    r = subprocess.run(["git", "rebase", "--autosquash", base], capture_output=True,
+    rebase = ["git", "rebase", "--autosquash"] + (["--autostash"] if args.autostash else []) + [base]
+    r = subprocess.run(rebase, capture_output=True,
                        text=True,
                        env={**os.environ, "GIT_SEQUENCE_EDITOR": "true", "GIT_EDITOR": "true"})
     if r.returncode != 0:
@@ -169,7 +177,8 @@ def cmd_replay(args):
             f"branch costs more than the tidier history is worth. git said: "
             f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'conflict'}", 3)
 
-    return {"ok": True, "folded": len(pending), "was": before[:12],
+    return {"ok": True, "folded": len(pending), "autostashed": args.autostash,
+            "was": before[:12],
             "now": git("rev-parse", "HEAD").stdout.strip()[:12],
             "note": "every SHA from the earliest target onward is new; any receipt taken "
                     "before this describes commits that no longer exist"}
@@ -182,6 +191,8 @@ def main():
     ap.add_argument("--replay", action="store_true", help="autosquash every marked fixup")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true", help="replay even if the range is published")
+    ap.add_argument("--autostash", action="store_true",
+                    help="set unrelated working-tree changes aside and restore them after")
     ap.add_argument("-h", "--help", action="store_true")
     ap.add_argument("files", nargs="*")
     args = ap.parse_args()
@@ -189,7 +200,7 @@ def main():
     if args.help:
         print(__doc__.strip())
         print("\nUSAGE\n  clerk fixup [--base <ref>] [--onto <sha>] [--dry-run] -- <files...>"
-              "\n  clerk fixup --replay [--base <ref>] [--force]")
+              "\n  clerk fixup --replay [--base <ref>] [--force] [--autostash]")
         return 0
 
     if git("rev-parse", "--git-dir", check=False).returncode != 0:

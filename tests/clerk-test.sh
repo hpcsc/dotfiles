@@ -1486,6 +1486,18 @@ eq "replaying with nothing marked is a no-op, not an error" "0" \
 printf 'loose\n' > "$RX/task1.go"
 eq "a dirty tree is refused before any rebase starts" "3" \
    "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
+eq "and the refusal names the way through" "1" \
+   "$(run "$RX" fixup --base "$BASE" --replay 2>&1 | grep -c -- '--autostash')"
+
+# A repo with unrelated work always in flight would otherwise never be able to replay.
+printf 'task 2 more\n' > "$RX/task2.go"
+run "$RX" fixup --base "$BASE" -- task2.go >/dev/null
+A=$(run "$RX" fixup --base "$BASE" --replay --autostash)
+eq "--autostash replays around the loose work" "1|true" \
+   "$(printf '%s|%s' "$(printf '%s' "$A" | jq -r '.folded')" "$(printf '%s' "$A" | jq -r '.autostashed')")"
+eq "and the loose work is still there afterwards" "loose" "$(cat "$RX/task1.go")"
+eq "with no fixup! left in history" "0" \
+   "$(git -C "$RX" log --format=%s "$BASE"..HEAD | grep -c '^fixup!')"
 git -C "$RX" checkout -q -- task1.go
 
 # Rewriting what someone else may already have is the one case to keep separate.

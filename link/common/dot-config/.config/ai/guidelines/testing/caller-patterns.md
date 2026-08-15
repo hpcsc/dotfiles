@@ -1,28 +1,11 @@
-<!-- index: 1-22 -->
 # Caller Patterns: Who Is the Test Written For?
 
 Every test implicitly has a **caller** — the actor whose expectations define what "correct" means. Identifying the caller determines what to assert on and what to ignore.
 
 The existing testing guidelines cover **how** to write good tests (public API, behavior over implementation, assertion strictness). This guide covers **which behaviors matter** based on who depends on them.
 
-## Section Index
-
-Read only the section(s) that match your task. To locate them, run `rg -n '^## '` once for the whole heading map, then read each section from its offset up to the next heading. Grepping for one heading by name returns a start with no end, leaving the read that follows to guess where the section stops.
-
-| Section | Use when... |
-|---|---|
-| [How to Identify the Caller](#how-to-identify-the-caller) | Deciding what to assert on for a given component |
-| [UI](#1-ui-user--page) | Testing pages, JSON APIs for frontends, rendered output |
-| [Inbound](#2-inbound-external-system--handler) | Testing webhooks, uploads, commands from browsers or external systems |
-| [Outbound](#3-outbound-our-system--external-service) | Testing email sends, API calls to providers, file delivery |
-| [Async Processing](#4-async-processing-trigger--side-effects) | Testing message consumers, event reactors, scheduled jobs |
-| [Exported API](#5-exported-api-other-code--this-interface) | Testing packages used by other code in the system |
-| [Not Every Test Has a Caller](#not-every-test-has-a-caller) | Config guard tests, deployment parity checks |
-| [Quick Reference](#quick-reference) | Lookup table for all five patterns |
-
----
-
 ## How to Identify the Caller
+> Use when: Deciding what to assert on for a given component
 
 Ask two questions:
 
@@ -42,6 +25,7 @@ The answers map to one of five patterns:
 ---
 
 ## 1. UI (User -> Page)
+> Use when: Testing pages, JSON APIs for frontends, rendered output
 
 **Direction:** User action in -> rendered response out
 
@@ -126,6 +110,7 @@ assert response.swapTargets == ["day-0-30", "day-0-31"]
 ---
 
 ## 2. Inbound (External System -> Handler)
+> Use when: Testing webhooks, uploads, commands from browsers or external systems
 
 **Direction:** Outside -> in
 
@@ -216,6 +201,7 @@ assert parsed.status == "SENT"
 ---
 
 ## 3. Outbound (Our System -> External Service)
+> Use when: Testing email sends, API calls to providers, file delivery
 
 **Direction:** In -> outside
 
@@ -290,6 +276,7 @@ assert error.contains("SMTP unavailable")
 ---
 
 ## 4. Async Processing (Trigger -> Side Effects)
+> Use when: Testing message consumers, event reactors, scheduled jobs
 
 **Direction:** Trigger in -> side effects out
 
@@ -376,6 +363,7 @@ assert eventStream.lastEvent.campaignId == "camp-1"
 ---
 
 ## 5. Exported API (Other Code -> This Interface)
+> Use when: Testing packages used by other code in the system
 
 **Direction:** Cross-package/cross-module
 
@@ -460,6 +448,7 @@ assert error.message == "account is paused"
 ---
 
 ## Not Every Test Has a Caller
+> Use when: Config guard tests, deployment parity checks
 
 The five patterns above cover tests of **runtime behavior** — there is always an actor whose expectations define correctness. Some tests don't have a natural runtime caller. They exist to guard against **configuration drift** between code and infrastructure, catching deployment failures rather than runtime failures.
 
@@ -481,6 +470,7 @@ These tests have no HTTP request, no queue message, no event processing. The "wh
 ---
 
 ## Quick Reference
+> Use when: Lookup table for all five patterns
 
 | Pattern | Direction | Caller | Assert on | Don't assert on |
 |---|---|---|---|---|

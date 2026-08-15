@@ -34,7 +34,7 @@ from pathlib import Path
 DEFAULT_ROOT = Path.home() / ".config" / "ai" / "guidelines"
 
 HEADING = re.compile(r"^## +(.*?)\s*$")
-INDEX_MARKER = re.compile(r"^<!--\s*index:\s*(\d+)-(\d+)\s*-->")
+USE_WHEN = re.compile(r"^> *Use when: *(.*?)\s*$", re.I)
 
 # A slot is one thing a run must have read, and the spellings it goes by. Matching is
 # case-insensitive and anchored at the start of the heading, so "Assertion Strictness"
@@ -158,12 +158,31 @@ def find_section(sections, spellings):
     return None
 
 
-def section_index(lines):
-    """The Section Index block a long guideline points at, if it declares one."""
-    if not lines or not (m := INDEX_MARKER.match(lines[0])):
+def section_index(sections, lines):
+    """The section list, computed from the headings rather than read from the file.
+
+    A stored index is a second copy of the headings kept in step by hand, and it went
+    stale in the one way nothing notices: it was addressed by a literal line range, so a
+    range that no longer covered the table dropped rows with nothing to say they were
+    missing. Deriving it means there is no copy to drift.
+
+    Each section may carry a `> Use when:` line of its own, which travels with the
+    section through any edit that moves or renames it.
+    """
+    rows = []
+    for name, start, end in sections:
+        note = ""
+        for line in lines[start + 1:min(start + 4, end)]:
+            if (m := USE_WHEN.match(line.strip())):
+                note = m.group(1)
+                break
+        rows.append((name, note))
+    if not rows:
         return None
-    lo, hi = int(m.group(1)), int(m.group(2))
-    return "".join(lines[lo - 1:hi])
+    if any(n for _, n in rows):
+        body = "".join(f"| {name} | {note} |\n" for name, note in rows)
+        return "| Section | Use when |\n|---|---|\n" + body
+    return "".join(f"- {name}\n" for name, _ in rows)
 
 
 def emit_whole(path, lines, out):
@@ -174,9 +193,9 @@ def emit_whole(path, lines, out):
 def emit_sections(path, lines, slots, out, missing, literals=(), h2=None):
     """`slots` are named sets of spellings; `literals` are headings a caller asked for."""
     sections = headings(lines, h2)
-    index = section_index(lines)
+    index = section_index(sections, lines)
     if index:
-        out.append(f"\n<!-- {path} — section index; read further sections from it as needed -->\n")
+        out.append(f"\n<!-- {path} — every section it has; ask for one with --section -->\n")
         out.append(index)
     seen = set()
     for slot in list(slots) + [("literal", h) for h in literals]:

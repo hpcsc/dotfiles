@@ -1274,13 +1274,10 @@ printf '\nguidelines — required reading, loaded not looked up\n'
 GD=$(cd "$(mktemp -d)" && pwd -P)
 mkdir -p "$GD/testing" "$GD/go" "$GD/javascript"
 cat > "$GD/testing/caller-patterns.md" <<'EOF'
-<!-- index: 1-4 -->
 # Caller Patterns
 
-## Section Index
-| Section | Use when... |
-
 ## How to Identify the Caller
+> Use when: deciding what to assert on
 identify-body
 
 ## 1. UI (User -> Page)
@@ -1294,13 +1291,10 @@ quickref-body
 EOF
 printf '# Comment Usage\ncomments-body\n' > "$GD/comments.md"
 cat > "$GD/go/testing-patterns.md" <<'EOF'
-<!-- index: 1-3 -->
 # Go Testing
 
-## Section Index
-| Section |
-
 ## What to Test
+> Use when: deciding whether something is worth testing
 what-body
 
 ## What is a Unit of Behavior?
@@ -1370,8 +1364,15 @@ eq "short files come whole" "1" "$(printf '%s' "$G" | grep -c 'naming-body')"
 eq "and every one of them" "3" \
    "$(printf '%s' "$G" | grep -cE 'arch-body|workflow-body|comments-body')"
 
-eq "the section index of a long file rides along" "1" \
-   "$(printf '%s' "$G" | grep -c 'index: 1-3')"
+# Derived, not stored: every section is listed whether or not it was asked for, so a
+# consumer can see what else the guideline has and ask for it by name.
+eq "an index is derived for each file read in parts" "2" \
+   "$(printf '%s' "$G" | grep -c 'every section it has')"
+eq "and lists sections the slots did not emit" "1" \
+   "$(printf '%s' "$G" | grep -c '^| Unrelated Section |')"
+# Once in the index row, once in the section itself — the section stays self-contained.
+eq "carrying each section's own Use when line" "2" \
+   "$(printf '%s' "$G" | grep -c 'deciding whether something is worth testing')"
 
 # Which caller pattern fits the work is the caller's judgment, so it is asked for.
 eq "no caller pattern is emitted unasked" "0" "$(printf '%s' "$G" | grep -c 'ui-body')"

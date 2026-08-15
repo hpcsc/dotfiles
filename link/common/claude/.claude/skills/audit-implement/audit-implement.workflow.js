@@ -18,8 +18,10 @@ export const meta = {
 // ---------------------------------------------------------------------------
 
 const DISCLOSURE =
-  'Each guideline opens with an HTML comment `<!-- index: 1-N -->` on line 1 giving the Section Index range. ' +
-  'Read line 1 only, then the index range, then `rg -n` the headings you need and read only those sections. Do NOT read the file end-to-end.'
+  'Load these with one `clerk guidelines` call rather than reading the files: it cuts each to the sections that matter ' +
+  'and prints them as text. `--language <L>` for a language bundle, `--file` and `--section FILE:HEADING` for anything ' +
+  'named outright, `--only` to get just what you named. Every file it returns carries its own section list, so ask for ' +
+  'more by name rather than reading the file end-to-end.'
 
 const CALLER_PATTERNS = '~/.config/ai/guidelines/testing/caller-patterns.md'
 const COMMENTS_GUIDE = '~/.config/ai/guidelines/comments.md'

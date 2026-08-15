@@ -22,7 +22,7 @@ That is one call for the whole set, printed as text:
 - **Caller patterns** — how to identify the caller, plus the Quick Reference across all five
 - **Comment rules** — the gate on any comment you write
 
-Once you know which caller a component has, `--caller ui|inbound|outbound|async|exported` adds that pattern's assert-on/ignore tables. `--section FILE:HEADING` pulls anything else by name — the testing guideline carries far more than the default cut, and its Section Index comes along so you can see what.
+Once you know which caller a component has, `--caller ui|inbound|outbound|async|exported` adds that pattern's assert-on/ignore tables. `--section FILE:HEADING` pulls anything else by name — the testing guideline carries far more than the default cut, and its own section list comes along so you can see what.
 
 ## Application Strategy
 

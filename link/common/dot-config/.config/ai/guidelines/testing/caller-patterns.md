@@ -7,7 +7,7 @@ The existing testing guidelines cover **how** to write good tests (public API, b
 
 ## Section Index
 
-Read only the section(s) that match your task. To locate a section in the file, grep for its heading (e.g., `rg -n '^## 1\. UI'`).
+Read only the section(s) that match your task. To locate them, run `rg -n '^## '` once for the whole heading map, then read each section from its offset up to the next heading. Grepping for one heading by name returns a start with no end, leaving the read that follows to guess where the section stops.
 
 | Section | Use when... |
 |---|---|

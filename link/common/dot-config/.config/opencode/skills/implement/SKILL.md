@@ -91,7 +91,7 @@ Neither present means a fresh start. `clerk status --tasks-file <path>` shows ex
 
 1. Read line 1 only (`offset=1, limit=1`). A file with a `<!-- index: 1-N -->` comment is telling you its Section Index range.
 2. Read that range to see section names and their "Use when…" lines.
-3. `rg -n '^## <heading>'` for the sections you need, and read from those offsets.
+3. `rg -n '^## '` once for the file's whole heading map, then read each section you need from its offset up to the next heading. Naming the heading in the pattern returns a start with no end, so the read that follows has to guess its `limit` — over-reading wastes the tokens this disclosure is saving, under-reading costs a second call.
 
 A short file with no index comment (e.g. `javascript/naming-patterns.md`, 64 lines) is cheap — just read it.
 

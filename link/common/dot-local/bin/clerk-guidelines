@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""clerk guidelines — the project's rules, loaded rather than looked up.
+
+Nothing hands a run the guidelines it is judged against, so the skill described how to
+fetch them: read line 1 for the `<!-- index: N-M -->` marker, read that range for the
+section names, grep the heading map, then read each wanted section from its offset to
+the next heading. Correct, and about twenty tool calls before the first line of code —
+which makes it the step that quietly gets shortened when a run is in a hurry, and the
+rules that go unread are then found at review, which is the expensive end.
+
+None of it is judgment. Which files a language needs is a table, section bounds are
+`^## ` to the next `^## `, and the sections a run must have loaded are the same every
+time. So it is one call.
+
+The heading names drift, which is the other reason this stopped being prose. The skill
+asked for "Unit of Behavior" and "Assertion Strictness"; Go spells the first "What is a
+Unit of Behavior?", and JavaScript has no assertion-strictness section at all — it has
+"Assertion Patterns". A prompt matching those by eye succeeds or fails silently. Slots
+below carry every spelling, and a slot that matches nothing is reported rather than
+dropped, because a section missing from the output reads exactly like a section the
+guideline does not have.
+
+Dispatched to by `clerk` when invoked as `clerk guidelines`, and runnable on its own.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+DEFAULT_ROOT = Path.home() / ".config" / "ai" / "guidelines"
+
+HEADING = re.compile(r"^## +(.*?)\s*$")
+INDEX_MARKER = re.compile(r"^<!--\s*index:\s*(\d+)-(\d+)\s*-->")
+
+# A slot is one thing a run must have read, and the spellings it goes by. Matching is
+# case-insensitive and anchored at the start of the heading, so "Assertion Strictness"
+# finds Go's "Assertion Strictness: Match to What You're Testing" without also matching
+# a heading that merely mentions assertions halfway through.
+SLOTS = {
+    "identify-caller": ["how to identify the caller"],
+    "quick-reference": ["quick reference", "quick testing checklist"],
+    "what-to-test": ["what to test"],
+    "unit-of-behavior": ["unit of behavior", "what is a unit of behavior"],
+    "assertions": ["assertion strictness", "assertion patterns", "assertion levels"],
+}
+
+# The caller patterns, by the flag that asks for one. The headings are numbered, so the
+# spelling here is what survives renumbering.
+CALLERS = {
+    "ui": ["1. ui", "ui ("],
+    "inbound": ["2. inbound", "inbound ("],
+    "outbound": ["3. outbound", "outbound ("],
+    "async": ["4. async", "async processing"],
+    "exported": ["5. exported api", "exported api"],
+}
+
+# Files with no slot list are emitted whole: every one of them is under 150 lines, where
+# sectioning costs a heading map to save nothing. The long ones are all testing
+# guidelines, and those carry a Section Index that says what else is in them.
+TESTING_SLOTS = ["what-to-test", "unit-of-behavior", "assertions"]
+
+LANGUAGE_FILES = {
+    "Go": ["go/testing-patterns.md", "go/naming-patterns.md",
+           "go/architecture-principles.md", "go/development-workflow.md"],
+    "JavaScript/TypeScript": ["javascript/testing-patterns.md", "javascript/naming-patterns.md",
+                              "javascript/architecture-principles.md",
+                              "javascript/development-workflow.md"],
+    "Elixir": ["elixir/testing-patterns.md", "elixir/naming-patterns.md",
+               "elixir/architecture-principles.md", "elixir/development-workflow.md"],
+}
+
+# Asked for by flag, because whether a task touches the DOM or shared state is the
+# caller's judgment and not a property of the repo.
+OPTIONAL_FILES = {
+    "dom": "javascript/dom-patterns.md",
+    "state": "javascript/state-management.md",
+}
+
+ALWAYS = ["testing/caller-patterns.md", "comments.md"]
+
+
+def die(msg):
+    print(f"clerk guidelines: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def headings(lines):
+    """Every `## ` heading as (name, start_index, end_index), bounds over `lines`."""
+    marks = [(m.group(1), i) for i, line in enumerate(lines) if (m := HEADING.match(line))]
+    out = []
+    for pos, (name, start) in enumerate(marks):
+        end = marks[pos + 1][1] if pos + 1 < len(marks) else len(lines)
+        out.append((name, start, end))
+    return out
+
+
+def find_section(sections, spellings):
+    for want in spellings:
+        for name, start, end in sections:
+            if name.lower().startswith(want):
+                return name, start, end
+    return None
+
+
+def section_index(lines):
+    """The Section Index block a long guideline points at, if it declares one."""
+    if not lines or not (m := INDEX_MARKER.match(lines[0])):
+        return None
+    lo, hi = int(m.group(1)), int(m.group(2))
+    return "".join(lines[lo - 1:hi])
+
+
+def emit_whole(path, lines, out):
+    out.append(f"\n<!-- {path} — whole file -->\n")
+    out.append("".join(lines))
+
+
+def emit_sections(path, lines, slots, out, missing):
+    sections = headings(lines)
+    index = section_index(lines)
+    if index:
+        out.append(f"\n<!-- {path} — section index; read further sections from it as needed -->\n")
+        out.append(index)
+    for slot in slots:
+        spellings = SLOTS[slot] if slot in SLOTS else CALLERS[slot]
+        found = find_section(sections, spellings)
+        if not found:
+            missing.append({"file": path, "slot": slot,
+                            "headings": [n for n, _, _ in sections]})
+            continue
+        name, start, end = found
+        out.append(f"\n<!-- {path} § {name} -->\n")
+        out.append("".join(lines[start:end]).rstrip() + "\n")
+
+
+def detect_languages(cwd):
+    """Ask clerk, so this agrees with what the rest of the run was told."""
+    clerk = Path(__file__).resolve().parent / "clerk"
+    try:
+        r = subprocess.run([str(clerk), "prepare"], cwd=cwd, capture_output=True, text=True)
+    except OSError as e:
+        die(f"could not run clerk prepare: {e}")
+    if r.returncode != 0:
+        die("clerk prepare failed; pass --language explicitly")
+    return json.loads(r.stdout).get("languages", [])
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--language", action="append", default=[],
+                    help="repeatable; defaults to what `clerk prepare` detects")
+    ap.add_argument("--caller", choices=sorted(CALLERS),
+                    help="also emit this caller pattern's section")
+    ap.add_argument("--dom", action="store_true", help="add the DOM guideline")
+    ap.add_argument("--state", action="store_true", help="add the shared-state guideline")
+    ap.add_argument("--guidelines-dir", default=os.environ.get("CLERK_GUIDELINES_DIR"))
+    ap.add_argument("--list", action="store_true", help="name the files and sections, no bodies")
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args()
+
+    if args.help:
+        print(__doc__.strip())
+        print("\nUSAGE\n  clerk guidelines [--language <L>]... [--caller ui|inbound|outbound|async|exported]"
+              "\n                   [--dom] [--state] [--list] [--guidelines-dir <d>]")
+        return 0
+
+    root = Path(args.guidelines_dir) if args.guidelines_dir else DEFAULT_ROOT
+    if not root.is_dir():
+        die(f"no guidelines directory at {root}")
+
+    languages = args.language or detect_languages(Path.cwd())
+
+    # Ordered, deduped: caller patterns and comments first because they apply whatever
+    # the language is, and they are the two an audit most often finds broken.
+    plan = []
+    for f in ALWAYS:
+        plan.append(f)
+    for lang in languages:
+        for f in LANGUAGE_FILES.get(lang, []):
+            if f not in plan:
+                plan.append(f)
+    for flag, f in OPTIONAL_FILES.items():
+        if getattr(args, flag) and f not in plan:
+            plan.append(f)
+
+    unknown = [l for l in languages if l not in LANGUAGE_FILES]
+
+    out, missing, absent = [], [], []
+    listing = []
+    for rel in plan:
+        path = root / rel
+        if not path.is_file():
+            absent.append(rel)
+            continue
+        lines = path.read_text().splitlines(keepends=True)
+
+        if rel == "testing/caller-patterns.md":
+            slots = ["identify-caller", "quick-reference"]
+            if args.caller:
+                slots.insert(1, args.caller)
+        elif rel.endswith("/testing-patterns.md"):
+            slots = list(TESTING_SLOTS)
+        else:
+            slots = None
+
+        listing.append({"file": rel, "sections": slots or "whole", "lines": len(lines)})
+        if args.list:
+            continue
+        if slots is None:
+            emit_whole(rel, lines, out)
+        else:
+            emit_sections(rel, lines, slots, out, missing)
+
+    if args.list:
+        print(json.dumps({"files": listing, "languages": languages,
+                          "unknown_languages": unknown, "absent": absent}, indent=2))
+        return 0
+
+    print(f"# Required reading for: {', '.join(languages) or 'no detected language'}")
+    print("\nEverything below is the guideline text itself. Read it; do not re-fetch it.")
+    if args.caller:
+        print(f"Caller pattern requested: {args.caller}.")
+    else:
+        print("No --caller given, so only the identification section and the Quick Reference "
+              "are here.\nOnce you know which pattern this work is, re-run with --caller to "
+              "get that section.")
+    print("".join(out))
+
+    # What it could not settle, said out loud. A section silently absent reads the same
+    # as a section the guideline never had, and only one of those is a problem.
+    if missing or absent or unknown:
+        print("\n---\n\n## Not loaded\n")
+        for m in missing:
+            print(f"- **{m['file']}** has no section matching `{m['slot']}`. "
+                  f"Its headings are: {', '.join(m['headings']) or '(none)'}.")
+        for a in absent:
+            print(f"- **{a}** does not exist under {root}.")
+        for u in unknown:
+            print(f"- **{u}** has no guideline set, so nothing language-specific was loaded for it.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

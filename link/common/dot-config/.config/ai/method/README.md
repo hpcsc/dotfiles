@@ -63,7 +63,7 @@ and `clerk gate` compares the recorded receipt's SHA to `HEAD`.
 flowchart TD
   subgraph P0["Phase 0 · Ground yourself"]
     A["clerk prepare<br/>languages, test command, go prefix,<br/>learnings path, repo root vs work tree"]
-    A --> B["read the guidelines yourself<br/>progressive disclosure, not end to end"]
+    A --> B["clerk guidelines<br/>required reading, cut to its sections"]
     B --> C["set up an isolated worktree"]
   end
   subgraph P1["Phase 1 · Plan"]
@@ -93,8 +93,8 @@ flowchart TD
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:2px,color:#3A1A08
   classDef agent fill:#DBE3EE,stroke:#3E5C88,stroke-width:1.5px,color:#16233A
   classDef gate fill:#EFD9E4,stroke:#8A2E5D,stroke-width:2px,color:#3A1024
-  class A,E,H,K,N,P,R clerk
-  class B,C,F,M,O,S you
+  class A,B,E,H,K,N,P,R clerk
+  class C,F,M,O,S you
   class D,I,L,Q agent
   class G1 gate
   class J you
@@ -117,9 +117,11 @@ the learnings path, and — separately — `repo_root` and `work_tree`, because 
 worktree those differ and confusing them is how a suite ends up testing the wrong
 checkout.
 
-Then the guidelines are read directly, by progressive disclosure. That step is why the
-skill exists: nothing else hands over the project's rules, and finding out at review
-costs more than loading them costs up front.
+Then `clerk guidelines` prints the required reading for those languages, cut to the
+sections a run must have loaded. That step is why the skill exists: nothing else hands
+over the project's rules, and finding out at review costs more than loading them costs
+up front — which is exactly why the twenty-call fetch protocol it replaces was the step
+that got shortened under time pressure.
 
 ### Phase 1 — plan
 
@@ -206,6 +208,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 |---|---|---|
 | `init [--force] [--in-place] [--integrate] [--review-plan]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
 | `prepare [--request <text>]` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, which commit skill to invoke, resolved run flags with their sources, every existing worktree and breakdown with its progress, and `resume` — the part-built run to rejoin, paired with its worktree. Given the request, it applies the flags and `--learnings-path` typed in it as the top layer | 0 |
+| `guidelines [--language <L>]... [--caller <p>] [--dom] [--state]` | The required reading for those languages as text: short files whole, long ones cut to the sections a run must have loaded, and a "Not loaded" report for any slot a reorganised guideline no longer satisfies | 0 · **2** no guidelines dir |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
 | `status [--all]` | Progress from the sidecar, plus acceptance criteria walked per task; `--all` walks every breakdown in the repo, in flight and archived | 0 |

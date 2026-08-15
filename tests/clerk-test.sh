@@ -1188,6 +1188,145 @@ eq "and refused for --create, which would open another story's PRs" "2" \
    "$(run "$R26" stack --create >/dev/null 2>&1; echo $?)"
 
 # --------------------------------------------------------------------------------
+printf '\nguidelines — required reading, loaded not looked up\n'
+
+# A fixture set, not the real one: these assertions are about how a file is cut up, and
+# pinning them to the live guidelines would make every edit to those files a test
+# failure. The drifted spellings are copied from the real ones on purpose — they are
+# what the slot list exists to absorb.
+GD=$(cd "$(mktemp -d)" && pwd -P)
+mkdir -p "$GD/testing" "$GD/go" "$GD/javascript"
+cat > "$GD/testing/caller-patterns.md" <<'EOF'
+<!-- index: 1-4 -->
+# Caller Patterns
+
+## Section Index
+| Section | Use when... |
+
+## How to Identify the Caller
+identify-body
+
+## 1. UI (User -> Page)
+ui-body
+
+## 5. Exported API (Other Code -> This Interface)
+exported-body
+
+## Quick Reference
+quickref-body
+EOF
+printf '# Comment Usage\ncomments-body\n' > "$GD/comments.md"
+cat > "$GD/go/testing-patterns.md" <<'EOF'
+<!-- index: 1-3 -->
+# Go Testing
+
+## Section Index
+| Section |
+
+## What to Test
+what-body
+
+## What is a Unit of Behavior?
+unit-body
+
+## Assertion Strictness: Match to What You're Testing
+assert-body
+
+## Unrelated Section
+noise-body
+EOF
+printf '# Go Naming\nnaming-body\n' > "$GD/go/naming-patterns.md"
+printf '# Go Architecture\narch-body\n' > "$GD/go/architecture-principles.md"
+printf '# Go Workflow\nworkflow-body\n' > "$GD/go/development-workflow.md"
+# JavaScript has no assertion-strictness section at all; it calls it something else.
+cat > "$GD/javascript/testing-patterns.md" <<'EOF'
+# JS Testing
+
+## What to Test
+js-what-body
+
+## Unit of Behavior
+js-unit-body
+
+## Assertion Patterns
+js-assert-body
+EOF
+printf '# JS Naming\njs-naming-body\n' > "$GD/javascript/naming-patterns.md"
+printf '# JS DOM\ndom-body\n' > "$GD/javascript/dom-patterns.md"
+# Elixir's fixture is deliberately incomplete both ways: a file with a slot no heading
+# satisfies, and a file the set does not have at all.
+mkdir -p "$GD/elixir"
+cat > "$GD/elixir/testing-patterns.md" <<'EOF'
+# Elixir Testing
+
+## What to Test
+ex-what-body
+
+## Unit of Behavior
+ex-unit-body
+EOF
+
+gl() { "$CLERK" guidelines --guidelines-dir "$GD" "$@"; }
+
+G=$(gl --language Go)
+eq "the long file is cut to its slots, not read whole" "0" \
+   "$(printf '%s' "$G" | grep -c 'noise-body')"
+eq "and the slots it was cut to are all there" "3" \
+   "$(printf '%s' "$G" | grep -cE 'what-body|unit-body|assert-body')"
+
+# The spellings the skill asked for by name are not the spellings the files use. A
+# prompt matching these by eye fails silently; this is why they are a list.
+eq "Go's renamed unit-of-behavior section still resolves" "1" \
+   "$(printf '%s' "$G" | grep -c '§ What is a Unit of Behavior?')"
+eq "and its qualified assertion heading too" "1" \
+   "$(printf '%s' "$G" | grep -c "§ Assertion Strictness: Match")"
+eq "JavaScript's differently-named one resolves as well" "1" \
+   "$(gl --language JavaScript/TypeScript | grep -c '§ Assertion Patterns')"
+
+eq "short files come whole" "1" "$(printf '%s' "$G" | grep -c 'naming-body')"
+eq "and every one of them" "3" \
+   "$(printf '%s' "$G" | grep -cE 'arch-body|workflow-body|comments-body')"
+
+eq "the section index of a long file rides along" "1" \
+   "$(printf '%s' "$G" | grep -c 'index: 1-3')"
+
+# Which caller pattern fits the work is the caller's judgment, so it is asked for.
+eq "no caller pattern is emitted unasked" "0" "$(printf '%s' "$G" | grep -c 'ui-body')"
+eq "the identification section always is" "1" "$(printf '%s' "$G" | grep -c 'identify-body')"
+eq "and the quick reference with it" "1" "$(printf '%s' "$G" | grep -c 'quickref-body')"
+eq "--caller adds that pattern and only it" "1|0" \
+   "$(C=$(gl --language Go --caller ui); printf '%s|%s' "$(printf '%s' "$C" | grep -c 'ui-body')" \
+      "$(printf '%s' "$C" | grep -c 'exported-body')")"
+eq "a numbered pattern is found by name, not by number" "1" \
+   "$(gl --language Go --caller exported | grep -c 'exported-body')"
+
+eq "the DOM guideline is opt-in" "0" "$(gl --language JavaScript/TypeScript | grep -c 'dom-body')"
+eq "and arrives when asked for" "1" \
+   "$(gl --language JavaScript/TypeScript --dom | grep -c 'dom-body')"
+
+# A section silently absent reads exactly like a section the guideline never had.
+E=$(gl --language Elixir)
+eq "a slot that matches nothing is reported, not dropped" "1" \
+   "$(printf '%s' "$E" | grep -c 'no section matching .assertions.')"
+eq "and the headings it did find are named, so the slot can be fixed" "1" \
+   "$(printf '%s' "$E" | grep -c 'What to Test, Unit of Behavior')"
+eq "the sections that did resolve still come through" "2" \
+   "$(printf '%s' "$E" | grep -cE 'ex-what-body|ex-unit-body')"
+eq "a language with no guideline set says so" "1" \
+   "$(gl --language Rust | grep -c 'Rust.*no guideline set')"
+eq "a file the set does not have says so too" "1" \
+   "$(printf '%s' "$E" | grep -c 'elixir/naming-patterns.md.*does not exist')"
+eq "nothing missing means no such section" "0" \
+   "$(printf '%s' "$G" | grep -c '## Not loaded')"
+
+eq "--list names the plan without emitting bodies" "whole|0" \
+   "$(L=$(gl --language Go --list); printf '%s|%s' \
+      "$(printf '%s' "$L" | jq -r '.files[] | select(.file == "comments.md") | .sections')" \
+      "$(printf '%s' "$L" | grep -c 'comments-body')")"
+eq "a missing guidelines directory is refused" "2" \
+   "$("$CLERK" guidelines --guidelines-dir "$GD/nope" --language Go >/dev/null 2>&1; printf '%s' $?)"
+
+# --------------------------------------------------------------------------------
 printf '\nlint — the conventions a regex settles\n'
 
 R28=$(new_repo)

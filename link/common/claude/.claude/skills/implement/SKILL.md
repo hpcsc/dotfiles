@@ -81,26 +81,23 @@ Stopping and restarting is the normal case, not an edge one, and the two ways of
 
 ### Read the guidelines — yourself
 
-**Read these for the languages `clerk prepare` reported**, before writing any code:
+```
+clerk guidelines
+```
 
-| Language | Required reading |
-|---|---|
-| All | `~/.config/ai/guidelines/testing/caller-patterns.md`, `~/.config/ai/guidelines/comments.md` |
-| Go | `go/testing-patterns.md`, `go/naming-patterns.md`, `go/architecture-principles.md`, `go/development-workflow.md` |
-| JavaScript/TypeScript | `javascript/testing-patterns.md`, `javascript/naming-patterns.md`, `javascript/architecture-principles.md`, `javascript/development-workflow.md`, plus `javascript/dom-patterns.md` and `javascript/state-management.md` when the task touches the DOM or shared state |
-| Elixir | `elixir/testing-patterns.md`, `elixir/naming-patterns.md`, `elixir/architecture-principles.md`, `elixir/development-workflow.md` |
+The required reading for the languages it detects, cut to the sections that matter and printed as text. Read what it prints; do not re-fetch any of it.
 
-(all under `~/.config/ai/guidelines/`)
+It emits the whole of `comments.md` and the naming guideline — both short, and the two most often broken by default, since a comment that restates the code, or names it by its position in a plan ("task 3", "the new helper") rather than its domain role, is the single most common finding an audit of this work returns. From the long files it takes only what a run must have loaded: "What to Test", the unit-of-behavior section and the assertion section from the language testing guideline, and from `caller-patterns.md` the identification section plus the Quick Reference, along with each file's Section Index so you can ask for more.
 
-**Progressive disclosure — these are long** (`go/testing-patterns.md` is 1,537 lines; `caller-patterns.md` is 511). Reading them end-to-end would spend the speed advantage this skill exists to buy. For each:
+**Then name your caller pattern.** Which of UI / Inbound / Outbound / Async / Exported API this work has is the one judgment in this step, so it is asked for rather than guessed:
 
-1. Read line 1 only (`offset=1, limit=1`). A file with a `<!-- index: 1-N -->` comment is telling you its Section Index range.
-2. Read that range to see section names and their "Use when…" lines.
-3. `rg -n '^## '` once for the file's whole heading map, then read each section you need from its offset up to the next heading. Naming the heading in the pattern returns a start with no end, so the read that follows has to guess its `limit` — over-reading wastes the tokens this disclosure is saving, under-reading costs a second call.
+```
+clerk guidelines --caller ui        # …or inbound, outbound, async, exported
+```
 
-A short file with no index comment (e.g. `javascript/naming-patterns.md`, 64 lines) is cheap — just read it.
+Add `--dom` or `--state` when the task touches the DOM or shared state.
 
-At minimum load: the caller pattern that fits this work (UI / Inbound / Outbound / Async / Exported API) plus the Quick Reference from `caller-patterns.md`; "What to Test", "Unit of Behavior" and "Assertion Strictness" from the language testing guideline; and the whole of `comments.md` and the naming guideline. Those last two are short, and they are the two most often broken by default — a comment that restates the code, or names it by its position in a plan ("task 3", "the new helper") rather than its domain role, is the single most common finding an audit of this work returns.
+**Read its "Not loaded" section if it prints one.** A guideline that has been reorganised out from under the slot list, or a language with no guideline set at all, is reported there rather than silently omitted — and a section missing from the output otherwise reads exactly like a section the guideline never had.
 
 ### Set up an isolated worktree
 
@@ -164,7 +161,7 @@ It does the codebase exploration and dependency analysis that makes the task lis
 
 **Carry the learnings forward.** Pass the learnings file's contents as `Accumulated project learnings`: "These are durable conventions, recurring review findings and constraints from earlier runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover."
 
-**Pass the guidelines** as `Required Reading` with the progressive-disclosure instruction above, plus: "From `caller-patterns.md` read 'How to Identify the Caller' and the Quick Reference. From the language testing guideline read 'Unit of Behavior', to judge whether a task delivers independently testable behaviour or is only meaningful through a downstream consumer."
+**Pass the guidelines** as `Required Reading` — the text `clerk guidelines` printed you, not a list of paths to go and fetch. Add: "The unit-of-behavior section is the one to decide each task against: whether it delivers independently testable behaviour, or is only meaningful through a downstream consumer."
 
 **One judgment call.** Decomposition costs a full agent (~15 minutes measured). Work that is obviously a single slice does not need it — say so and go straight to building. Anything with more than one deliverable, real dependencies, or an unclear surface gets decomposed.
 

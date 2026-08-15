@@ -48,10 +48,6 @@ The orchestrator passes a single JSON object as input. The task is passed inline
   },
   "test_command": "go test ./...",
   "go_tool_prefix": "<mise exec -- | empty — the once-determined Go toolchain prefix>",
-  "testing_guidelines": {
-    "paths": ["~/.config/ai/guidelines/testing/caller-patterns.md", "~/.config/ai/guidelines/go/testing-patterns.md"],
-    "instruction": "Verbatim progressive-disclosure instruction to pass to inner agents."
-  },
   "checkpoint_path": "tasks/.checkpoint",
   "scratch_path": "tasks/.cycles/task-3.md"
 }
@@ -87,7 +83,7 @@ Affected Files: [task.affected_files]
 Patterns to Follow: [task.patterns_to_follow]
 ```
 
-Pass the testing guidelines from `testing_guidelines.paths` with `testing_guidelines.instruction` verbatim.
+Inner agents load their own guidelines with `clerk guidelines`, so nothing about them needs passing down. An agent that knows its own task picks its `--caller` better than you can on its behalf.
 
 Handle the output:
 

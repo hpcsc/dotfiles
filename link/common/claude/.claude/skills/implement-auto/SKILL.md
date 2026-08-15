@@ -60,29 +60,9 @@ Stopping and restarting is the normal case, not an edge one, and the two ways of
 
 ### Guidelines
 
-| Language | Required reading |
-|---|---|---|
-| All | `~/.config/ai/guidelines/testing/caller-patterns.md`, `~/.config/ai/guidelines/comments.md` |
-| Go | `~/.config/ai/guidelines/go/testing-patterns.md` |
-| JavaScript/TypeScript | `~/.config/ai/guidelines/javascript/testing-patterns.md` |
-| Elixir | `~/.config/ai/guidelines/elixir/testing-patterns.md` |
-| (others) | _(none beyond caller-patterns)_ |
+Subagents load their own, with one `clerk guidelines` call each: it detects the repo's languages, prints the required reading cut to the sections that matter, and takes `--caller` for a caller pattern and `--section FILE:HEADING` for anything else by name. Nothing needs passing down, and an agent that knows its own task picks its caller better than this orchestrator can on its behalf.
 
-Most of these are long. Instruct subagents to use progressive disclosure — read the Section Index first, then only the sections relevant to the task. Do NOT ask them to read the full file.
-
-`comments.md` is the exception: 45 lines with no Section Index, so index-hunting it wastes a turn and returns nothing. Have subagents read it whole. It earns its place here because a comment that restates the code, or names it by its position in a plan ("task 3", "the new helper") rather than its domain role, is the most common thing a review of this work turns up — and the reviewers downstream will flag it whether or not the implementer was told.
-
-**How to read a Section Index efficiently.** Each guideline starts with an HTML comment on line 1 of the form `<!-- index: 1-N -->` giving the exact line range of the Section Index. Agents should:
-
-1. Read line 1 only (`offset=1, limit=1`) to learn the index range.
-2. Read the index range (`offset=1, limit=N`) to see all section names and "Use when..." descriptions.
-3. For each relevant section, `rg -n '^## <heading>'` to resolve its starting line, then `Read` from that offset.
-
-Pass this instruction to subagents verbatim so they don't read the full file.
-
-When passing testing guidelines to the `test-case-designer` agent, always include `caller-patterns.md` with the instruction: "Read line 1 to find the Section Index range, read the index, then identify the caller pattern for this task (UI for reads, Inbound for state changes, Outbound, Async Processing, or Exported API) and read only that section plus the Quick Reference. Use the pattern's assert-on/don't-assert-on tables to guide scenario design."
-
-When a language-specific testing guideline also exists (see table above), include it as additional `Required Reading` with the instruction: "Read line 1 to find the Section Index range, read the index, then load only the sections relevant to this task — at minimum 'What to Test' and 'Unit of Behavior' to decide whether a scenario is worth testing, plus 'Assertion Strictness' and any anti-patterns that apply. Skip sections unrelated to the current task."
+Two things worth knowing about what they get. `comments.md` arrives whole — 45 lines, and a comment that restates the code, or names it by its position in a plan ("task 3", "the new helper") rather than its domain role, is the most common thing a review of this work turns up, which the reviewers downstream will flag whether or not the implementer was told. And a language with no guideline set is named in a "Not loaded" section rather than passed over, so a task in an unsupported language says so instead of looking like a task with no rules.
 
 ---
 
@@ -110,7 +90,7 @@ Spawn the `decompose-to-tasks` agent with the Agent tool, passing the languages 
 
 **Carry forward prior learnings.** If the learnings file (`learnings_path` from `clerk prepare`) exists, read it and pass its contents to `decompose-to-tasks` as `Accumulated project learnings` with the instruction: "These are durable conventions, recurring review findings, and constraints distilled from earlier implementation runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover." This closes the self-improvement loop — learnings persisted at the end of one run steer the next run's plan.
 
-For each language in the detected inventory that has a testing guideline entry in the Testing Guidelines table, pass that language-specific guideline plus `caller-patterns.md` as `Required Reading` to the `decompose-to-tasks` agent. Include the instruction: "Both files open with a Section Index — read the indexes first and load only the sections you need. From `caller-patterns.md`, read 'How to Identify the Caller' and the Quick Reference to understand which caller patterns lead to testable behavior. From the language-specific guideline, read the 'Unit of Behavior' section to decide whether a task delivers independently testable behavior or is only meaningful through a downstream consumer. Do not read either file end-to-end."
+`decompose-to-tasks` is one of the few agents that does not fetch its own guidelines, so run `clerk guidelines` and pass what it printed as `Required Reading` — the text, not a list of paths to go and find. Add: "The unit-of-behavior section is the one to decide each task against: whether it delivers independently testable behaviour, or is only meaningful through a downstream consumer. The caller-pattern sections say which callers lead to testable behaviour at all."
 
 ### Present the Plan
 
@@ -167,10 +147,6 @@ The orchestrator assembles the JSON from `clerk next`'s output and the approved 
     "reviewers": ["<triaged reviewer names>"]
   },
   "test_command": "<this task's language entry from tasks/test-commands.json, else `default`, else the detected fallback>",
-  "testing_guidelines": {
-    "paths": ["..."],
-    "instruction": "<verbatim progressive-disclosure instruction>"
-  },
   "checkpoint_path": "tasks/.checkpoint",
   "scratch_path": "tasks/.cycles/task-<N>.md"
 }

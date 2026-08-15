@@ -1309,6 +1309,9 @@ unit-body
 ## Assertion Strictness: Match to What You're Testing
 assert-body
 
+## Independent Verification
+indep-body
+
 ## Unrelated Section
 noise-body
 EOF
@@ -1327,6 +1330,9 @@ js-unit-body
 
 ## Assertion Patterns
 js-assert-body
+
+## Independent Verification
+js-indep-body
 EOF
 printf '# JS Naming\njs-naming-body\n' > "$GD/javascript/naming-patterns.md"
 printf '# JS DOM\ndom-body\n' > "$GD/javascript/dom-patterns.md"
@@ -1348,8 +1354,8 @@ gl() { "$CLERK" guidelines --guidelines-dir "$GD" "$@"; }
 G=$(gl --language Go)
 eq "the long file is cut to its slots, not read whole" "0" \
    "$(printf '%s' "$G" | grep -c 'noise-body')"
-eq "and the slots it was cut to are all there" "3" \
-   "$(printf '%s' "$G" | grep -cE 'what-body|unit-body|assert-body')"
+eq "and the slots it was cut to are all there" "4" \
+   "$(printf '%s' "$G" | grep -cE 'what-body|unit-body|assert-body|indep-body')"
 
 # The spellings the skill asked for by name are not the spellings the files use. A
 # prompt matching these by eye fails silently; this is why they are a list.
@@ -1381,8 +1387,8 @@ eq "a numbered pattern is found by name, not by number" "1" \
 S=$(gl --language Go --section 'go/testing-patterns.md:Unrelated Section')
 eq "a section asked for by name is added to the bundle" "1" \
    "$(printf '%s' "$S" | grep -c 'noise-body')"
-eq "without displacing the slots the bundle already had" "3" \
-   "$(printf '%s' "$S" | grep -cE 'what-body|unit-body|assert-body')"
+eq "without displacing the slots the bundle already had" "4" \
+   "$(printf '%s' "$S" | grep -cE 'what-body|unit-body|assert-body|indep-body')"
 
 # Headings contain colons; filenames do not — so the spec splits on the first only.
 # Naming one the bundle already covers must also not print it twice.
@@ -1411,8 +1417,10 @@ eq "and arrives when asked for" "1" \
 E=$(gl --language Elixir)
 eq "a slot that matches nothing is reported, not dropped" "1" \
    "$(printf '%s' "$E" | grep -c 'no section matching .assertions.')"
-eq "and the headings it did find are named, so the slot can be fixed" "1" \
-   "$(printf '%s' "$E" | grep -c 'What to Test, Unit of Behavior')"
+eq "and the headings it did find are named, so the slot can be fixed" "true" \
+   "$(printf '%s' "$E" | grep -q 'Its headings are: What to Test, Unit of Behavior' && echo true || echo false)"
+eq "each unmatched slot is reported on its own" "2" \
+   "$(printf '%s' "$E" | grep -c 'no section matching')"
 eq "the sections that did resolve still come through" "2" \
    "$(printf '%s' "$E" | grep -cE 'ex-what-body|ex-unit-body')"
 eq "a language with no guideline set says so" "1" \

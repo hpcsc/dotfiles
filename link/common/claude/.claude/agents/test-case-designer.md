@@ -28,13 +28,17 @@ Patterns to Follow: [from task list]
 
 ## Required Reading
 
-Before designing test cases, read the caller patterns guide:
+Before designing test cases:
 
 ```bash
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
+clerk guidelines --section 'testing/patterns.md:Coupling-Based Assertion Levels'
 ```
 
-This tells you **what to assert on vs. ignore** based on who the caller is.
+It detects the repo's languages and prints, as text: how to identify the caller plus the Quick Reference across all five patterns (**what to assert on vs. ignore**, which is what Step 1b turns on), the language testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification (Step 2), and the coupling levels Step 1c classifies against. Read what it prints; do not re-fetch any of it.
+
+Once Step 1b has named the caller, re-run with `--caller ui|inbound|outbound|async|exported` for that pattern's own assert-on/don't-assert-on tables.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 
@@ -69,7 +73,7 @@ State the identified pattern at the top of your output. Use the pattern's assert
 
 ### Step 1c: Classify Coupling Profile
 
-Using the coupling-based assertion levels from `~/.config/ai/guidelines/testing/patterns.md` § Coupling-Based Assertion Levels, classify the component under test:
+Using the coupling-based assertion levels from your Required Reading, classify the component under test:
 
 1. **Integration strength**: What is the weakest coupling level through which the behavior can be tested?
    - **Contract**: Public interface only (HTTP response, API return value, CLI output)
@@ -94,7 +98,7 @@ Use these questions to decide whether a scenario is worth keeping — if you can
 - Is the expected outcome grounded in domain knowledge or the behavioral contract, not derived from reading the current implementation?
 - Would a harmless refactor break this test? If yes, the test is coupled to implementation — redesign it.
 
-For each scenario that passes the above filter, assess its **independent verification degree** (see `~/.config/ai/guidelines/go/testing-patterns.md` § Independent Verification):
+For each scenario that passes the above filter, assess its **independent verification degree** (the Independent Verification section of your Required Reading):
 
 | Degree | Expected value source | Action |
 |---|---|---|

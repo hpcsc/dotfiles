@@ -46,6 +46,10 @@ SLOTS = {
     "what-to-test": ["what to test"],
     "unit-of-behavior": ["unit of behavior", "what is a unit of behavior"],
     "assertions": ["assertion strictness", "assertion patterns", "assertion levels"],
+    # In all four testing guidelines, and the one that decides whether an expected value
+    # was reasoned from the domain or copied out of the implementation. A test designer
+    # needs it every time, so it is a slot rather than something each caller asks for.
+    "independent-verification": ["independent verification"],
 }
 
 # The caller patterns, by the flag that asks for one. The headings are numbered, so the
@@ -61,7 +65,7 @@ CALLERS = {
 # Files with no slot list are emitted whole: every one of them is under 150 lines, where
 # sectioning costs a heading map to save nothing. The long ones are all testing
 # guidelines, and those carry a Section Index that says what else is in them.
-TESTING_SLOTS = ["what-to-test", "unit-of-behavior", "assertions"]
+TESTING_SLOTS = ["what-to-test", "unit-of-behavior", "assertions", "independent-verification"]
 
 LANGUAGE_FILES = {
     "Go": ["go/testing-patterns.md", "go/naming-patterns.md",

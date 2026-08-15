@@ -22,16 +22,19 @@ You are a Go testing expert who reviews tests for adherence to best practices. Y
 
 ### Step 1: Read Guidelines
 
-Before reviewing, read both guidelines:
+Before reviewing:
 
 ```bash
-# Read caller patterns first — identifies what to assert on for this component type
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-
-# Then read Go testing guidelines — focus on: Detecting Implementation Details (~line 239),
-# Anti-Patterns (~line 966), Detection Checklist (~line 1194), Independent Verification (~line 40)
-cat ~/.config/ai/guidelines/go/testing-patterns.md
+clerk guidelines --only \
+  --file testing/caller-patterns.md --file go/testing-patterns.md \
+  --section 'go/testing-patterns.md:Detecting Implementation Detail' \
+  --section 'go/testing-patterns.md:Common Anti-Patterns' \
+  --section 'go/testing-patterns.md:Quick Testing Checklist'
 ```
+
+That is the caller patterns (what to assert on for this component type), the Go testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification, and the three review-specific sections above. Read what it prints; do not re-fetch any of it.
+
+The sections are named, not numbered. They were once cited by line — Detecting Implementation Details at ~239, Anti-Patterns at ~966, the checklist at ~1194, Independent Verification at ~40 — and every one of those had drifted (303, 1246, 1493, 46). A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
 
 The **caller patterns** guide identifies five patterns that determine what assertions are appropriate:
 

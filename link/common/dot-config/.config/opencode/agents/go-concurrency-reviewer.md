@@ -19,11 +19,15 @@ You review Go code changes for concurrency and data race issues. You do NOT modi
 
 ## Required Reading
 
-Before reviewing, read the Go concurrency guidelines:
+Before reviewing:
 
 ```bash
-cat ~/.config/ai/guidelines/go/concurrency-patterns.md
+clerk guidelines --only --file go/concurrency-patterns.md
 ```
+
+`--only` keeps this to the concurrency guideline rather than everything Go.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

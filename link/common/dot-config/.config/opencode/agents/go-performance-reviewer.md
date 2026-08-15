@@ -17,11 +17,15 @@ You review Go code changes for performance issues. You do NOT modify code.
 
 ## Required Reading
 
-Before reviewing, read the Go performance guidelines:
+Before reviewing:
 
 ```bash
-cat ~/.config/ai/guidelines/go/performance-patterns.md
+clerk guidelines --only --file go/performance-patterns.md
 ```
+
+`--only` keeps this to the performance guideline rather than everything Go.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

@@ -15,13 +15,18 @@ You review Go code changes for adherence to project-specific Go guidelines. You 
 
 ## Required Reading
 
-Before reviewing, read ALL of the following guidelines:
+Before reviewing:
 
 ```bash
-cat ~/.config/ai/guidelines/go/naming-patterns.md
-cat ~/.config/ai/guidelines/go/architecture-principles.md
-cat ~/.config/ai/guidelines/go/development-workflow.md
+clerk guidelines --only \
+  --file go/naming-patterns.md \
+  --file go/architecture-principles.md \
+  --file go/development-workflow.md
 ```
+
+`--only` is what keeps this to the three guidelines you review against: without it you would also be handed the testing and caller-pattern sections, which belong to the reviewers whose job those are.
+
+If it prints a "Not loaded" section, read it — a guideline reorganised out from under one of these names is reported there rather than silently omitted.
 
 ---
 

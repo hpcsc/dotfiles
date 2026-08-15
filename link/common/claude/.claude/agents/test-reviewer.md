@@ -36,7 +36,7 @@ clerk guidelines --only \
 
 That is the caller patterns (what to assert on for this component type) and the five sections of the shared testing guideline this review turns on, out of a 1,279-line file. `--only` keeps it to the language-agnostic guideline, which is the one this reviewer exists to apply.
 
-The sections are named, not numbered. They were once cited by line and every number had drifted: Detecting Implementation Details given as ~254 sits at 298, Anti-Patterns as ~792 at 865, the checklist as ~1134 at 1226. A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
+Sections are named rather than numbered, because a name that stops matching is reported under "Not loaded" where a line number that stops matching just points somewhere else.
 
 The **caller patterns** guide identifies five patterns that determine what assertions are appropriate:
 

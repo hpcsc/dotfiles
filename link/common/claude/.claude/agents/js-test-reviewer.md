@@ -35,7 +35,7 @@ clerk guidelines --only \
 
 That is the caller patterns (what to assert on for this component type), the JS testing guideline cut to what to test, unit of behaviour, assertion patterns and independent verification, and the two review-specific sections above.
 
-The sections are named, not numbered. They were once cited by line and every number had drifted: Unit of Behavior given as ~46 sits at 85, Anti-Patterns as ~161 sits at 314, the Detection Checklist as ~187 sits at 331, Independent Verification as ~23 sits at 16. A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
+Sections are named rather than numbered, because a name that stops matching is reported under "Not loaded" where a line number that stops matching just points somewhere else.
 
 The **caller patterns** guide identifies five patterns that determine what assertions are appropriate:
 

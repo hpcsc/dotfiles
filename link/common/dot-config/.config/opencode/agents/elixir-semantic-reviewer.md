@@ -20,7 +20,9 @@ You review Elixir code changes for semantic correctness and test quality. You do
 Before reviewing:
 
 ```bash
-clerk guidelines --language Elixir \
+clerk guidelines --only \
+  --file testing/caller-patterns.md --file comments.md \
+  --file elixir/testing-patterns.md \
   --section 'elixir/testing-patterns.md:Anti-Patterns' \
   --section 'elixir/testing-patterns.md:Detection Checklist'
 ```

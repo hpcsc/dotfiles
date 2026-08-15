@@ -34,7 +34,7 @@ clerk guidelines --only \
 
 That is the caller patterns (what to assert on for this component type), the Go testing guideline cut to what to test, unit of behaviour, assertion strictness and independent verification, and the three review-specific sections above. Read what it prints; do not re-fetch any of it.
 
-The sections are named, not numbered. They were once cited by line — Detecting Implementation Details at ~239, Anti-Patterns at ~966, the checklist at ~1194, Independent Verification at ~40 — and every one of those had drifted (303, 1246, 1493, 46). A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
+Sections are named rather than numbered, because a name that stops matching is reported under "Not loaded" where a line number that stops matching just points somewhere else.
 
 The **caller patterns** guide identifies five patterns that determine what assertions are appropriate:
 

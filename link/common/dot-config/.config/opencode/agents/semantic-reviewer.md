@@ -28,7 +28,7 @@ clerk guidelines --only \
 
 That is the caller patterns (what to assert on for this component type), three sections of the language-agnostic testing guideline, and the comment rules to gate any new or modified comment in the diff. `--only` is deliberate: this reviewer is the language-agnostic one, so it takes the shared guideline rather than whichever language the repo happens to be in.
 
-The sections are named, not numbered. They were once cited by line and the numbers had drifted — Detecting Implementation Details given as ~254 sits at 298, Unit of Behavior as ~206 at 248. A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
+Sections are named rather than numbered, because a name that stops matching is reported under "Not loaded" where a line number that stops matching just points somewhere else.
 
 ---
 

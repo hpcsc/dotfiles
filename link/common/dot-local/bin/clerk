@@ -1172,7 +1172,18 @@ cmd_land() {
     integrate=$(printf '%s' "$resolved" | cut -f1)
     integrate_src=$(printf '%s' "$resolved" | cut -f2)
   fi
-  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else tasks=$(find_tasks_file "$th") || tasks=""; fi
+  if [ -n "$tasks_override" ]; then
+    tasks=$(resolve_tasks_arg "$tasks_override")
+  else
+    # Exit 3 is "several breakdowns, name one"; every other command dies on it. Swallowing
+    # it here archived nothing and still reported success — `archived: null` in an output
+    # whose other fields all say the landing worked, leaving the breakdown in tasks/ to be
+    # counted as in-flight by the next run. Exit 1 is "none", which stays fine: the gate
+    # accepts an already-archived run on its archive record.
+    tasks=$(find_tasks_file "$th"); rc=$?
+    [ "$rc" -eq 3 ] && die "$(tasks_hint "$th" land)"
+    [ "$rc" -ne 0 ] && tasks=""
+  fi
 
   # Archive first, on the feature branch, so the archive commit rides with the work it
   # belongs to instead of landing on the default branch behind it. It also has to come

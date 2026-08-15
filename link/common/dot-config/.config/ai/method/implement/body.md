@@ -72,7 +72,7 @@ At minimum load: the caller pattern that fits this work (UI / Inbound / Outbound
 
 ### Adopt an existing breakdown if there is one
 
-If the request names a file in `tasks/`, or `clerk prepare` found a breakdown that is part-built, read it, present the task list with `clerk status`, and skip decomposition. Tasks with `done: true` in the sidecar are finished — `clerk next` resumes at the first unblocked one that is not.
+If the request names a file in `tasks/`, or `clerk prepare` reported a `resume`, read that breakdown, present the task list with `clerk status`, and skip decomposition. Tasks with `done: true` in the sidecar are finished — `clerk next` resumes at the first unblocked one that is not.
 
 **Do not decompose a story that already has a breakdown in progress.** A second decomposition produces a different task list against the same code, and the sidecar recording what was already built no longer describes it. `clerk status` tells you where the previous run stopped.
 

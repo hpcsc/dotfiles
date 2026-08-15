@@ -38,12 +38,14 @@ If `clerk` is not installed, its resolutions are documented in `~/.config/ai/met
 
 Stopping and restarting is the normal case, not an edge one, and the two ways of getting it wrong are both expensive: a second worktree strands the first one's commits somewhere nobody looks, and a second decomposition produces a different task list against code the first run already changed, so the sidecar recording what was built no longer describes the plan.
 
-`clerk prepare` reports what you need to tell the difference:
+`clerk prepare` settles it in **`resume`**, which is either null or the run you are rejoining:
 
-- **`worktrees`** — every worktree of this repo with its branch. One whose branch matches this feature means the run already has a home; enter that one rather than creating another. How you enter it is tool-specific and covered below.
-- **`breakdowns`** — every breakdown under `tasks/` with `done`, `total`, `started` and `finished`. One with `started: true` and `finished: false` is a part-built run; adopt it in Phase 1 rather than decomposing again.
+- **`resume.breakdown`** — the breakdown that has started and not finished, with its `done`/`total`. Adopt it in Phase 1 rather than decomposing again.
+- **`resume.worktree`** — the worktree whose branch is that breakdown's slug, or null. That is the run's home; enter it rather than creating another. How you enter it is tool-specific and covered below.
 
-Neither present means a fresh start. `clerk status --tasks-file <path>` shows exactly where a previous run stopped.
+**Null covers two different situations, and `breakdowns` tells them apart.** Nothing part-built is a fresh start. Several part-built at once is the normal state of a repo planned as deliverables — choosing between them needs to know which run this is, so `prepare` reports each with its progress and picks none. Read `breakdowns` in that case and name the one you are building with `--tasks-file`.
+
+`clerk status --tasks-file <path>` shows exactly where a previous run stopped.
 
 ### Language Configuration
 
@@ -88,7 +90,7 @@ When a language-specific testing guideline also exists (see table above), includ
 
 ### Adopt an existing breakdown if there is one
 
-If the request names an existing file in `tasks/`, or Phase 0 found a part-built breakdown:
+If the request names an existing file in `tasks/`, or Phase 0 reported a `resume`:
 
 1. Read it and run `clerk status --tasks-file <path>` — tasks with `done: true` in the sidecar are finished, and it reports how far the run got.
 2. Present the task list to the user.

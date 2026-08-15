@@ -53,7 +53,7 @@ When a language-specific testing guideline also exists (see table above), includ
 
 ### Adopt an existing breakdown if there is one
 
-If the request names an existing file in `tasks/`, or Phase 0 found a part-built breakdown:
+If the request names an existing file in `tasks/`, or Phase 0 reported a `resume`:
 
 1. Read it and run `clerk status --tasks-file <path>` — tasks with `done: true` in the sidecar are finished, and it reports how far the run got.
 2. Present the task list to the user.

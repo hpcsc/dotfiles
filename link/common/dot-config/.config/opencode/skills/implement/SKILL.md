@@ -69,12 +69,14 @@ If `clerk` is not installed, its resolutions are documented in `~/.config/ai/met
 
 Stopping and restarting is the normal case, not an edge one, and the two ways of getting it wrong are both expensive: a second worktree strands the first one's commits somewhere nobody looks, and a second decomposition produces a different task list against code the first run already changed, so the sidecar recording what was built no longer describes the plan.
 
-`clerk prepare` reports what you need to tell the difference:
+`clerk prepare` settles it in **`resume`**, which is either null or the run you are rejoining:
 
-- **`worktrees`** — every worktree of this repo with its branch. One whose branch matches this feature means the run already has a home; enter that one rather than creating another. How you enter it is tool-specific and covered below.
-- **`breakdowns`** — every breakdown under `tasks/` with `done`, `total`, `started` and `finished`. One with `started: true` and `finished: false` is a part-built run; adopt it in Phase 1 rather than decomposing again.
+- **`resume.breakdown`** — the breakdown that has started and not finished, with its `done`/`total`. Adopt it in Phase 1 rather than decomposing again.
+- **`resume.worktree`** — the worktree whose branch is that breakdown's slug, or null. That is the run's home; enter it rather than creating another. How you enter it is tool-specific and covered below.
 
-Neither present means a fresh start. `clerk status --tasks-file <path>` shows exactly where a previous run stopped.
+**Null covers two different situations, and `breakdowns` tells them apart.** Nothing part-built is a fresh start. Several part-built at once is the normal state of a repo planned as deliverables — choosing between them needs to know which run this is, so `prepare` reports each with its progress and picks none. Read `breakdowns` in that case and name the one you are building with `--tasks-file`.
+
+`clerk status --tasks-file <path>` shows exactly where a previous run stopped.
 
 ### Read the guidelines — yourself
 
@@ -105,7 +107,7 @@ At minimum load: the caller pattern that fits this work (UI / Inbound / Outbound
 
 Then **work in a worktree**, unless `in_place` is on — from the request, or from the repo settings `clerk prepare` reported in `flags`. This is not ceremony: the whole feature lands on a branch in a directory of its own, so the user's checkout stays free to browse, run and edit while you build, and nothing they do mid-run can end up swept into one of your commits.
 
-**If `clerk prepare` listed a worktree whose branch matches this feature**, that run already has a home — `cd` to its `path` and carry on. Do not `git worktree add` a second one; that is how the first one's commits get stranded.
+**If `clerk prepare` reported a `resume.worktree`**, that run already has a home — `cd` to its `path` and carry on. Do not `git worktree add` a second one; that is how the first one's commits get stranded.
 
 Otherwise create it:
 
@@ -131,7 +133,7 @@ With `in_place` on: no worktree. `git switch -c <kebab-feature-name>` if on the 
 
 ### Adopt an existing breakdown if there is one
 
-If the request names a file in `tasks/`, or `clerk prepare` found a breakdown that is part-built, read it, present the task list with `clerk status`, and skip decomposition. Tasks with `done: true` in the sidecar are finished — `clerk next` resumes at the first unblocked one that is not.
+If the request names a file in `tasks/`, or `clerk prepare` reported a `resume`, read that breakdown, present the task list with `clerk status`, and skip decomposition. Tasks with `done: true` in the sidecar are finished — `clerk next` resumes at the first unblocked one that is not.
 
 **Do not decompose a story that already has a breakdown in progress.** A second decomposition produces a different task list against the same code, and the sidecar recording what was already built no longer describes it. `clerk status` tells you where the previous run stopped.
 

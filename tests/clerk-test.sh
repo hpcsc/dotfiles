@@ -165,6 +165,58 @@ eq "resolves the main repo root separately"   "$(cd "$R3" && pwd -P)" "$(printf 
 eq "reports the worktree's own branch"        "feature" "$(printf '%s' "$J" | jq -r '.branch')"
 
 # --------------------------------------------------------------------------------
+printf '\nresume\n'
+
+# The sidecar carries `done`; a breakdown that has started and not finished is the run
+# to adopt rather than decompose over.
+seed_breakdown() {
+  local repo=$1 slug=$2 d1=$3 d2=$4
+  mkdir -p "$repo/tasks"
+  printf '### Task 1: One\n### Task 2: Two\n' > "$repo/tasks/$slug.md"
+  jq -n --arg s "$slug" --argjson d1 "$d1" --argjson d2 "$d2" \
+    '{story: $s, tasks_file: ("tasks/" + $s + ".md"), tasks: [
+       {n: 1, title: "One", language: "Go", testable: true, depends_on: [], affected_files: ["a.go"], done: $d1},
+       {n: 2, title: "Two", language: "Go", testable: true, depends_on: [1], affected_files: ["b.go"], done: $d2}]}' \
+    > "$repo/tasks/$slug.json"
+}
+
+RR=$(new_repo)
+eq "nothing to resume in a fresh repo" "null" "$(run "$RR" prepare | jq -r '.resume')"
+
+seed_breakdown "$RR" widget false false
+eq "an untouched breakdown is not a resume" "null" "$(run "$RR" prepare | jq -r '.resume')"
+
+seed_breakdown "$RR" widget true false
+J=$(run "$RR" prepare)
+eq "a part-built breakdown is the one to adopt" "$RR/tasks/widget.md" \
+   "$(printf '%s' "$J" | jq -r '.resume.breakdown.path')"
+eq "with its progress carried through" "1/2" \
+   "$(printf '%s' "$J" | jq -r '.resume.breakdown | "\(.done)/\(.total)"')"
+eq "and no worktree until one exists" "null" "$(printf '%s' "$J" | jq -r '.resume.worktree')"
+
+# The branch is the breakdown's own slug, because `git worktree add -b` and
+# tasks/<story>.md are given the same feature name.
+RWT="$RR/../wt-$(basename "$RR")"
+git -C "$RR" worktree add -q -b widget "$RWT" >/dev/null 2>&1
+J=$(run "$RR" prepare)
+eq "the worktree on the breakdown's slug is its home" "$(cd "$RWT" && pwd -P)" \
+   "$(printf '%s' "$J" | jq -r '.resume.worktree.path')"
+eq "and is paired by branch, not by position" "widget" \
+   "$(printf '%s' "$J" | jq -r '.resume.worktree.branch')"
+
+seed_breakdown "$RR" widget true true
+eq "a finished breakdown is not resumed" "null" "$(run "$RR" prepare | jq -r '.resume')"
+
+# A repo planned as deliverables has several in flight at once; picking one needs to know
+# which run this is, so prepare reports them all and decides nothing.
+seed_breakdown "$RR" widget true false
+seed_breakdown "$RR" gadget true false
+J=$(run "$RR" prepare)
+eq "two part-built breakdowns is not a pick" "null" "$(printf '%s' "$J" | jq -r '.resume')"
+eq "but both are still listed with their progress" "2" \
+   "$(printf '%s' "$J" | jq -r '[.breakdowns[] | select(.started and (.finished | not))] | length')"
+
+# --------------------------------------------------------------------------------
 printf '\nnext and complete\n'
 
 R5=$(new_repo)

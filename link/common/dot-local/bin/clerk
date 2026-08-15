@@ -405,8 +405,34 @@ list_breakdowns() {
   done | jq -s -c .
 }
 
+# Where a stopped run left off, or null. The rule was stated in prose and reapplied by
+# hand every restart, and both ways of getting it wrong are expensive: a second
+# decomposition produces a different task list against code the first run already
+# changed, and a second worktree strands the first one's commits somewhere nobody looks.
+#
+# A breakdown is resumable when it has started and has not finished. Its home is the
+# worktree whose branch is the breakdown's own slug, because `git worktree add -b` and
+# `tasks/<story>.md` are given the same feature name — so the pairing is a lookup, not a
+# guess. A null worktree is ordinary: an --in-place run never had one.
+#
+# Several part-built breakdowns is null too, not a pick. That is the normal state of a
+# repo planned as deliverables, choosing between them needs to know which run this is,
+# and `breakdowns` already lists every one with its progress. find_tasks_file refuses
+# the same ambiguity for the same reason.
+resume_for() {
+  local breakdowns=$1 trees=$2
+  printf '%s' "$breakdowns" | jq -c --argjson trees "$trees" '
+    map(select(.started == true and .finished == false)) as $live
+    | if ($live | length) != 1 then null
+      else ($live[0] | . as $b
+            | ($b.path | sub("^.*/"; "") | sub("\\.md$"; "")) as $slug
+            | {breakdown: $b, slug: $slug,
+               worktree: (($trees | map(select(.branch == $slug)) | first) // null)})
+      end'
+}
+
 cmd_prepare() {
-  local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees flags
+  local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees flags resume
   local request= learn_src=resolved
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -437,6 +463,7 @@ cmd_prepare() {
   trees=$(git worktree list --porcelain 2>/dev/null | awk '
     /^worktree /{p=$2} /^branch /{b=$2; sub(/^refs\/heads\//, "", b); print p "\t" b}' \
     | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {path: .[0], branch: .[1]})')
+  resume=$(resume_for "$breakdowns" "$trees")
   if tree_is_clean; then clean=true; else clean=false; fi
   if is_ignored "$root" tasks; then tracked=false; else tracked=true; fi
 
@@ -458,6 +485,7 @@ cmd_prepare() {
     --argjson clean "$clean" \
     --argjson breakdowns "$breakdowns" \
     --argjson worktrees "$trees" \
+    --argjson resume "$resume" \
     --argjson flagobj "$flags" \
     '{
       version: $version,
@@ -478,7 +506,8 @@ cmd_prepare() {
       tasks_home: $tasks_home,
       tasks_tracked: $tasks_tracked,
       breakdowns: $breakdowns,
-      worktrees: $worktrees
+      worktrees: $worktrees,
+      resume: $resume
     } + $flagobj'
 }
 

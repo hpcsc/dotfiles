@@ -35,37 +35,12 @@ DEFAULT_ROOT = Path.home() / ".config" / "ai" / "guidelines"
 
 HEADING = re.compile(r"^## +(.*?)\s*$")
 USE_WHEN = re.compile(r"^> *Use when: *(.*?)\s*$", re.I)
+CONCEPT_MARKER = re.compile(r"^<!--\s*concept:\s*([a-z0-9-]+)\s*-->")
 
-# A slot is one thing a run must have read, and the spellings it goes by. Matching is
-# case-insensitive and anchored at the start of the heading, so "Assertion Strictness"
-# finds Go's "Assertion Strictness: Match to What You're Testing" without also matching
-# a heading that merely mentions assertions halfway through.
-SLOTS = {
-    "identify-caller": ["how to identify the caller"],
-    "quick-reference": ["quick reference", "quick testing checklist"],
-    "what-to-test": ["what to test"],
-    "unit-of-behavior": ["unit of behavior", "what is a unit of behavior"],
-    "assertions": ["assertion strictness", "assertion patterns", "assertion levels"],
-    # In all four testing guidelines, and the one that decides whether an expected value
-    # was reasoned from the domain or copied out of the implementation. A test designer
-    # needs it every time, so it is a slot rather than something each caller asks for.
-    "independent-verification": ["independent verification"],
-}
-
-# The caller patterns, by the flag that asks for one. The headings are numbered, so the
-# spelling here is what survives renumbering.
-CALLERS = {
-    "ui": ["1. ui", "ui ("],
-    "inbound": ["2. inbound", "inbound ("],
-    "outbound": ["3. outbound", "outbound ("],
-    "async": ["4. async", "async processing"],
-    "exported": ["5. exported api", "exported api"],
-}
-
-# Files with no slot list are emitted whole: every one of them is under 150 lines, where
-# sectioning costs a heading map to save nothing. The long ones are all testing
-# guidelines, and those carry a Section Index that says what else is in them.
-TESTING_SLOTS = ["what-to-test", "unit-of-behavior", "assertions", "independent-verification"]
+# The caller patterns, as concepts. `--caller ui` is sugar for `--concept caller-ui`,
+# kept because which caller a component has is a per-task judgment rather than a fixed
+# part of any role's reading.
+CALLERS = {c: f"caller-{c}" for c in ("ui", "inbound", "outbound", "async", "exported")}
 
 # The testing guidelines the slot list was written against. Membership, not the
 # filename, is what earns the slot treatment: `cue/testing-patterns.md` matches the same
@@ -90,8 +65,13 @@ OPTIONAL_FILES = {
 
 ALWAYS = ["testing/caller-patterns.md", "comments.md"]
 
-SLOTTED_TESTING = {f for files in LANGUAGE_FILES.values() for f in files
-                   if f.endswith("/testing-patterns.md")}
+# The guidelines that declare concepts, and so are read in parts. Everything else is
+# short enough that slicing would cost a heading map to save nothing, and arrives whole.
+# Membership is explicit rather than inferred from the filename: `cue/testing-patterns.md`
+# matches the same suffix, declares no concepts, and is meant to arrive whole.
+SLICED = {"testing/caller-patterns.md", "testing/patterns.md",
+          "go/testing-patterns.md", "javascript/testing-patterns.md",
+          "elixir/testing-patterns.md"}
 
 
 def die(msg):
@@ -150,11 +130,26 @@ def headings(lines, h2=None):
     return out
 
 
-def find_section(sections, spellings):
-    for want in spellings:
-        for name, start, end in sections:
-            if name.lower().startswith(want):
-                return name, start, end
+def concepts_in(sections, lines):
+    """{concept: (heading, start, end)} — what this guideline declares it carries.
+
+    The marker is the contract and the heading above it is prose, so rewording,
+    requalifying or renumbering a heading moves nothing a consumer depends on.
+    """
+    found = {}
+    for name, start, end in sections:
+        for line in lines[start + 1:min(start + 4, end)]:
+            if (m := CONCEPT_MARKER.match(line.strip())):
+                found[m.group(1)] = (name, start, end)
+                break
+    return found
+
+
+def find_heading(sections, spelling):
+    """--section FILE:HEADING, for a section that declares no concept."""
+    for name, start, end in sections:
+        if name.lower().startswith(spelling.lower()):
+            return name, start, end
     return None
 
 
@@ -190,30 +185,40 @@ def emit_whole(path, lines, out):
     out.append("".join(lines))
 
 
-def emit_sections(path, lines, slots, out, missing, literals=(), h2=None):
-    """`slots` are named sets of spellings; `literals` are headings a caller asked for."""
+def emit_sections(path, lines, wanted, out, resolved, literals=(), h2=None):
+    """Emit the sections this file declares for `wanted`, plus any `literals` by heading.
+
+    A concept this file does not carry is not an error — `assertions` lives in the
+    testing guidelines and not in caller-patterns, and both are in the same plan. What
+    counts as missing is a concept no file in the plan carried at all, which the caller
+    settles after every file has been read.
+    """
     sections = headings(lines, h2)
     index = section_index(sections, lines)
     if index:
-        out.append(f"\n<!-- {path} — every section it has; ask for one with --section -->\n")
+        out.append(f"\n<!-- {path} — every section it has; ask for one with --concept -->\n")
         out.append(index)
+    available = concepts_in(sections, lines)
     seen = set()
-    for slot in list(slots) + [("literal", h) for h in literals]:
-        if isinstance(slot, tuple):
-            slot, spellings = slot[1], [slot[1].lower()]
-        else:
-            spellings = SLOTS[slot] if slot in SLOTS else CALLERS[slot]
-        found = find_section(sections, spellings)
-        if not found:
-            missing.append({"file": path, "slot": slot,
-                            "headings": [n for n, _, _ in sections]})
+    for concept in wanted:
+        if concept not in available:
             continue
-        name, start, end = found
-        # A caller naming a section the bundle already covers gets it once. Emitting it
-        # twice costs context to say the same thing, and reads as two different rules.
+        name, start, end = available[concept]
         if name in seen:
             continue
         seen.add(name)
+        resolved.add(concept)
+        out.append(f"\n<!-- {path} § {name}  (concept: {concept}) -->\n")
+        out.append("".join(lines[start:end]).rstrip() + "\n")
+    for spelling in literals:
+        hit = find_heading(sections, spelling)
+        if not hit:
+            continue
+        name, start, end = hit
+        if name in seen:
+            continue
+        seen.add(name)
+        resolved.add(f"{path}:{spelling}")
         out.append(f"\n<!-- {path} § {name} -->\n")
         out.append("".join(lines[start:end]).rstrip() + "\n")
 
@@ -238,7 +243,9 @@ def main():
     ap.add_argument("--language", action="append", default=[],
                     help="repeatable; defaults to what `clerk prepare` detects")
     ap.add_argument("--caller", choices=sorted(CALLERS),
-                    help="also emit this caller pattern's section")
+                    help="sugar for --concept caller-<name>")
+    ap.add_argument("--concept", action="append", default=[], metavar="NAME",
+                    help="repeatable; a section by the concept it declares")
     ap.add_argument("--file", action="append", default=[], dest="files", metavar="FILE",
                     help="repeatable; a guideline file outside any language bundle")
     ap.add_argument("--only", action="store_true",
@@ -317,7 +324,11 @@ def main():
     present = [str(root / rel) for rel in plan if (root / rel).is_file()]
     h2_map = h2_lines_for(present)
 
-    out, missing, absent = [], [], []
+    # What was asked for, by concept. --caller is the one bit of sugar: which caller a
+    # component has is a per-task judgment, not a fixed part of any role's reading.
+    asked = list(dict.fromkeys(args.concept + ([CALLERS[args.caller]] if args.caller else [])))
+
+    out, resolved, absent = [], set(), []
     listing = []
     for rel in plan:
         path = root / rel
@@ -327,32 +338,20 @@ def main():
         lines = path.read_text().splitlines(keepends=True)
 
         literals = wanted.get(rel, [])
-        if literals and rel not in bundled:
-            # Named by --section alone: exactly those sections, whatever the file is.
-            slots = []
-        elif rel == "testing/caller-patterns.md":
-            slots = ["identify-caller", "quick-reference"]
-            if args.caller:
-                slots.insert(1, args.caller)
-        elif rel in SLOTTED_TESTING:
-            slots = list(TESTING_SLOTS)
-        elif literals:
-            # Asked for by name and not otherwise in a bundle: give exactly that, whatever
-            # the file's length. testing/patterns.md is 1,279 lines and is only ever
-            # reached this way — emitting it whole would defeat the point of asking.
-            slots = []
-        else:
-            slots = None
+        # A file is read in parts when something was asked of it by name; otherwise it
+        # arrives whole. Sliced files are all long, and a caller that named no concept
+        # still gets their index, which says what there is to ask for.
+        sliced = rel in SLICED or bool(literals)
 
         listing.append({"file": rel, "lines": len(lines),
-                        "sections": "whole" if slots is None else list(slots) + literals})
+                        "read": "in parts" if sliced else "whole"})
         if args.list:
             continue
-        if slots is None:
-            emit_whole(rel, lines, out)
-        else:
-            emit_sections(rel, lines, slots, out, missing, literals,
+        if sliced:
+            emit_sections(rel, lines, asked, out, resolved, literals,
                           None if h2_map is None else h2_map.get(str(path), []))
+        else:
+            emit_whole(rel, lines, out)
 
     if args.list:
         print(json.dumps({"files": listing, "languages": languages,
@@ -374,11 +373,14 @@ def main():
 
     # What it could not settle, said out loud. A section silently absent reads the same
     # as a section the guideline never had, and only one of those is a problem.
-    if missing or absent or unknown:
+    unresolved = [c for c in asked if c not in resolved]
+    unresolved += [f"{rel}:{h}" for rel, hs in wanted.items() for h in hs
+                   if f"{rel}:{h}" not in resolved]
+    if unresolved or absent or unknown:
         print("\n---\n\n## Not loaded\n")
-        for m in missing:
-            print(f"- **{m['file']}** has no section matching `{m['slot']}`. "
-                  f"Its headings are: {', '.join(m['headings']) or '(none)'}.")
+        for c in unresolved:
+            print(f"- **{c}** — no guideline in this set declares it. Either the concept "
+                  f"was renamed, or the guideline that carried it was not loaded.")
         for a in absent:
             print(f"- **{a}** does not exist under {root}.")
         for u in unknown:

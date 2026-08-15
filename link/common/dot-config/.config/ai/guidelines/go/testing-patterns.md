@@ -1,6 +1,7 @@
 # Go Testing Patterns
 
 ## Core Principle: Test Behavior Through Public API Only
+<!-- concept: public-api-only -->
 > Use when: Foundation — all consumers
 
 **Never test implementation details. Test observable behavior through exported functions and methods.**
@@ -15,6 +16,7 @@ Tests should verify **what** the system does (observable behaviors), not **how**
 ---
 
 ## Independent Verification
+<!-- concept: independent-verification -->
 > Use when: Reviewing test quality, judging expected values
 
 A test provides independent verification when its expected values come from **outside the implementation** — from business requirements, specifications, or domain knowledge — rather than restating what the code does.
@@ -138,6 +140,7 @@ Rule of thumb (equivalence partitioning): one representative per class, plus the
 ---
 
 ## Coupling-Based Assertion Levels
+<!-- concept: coupling-levels -->
 > Use when: Choosing what interface to assert through
 
 Integration strength classifies how much a test knows about the system under test:
@@ -165,6 +168,7 @@ High volatility + contract-level assertions = maximum value. Low volatility + ma
 ---
 
 ## Three Essential Qualities of Effective Tests
+<!-- concept: test-qualities -->
 > Use when: Designing or reviewing tests
 
 Every test should maximize these interconnected qualities:
@@ -213,6 +217,7 @@ These qualities often conflict:
 ---
 
 ## What to Test
+<!-- concept: what-to-test -->
 > Use when: Deciding whether something is worth testing
 
 ✅ **Observable behavior**: outputs, return values, state changes, side effects
@@ -226,6 +231,7 @@ These qualities often conflict:
 ---
 
 ## What is a Unit of Behavior?
+<!-- concept: unit-of-behavior -->
 > Use when: Deciding test boundaries, filtering worthless tests
 
 A **unit of behavior** is an observable outcome that a caller depends on. The "caller" might be a product user, another service, another package, or another developer on your team.
@@ -277,6 +283,7 @@ An observable outcome that a caller depends on:
 ---
 
 ## Detecting Implementation Detail Tests
+<!-- concept: implementation-detail-tests -->
 > Use when: Evaluating whether any test asserts on implementation vs behavior
 
 The anti-patterns and checklists later in this guide cover known patterns. This section provides a **general decision procedure** for evaluating any assertion — including novel cases that don't match a known pattern.
@@ -420,6 +427,7 @@ If conditions 2 and 3 are already covered, the seam test adds cost (scaffolding,
 ---
 
 ## HTTP Handlers: The Component Is the Endpoint
+<!-- concept: http-handler-scope -->
 > Use when: Testing HTTP endpoints (HTML, JSON, streaming)
 
 An HTTP handler — whether it returns JSON, HTML, or streamed chunks — may be composed of multiple internal pieces (controllers, templates, view models, serializers, middleware). **These are implementation details. The unit of behavior is the HTTP response.**
@@ -501,6 +509,7 @@ require.Equal(t, "summary", chunks[len(chunks)-1].Type)
 ---
 
 ## Test Structure
+<!-- concept: test-structure -->
 > Use when: Writing new tests (templates, build tags)
 
 ```go
@@ -544,6 +553,7 @@ func TestFeatureName(t *testing.T) {
 ---
 
 ## Test Double Patterns
+<!-- concept: test-doubles -->
 > Use when: Writing or reviewing fakes, broken, recording, memory
 
 **Use concrete implementations (memory, broken, recording) instead of mocks whenever possible.**
@@ -661,6 +671,7 @@ var _ event.Stream = (*broken)(nil)
 ---
 
 ## Shared Contract Tests Across Implementations
+<!-- concept: contract-tests -->
 > Use when: An interface has multiple real implementations
 
 **When an interface has multiple real implementations (e.g. in-memory and SQL), extract one behavioral test suite that takes a constructor and run it against each implementation.**
@@ -734,6 +745,7 @@ If `TestSQLRepository` fails where `TestMemoryRepository` passes, the contract s
 ---
 
 ## Negative-Path Invariants
+<!-- concept: negative-paths -->
 > Use when: Testing error paths — ensuring rejected operations leave state unchanged
 
 **When asserting that an operation is rejected, also assert that state is unchanged — but only through the interface's existing public API. "Rejected and inert" is one behavior, not two.**
@@ -819,6 +831,7 @@ The contract is "rejection is inert." Splitting it into two tests ("returns the 
 ---
 
 ## Principle: Never Expose Internals Just for Testing
+<!-- concept: no-test-only-exposure -->
 > Use when: When tempted to export private state for tests
 
 **Don't make private fields or methods public just to achieve test coverage. Test as a regular client would use the API.**
@@ -953,6 +966,7 @@ If you're only exposing it for tests, that's the wrong reason.
 ---
 
 ## Test Clarity: Include Only Relevant Details
+<!-- concept: test-clarity -->
 > Use when: Balancing helper abstraction vs inline detail
 
 **Balance test clarity: include details necessary to understand what's being tested while hiding implementation noise that obscures the test's purpose.**
@@ -1094,6 +1108,7 @@ func TestAccount_Withdraw(t *testing.T) {
 ---
 
 ## Assertion Strictness: Match to What You're Testing
+<!-- concept: assertions -->
 > Use when: Choosing strict vs loose assertions
 
 **Not all assertions should be strict. Match assertion strictness to the stability and importance of what you're verifying.**
@@ -1149,6 +1164,7 @@ require.Contains(t, logOutput, "payment processed")
 ---
 
 ## Test Helper Patterns
+<!-- concept: test-helpers -->
 > Use when: Writing var blocks, deterministic data, table-driven tests
 
 ### Var Blocks for Test Setup
@@ -1230,6 +1246,7 @@ func TestValidateAmount(t *testing.T) {
 ---
 
 ## Common Anti-Patterns
+<!-- concept: anti-patterns -->
 > Use when: Reviewing tests for common mistakes (0–8); its detection checklist is the quick scan for red flags
 
 ### Anti-Pattern 0: Testing Constructor Returns Non-Nil
@@ -1478,6 +1495,7 @@ When reviewing tests, check for these red flags:
 ---
 
 ## Quick Testing Checklist
+<!-- concept: checklist -->
 > Use when: Pre-flight check before writing or approving tests
 
 **Fidelity (catches defects):**
@@ -1510,6 +1528,7 @@ When reviewing tests, check for these red flags:
 ---
 
 ## Summary
+<!-- concept: summary -->
 > Use when: Reference table of practices
 
 | Practice | Instead Of | Do This |

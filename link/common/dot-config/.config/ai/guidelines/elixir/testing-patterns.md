@@ -1,6 +1,7 @@
 # Elixir Testing Patterns
 
 ## Core Principle: Test Behavior Through Public API Only
+<!-- concept: public-api-only -->
 > Use when: Foundation — all consumers
 
 **Never test implementation details. Test observable behavior through public functions.**
@@ -21,6 +22,7 @@ In Elixir this means:
 ---
 
 ## Independent Verification
+<!-- concept: independent-verification -->
 > Use when: Reviewing test quality, judging expected values
 
 A test provides independent verification when its expected values come from **outside the implementation** — from business requirements, specifications, or domain knowledge — rather than restating what the code does.
@@ -82,6 +84,7 @@ A test that survives substitution is exercising the code; a test that survives s
 ---
 
 ## What to Test
+<!-- concept: what-to-test -->
 > Use when: Deciding whether something is worth testing
 
 ### Test-worthy
@@ -102,6 +105,7 @@ A test that survives substitution is exercising the code; a test that survives s
 ---
 
 ## Unit of Behavior
+<!-- concept: unit-of-behavior -->
 > Use when: Deciding test boundaries, filtering worthless tests
 
 A **unit of behavior** is any piece of code that can produce an independently observable outcome — a return value, a state change, a message, a side effect, or a raised error — regardless of how many functions or modules it spans.
@@ -125,6 +129,7 @@ def apply_discount(order, discount), do: ...
 ---
 
 ## Test Structure
+<!-- concept: test-structure -->
 > Use when: Writing new tests (describe blocks, async, tags)
 
 Use `describe` blocks grouped by the operation under test; test names read as full sentences about the observed outcome.
@@ -170,6 +175,7 @@ Rule of thumb (equivalence partitioning): one representative per class, plus the
 ---
 
 ## Assertion Strictness
+<!-- concept: assertions -->
 > Use when: Choosing pattern matches vs full equality
 
 ### Full equality for business values
@@ -205,6 +211,7 @@ assert {:ok, %Invoice{}} = Invoice.create(params)
 ---
 
 ## Error Paths and Negative-Path Invariants
+<!-- concept: negative-paths -->
 > Use when: Testing tagged tuples, raises, rejected operations
 
 Expected failures return tagged tuples; test them as first-class behaviors:
@@ -236,6 +243,7 @@ When a module exposes both `fetch/1` (tagged tuple) and `fetch!/1` (raises), tes
 ---
 
 ## Process and Concurrency Testing
+<!-- concept: concurrency-testing -->
 > Use when: Testing GenServers, Tasks, message passing
 
 ### Never `Process.sleep/1` to wait for async work
@@ -279,6 +287,7 @@ A test file must be `async: false` (or redesigned) when it:
 ---
 
 ## Test Double Patterns
+<!-- concept: test-doubles -->
 > Use when: Writing or reviewing fakes, Mox mocks, Bypass
 
 Preference order: **hand-rolled fakes > Mox (behaviour-verified mocks) > HTTP-boundary doubles**. Never globally replace a module you don't own.
@@ -328,6 +337,7 @@ Use `Bypass` or `Req.Test` to fake the remote server rather than stubbing the HT
 ---
 
 ## Database Testing
+<!-- concept: database-testing -->
 > Use when: Ecto sandbox, factories, persistence assertions
 
 - `Ecto.Adapters.SQL.Sandbox` per-test transactions allow `async: true` for DB tests
@@ -346,6 +356,7 @@ end
 ---
 
 ## Anti-Patterns
+<!-- concept: anti-patterns -->
 > Use when: Reviewing tests for common mistakes
 
 | # | Anti-pattern | Looks like | Instead |
@@ -365,6 +376,7 @@ end
 ---
 
 ## Detection Checklist
+<!-- concept: checklist -->
 > Use when: Quick scan for red flags in test reviews
 
 When reviewing a test, check for these red flags:
@@ -385,6 +397,7 @@ When reviewing a test, check for these red flags:
 ---
 
 ## Quick Reference
+<!-- concept: testing-quick-reference -->
 > Use when: Reference table of practices
 
 | Practice | Rule |

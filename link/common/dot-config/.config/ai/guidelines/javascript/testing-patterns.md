@@ -1,6 +1,7 @@
 # JavaScript Testing Patterns
 
 ## Core Principle: Test Behavior Through Public API Only
+<!-- concept: public-api-only -->
 
 **Never test implementation details. Test observable behavior through exported functions and modules.**
 
@@ -14,6 +15,7 @@ Tests should verify **what** the system does (observable behaviors), not **how**
 ---
 
 ## Independent Verification
+<!-- concept: independent-verification -->
 
 A test provides independent verification when its expected values come from **outside the implementation** — from business requirements, specifications, or domain knowledge — rather than restating what the code does.
 
@@ -65,6 +67,7 @@ A test that survives substitution is exercising the code; a test that survives s
 ---
 
 ## What to Test
+<!-- concept: what-to-test -->
 
 ### Test-worthy
 - Business logic and domain calculations
@@ -83,6 +86,7 @@ A test that survives substitution is exercising the code; a test that survives s
 ---
 
 ## Unit of Behavior
+<!-- concept: unit-of-behavior -->
 
 A **unit of behavior** is any piece of code that can produce an independently observable outcome — a return value, a state change, a side effect, or a thrown error — regardless of how many functions or modules it spans.
 
@@ -106,6 +110,7 @@ function applyDiscount(order, discount) { ... }
 ---
 
 ## Test Structure
+<!-- concept: test-structure -->
 
 Use `describe`/`it` blocks. Name tests as complete sentences about the observed behavior.
 
@@ -149,6 +154,7 @@ Rule of thumb (equivalence partitioning): one representative per class, plus the
 ---
 
 ## Assertion Patterns
+<!-- concept: assertions -->
 
 ### Strict Equality for Business Values
 ```js
@@ -192,6 +198,7 @@ expect(events[0].amount).toBe(50);
 ---
 
 ## DOM Testing
+<!-- concept: dom-testing -->
 
 ### Test Behavior, Not DOM Structure
 ```js
@@ -226,6 +233,7 @@ expect(result).toEqual(['node-1']);
 ---
 
 ## Async Testing
+<!-- concept: async-testing -->
 
 ### Promises
 ```js
@@ -258,6 +266,7 @@ it('calls the callback with result', () => {
 ---
 
 ## Test Double Patterns
+<!-- concept: test-doubles -->
 
 ### Fakes (Preferred)
 Use in-memory implementations of interfaces for fast, reliable tests:
@@ -312,6 +321,7 @@ vi.mock('../utils/helpers');
 ---
 
 ## Anti-Patterns
+<!-- concept: anti-patterns -->
 
 | # | Anti-pattern | Looks like | Instead |
 |---|---|---|---|
@@ -329,6 +339,7 @@ vi.mock('../utils/helpers');
 ---
 
 ## Detection Checklist
+<!-- concept: checklist -->
 
 When reviewing a test, check for these red flags:
 
@@ -346,6 +357,7 @@ When reviewing a test, check for these red flags:
 ---
 
 ## Quick Reference
+<!-- concept: testing-quick-reference -->
 
 | Practice | Rule |
 |---|---|

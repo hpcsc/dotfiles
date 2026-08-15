@@ -1269,162 +1269,208 @@ printf '\nguidelines — required reading, loaded not looked up\n'
 
 # A fixture set, not the real one: these assertions are about how a file is cut up, and
 # pinning them to the live guidelines would make every edit to those files a test
-# failure. The drifted spellings are copied from the real ones on purpose — they are
-# what the slot list exists to absorb.
+# failure. The headings deliberately disagree with each other across languages, which is
+# what concepts exist to absorb.
 GD=$(cd "$(mktemp -d)" && pwd -P)
-mkdir -p "$GD/testing" "$GD/go" "$GD/javascript"
+mkdir -p "$GD/testing" "$GD/go" "$GD/javascript" "$GD/elixir" "$GD/cue"
 cat > "$GD/testing/caller-patterns.md" <<'EOF'
 # Caller Patterns
 
 ## How to Identify the Caller
+<!-- concept: identify-caller -->
 > Use when: deciding what to assert on
 identify-body
 
 ## 1. UI (User -> Page)
+<!-- concept: caller-ui -->
 ui-body
 
 ## 5. Exported API (Other Code -> This Interface)
+<!-- concept: caller-exported -->
 exported-body
 
 ## Quick Reference
+<!-- concept: caller-quick-reference -->
 quickref-body
 EOF
 printf '# Comment Usage\ncomments-body\n' > "$GD/comments.md"
+# Go spells three of these differently from every other language. Under the old
+# name-matching that took a per-language spelling list; the marker makes it a lookup.
 cat > "$GD/go/testing-patterns.md" <<'EOF'
 # Go Testing
 
 ## What to Test
+<!-- concept: what-to-test -->
 > Use when: deciding whether something is worth testing
 what-body
 
 ## What is a Unit of Behavior?
+<!-- concept: unit-of-behavior -->
 unit-body
 
 ## Assertion Strictness: Match to What You're Testing
+<!-- concept: assertions -->
 assert-body
 
 ## Independent Verification
+<!-- concept: independent-verification -->
 indep-body
 
 ## Unrelated Section
+<!-- concept: test-helpers -->
 noise-body
 EOF
 printf '# Go Naming\nnaming-body\n' > "$GD/go/naming-patterns.md"
 printf '# Go Architecture\narch-body\n' > "$GD/go/architecture-principles.md"
 printf '# Go Workflow\nworkflow-body\n' > "$GD/go/development-workflow.md"
-# JavaScript has no assertion-strictness section at all; it calls it something else.
+printf '# Go Concurrency\nconcurrency-body\n' > "$GD/go/concurrency-patterns.md"
 cat > "$GD/javascript/testing-patterns.md" <<'EOF'
 # JS Testing
 
 ## What to Test
+<!-- concept: what-to-test -->
 js-what-body
 
 ## Unit of Behavior
+<!-- concept: unit-of-behavior -->
 js-unit-body
 
 ## Assertion Patterns
+<!-- concept: assertions -->
 js-assert-body
-
-## Independent Verification
-js-indep-body
 EOF
 printf '# JS Naming\njs-naming-body\n' > "$GD/javascript/naming-patterns.md"
 printf '# JS DOM\ndom-body\n' > "$GD/javascript/dom-patterns.md"
-# Elixir's fixture is deliberately incomplete both ways: a file with a slot no heading
-# satisfies, and a file the set does not have at all.
-mkdir -p "$GD/elixir"
+# Declares no `assertions` at all, and its naming guideline is missing outright.
 cat > "$GD/elixir/testing-patterns.md" <<'EOF'
 # Elixir Testing
 
 ## What to Test
+<!-- concept: what-to-test -->
 ex-what-body
 
 ## Unit of Behavior
+<!-- concept: unit-of-behavior -->
 ex-unit-body
 EOF
+printf '# CUE Testing\n\n## Critical Rule\ncue-test-body\n' > "$GD/cue/testing-patterns.md"
+printf '# Shared\n\n## Coupling-Based Assertion Levels\n<!-- concept: coupling-levels -->\ncoupling-body\n\n## Other\n<!-- concept: summary -->\nother-body\n' > "$GD/testing/patterns.md"
 
 gl() { "$CLERK" guidelines --guidelines-dir "$GD" "$@"; }
 
-G=$(gl --language Go)
-eq "the long file is cut to its slots, not read whole" "0" \
-   "$(printf '%s' "$G" | grep -c 'noise-body')"
-eq "and the slots it was cut to are all there" "4" \
-   "$(printf '%s' "$G" | grep -cE 'what-body|unit-body|assert-body|indep-body')"
+# The heading says one thing in each language; the concept says the same thing in all.
+eq "one concept resolves across differing headings" "assert-body|js-assert-body" \
+   "$(printf '%s|%s' "$(gl --language Go --concept assertions | grep -o 'assert-body')" \
+      "$(gl --language JavaScript/TypeScript --concept assertions | grep -o 'js-assert-body')")"
+eq "a heading Go qualifies at length still resolves" "1" \
+   "$(gl --language Go --concept assertions | grep -c "§ Assertion Strictness: Match")"
 
-# The spellings the skill asked for by name are not the spellings the files use. A
-# prompt matching these by eye fails silently; this is why they are a list.
-eq "Go's renamed unit-of-behavior section still resolves" "1" \
-   "$(printf '%s' "$G" | grep -c '§ What is a Unit of Behavior?')"
-eq "and its qualified assertion heading too" "1" \
-   "$(printf '%s' "$G" | grep -c "§ Assertion Strictness: Match")"
-eq "JavaScript's differently-named one resolves as well" "1" \
-   "$(gl --language JavaScript/TypeScript | grep -c '§ Assertion Patterns')"
+G=$(gl --language Go --concept what-to-test --concept unit-of-behavior)
+eq "only the concepts asked for are emitted" "2" \
+   "$(printf '%s' "$G" | grep -cE 'what-body|unit-body')"
+eq "and nothing else from the same file" "0" \
+   "$(printf '%s' "$G" | grep -cE 'assert-body|indep-body|noise-body')"
+eq "short files in the bundle still come whole" "3" \
+   "$(printf '%s' "$G" | grep -cE 'naming-body|arch-body|workflow-body')"
 
-eq "short files come whole" "1" "$(printf '%s' "$G" | grep -c 'naming-body')"
-eq "and every one of them" "3" \
-   "$(printf '%s' "$G" | grep -cE 'arch-body|workflow-body|comments-body')"
+# Naming no concept is not an error: the index says what there is to ask for.
+B=$(gl --language Go)
+eq "a bundle with no concept named emits no sections" "0" \
+   "$(printf '%s' "$B" | grep -cE 'what-body|assert-body')"
+eq "but does emit an index per sliced file, saying what to ask for" "2" \
+   "$(printf '%s' "$B" | grep -c 'every section it has')"
+eq "listing every section, including ones no role reads" "1" \
+   "$(printf '%s' "$B" | grep -c '^| Unrelated Section |')"
+eq "carrying each section's own Use when line" "1" \
+   "$(printf '%s' "$B" | grep -c '| What to Test | deciding whether something is worth testing |')"
 
-# Derived, not stored: every section is listed whether or not it was asked for, so a
-# consumer can see what else the guideline has and ask for it by name.
-eq "an index is derived for each file read in parts" "2" \
-   "$(printf '%s' "$G" | grep -c 'every section it has')"
-eq "and lists sections the slots did not emit" "1" \
-   "$(printf '%s' "$G" | grep -c '^| Unrelated Section |')"
-# Once in the index row, once in the section itself — the section stays self-contained.
-eq "carrying each section's own Use when line" "2" \
-   "$(printf '%s' "$G" | grep -c 'deciding whether something is worth testing')"
-
-# Which caller pattern fits the work is the caller's judgment, so it is asked for.
-eq "no caller pattern is emitted unasked" "0" "$(printf '%s' "$G" | grep -c 'ui-body')"
-eq "the identification section always is" "1" "$(printf '%s' "$G" | grep -c 'identify-body')"
-eq "and the quick reference with it" "1" "$(printf '%s' "$G" | grep -c 'quickref-body')"
-eq "--caller adds that pattern and only it" "1|0" \
+# Which caller a component has is a per-task judgment, so it stays a flag.
+eq "--caller is sugar for the caller concept" "1|0" \
    "$(C=$(gl --language Go --caller ui); printf '%s|%s' "$(printf '%s' "$C" | grep -c 'ui-body')" \
       "$(printf '%s' "$C" | grep -c 'exported-body')")"
-eq "a numbered pattern is found by name, not by number" "1" \
-   "$(gl --language Go --caller exported | grep -c 'exported-body')"
+eq "and the concept can be named directly instead" "1" \
+   "$(gl --language Go --concept caller-exported | grep -c 'exported-body')"
 
-# Agents cite sections by name that no fixed slot list could anticipate.
-S=$(gl --language Go --section 'go/testing-patterns.md:Unrelated Section')
-eq "a section asked for by name is added to the bundle" "1" \
-   "$(printf '%s' "$S" | grep -c 'noise-body')"
-eq "without displacing the slots the bundle already had" "4" \
-   "$(printf '%s' "$S" | grep -cE 'what-body|unit-body|assert-body|indep-body')"
+# A concept absent from one file but present in another is not a miss.
+M=$(gl --language Go --concept assertions --concept identify-caller)
+eq "a concept is taken from whichever file declares it" "2" \
+   "$(printf '%s' "$M" | grep -cE 'assert-body|identify-body')"
+eq "and caller-patterns is not faulted for lacking assertions" "0" \
+   "$(printf '%s' "$M" | grep -c 'Not loaded')"
 
-# Headings contain colons; filenames do not — so the spec splits on the first only.
-# Naming one the bundle already covers must also not print it twice.
-eq "a heading with a colon in it still resolves, once" "1" \
-   "$(gl --language Go --section "go/testing-patterns.md:Assertion Strictness: Match to What You're Testing" \
-      | grep -c 'assert-body')"
+# A concept nothing in the plan declares is the real miss.
+eq "a concept no loaded guideline declares is reported" "1" \
+   "$(gl --language Elixir --concept assertions | grep -c 'assertions.*no guideline in this set declares it')"
+eq "while the concepts that did resolve still arrive" "2" \
+   "$(gl --language Elixir --concept what-to-test --concept unit-of-behavior | grep -cE 'ex-what-body|ex-unit-body')"
+eq "a renamed concept is reported, not silently dropped" "1" \
+   "$(gl --language Go --concept no-such-concept | grep -c 'no-such-concept')"
+eq "a language with no guideline set says so" "1" \
+   "$(gl --language Rust | grep -c 'Rust.*no guideline set')"
+eq "a file the set does not have says so too" "1" \
+   "$(gl --language Elixir | grep -c 'elixir/naming-patterns.md.*does not exist')"
+eq "nothing missing means no such section" "0" \
+   "$(printf '%s' "$G" | grep -c '## Not loaded')"
 
-# A file reached only this way is cut to what was asked, whatever its length.
-printf '# Shared\n\n## Coupling-Based Assertion Levels\ncoupling-body\n\n## Other\nother-body\n' \
-  > "$GD/testing/patterns.md"
-P=$(gl --language Go --section 'testing/patterns.md:Coupling-Based Assertion Levels')
-eq "a file outside every bundle gives only the section named" "1|0" \
-   "$(printf '%s|%s' "$(printf '%s' "$P" | grep -c 'coupling-body')" \
-      "$(printf '%s' "$P" | grep -c 'other-body')")"
+# Asking twice for one section, once by concept and once by heading, still emits it once:
+# saying the same thing twice costs context and reads as two different rules.
+eq "a section reached both ways is emitted once" "1" \
+   "$(gl --language Go --concept assertions \
+        --section "go/testing-patterns.md:Assertion Strictness" | grep -c 'assert-body')"
 
-eq "a named section that no heading matches is reported" "1" \
-   "$(gl --language Go --section 'go/testing-patterns.md:Renamed Away' | grep -c 'no section matching .Renamed Away.')"
-eq "and a spec with no heading is refused outright" "2" \
+# --section stays as the way to reach a section that declares no concept.
+eq "a --section heading that matches nothing is reported" "1" \
+   "$(gl --language Go --section 'go/testing-patterns.md:Renamed Away' \
+      | grep -c 'go/testing-patterns.md:Renamed Away')"
+eq "--section reaches an unmarked heading" "1" \
+   "$(gl --only --file cue/testing-patterns.md --section 'cue/testing-patterns.md:Critical Rule' | grep -c 'cue-test-body')"
+eq "and a spec with no heading is refused" "2" \
    "$(gl --language Go --section 'go/testing-patterns.md' >/dev/null 2>&1; printf '%s' $?)"
 
+# Files outside every bundle, and the precise mode reviewers need.
+F=$(gl --language Go --file go/concurrency-patterns.md)
+eq "--file adds a guideline no bundle contains" "1" "$(printf '%s' "$F" | grep -c 'concurrency-body')"
+O=$(gl --only --file go/concurrency-patterns.md)
+eq "--only emits what was named" "1" "$(printf '%s' "$O" | grep -c 'concurrency-body')"
+eq "and nothing that was not" "0" \
+   "$(printf '%s' "$O" | grep -cE 'naming-body|comments-body|identify-body')"
+eq "--only with nothing named is refused" "2" "$(gl --only >/dev/null 2>&1; printf '%s' $?)"
+eq "--only still honours a caller pattern" "1|0" \
+   "$(C=$(gl --only --caller ui); printf '%s|%s' "$(printf '%s' "$C" | grep -c 'ui-body')" \
+      "$(printf '%s' "$C" | grep -c 'comments-body')")"
+
+# A guideline outside every bundle is cut only when something is asked of it.
+eq "a file named by --file arrives whole" "1" \
+   "$(gl --only --file cue/testing-patterns.md | grep -c 'cue-test-body')"
+eq "and one declaring concepts is cut to what was asked" "1|0" \
+   "$(P=$(gl --only --file testing/patterns.md --concept coupling-levels); \
+      printf '%s|%s' "$(printf '%s' "$P" | grep -c 'coupling-body')" \
+      "$(printf '%s' "$P" | grep -c 'other-body')")"
+
+eq "the DOM guideline is opt-in" "0" "$(gl --language JavaScript/TypeScript | grep -c 'dom-body')"
+eq "and arrives when asked for" "1" "$(gl --language JavaScript/TypeScript --dom | grep -c 'dom-body')"
+
+eq "--list names the plan without emitting bodies" "whole|0" \
+   "$(L=$(gl --language Go --list); printf '%s|%s' \
+      "$(printf '%s' "$L" | jq -r '.files[] | select(.file == "comments.md") | .read')" \
+      "$(printf '%s' "$L" | grep -c 'comments-body')")"
+eq "a missing guidelines directory is refused" "2" \
+   "$("$CLERK" guidelines --guidelines-dir "$GD/nope" --language Go >/dev/null 2>&1; printf '%s' $?)"
+
 # A `## ` inside a fenced block is example content, not a section boundary. The regex
-# cannot tell, so it truncates the real section there and invents one for the fence;
-# ast-grep parses the markdown and does not. Two real guidelines contain exactly this.
+# cannot tell, so it truncates the real section there; ast-grep parses the markdown.
 GF=$(cd "$(mktemp -d)" && pwd -P)
 mkdir -p "$GF/go" "$GF/testing"
-{ printf '# Go Testing\n\n## What to Test\nwhat-body-before\n\n'
+{ printf '# Go Testing\n\n## What to Test\n<!-- concept: what-to-test -->\nwhat-body-before\n\n'
   printf '```\n## Fenced Not A Section\nfenced-body\n```\n\n'
-  printf 'what-body-after\n\n## Unit of Behavior\nunit-body\n'
+  printf 'what-body-after\n\n## Unit of Behavior\n<!-- concept: unit-of-behavior -->\nunit-body\n'
 } > "$GF/go/testing-patterns.md"
 printf '# Comments\ncomments-body\n' > "$GF/comments.md"
-printf '# Caller\n\n## How to Identify the Caller\nid\n\n## Quick Reference\nqr\n' > "$GF/testing/caller-patterns.md"
+printf '# Caller\n\n## How to Identify the Caller\n<!-- concept: identify-caller -->\nid\n' > "$GF/testing/caller-patterns.md"
 for f in naming-patterns architecture-principles development-workflow; do
   printf '# %s\nbody\n' "$f" > "$GF/go/$f.md"
 done
-FENCE=$("$CLERK" guidelines --guidelines-dir "$GF" --language Go)
+FENCE=$("$CLERK" guidelines --guidelines-dir "$GF" --language Go --concept what-to-test)
 eq "a fenced heading does not become a section" "0" \
    "$(printf '%s' "$FENCE" | grep -c 'Fenced Not A Section -->')"
 eq "and the real section is not truncated at it" "1" \
@@ -1434,77 +1480,11 @@ eq "the fenced example still travels inside its section" "1" \
 
 # Without ast-grep the regex is what is left. Worse, but it must still work.
 NOAG=$(PATH=/usr/bin:/bin "$(dirname "$CLERK")/clerk-guidelines" \
-        --guidelines-dir "$GF" --language Go 2>&1)
+        --guidelines-dir "$GF" --language Go --concept what-to-test 2>&1)
 eq "it falls back rather than failing when ast-grep is absent" "1" \
    "$(printf '%s' "$NOAG" | grep -c 'what-body-before')"
-# The fence still splits the section there, which is the defect ast-grep removes: the
-# half of "What to Test" below the example never arrives.
 eq "and without it the section is cut short at the fence" "0" \
    "$(printf '%s' "$NOAG" | grep -c 'what-body-after')"
-
-# A file whose name ends the same way but which no bundle contains. Cutting it to the
-# slot list emits nothing and complains four times about headings it never claimed.
-mkdir -p "$GD/cue"
-printf '# CUE Testing\n\n## Critical Rule: Verify Tests Can Fail\ncue-test-body\n' \
-  > "$GD/cue/testing-patterns.md"
-C=$(gl --only --file cue/testing-patterns.md)
-eq "a testing guideline outside every bundle comes whole" "1" \
-   "$(printf '%s' "$C" | grep -c 'cue-test-body')"
-eq "and is not reported as missing the bundle's sections" "0" \
-   "$(printf '%s' "$C" | grep -c 'no section matching')"
-eq "while a bundle's own testing guideline stays cut to its slots" "4" \
-   "$(gl --only --file go/testing-patterns.md | grep -c '^<!-- go/testing-patterns.md §')"
-
-# Files outside every language bundle — concurrency, performance, cue, architecture.
-printf '# Go Concurrency\nconcurrency-body\n' > "$GD/go/concurrency-patterns.md"
-F=$(gl --language Go --file go/concurrency-patterns.md)
-eq "--file adds a guideline no bundle contains" "1" "$(printf '%s' "$F" | grep -c 'concurrency-body')"
-eq "alongside everything the bundle already gave" "1" "$(printf '%s' "$F" | grep -c 'naming-body')"
-
-# A reviewer wants its own guideline, not everything its language has.
-O=$(gl --only --file go/concurrency-patterns.md)
-eq "--only emits what was named" "1" "$(printf '%s' "$O" | grep -c 'concurrency-body')"
-eq "and nothing that was not" "0" \
-   "$(printf '%s' "$O" | grep -cE 'naming-body|comments-body|identify-body|what-body')"
-eq "--only skips detection rather than falling back to it" "0" \
-   "$(cd "$GD" && gl --only --file comments.md | grep -c 'naming-body')"
-eq "--only with nothing named is refused" "2" \
-   "$(gl --only >/dev/null 2>&1; printf '%s' $?)"
-eq "--only still honours a caller pattern" "1|0" \
-   "$(C=$(gl --only --caller ui); printf '%s|%s' "$(printf '%s' "$C" | grep -c 'ui-body')" \
-      "$(printf '%s' "$C" | grep -c 'comments-body')")"
-eq "and --only composes with --section" "1|0" \
-   "$(C=$(gl --only --section 'go/testing-patterns.md:What to Test'); \
-      printf '%s|%s' "$(printf '%s' "$C" | grep -c 'what-body')" \
-      "$(printf '%s' "$C" | grep -c 'unit-body')")"
-
-eq "the DOM guideline is opt-in" "0" "$(gl --language JavaScript/TypeScript | grep -c 'dom-body')"
-eq "and arrives when asked for" "1" \
-   "$(gl --language JavaScript/TypeScript --dom | grep -c 'dom-body')"
-
-# A section silently absent reads exactly like a section the guideline never had.
-E=$(gl --language Elixir)
-eq "a slot that matches nothing is reported, not dropped" "1" \
-   "$(printf '%s' "$E" | grep -c 'no section matching .assertions.')"
-eq "and the headings it did find are named, so the slot can be fixed" "true" \
-   "$(printf '%s' "$E" | grep -q 'Its headings are: What to Test, Unit of Behavior' && echo true || echo false)"
-eq "each unmatched slot is reported on its own" "2" \
-   "$(printf '%s' "$E" | grep -c 'no section matching')"
-eq "the sections that did resolve still come through" "2" \
-   "$(printf '%s' "$E" | grep -cE 'ex-what-body|ex-unit-body')"
-eq "a language with no guideline set says so" "1" \
-   "$(gl --language Rust | grep -c 'Rust.*no guideline set')"
-eq "a file the set does not have says so too" "1" \
-   "$(printf '%s' "$E" | grep -c 'elixir/naming-patterns.md.*does not exist')"
-eq "nothing missing means no such section" "0" \
-   "$(printf '%s' "$G" | grep -c '## Not loaded')"
-
-eq "--list names the plan without emitting bodies" "whole|0" \
-   "$(L=$(gl --language Go --list); printf '%s|%s' \
-      "$(printf '%s' "$L" | jq -r '.files[] | select(.file == "comments.md") | .sections')" \
-      "$(printf '%s' "$L" | grep -c 'comments-body')")"
-eq "a missing guidelines directory is refused" "2" \
-   "$("$CLERK" guidelines --guidelines-dir "$GD/nope" --language Go >/dev/null 2>&1; printf '%s' $?)"
 
 # --------------------------------------------------------------------------------
 printf '\nfixup — folding a fix into the commit that caused it\n'
@@ -1685,7 +1665,6 @@ eq "an out-of-tree file says nothing here dirties the tree" "false" \
    "$(run "$RL2" learn --type pattern --title "Outside" --learning "x" \
         --apply-when "y" | jq -r '.in_tree')"
 
-# --------------------------------------------------------------------------------
 printf '\nlint — the conventions a regex settles\n'
 
 R28=$(new_repo)

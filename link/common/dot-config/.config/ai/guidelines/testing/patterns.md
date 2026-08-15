@@ -1,6 +1,7 @@
 # Testing Principles (Language-Agnostic)
 
 ## Core Principle: Test Behavior Through Public API Only
+<!-- concept: public-api-only -->
 
 **Never test implementation details. Test observable behavior through public functions and methods.**
 
@@ -14,6 +15,7 @@ Tests should verify **what** the system does (observable behaviors), not **how**
 ---
 
 ## Independent Verification
+<!-- concept: independent-verification -->
 
 A test provides independent verification when its expected values come from **outside the implementation** — from business requirements, specifications, or domain knowledge — rather than restating what the code does.
 
@@ -116,6 +118,7 @@ Rule of thumb (equivalence partitioning): one representative per class, plus the
 ---
 
 ## Three Essential Qualities of Effective Tests
+<!-- concept: test-qualities -->
 
 Every test should maximize these interconnected qualities:
 
@@ -208,6 +211,7 @@ These qualities often conflict:
 ---
 
 ## Coupling-Based Assertion Levels
+<!-- concept: coupling-levels -->
 
 Integration strength classifies how much a test knows about the system under test:
 
@@ -234,6 +238,7 @@ High volatility + contract-level assertions = maximum value. Low volatility + ma
 ---
 
 ## What to Test
+<!-- concept: what-to-test -->
 
 ✅ **Observable behavior**: outputs, return values, state changes, side effects
 ✅ **Business rules**: domain logic, validation rules, error conditions
@@ -246,6 +251,7 @@ High volatility + contract-level assertions = maximum value. Low volatility + ma
 ---
 
 ## What is a Unit of Behavior?
+<!-- concept: unit-of-behavior -->
 
 A **unit of behavior** is an observable outcome that a caller depends on. The "caller" might be a product user, another service, another package, or another developer on your team.
 
@@ -296,6 +302,7 @@ An observable outcome that a caller depends on:
 ---
 
 ## Detecting Implementation Detail Tests
+<!-- concept: implementation-detail-tests -->
 
 The anti-patterns and checklists later in this guide cover known patterns. This section provides a **general decision procedure** for evaluating any assertion — including novel cases that don't match a known pattern.
 
@@ -406,6 +413,7 @@ assert result1 == result2
 ---
 
 ## HTTP Handlers: The Component Is the Endpoint
+<!-- concept: http-handler-scope -->
 
 An HTTP handler — whether it returns JSON, HTML, or streamed chunks — may be composed of multiple internal pieces (controllers, templates, view models, serializers, middleware). **These are implementation details. The unit of behavior is the HTTP response.**
 
@@ -446,6 +454,7 @@ Sometimes structure matters because a downstream caller depends on it (e.g., HTM
 ---
 
 ## Test Structure
+<!-- concept: test-structure -->
 
 ```
 // Arrange-Act-Assert pattern
@@ -478,6 +487,7 @@ test "feature name":
 ---
 
 ## Testing Observable Behaviors: Examples
+<!-- concept: observable-behavior-examples -->
 
 ### Example 1: Test Validation Behavior, Not Internal Calls
 
@@ -603,6 +613,7 @@ test "account withdraw":
 ---
 
 ## Principle: Never Expose Internals Just for Testing
+<!-- concept: no-test-only-exposure -->
 
 **Don't make private fields or methods public just to achieve test coverage. Test as a regular client would use the API.**
 
@@ -729,6 +740,7 @@ test "customer promote":
 ---
 
 ## Test Clarity: Include Only Relevant Details
+<!-- concept: test-clarity -->
 
 **Balance test clarity: include details necessary to understand what's being tested while hiding implementation noise.**
 
@@ -776,6 +788,7 @@ test "account withdraw":
 ---
 
 ## Assertion Strictness: Match to What You're Testing
+<!-- concept: assertions -->
 
 **Not all assertions should be strict. Match assertion strictness to the stability and importance of what you're verifying.**
 
@@ -863,6 +876,7 @@ Strict assertions increase **precision** (failures pinpoint exactly what changed
 ---
 
 ## Common Anti-Patterns to Avoid
+<!-- concept: anti-patterns -->
 
 ### Anti-Pattern 0: Testing Constructor Returns Non-Null
 
@@ -1224,6 +1238,7 @@ When reviewing tests, check for these red flags:
 ---
 
 ## Quick Testing Checklist
+<!-- concept: checklist -->
 
 Before writing a test, verify the three essential qualities:
 
@@ -1256,6 +1271,7 @@ Before writing a test, verify the three essential qualities:
 ---
 
 ## Key Benefits
+<!-- concept: benefits -->
 
 - **Refactoring Safety:** Tests survive internal changes when observable behavior remains the same
 - **Business Focus:** Tests verify user-facing behavior and business rules
@@ -1266,6 +1282,7 @@ Before writing a test, verify the three essential qualities:
 ---
 
 ## Summary
+<!-- concept: summary -->
 
 | Practice | Instead Of | Do This |
 |----------|-----------|---------|

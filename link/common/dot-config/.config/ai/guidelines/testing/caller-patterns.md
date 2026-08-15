@@ -5,6 +5,7 @@ Every test implicitly has a **caller** — the actor whose expectations define w
 The existing testing guidelines cover **how** to write good tests (public API, behavior over implementation, assertion strictness). This guide covers **which behaviors matter** based on who depends on them.
 
 ## How to Identify the Caller
+<!-- concept: identify-caller -->
 > Use when: Deciding what to assert on for a given component
 
 Ask two questions:
@@ -25,6 +26,7 @@ The answers map to one of five patterns:
 ---
 
 ## 1. UI (User -> Page)
+<!-- concept: caller-ui -->
 > Use when: Testing pages, JSON APIs for frontends, rendered output
 
 **Direction:** User action in -> rendered response out
@@ -110,6 +112,7 @@ assert response.swapTargets == ["day-0-30", "day-0-31"]
 ---
 
 ## 2. Inbound (External System -> Handler)
+<!-- concept: caller-inbound -->
 > Use when: Testing webhooks, uploads, commands from browsers or external systems
 
 **Direction:** Outside -> in
@@ -201,6 +204,7 @@ assert parsed.status == "SENT"
 ---
 
 ## 3. Outbound (Our System -> External Service)
+<!-- concept: caller-outbound -->
 > Use when: Testing email sends, API calls to providers, file delivery
 
 **Direction:** In -> outside
@@ -276,6 +280,7 @@ assert error.contains("SMTP unavailable")
 ---
 
 ## 4. Async Processing (Trigger -> Side Effects)
+<!-- concept: caller-async -->
 > Use when: Testing message consumers, event reactors, scheduled jobs
 
 **Direction:** Trigger in -> side effects out
@@ -363,6 +368,7 @@ assert eventStream.lastEvent.campaignId == "camp-1"
 ---
 
 ## 5. Exported API (Other Code -> This Interface)
+<!-- concept: caller-exported -->
 > Use when: Testing packages used by other code in the system
 
 **Direction:** Cross-package/cross-module
@@ -448,6 +454,7 @@ assert error.message == "account is paused"
 ---
 
 ## Not Every Test Has a Caller
+<!-- concept: no-caller-cases -->
 > Use when: Config guard tests, deployment parity checks
 
 The five patterns above cover tests of **runtime behavior** — there is always an actor whose expectations define correctness. Some tests don't have a natural runtime caller. They exist to guard against **configuration drift** between code and infrastructure, catching deployment failures rather than runtime failures.
@@ -470,6 +477,7 @@ These tests have no HTTP request, no queue message, no event processing. The "wh
 ---
 
 ## Quick Reference
+<!-- concept: caller-quick-reference -->
 > Use when: Lookup table for all five patterns
 
 | Pattern | Direction | Caller | Assert on | Don't assert on |

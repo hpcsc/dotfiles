@@ -281,25 +281,25 @@ Fix findings **directly**. Do not launch a workflow to apply them — you have t
 
 **Fold each fix into the commit that introduced the defect.** A finding is almost always a defect in one task's work, and the honest place for the correction is that task's commit. Collecting every fix into one trailing "address audit findings" commit leaves the branch reading as though each task was right when it landed and something unnamed happened afterwards, which is the opposite of what occurred.
 
-Find the target and mark the fix for it:
+Mark each fix for the commit it corrects:
 
 ```
-git log --oneline <base>..HEAD -- <the file you fixed>
-git add -- <only the files this fix touched>
-git commit --fixup=<the sha of the commit that introduced the defect>
+clerk fixup -- <only the files this fix touched>
 ```
 
-List them all rather than taking the newest: a file touched by several tasks — a catalog, a shared type, a snapshot — will name the last task that edited it, which is not necessarily the one that introduced what the audit found. Read the finding's evidence and pick the commit the defect actually came in with. Where the file has only one commit, that is the answer and there is nothing to weigh.
+It finds the commits in `<base>..HEAD` that touch those files, stages them and commits the `fixup!`. Where a file has one commit in range there is nothing to weigh and it just does it.
+
+**Where there is something to weigh, it refuses and hands you the list.** A file touched by several tasks — a catalog, a shared type, a snapshot — names the last task that edited it, which is not necessarily the one that introduced what the audit found. Read the finding's evidence, then name the commit yourself with `--onto <sha>`. It also refuses, separately, when your files' targets are unambiguous but *different*: run it once per group so each correction lands where it belongs.
 
 When every fix is marked, replay once:
 
 ```
-GIT_SEQUENCE_EDITOR=true git rebase --autosquash <base>
+clerk fixup --replay
 ```
 
 This is also what keeps `clerk verify` meaningful rather than noisy. Its commit-boundary check counts how many commits in the branch touch each task's recorded files and warns when the answer is more than one — so a trailing commit that fixes something in task 3's file trips that check by construction, and you would be reading a warning you caused on purpose. Folded, each task's commit stays the whole of that task.
 
-**Fold only what folds cleanly.** Keep the fix as its own commit, and say why in the message, when any of these holds: the branch is already pushed or shared, and rewriting it would rewrite history someone else has; the fix spans files belonging to several task commits and does not decompose into one `--fixup` each; or the fix is genuinely new work the audit prompted rather than a correction to work already committed. If the rebase conflicts, stop and keep the separate commit — untangling a conflicted replay of your own branch costs more than the tidier history is worth.
+**Fold only what folds cleanly, and it stops rather than forcing it.** A conflicted replay is aborted and the branch left exactly as it was — keep the fix as its own commit there, saying why in the message, because untangling a conflicted replay of your own branch costs more than the tidier history is worth. A range with commits already pushed is refused for the same reason: rewriting it would rewrite history someone else may have, and `--force` is you asserting the branch is yours alone. And a file no commit in range touches is reported as new work rather than a correction, which also wants its own commit.
 
 **Do this before the receipt, not after.** The replay rewrites every SHA from the target commit onward, and a receipt is bound to the SHA it describes; one recorded before the fold describes commits that no longer exist.
 

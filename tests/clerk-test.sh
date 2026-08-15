@@ -1375,6 +1375,106 @@ eq "a missing guidelines directory is refused" "2" \
    "$("$CLERK" guidelines --guidelines-dir "$GD/nope" --language Go >/dev/null 2>&1; printf '%s' $?)"
 
 # --------------------------------------------------------------------------------
+printf '\nfixup — folding a fix into the commit that caused it\n'
+
+# Three task commits on a branch, the shape Phase 3 finds: one file per task, plus a
+# catalog every task edits — the case where the newest commit is the wrong answer.
+RX=$(new_repo)
+git -C "$RX" checkout -q -b feature
+for t in 1 2 3; do
+  printf 'task %s\n' "$t" > "$RX/task$t.go"
+  printf 'entry %s\n' "$t" >> "$RX/catalog.txt"
+  git -C "$RX" add -A && git -C "$RX" commit -qm "Add task $t"
+done
+BASE=$(git -C "$RX" rev-parse main)
+
+printf 'task 2 fixed\n' > "$RX/task2.go"
+F=$(run "$RX" fixup --base "$BASE" --dry-run -- task2.go)
+eq "one commit in range means nothing to weigh" "Add task 2" "$(printf '%s' "$F" | jq -r '.subject')"
+eq "and --dry-run leaves the tree alone" "1" \
+   "$(git -C "$RX" status --porcelain | grep -c 'task2.go')"
+
+F=$(run "$RX" fixup --base "$BASE" -- task2.go)
+eq "the fix is marked for that commit" "true" "$(printf '%s' "$F" | jq -r '.ok')"
+eq "as a fixup, not a fresh commit" "1" \
+   "$(git -C "$RX" log --format=%s -1 | grep -c '^fixup! Add task 2')"
+
+# The whole reason this refuses rather than taking the newest.
+printf 'entry 4\n' >> "$RX/catalog.txt"
+X=$(run "$RX" fixup --base "$BASE" -- catalog.txt)
+eq "a file several tasks touched is refused, not guessed at" "ambiguous" \
+   "$(printf '%s' "$X" | jq -r '.reason')"
+eq "and every candidate is named, newest first" "Add task 3|Add task 1" \
+   "$(printf '%s' "$X" | jq -r '[.candidates["catalog.txt"][0].subject, .candidates["catalog.txt"][-1].subject] | join("|")')"
+eq "refusing exits 3, not 0" "3" \
+   "$(run "$RX" fixup --base "$BASE" -- catalog.txt >/dev/null 2>&1; printf '%s' $?)"
+eq "nothing was staged by the refusal" "0" \
+   "$(git -C "$RX" diff --cached --name-only | grep -c 'catalog.txt')"
+
+# The judgment escape hatch: the caller read the evidence and names the commit.
+T1=$(git -C "$RX" log --format=%H --grep='Add task 1' -1)
+eq "--onto takes the caller's answer" "Add task 1" \
+   "$(run "$RX" fixup --base "$BASE" --onto "$T1" -- catalog.txt | jq -r '.subject')"
+
+# Replaying that one would conflict: it appends to a file every later task also appends
+# to. Aborting and keeping the separate commit is the documented answer, and the branch
+# has to come back untouched.
+BEFORE=$(git -C "$RX" rev-parse HEAD)
+eq "a conflicted replay exits 3" "3" \
+   "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
+eq "and leaves the branch exactly as it was" "$BEFORE" "$(git -C "$RX" rev-parse HEAD)"
+eq "with no rebase left half-done" "false" \
+   "$([ -d "$RX/.git/rebase-merge" ] || [ -d "$RX/.git/rebase-apply" ] && echo true || echo false)"
+git -C "$RX" reset -q --hard HEAD~1
+
+# Files whose targets differ decompose into one fixup each, which is worth saying.
+git -C "$RX" reset -q --hard HEAD
+printf 'task 1 edit\n' > "$RX/task1.go"; printf 'task 3 edit\n' > "$RX/task3.go"
+S=$(run "$RX" fixup --base "$BASE" -- task1.go task3.go)
+eq "a fix spanning two task commits says so" "spans-commits" "$(printf '%s' "$S" | jq -r '.reason')"
+eq "and groups the files by the commit each belongs to" "2" \
+   "$(printf '%s' "$S" | jq -r '.groups | length')"
+
+git -C "$RX" reset -q --hard HEAD
+printf 'brand new\n' > "$RX/newfile.go"
+eq "a file no commit in range touches is new work, not a correction" "3" \
+   "$(run "$RX" fixup --base "$BASE" -- newfile.go >/dev/null 2>&1; printf '%s' $?)"
+rm "$RX/newfile.go"
+
+# The replay.
+R=$(run "$RX" fixup --base "$BASE" --replay)
+eq "the marked fixup is folded" "1" "$(printf '%s' "$R" | jq -r '.folded')"
+eq "leaving one commit per task" "3" \
+   "$(git -C "$RX" rev-list --count "$BASE"..HEAD)"
+eq "and no fixup! subject behind" "0" \
+   "$(git -C "$RX" log --format=%s "$BASE"..HEAD | grep -c '^fixup!')"
+eq "the fix is in the task commit it belonged to" "task 2 fixed" \
+   "$(git -C "$RX" show "$(git -C "$RX" log --format=%H --grep='Add task 2' -1)":task2.go)"
+
+eq "replaying with nothing marked is a no-op, not an error" "0" \
+   "$(run "$RX" fixup --base "$BASE" --replay | jq -r '.folded')"
+
+printf 'loose\n' > "$RX/task1.go"
+eq "a dirty tree is refused before any rebase starts" "3" \
+   "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
+git -C "$RX" checkout -q -- task1.go
+
+# Rewriting what someone else may already have is the one case to keep separate.
+RM=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$RM" init -q --bare
+git -C "$RX" remote add origin "$RM"
+git -C "$RX" push -q -u origin feature
+printf 'task 3 fixed\n' > "$RX/task3.go"
+run "$RX" fixup --base "$BASE" -- task3.go >/dev/null 2>&1
+P=$(run "$RX" fixup --base "$BASE" --replay 2>&1)
+eq "a published range refuses the replay" "3" \
+   "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
+eq "and says how much of it is already out there" "1" \
+   "$(printf '%s' "$P" | grep -c 'already on origin/feature')"
+eq "--force is the caller asserting the branch is theirs alone" "1" \
+   "$(run "$RX" fixup --base "$BASE" --replay --force | jq -r '.folded')"
+
+# --------------------------------------------------------------------------------
 printf '\nlint — the conventions a regex settles\n'
 
 R28=$(new_repo)

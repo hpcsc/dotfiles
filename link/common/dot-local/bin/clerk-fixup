@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""clerk fixup — fold an audit fix into the commit that introduced the defect.
+
+A finding is almost always a defect in one task's work, and the honest place for the
+correction is that task's commit. Collecting every fix into a trailing "address audit
+findings" commit leaves the branch reading as though each task was right when it landed
+and something unnamed happened afterwards, and it trips `clerk verify`'s commit-boundary
+check by construction — that check counts the commits touching each task's recorded
+files and warns above one.
+
+The skill described the moves: `git log --oneline <base>..HEAD -- <file>`, read the
+list, pick, `git commit --fixup=<sha>`, and once all are marked
+`GIT_SEQUENCE_EDITOR=true git rebase --autosquash <base>`. Most of that is arithmetic —
+and it is the most error-prone shell in the method, run at the point where a mistake
+rewrites history.
+
+What is NOT arithmetic is picking between several commits that touched one file. A
+catalog, a shared type or a snapshot names the last task that edited it, which is not
+necessarily the one the defect came in with; only the finding's evidence settles that.
+So this refuses the ambiguous case and prints the candidates, rather than taking the
+newest and being quietly wrong. Where a file has one commit in range there is nothing to
+weigh, and where several files all point at one commit there is nothing to weigh either.
+
+Dispatched to by `clerk` when invoked as `clerk fixup`, and runnable on its own.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+
+def git(*args, check=True):
+    r = subprocess.run(["git", *args], capture_output=True, text=True)
+    if check and r.returncode != 0:
+        die(f"git {' '.join(args)}: {r.stderr.strip()}")
+    return r
+
+
+def die(msg, code=2):
+    print(json.dumps({"ok": False, "error": msg}, indent=2))
+    sys.exit(code)
+
+
+def out(payload, code=0):
+    print(json.dumps(payload, indent=2))
+    sys.exit(code)
+
+
+def resolve_base(explicit):
+    if explicit:
+        r = git("rev-parse", "--verify", f"{explicit}^{{commit}}", check=False)
+        if r.returncode != 0:
+            die(f"--base {explicit} is not a commit")
+        return r.stdout.strip()
+    # The same merge-base `clerk prepare` reports, derived the same way, so a caller
+    # that passes neither gets the branch point rather than a guess.
+    head = git("symbolic-ref", "--quiet", "--short", "HEAD", check=False).stdout.strip()
+    for cand in ("main", "master"):
+        r = git("rev-parse", "--verify", f"refs/heads/{cand}", check=False)
+        if r.returncode == 0 and cand != head:
+            mb = git("merge-base", "HEAD", cand, check=False)
+            if mb.returncode == 0:
+                return mb.stdout.strip()
+    die("could not resolve a base; pass --base <ref>")
+
+
+def commits_touching(base, path):
+    r = git("log", "--format=%H\t%s", f"{base}..HEAD", "--", path, check=False)
+    rows = []
+    for line in r.stdout.splitlines():
+        if "\t" in line:
+            sha, subject = line.split("\t", 1)
+            rows.append({"sha": sha[:12], "full": sha, "subject": subject})
+    return rows
+
+
+def cmd_apply(args):
+    base = resolve_base(args.base)
+    files = args.files
+    if not files:
+        die("name the files this fix touched, after --")
+
+    per_file = {f: commits_touching(base, f) for f in files}
+
+    untouched = [f for f, c in per_file.items() if not c]
+    if untouched:
+        die(f"no commit in {base[:12]}..HEAD touches {', '.join(untouched)} — this is new "
+            f"work rather than a correction to work already committed, so it wants its "
+            f"own commit with a message saying why", 3)
+
+    if args.onto:
+        r = git("rev-parse", "--verify", f"{args.onto}^{{commit}}", check=False)
+        if r.returncode != 0:
+            die(f"--onto {args.onto} is not a commit")
+        target = r.stdout.strip()
+    else:
+        ambiguous = {f: c for f, c in per_file.items() if len(c) > 1}
+        if ambiguous:
+            out({"ok": False, "reason": "ambiguous",
+                 "detail": "more than one commit in range touches these files. The last "
+                           "one to edit a file is not necessarily the one the defect came "
+                           "in with — read the finding's evidence and name it with --onto.",
+                 "candidates": ambiguous}, 3)
+
+        targets = {c[0]["full"] for c in per_file.values()}
+        if len(targets) > 1:
+            groups = {}
+            for f, c in per_file.items():
+                groups.setdefault(c[0]["sha"], []).append(f)
+            out({"ok": False, "reason": "spans-commits",
+                 "detail": "each file has one unambiguous target, but they differ. Run "
+                           "once per group so each correction lands on the commit it "
+                           "belongs to.",
+                 "groups": groups}, 3)
+        target = targets.pop()
+
+    subject = git("log", "-1", "--format=%s", target).stdout.strip()
+    if args.dry_run:
+        out({"ok": True, "dry_run": True, "target": target[:12], "subject": subject,
+             "files": files})
+
+    git("add", "--", *files)
+    # Staged but not committed is the tail `clerk verify` reports; if the commit fails
+    # the caller needs to know the index was already touched.
+    r = git("commit", f"--fixup={target}", check=False)
+    if r.returncode != 0:
+        die(f"git commit --fixup failed (files are staged): {r.stderr.strip() or r.stdout.strip()}")
+    return {"ok": True, "target": target[:12], "subject": subject, "files": files,
+            "next_step": "clerk fixup --replay, once every fix is marked"}
+
+
+def cmd_replay(args):
+    base = resolve_base(args.base)
+
+    if git("status", "--porcelain").stdout.strip():
+        die("the tree is dirty; a rebase needs it clean", 3)
+
+    pending = [l for l in git("log", "--format=%s", f"{base}..HEAD").stdout.splitlines()
+               if l.startswith("fixup!") or l.startswith("squash!")]
+    if not pending:
+        out({"ok": True, "folded": 0, "note": "nothing marked for fixup; nothing to replay"})
+
+    # Rewriting a published commit rewrites history someone else may have. The skill
+    # says keep the fix as its own commit in that case; this refuses rather than
+    # discovering it after the force-push.
+    upstream = git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}",
+                   check=False)
+    if upstream.returncode == 0 and not args.force:
+        u = upstream.stdout.strip()
+        published = git("rev-list", "--count", f"{base}..{u}", check=False).stdout.strip()
+        if published.isdigit() and int(published) > 0:
+            die(f"{published} commit(s) in this range are already on {u}; folding would "
+                f"rewrite history someone else may have. Keep the fix as its own commit "
+                f"and say why in the message, or pass --force if this branch is yours "
+                f"alone", 3)
+
+    before = git("rev-parse", "HEAD").stdout.strip()
+    # Both editors, because --autosquash opens the sequence editor and a fixup commit
+    # being folded can still reach the message editor on some configurations.
+    r = subprocess.run(["git", "rebase", "--autosquash", base], capture_output=True,
+                       text=True,
+                       env={**os.environ, "GIT_SEQUENCE_EDITOR": "true", "GIT_EDITOR": "true"})
+    if r.returncode != 0:
+        git("rebase", "--abort", check=False)
+        die(f"the replay conflicted and was aborted; the branch is exactly as it was. "
+            f"Keep the fix as its own commit — untangling a conflicted replay of your own "
+            f"branch costs more than the tidier history is worth. git said: "
+            f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'conflict'}", 3)
+
+    return {"ok": True, "folded": len(pending), "was": before[:12],
+            "now": git("rev-parse", "HEAD").stdout.strip()[:12],
+            "note": "every SHA from the earliest target onward is new; any receipt taken "
+                    "before this describes commits that no longer exist"}
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("--base")
+    ap.add_argument("--onto", help="name the target commit yourself when several are plausible")
+    ap.add_argument("--replay", action="store_true", help="autosquash every marked fixup")
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--force", action="store_true", help="replay even if the range is published")
+    ap.add_argument("-h", "--help", action="store_true")
+    ap.add_argument("files", nargs="*")
+    args = ap.parse_args()
+
+    if args.help:
+        print(__doc__.strip())
+        print("\nUSAGE\n  clerk fixup [--base <ref>] [--onto <sha>] [--dry-run] -- <files...>"
+              "\n  clerk fixup --replay [--base <ref>] [--force]")
+        return 0
+
+    if git("rev-parse", "--git-dir", check=False).returncode != 0:
+        die("not a git repository")
+
+    # --force is asserted, not inferred: only the caller knows whether the branch is
+    # shared, so cmd_replay refuses a published range unless told otherwise.
+    if args.replay:
+        out(cmd_replay(args))
+    out(cmd_apply(args))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

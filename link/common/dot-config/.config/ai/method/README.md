@@ -81,7 +81,7 @@ flowchart TD
     E -->|"no tasks left"| J["run the full suite<br/>in the tree holding the commits"]
     J --> K["clerk receipt<br/>binds the green to its SHA"]
     K --> L["audit-implement<br/>parallel lenses, claims reproduced"]
-    L --> M["you fix the findings"]
+    L --> M["you fix the findings<br/>clerk fixup folds each into its commit"]
     M --> N["clerk receipt again<br/>the old one describes a dead tree"]
     N --> O["you re-read the request<br/>against the finished branch"]
     O --> P["clerk verify<br/>and what it could not settle"]
@@ -216,6 +216,7 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it (`complete` is an accepted alias) | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
+| `fixup [--onto <sha>] -- <files>` · `fixup --replay [--force]` | Marks a fix for the commit that introduced it, refusing when several commits in range touch the file or when the files' targets differ; then one autosquash replay, aborted and reverted on conflict, refused on a published range | 0 · **3** needs your judgment |
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 

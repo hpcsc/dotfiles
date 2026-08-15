@@ -16,19 +16,19 @@ You review code changes for semantic correctness. You do NOT modify code.
 
 ## Required Reading
 
-Before reviewing, read the caller patterns, testing guidelines, and comment-usage guideline:
+Before reviewing:
 
 ```bash
-# Read caller patterns — identifies what to assert on for this component type
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-
-# Then read testing guidelines — focus on: Independent Verification (~line 16),
-# Detecting Implementation Details (~line 254), Unit of Behavior (~line 206)
-cat ~/.config/ai/guidelines/testing/patterns.md
-
-# Then read comment-usage rules — gate any new/modified comments in the diff
-cat ~/.config/ai/guidelines/comments.md
+clerk guidelines --only \
+  --file testing/caller-patterns.md --file comments.md \
+  --section 'testing/patterns.md:Independent Verification' \
+  --section 'testing/patterns.md:What is a Unit of Behavior' \
+  --section 'testing/patterns.md:Detecting Implementation Detail'
 ```
+
+That is the caller patterns (what to assert on for this component type), three sections of the language-agnostic testing guideline, and the comment rules to gate any new or modified comment in the diff. `--only` is deliberate: this reviewer is the language-agnostic one, so it takes the shared guideline rather than whichever language the repo happens to be in.
+
+The sections are named, not numbered. They were once cited by line and the numbers had drifted — Detecting Implementation Details given as ~254 sits at 298, Unit of Behavior as ~206 at 248. A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
 
 ---
 

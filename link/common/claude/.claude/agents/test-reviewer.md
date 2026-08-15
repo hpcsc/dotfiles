@@ -22,16 +22,21 @@ You are a testing expert who reviews tests for adherence to best practices acros
 
 ### Step 1: Read Guidelines
 
-Before reviewing, read both guidelines:
+Before reviewing:
 
 ```bash
-# Read caller patterns first — identifies what to assert on for this component type
-cat ~/.config/ai/guidelines/testing/caller-patterns.md
-
-# Then read testing guidelines — focus on: Detecting Implementation Details (~line 254),
-# Anti-Patterns (~line 792), Detection Checklist (~line 1134), Independent Verification (~line 16)
-cat ~/.config/ai/guidelines/testing/patterns.md
+clerk guidelines --only \
+  --file testing/caller-patterns.md \
+  --section 'testing/patterns.md:Independent Verification' \
+  --section 'testing/patterns.md:What is a Unit of Behavior' \
+  --section 'testing/patterns.md:Detecting Implementation Detail' \
+  --section 'testing/patterns.md:Common Anti-Patterns' \
+  --section 'testing/patterns.md:Quick Testing Checklist'
 ```
+
+That is the caller patterns (what to assert on for this component type) and the five sections of the shared testing guideline this review turns on, out of a 1,279-line file. `--only` keeps it to the language-agnostic guideline, which is the one this reviewer exists to apply.
+
+The sections are named, not numbered. They were once cited by line and every number had drifted: Detecting Implementation Details given as ~254 sits at 298, Anti-Patterns as ~792 at 865, the checklist as ~1134 at 1226. A name that stops matching is reported under "Not loaded"; a stale line number just points somewhere else.
 
 The **caller patterns** guide identifies five patterns that determine what assertions are appropriate:
 

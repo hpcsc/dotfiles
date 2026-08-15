@@ -23,6 +23,16 @@ die() { printf 'clerk: %s\n' "$1" >&2; exit 2; }
 
 need() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
 
+# Guards every flag that takes a value, called as `need_value $# --flag`.
+#
+# `shift 2` with one argument left does nothing and returns 1. Nothing here runs under
+# `set -e`, so the argument loop comes round to the same flag and never advances — a
+# dangling `--tasks-file` hangs until whatever is driving clerk times out, and a caller
+# reading that timeout has no reason to suspect the command line.
+need_value() {
+  [ "$1" -ge 2 ] || die "$2 needs a value"
+}
+
 # --------------------------------------------------------------------------------
 # Repo facts
 # --------------------------------------------------------------------------------
@@ -448,7 +458,7 @@ cmd_prepare() {
   local request= learn_src=resolved
   while [ $# -gt 0 ]; do
     case "$1" in
-      --request)   request=${2:-}; shift 2 ;;
+      --request)   need_value $# --request; request=$2; shift 2 ;;
       --request=*) request=${1#--request=}; shift ;;
       *) die "prepare: unknown argument '$1'" ;;
     esac
@@ -545,7 +555,7 @@ cmd_worktree() {
   local name= base= common parent path branch_exists=false existing created=false excluded=false
   while [ $# -gt 0 ]; do
     case "$1" in
-      --base) base=${2:-}; shift 2 ;;
+      --base) need_value $# --base; base=$2; shift 2 ;;
       --base=*) base=${1#--base=}; shift ;;
       -*) die "worktree: unknown argument '$1'" ;;
       *) [ -n "$name" ] && die "worktree: one name, not two ('$name' and '$1')"
@@ -633,7 +643,7 @@ cmd_next() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --allow-dirty) allow_dirty=true; shift ;;
-      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
       *) die "next: unknown argument '$1'" ;;
     esac
   done
@@ -686,7 +696,7 @@ cmd_finish() {
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
       --) shift; break ;;
       *) die "finish: unknown argument '$1'" ;;
     esac
@@ -805,7 +815,7 @@ cmd_status() {
   local tasks_override= all=false root wt th tasks side f arch
   while [ $# -gt 0 ]; do
     case "$1" in
-      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
       --all) all=true; shift ;;
       *) die "status: unknown argument '$1'" ;;
     esac
@@ -848,10 +858,10 @@ cmd_receipt() {
   local command= passed= tail_file= sha dir out
   while [ $# -gt 0 ]; do
     case "$1" in
-      --command) command=${2:-}; shift 2 ;;
+      --command) need_value $# --command; command=$2; shift 2 ;;
       --passed) passed=true; shift ;;
       --failed) passed=false; shift ;;
-      --output-file) tail_file=${2:-}; shift 2 ;;
+      --output-file) need_value $# --output-file; tail_file=$2; shift 2 ;;
       *) die "receipt: unknown argument '$1'" ;;
     esac
   done
@@ -892,7 +902,7 @@ cmd_gate() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --audit-accepted) audit_accepted=true; shift ;;
-      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
       *) die "gate: unknown argument '$1'" ;;
     esac
   done
@@ -1130,8 +1140,8 @@ cmd_land() {
       --integrate) integrate=true; shift ;;
       --no-integrate) integrate=false; shift ;;
       --audit-accepted) audit=true; shift ;;
-      --feature-name) name=${2:-}; shift 2 ;;
-      --tasks-file) tasks_override=${2:-}; shift 2 ;;
+      --feature-name) need_value $# --feature-name; name=$2; shift 2 ;;
+      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
       *) die "land: unknown argument '$1'" ;;
     esac
   done

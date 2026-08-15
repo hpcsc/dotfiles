@@ -73,6 +73,35 @@ eq "the cache is used when no config exists" \
    "cached-and-should-lose" "$(run "$R" prepare | jq -r '.test_command')"
 
 # --------------------------------------------------------------------------------
+printf '\ndangling flags\n'
+
+# `shift 2` with one argument left does nothing and returns 1, and nothing here runs
+# under `set -e` — so an unguarded value flag loops forever rather than erroring, and
+# the caller sees a timeout with no reason to suspect its own command line.
+RD=$(new_repo)
+for flag in "prepare --request" "next --tasks-file" "status --tasks-file" \
+            "receipt --command" "gate --tasks-file" "land --tasks-file" \
+            "verify --tasks-file" "worktree w --base"; do
+  # `exec` so the subshell is REPLACED by clerk and $! is clerk's own pid. Backgrounding
+  # a subshell that then runs clerk makes $! the subshell, and killing that orphans the
+  # spinning child onto pid 1 — where, this being a test for an infinite loop, it sits at
+  # 100% of a core until someone notices.
+  # shellcheck disable=SC2086
+  ( cd "$RD" && exec "$CLERK" $flag ) >/dev/null 2>&1 &
+  pid=$!
+  waited=0
+  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 30 ]; do
+    sleep 0.1; waited=$((waited + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+    bad "clerk $flag refuses instead of spinning" "an exit" "still running after 3s"
+  else
+    wait "$pid"; ok "clerk $flag refuses instead of spinning"
+  fi
+done
+
+# --------------------------------------------------------------------------------
 printf '\nrun flags\n'
 
 RF=$(new_repo)

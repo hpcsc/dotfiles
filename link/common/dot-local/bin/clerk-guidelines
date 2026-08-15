@@ -99,9 +99,50 @@ def die(msg):
     sys.exit(2)
 
 
-def headings(lines):
-    """Every `## ` heading as (name, start_index, end_index), bounds over `lines`."""
+# tree-sitter's markdown grammar, via ast-grep. `atx_h2_marker` matches only a genuine
+# `##` — a line inside a fenced block is example content, and the grammar knows the
+# difference where a regex cannot. Two guidelines contain exactly that: a fenced review
+# template in domain-modeling.md and one in event-driven-patterns.md, each of which the
+# regex reads as a section boundary and splits on.
+AST_GREP_RULE = "id: h2\nlanguage: md\nrule: {kind: atx_h2_marker}"
+
+
+def h2_lines_for(paths):
+    """{path: [line index, ...]} for real `## ` headings, or None if ast-grep cannot say.
+
+    One call for the whole plan rather than one per file. None means fall back — the
+    regex is worse but it is what a machine without ast-grep has.
+    """
+    if not paths:
+        return {}
+    try:
+        r = subprocess.run(["ast-grep", "scan", "--json=compact", "--inline-rules",
+                            AST_GREP_RULE, *paths], capture_output=True, text=True)
+    except OSError:
+        return None
+    if r.returncode != 0 or not r.stdout.strip():
+        return None
+    try:
+        found = {}
+        for m in json.loads(r.stdout):
+            found.setdefault(m["file"], []).append(m["range"]["start"]["line"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    return {f: sorted(v) for f, v in found.items()}
+
+
+def headings(lines, h2=None):
+    """Every `## ` heading as (name, start_index, end_index), bounds over `lines`.
+
+    `h2` is the line list ast-grep resolved. Falling back when it is empty but the file
+    plainly has headings is deliberate: a parse that returns nothing for a file full of
+    `##` has gone wrong, and emitting a guideline with no sections at all is the failure
+    that is hardest to notice downstream.
+    """
     marks = [(m.group(1), i) for i, line in enumerate(lines) if (m := HEADING.match(line))]
+    if h2 is not None and (h2 or not marks):
+        keep = set(h2)
+        marks = [(n, i) for n, i in marks if i in keep]
     out = []
     for pos, (name, start) in enumerate(marks):
         end = marks[pos + 1][1] if pos + 1 < len(marks) else len(lines)
@@ -130,9 +171,9 @@ def emit_whole(path, lines, out):
     out.append("".join(lines))
 
 
-def emit_sections(path, lines, slots, out, missing, literals=()):
+def emit_sections(path, lines, slots, out, missing, literals=(), h2=None):
     """`slots` are named sets of spellings; `literals` are headings a caller asked for."""
-    sections = headings(lines)
+    sections = headings(lines, h2)
     index = section_index(lines)
     if index:
         out.append(f"\n<!-- {path} — section index; read further sections from it as needed -->\n")
@@ -253,6 +294,10 @@ def main():
 
     unknown = [l for l in languages if l not in LANGUAGE_FILES]
 
+    # Resolve every heading in the plan in one ast-grep call, before reading anything.
+    present = [str(root / rel) for rel in plan if (root / rel).is_file()]
+    h2_map = h2_lines_for(present)
+
     out, missing, absent = [], [], []
     listing = []
     for rel in plan:
@@ -287,7 +332,8 @@ def main():
         if slots is None:
             emit_whole(rel, lines, out)
         else:
-            emit_sections(rel, lines, slots, out, missing, literals)
+            emit_sections(rel, lines, slots, out, missing, literals,
+                          None if h2_map is None else h2_map.get(str(path), []))
 
     if args.list:
         print(json.dumps({"files": listing, "languages": languages,

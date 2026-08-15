@@ -1409,6 +1409,38 @@ eq "a named section that no heading matches is reported" "1" \
 eq "and a spec with no heading is refused outright" "2" \
    "$(gl --language Go --section 'go/testing-patterns.md' >/dev/null 2>&1; printf '%s' $?)"
 
+# A `## ` inside a fenced block is example content, not a section boundary. The regex
+# cannot tell, so it truncates the real section there and invents one for the fence;
+# ast-grep parses the markdown and does not. Two real guidelines contain exactly this.
+GF=$(cd "$(mktemp -d)" && pwd -P)
+mkdir -p "$GF/go" "$GF/testing"
+{ printf '# Go Testing\n\n## What to Test\nwhat-body-before\n\n'
+  printf '```\n## Fenced Not A Section\nfenced-body\n```\n\n'
+  printf 'what-body-after\n\n## Unit of Behavior\nunit-body\n'
+} > "$GF/go/testing-patterns.md"
+printf '# Comments\ncomments-body\n' > "$GF/comments.md"
+printf '# Caller\n\n## How to Identify the Caller\nid\n\n## Quick Reference\nqr\n' > "$GF/testing/caller-patterns.md"
+for f in naming-patterns architecture-principles development-workflow; do
+  printf '# %s\nbody\n' "$f" > "$GF/go/$f.md"
+done
+FENCE=$("$CLERK" guidelines --guidelines-dir "$GF" --language Go)
+eq "a fenced heading does not become a section" "0" \
+   "$(printf '%s' "$FENCE" | grep -c 'Fenced Not A Section -->')"
+eq "and the real section is not truncated at it" "1" \
+   "$(printf '%s' "$FENCE" | grep -c 'what-body-after')"
+eq "the fenced example still travels inside its section" "1" \
+   "$(printf '%s' "$FENCE" | grep -c 'fenced-body')"
+
+# Without ast-grep the regex is what is left. Worse, but it must still work.
+NOAG=$(PATH=/usr/bin:/bin "$(dirname "$CLERK")/clerk-guidelines" \
+        --guidelines-dir "$GF" --language Go 2>&1)
+eq "it falls back rather than failing when ast-grep is absent" "1" \
+   "$(printf '%s' "$NOAG" | grep -c 'what-body-before')"
+# The fence still splits the section there, which is the defect ast-grep removes: the
+# half of "What to Test" below the example never arrives.
+eq "and without it the section is cut short at the fence" "0" \
+   "$(printf '%s' "$NOAG" | grep -c 'what-body-after')"
+
 # A file whose name ends the same way but which no bundle contains. Cutting it to the
 # slot list emits nothing and complains four times about headings it never claimed.
 mkdir -p "$GD/cue"

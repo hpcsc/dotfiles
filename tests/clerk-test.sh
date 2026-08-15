@@ -390,9 +390,18 @@ eq "resolves a default branch without a remote" "main" "$(run "$R7" prepare | jq
 eq "and a base that is not HEAD" "false" \
    "$(run "$R7" prepare | jq -r '.base == null or (.base == "'"$(git -C "$R7" rev-parse HEAD)"'")')"
 
+# A fixture package is consumed by _test.go files and nothing else, so discounting them
+# leaves it unable to prove the thing the check asks for — every symbol in it blocks.
+mkdir -p "$R7/internal/test"
+printf 'package test\n\nfunc Fixture() {}\n' > "$R7/internal/test/kit.go"
+printf 'package x\n\nimport "t/internal/test"\n\nvar _ = test.Fixture\n' > "$R7/use_test.go"
+git -C "$R7" add -A && git -C "$R7" commit -qm "Add a fixture kit"
+
 V=$(run "$R7" verify --all-closed)
 eq "flags an exported symbol with no non-test caller" "Orphan" \
    "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | split(" ")[0]] | join(",")')"
+eq "but not one in a fixture package, whose callers are all tests" "0" \
+   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | test("Fixture")] | map(select(.)) | length')"
 
 run "$R7" receipt --command "go test ./..." --passed >/dev/null
 V=$(run "$R7" verify)

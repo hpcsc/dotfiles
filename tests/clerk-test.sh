@@ -165,6 +165,27 @@ eq "resolves the main repo root separately"   "$(cd "$R3" && pwd -P)" "$(printf 
 eq "reports the worktree's own branch"        "feature" "$(printf '%s' "$J" | jq -r '.branch')"
 
 # --------------------------------------------------------------------------------
+printf '\ncommit skill\n'
+
+RC=$(new_repo)
+eq "falls back to the personal skill" "pcommit" "$(run "$RC" prepare | jq -r '.commit_skill')"
+
+mkdir -p "$RC/.claude/skills/commit"
+printf -- '---\nname: commit\n---\n' > "$RC/.claude/skills/commit/SKILL.md"
+eq "the project's own skill wins when it defines one" "commit" \
+   "$(run "$RC" prepare | jq -r '.commit_skill')"
+
+# A skill is a tracked file on the branch, so it is the worktree's copy the harness
+# resolves once a run has entered one.
+git -C "$RC" add -A && git -C "$RC" commit -qm "Add commit skill"
+CWT="$RC/../wt-c-$(basename "$RC")"
+git -C "$RC" worktree add -q -b feat "$CWT" >/dev/null 2>&1
+eq "and is found from inside the worktree" "commit" "$(run "$CWT" prepare | jq -r '.commit_skill')"
+rm -rf "$CWT/.claude"
+eq "a branch without it falls back, whatever the main checkout has" "pcommit" \
+   "$(run "$CWT" prepare | jq -r '.commit_skill')"
+
+# --------------------------------------------------------------------------------
 printf '\nresume\n'
 
 # The sidecar carries `done`; a breakdown that has started and not finished is the run

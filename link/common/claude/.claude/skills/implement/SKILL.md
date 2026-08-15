@@ -49,7 +49,7 @@ Use `implement-flow` instead for large mechanical migrations with genuinely disj
 clerk prepare --request "<the request, verbatim>"
 ```
 
-One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, `flags` with `flag_sources`, and whether the tree is `clean`.
+One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, `commit_skill`, `flags` with `flag_sources`, and whether the tree is `clean`.
 
 **Pass the request.** It is the top layer of two resolutions below — the run's flags and the learnings path — and handing it over is what lets one command finish them. Quote it and pass it whole; `prepare` reads the tokens it knows and ignores the prose around them.
 
@@ -244,10 +244,7 @@ Then write the message, which is judgment rather than mechanics:
 
 **Do NOT run `git commit` via Bash.** Use the Skill tool.
 
-Detect which skill: `test -f .claude/skills/commit/SKILL.md && echo exists || echo missing` (relative to the project root). Confirm the file exists — do not speculatively invoke `commit` to find out.
-
-- `exists` → invoke `commit` with the task description and any ticket context carried in the request.
-- `missing` → invoke `pcommit` (which delegates to the `commit` agent).
+Invoke the skill `clerk prepare` named in `commit_skill`, passing the task description and any ticket context carried in the request. It is `commit` where the repo defines its own — usually to carry a convention its history depends on, a ticket trailer or a scope prefix — and `pcommit`, which delegates to the same agent, where it does not.
 
 The message obeys the `commit` agent's rules: imperative subject, ≤50 chars, capitalised, no trailing period, blank line before a body wrapped at 72 explaining **what and why**; no AI/Claude mention, no `Co-Authored-By`, no generated-with footer, no generic file lists. Apply the repo's own conventions too — read the project's instructions file and any committing guideline, and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one.
 

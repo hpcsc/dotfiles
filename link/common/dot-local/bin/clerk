@@ -405,6 +405,18 @@ list_breakdowns() {
   done | jq -s -c .
 }
 
+# Which commit skill to invoke: the project's own, or the personal one that wraps the
+# same agent. A repo defining `commit` usually does so to carry a convention its history
+# depends on — a ticket trailer, a scope prefix — so reaching past it for the generic
+# one writes messages that are wrong in a way nothing downstream checks.
+#
+# The work tree, not the repo root: a project skill is a tracked file on the branch, and
+# after a run enters its worktree that is the copy the harness resolves.
+commit_skill_for() {
+  local wt=$1
+  if [ -f "$wt/.claude/skills/commit/SKILL.md" ]; then printf 'commit'; else printf 'pcommit'; fi
+}
+
 # Where a stopped run left off, or null. The rule was stated in prose and reapplied by
 # hand every restart, and both ways of getting it wrong are expensive: a second
 # decomposition produces a different task list against code the first run already
@@ -432,7 +444,7 @@ resume_for() {
 }
 
 cmd_prepare() {
-  local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees flags resume
+  local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees flags resume commit_skill
   local request= learn_src=resolved
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -464,6 +476,7 @@ cmd_prepare() {
     /^worktree /{p=$2} /^branch /{b=$2; sub(/^refs\/heads\//, "", b); print p "\t" b}' \
     | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {path: .[0], branch: .[1]})')
   resume=$(resume_for "$breakdowns" "$trees")
+  commit_skill=$(commit_skill_for "$wt")
   if tree_is_clean; then clean=true; else clean=false; fi
   if is_ignored "$root" tasks; then tracked=false; else tracked=true; fi
 
@@ -477,6 +490,7 @@ cmd_prepare() {
     --arg go_tool_prefix "$prefix" \
     --arg learnings_path "$learn" \
     --arg learnings_path_source "$learn_src" \
+    --arg commit_skill "$commit_skill" \
     --arg tasks_file "$tasks" \
     --arg tasks_home "$th" \
     --argjson tasks_tracked "$tracked" \
@@ -502,6 +516,7 @@ cmd_prepare() {
       go_tool_prefix: $go_tool_prefix,
       learnings_path: $learnings_path,
       learnings_path_source: $learnings_path_source,
+      commit_skill: $commit_skill,
       tasks_file: (if $tasks_file == "" then null else $tasks_file end),
       tasks_home: $tasks_home,
       tasks_tracked: $tasks_tracked,

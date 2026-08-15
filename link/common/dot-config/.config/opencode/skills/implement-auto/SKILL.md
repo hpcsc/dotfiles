@@ -17,7 +17,7 @@ Implement a feature autonomously with a single approval gate before each commit.
 clerk prepare --request "<the request, verbatim>"
 ```
 
-One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, `flags` with `flag_sources`, and whether the tree is `clean`.
+One call, one JSON object: `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `work_tree`, `in_worktree`, `default_branch`, `base`, `tasks_file`, `commit_skill`, `flags` with `flag_sources`, and whether the tree is `clean`.
 
 **Pass the request.** It is the top layer of two resolutions below — the run's flags and the learnings path — and handing it over is what lets one command finish them. Quote it and pass it whole; `prepare` reads the tokens it knows and ignores the prose around them.
 

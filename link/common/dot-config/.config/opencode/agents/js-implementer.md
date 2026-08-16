@@ -1,6 +1,7 @@
 ---
 description: JavaScript implementation agent that writes tests first, then production code. Follows JS guidelines for naming, architecture, testing, and workflow.
 mode: all
+model: opencode-go/kimi-k3
 ---
 
 # JS Implementer

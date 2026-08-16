@@ -1,0 +1,159 @@
+{
+  "about": [
+    "Which model each agent runs on, and which step of the method it serves.",
+    "",
+    "The two harnesses want different answers. Claude Code names a tier and resolves it",
+    "against the session's own model family; opencode names a provider and model outright.",
+    "Neither can read the other's spelling, so the registry holds both and a generator",
+    "stamps each tree's frontmatter from it. Editing an agent's model means editing this",
+    "file, not thirty-seven files twice.",
+    "",
+    "The `step` field is the point as much as the model is: it says what the agent is for,",
+    "so a tier can be argued about against the job rather than against a name.",
+    "",
+    "Tiering rule: judgment that nothing checks afterwards stays on the strongest model.",
+    "Drop a tier only where a mechanical check catches the mistake \u2014 `commit` is the one",
+    "agent that qualifies today, because a PostToolUse hook validates every message it",
+    "writes for subject length, mood, capitalisation and forbidden trailers.",
+    "",
+    "Tiers chosen deliberately before this file existed are kept, not raised: the concurrency, performance and security reviewers were already running below the default, and they match patterns against a named guideline rather than weigh an open question.",
+    "Run `task common:gen:agent-models` after editing; `:check` fails when a tree is stale."
+  ],
+  "defaults": {
+    "claude": "opus",
+    "opencode": "opencode-go/kimi-k3"
+  },
+  "agents": {
+    "commit": {
+      "step": "Phase 2 \u00b7 write the message for a finished task",
+      "claude": "sonnet",
+      "why": "The most constrained job in a run: a task description and a staged diff in, a subject under fifty characters and a wrapped body out, against a fixed rule list. The steering hook validates the result, so a slip is caught rather than shipped \u2014 the one place a lower tier costs nothing."
+    },
+    "decompose-to-tasks": {
+      "step": "Phase 1 \u00b7 cut a story into ordered, codebase-aware tasks"
+    },
+    "decompose-to-deliverables": {
+      "step": "Planning \u00b7 cut a story into independently reviewable deliverables"
+    },
+    "test-case-designer": {
+      "step": "Cycle \u00b7 design test scenarios from acceptance criteria"
+    },
+    "task-implementer": {
+      "step": "Cycle \u00b7 run one task end to end in a fresh context"
+    },
+    "go-implementer": {
+      "step": "Cycle \u00b7 write Go tests then production code"
+    },
+    "js-implementer": {
+      "step": "Cycle \u00b7 write JavaScript tests then production code"
+    },
+    "elixir-implementer": {
+      "step": "Cycle \u00b7 write Elixir tests then production code"
+    },
+    "go-refactorer": {
+      "step": "Cycle \u00b7 restructure Go while the tests stay green"
+    },
+    "js-refactorer": {
+      "step": "Cycle \u00b7 restructure JavaScript while the tests stay green"
+    },
+    "elixir-refactorer": {
+      "step": "Cycle \u00b7 restructure Elixir while the tests stay green"
+    },
+    "refactorer": {
+      "step": "Cycle \u00b7 restructure any language while the tests stay green"
+    },
+    "semantic-reviewer": {
+      "step": "Review \u00b7 logic, edge cases, intent, test quality"
+    },
+    "go-semantic-reviewer": {
+      "step": "Review \u00b7 the same, against Go testing guidelines"
+    },
+    "js-semantic-reviewer": {
+      "step": "Review \u00b7 the same, against JavaScript testing guidelines"
+    },
+    "elixir-semantic-reviewer": {
+      "step": "Review \u00b7 the same, against Elixir testing guidelines"
+    },
+    "test-reviewer": {
+      "step": "Review \u00b7 tests against behaviour-driven principles"
+    },
+    "go-test-reviewer": {
+      "step": "Review \u00b7 Go tests against behaviour-driven principles"
+    },
+    "js-test-reviewer": {
+      "step": "Review \u00b7 JavaScript tests against behaviour-driven principles"
+    },
+    "go-guidelines-reviewer": {
+      "step": "Review \u00b7 Go naming, architecture and workflow adherence"
+    },
+    "js-guidelines-reviewer": {
+      "step": "Review \u00b7 JavaScript naming, architecture and workflow adherence"
+    },
+    "elixir-guidelines-reviewer": {
+      "step": "Review \u00b7 Elixir naming, architecture and workflow adherence"
+    },
+    "concurrency-reviewer": {
+      "step": "Review \u00b7 shared state, atomicity, idempotency",
+      "claude": "sonnet",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "go-concurrency-reviewer": {
+      "step": "Review \u00b7 the same, against Go concurrency guidelines",
+      "claude": "sonnet",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "js-concurrency-reviewer": {
+      "step": "Review \u00b7 the same, for async and promise handling",
+      "claude": "sonnet",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "elixir-concurrency-reviewer": {
+      "step": "Review \u00b7 the same, for processes and message passing",
+      "claude": "sonnet",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "performance-reviewer": {
+      "step": "Review \u00b7 timeouts, leaks, graceful degradation",
+      "claude": "haiku",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "go-performance-reviewer": {
+      "step": "Review \u00b7 the same, against Go performance guidelines",
+      "claude": "sonnet",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "js-performance-reviewer": {
+      "step": "Review \u00b7 the same, for DOM and allocation cost",
+      "claude": "sonnet",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "elixir-performance-reviewer": {
+      "step": "Review \u00b7 the same, against Elixir performance guidelines",
+      "claude": "sonnet",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "security-reviewer": {
+      "step": "Review \u00b7 injection, authorization gaps, audit trails",
+      "claude": "sonnet",
+      "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
+    },
+    "go-mutation-reviewer": {
+      "step": "Review \u00b7 surviving mutants as test gaps"
+    },
+    "run-verifier": {
+      "step": "Phase 3 \u00b7 the judgment residue clerk verify leaves in not_checked"
+    },
+    "go-expert": {
+      "step": "Advisory \u00b7 Go architecture and design questions"
+    },
+    "cue-expert": {
+      "step": "Advisory \u00b7 CUE schemas, validation and debugging"
+    },
+    "domain-modeler": {
+      "step": "Advisory \u00b7 aggregates, bounded contexts, domain boundaries"
+    },
+    "solution-architect": {
+      "step": "Advisory \u00b7 sagas, process managers, event-driven structure"
+    }
+  }
+}

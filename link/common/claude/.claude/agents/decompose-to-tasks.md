@@ -1,5 +1,6 @@
 ---
 name: decompose-to-tasks
+model: opus
 description: Decomposes a user story into ordered, codebase-aware implementation tasks. Explores affected files, patterns, and domain types, then produces a task list saved to tasks/[story-name].md.
 ---
 

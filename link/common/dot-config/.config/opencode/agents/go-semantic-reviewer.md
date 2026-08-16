@@ -1,6 +1,7 @@
 ---
 description: Reviews Go code changes for logic correctness, edge cases, intent alignment, and test quality against Go testing guidelines. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Semantic Go Reviewer

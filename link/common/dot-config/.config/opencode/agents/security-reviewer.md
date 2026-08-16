@@ -1,6 +1,7 @@
 ---
 description: Reviews code changes for security vulnerabilities including injection patterns, authorization gaps, and audit trail verification. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Security Reviewer

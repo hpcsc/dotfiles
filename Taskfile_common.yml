@@ -14,6 +14,22 @@ tasks:
     cmds:
       - "{{.SCRIPT_DIR}}/gen-skills.sh --check"
 
+  gen:agent-models:
+    desc: Stamp each agent's model into both trees from the registry
+    cmds:
+      - "{{.SCRIPT_DIR}}/gen-agent-models.sh"
+
+  gen:agent-models:check:
+    desc: Fail if an agent's model disagrees with the registry
+    cmds:
+      - "{{.SCRIPT_DIR}}/gen-agent-models.sh --check"
+
+  gen:
+    desc: Regenerate everything, in the order the generators require
+    cmds:
+      - task: gen:skills
+      - task: gen:agent-models
+
   test:clerk:
     desc: Run the clerk fixture tests
     cmds:
@@ -30,6 +46,7 @@ tasks:
       - task: test:clerk
       - task: test:guidelines
       - task: gen:skills:check
+      - task: gen:agent-models:check
 
   base:
     desc: Common scripts with no dependencies (parallel)

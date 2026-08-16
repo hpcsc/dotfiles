@@ -2,7 +2,7 @@
 name: go-semantic-reviewer
 description: Reviews Go code changes for logic correctness, edge cases, intent alignment, and test quality against Go testing guidelines. Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: purple
 ---
 

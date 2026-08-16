@@ -2,7 +2,7 @@
 name: elixir-guidelines-reviewer
 description: Reviews Elixir code changes for adherence to project Elixir guidelines (naming patterns, architecture principles, development workflow). Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: cyan
 ---
 

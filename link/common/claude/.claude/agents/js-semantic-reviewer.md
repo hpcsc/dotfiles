@@ -2,7 +2,7 @@
 name: js-semantic-reviewer
 description: Reviews JavaScript code changes for logic correctness, edge cases, intent alignment, and test quality against JS testing guidelines. Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: purple
 ---
 

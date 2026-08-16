@@ -1,6 +1,7 @@
 ---
 description: Runs go-gremlins mutation testing on changed packages, interprets survived mutants, and surfaces only actionable test gaps. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Mutation Go Reviewer

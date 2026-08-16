@@ -2,7 +2,7 @@
 name: go-implementer
 description: Go implementation agent that writes tests first, then production code. Follows project Go guidelines for naming, architecture, testing, and workflow.
 tools: Bash, Glob, Grep, Read, Edit, Write, TodoWrite
-model: inherit
+model: opus
 color: green
 ---
 

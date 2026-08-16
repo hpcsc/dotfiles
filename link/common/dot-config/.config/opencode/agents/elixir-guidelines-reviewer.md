@@ -1,6 +1,7 @@
 ---
 description: Reviews Elixir code changes for adherence to project Elixir guidelines (naming patterns, architecture principles, development workflow). Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Elixir Guidelines Reviewer

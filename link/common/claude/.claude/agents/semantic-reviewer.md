@@ -2,7 +2,7 @@
 name: semantic-reviewer
 description: Reviews code changes for logic correctness, edge cases, intent alignment, and test quality. Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: purple
 ---
 

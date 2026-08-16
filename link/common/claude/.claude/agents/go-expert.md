@@ -1,5 +1,6 @@
 ---
 name: go-expert
+model: opus
 description: Senior Go engineer applying clean architecture, domain-driven design, and behavior-driven testing principles to create highly maintainable Go applications
 ---
 

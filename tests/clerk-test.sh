@@ -1887,6 +1887,66 @@ eq "an out-of-tree file says nothing here dirties the tree" "false" \
    "$(run "$RL2" learn --type pattern --title "Outside" --learning "x" \
         --apply-when "y" | jq -r '.in_tree')"
 
+# --------------------------------------------------------------------------------
+printf '\nmodels — the registry, and both trees stamped from it\n'
+
+# A fixture registry and two trees, because the real ones change whenever an agent is
+# added and these assertions are about the mechanism, not the roster.
+MD=$(cd "$(mktemp -d)" && pwd -P)
+mkdir -p "$MD/claude" "$MD/opencode"
+cat > "$MD/registry.json" <<'REGEOF'
+{
+  "defaults": { "claude": "opus", "opencode": "vendor/big-model" },
+  "agents": {
+    "writer":  { "step": "Cycle · write it" },
+    "checker": { "step": "Review · check it", "claude": "sonnet", "why": "a narrow check" }
+  }
+}
+REGEOF
+printf -- '---\nname: writer\ntools: Read\n---\n\nbody\n'  > "$MD/claude/writer.md"
+printf -- '---\nname: checker\nmodel: haiku\n---\n\nbody\n' > "$MD/claude/checker.md"
+printf -- '---\ndescription: w\nmode: all\n---\n\nbody\n'   > "$MD/opencode/writer.md"
+printf -- '---\ndescription: c\nmode: all\n---\n\nbody\n'   > "$MD/opencode/checker.md"
+M() { "$CLERK" models --registry "$MD/registry.json" --claude-dir "$MD/claude" --opencode-dir "$MD/opencode" "$@"; }
+
+eq "a tree that disagrees with the registry is stale" "1" \
+   "$(M --check >/dev/null 2>&1; printf '%s' $?)"
+M apply >/dev/null
+eq "applying settles it" "0" "$(M --check >/dev/null 2>&1; printf '%s' $?)"
+
+# The two harnesses spell a model differently, which is the whole reason for the registry.
+eq "each tree gets its own spelling" "opus|vendor/big-model" \
+   "$(printf '%s|%s' "$(grep '^model:' "$MD/claude/writer.md" | sed 's/model: //')" \
+      "$(grep '^model:' "$MD/opencode/writer.md" | sed 's/model: //')")"
+eq "an agent's own entry beats the default" "sonnet" \
+   "$(grep '^model:' "$MD/claude/checker.md" | sed 's/model: //')"
+eq "and the entry overrides what the file already said" "0" \
+   "$(grep -c 'haiku' "$MD/claude/checker.md")"
+eq "the rest of the frontmatter is left alone" "1|1" \
+   "$(printf '%s|%s' "$(grep -c '^tools: Read' "$MD/claude/writer.md")" \
+      "$(grep -c '^mode: all' "$MD/opencode/writer.md")")"
+
+eq "listing names the step each agent serves" "1" "$(M | grep -c 'Review · check it')"
+eq "and marks which model came from a default" "1" "$(M | grep -c 'opus ·')"
+eq "one agent shows the reason for its tier" "1" "$(M checker | grep -c 'a narrow check')"
+eq "an agent outside the registry is refused" "2" \
+   "$(M nosuch >/dev/null 2>&1; printf '%s' $?)"
+
+# `set` is the point of the command: one edit reaches the registry and both trees.
+M set writer --claude haiku --why "trivial" >/dev/null
+eq "set rewrites the registry" "haiku" \
+   "$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['agents']['writer']['claude'])" "$MD/registry.json")"
+eq "and restamps the tree in the same step" "haiku" \
+   "$(grep '^model:' "$MD/claude/writer.md" | sed 's/model: //')"
+eq "leaving the other tree on its own default" "vendor/big-model" \
+   "$(grep '^model:' "$MD/opencode/writer.md" | sed 's/model: //')"
+eq "and nothing stale afterwards" "0" "$(M --check >/dev/null 2>&1; printf '%s' $?)"
+
+# An agent file nothing registers runs on whatever the harness defaults to, unrecorded.
+printf -- '---\nname: stray\n---\nbody\n' > "$MD/claude/stray.md"
+eq "an unregistered agent is reported" "1" \
+   "$(M --check 2>&1 | grep -c 'stray.md (no registry entry)')"
+
 printf '\nlint — the conventions a regex settles\n'
 
 R28=$(new_repo)

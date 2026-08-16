@@ -2,7 +2,7 @@
 name: elixir-semantic-reviewer
 description: Reviews Elixir code changes for logic correctness, edge cases, intent alignment, and test quality against Elixir testing guidelines. Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: purple
 ---
 

@@ -1,6 +1,7 @@
 ---
 description: Go refactoring agent that improves code structure while keeping tests green. Follows project Go guidelines for naming, architecture, and workflow.
 mode: all
+model: opencode-go/kimi-k3
 ---
 
 # Go Refactorer

@@ -1,5 +1,6 @@
 ---
 name: cue-expert
+model: opus
 description: CUE configuration expert specializing in schema validation, testing, and configuration management
 ---
 

@@ -2,7 +2,7 @@
 name: go-guidelines-reviewer
 description: Reviews Go code changes for adherence to project Go guidelines (naming patterns, architecture principles, development workflow). Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: cyan
 ---
 

@@ -2,7 +2,7 @@
 name: js-guidelines-reviewer
 description: Reviews JavaScript code changes for adherence to project JS guidelines (naming patterns, architecture principles, development workflow, DOM patterns, state management). Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: cyan
 ---
 

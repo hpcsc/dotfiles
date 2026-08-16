@@ -1,6 +1,7 @@
 ---
 description: Reviews JavaScript code changes for concurrency issues including async/await, promise handling, shared state synchronization, and idempotency verification. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Concurrency JS Reviewer

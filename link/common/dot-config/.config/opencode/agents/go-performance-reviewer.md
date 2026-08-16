@@ -1,6 +1,7 @@
 ---
 description: Reviews Go code changes for performance issues using project Go performance guidelines. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Performance Go Reviewer

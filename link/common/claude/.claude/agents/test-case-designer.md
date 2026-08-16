@@ -2,7 +2,7 @@
 name: test-case-designer
 description: Designs test cases from task acceptance criteria and code context. Outputs a structured test plan for user approval — does not write test code.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: yellow
 ---
 

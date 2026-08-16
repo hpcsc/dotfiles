@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""clerk models — which model each agent runs on, and which step of the method it serves.
+
+The answer used to live in seventy-four frontmatter blocks across two trees that spell a
+model differently: Claude Code names a tier it resolves against the session's family,
+opencode names a provider and model outright. Nothing could show you the set, and
+changing one agent's tier meant finding it twice.
+
+The registry holds both spellings and the step each agent serves. This reads it, writes
+it, and stamps the trees from it, so the frontmatter is output rather than input.
+
+  clerk models                       every agent, its step and its models
+  clerk models <agent>               one agent, with the reason for its tier
+  clerk models --tool claude         only that tree's column
+  clerk models --json                the registry as data
+  clerk models set <agent> --claude sonnet [--opencode <id>] [--why "..."]
+  clerk models apply                 restamp both trees from the registry
+  clerk models --check               fail if a tree disagrees with the registry
+
+Dispatched to by `clerk` when invoked as `clerk models`, and runnable on its own.
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+HOME = Path.home()
+DEFAULT_REGISTRY = HOME / ".config/ai/method/agent-models.json"
+DEFAULT_DIRS = {"claude": HOME / ".claude/agents",
+                "opencode": HOME / ".config/opencode/agents"}
+FRONT = re.compile(r"\A---\n(.*?)\n---\n", re.S)
+TOOLS = ("claude", "opencode")
+
+
+def die(msg, code=2):
+    print(f"clerk models: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def load(path):
+    if not path.is_file():
+        die(f"no registry at {path}")
+    try:
+        return json.loads(path.read_text())
+    except ValueError as e:
+        die(f"{path} is not valid JSON: {e}")
+
+
+def model_for(reg, agent, tool):
+    return reg["agents"].get(agent, {}).get(tool, reg["defaults"][tool])
+
+
+def stamp(path, want):
+    """Set `model:` in this file's frontmatter. Returns the previous value, or None.
+
+    Only the model line is touched — the rest of the frontmatter belongs to whichever
+    harness reads it, and the registry has no opinion about the order of the others.
+    """
+    text = path.read_text()
+    m = FRONT.match(text)
+    if not m:
+        return False, None
+    lines = m.group(1).split("\n")
+    had, out, seen = None, [], False
+    for line in lines:
+        if re.match(r"^model:\s", line):
+            had = line.split(":", 1)[1].strip()
+            out.append(f"model: {want}")
+            seen = True
+        else:
+            out.append(line)
+    if not seen:
+        at = next((i for i, l in enumerate(out) if l.startswith("name:")), len(out) - 1)
+        out.insert(at + 1, f"model: {want}")
+    new = "\n".join(out)
+    if new != m.group(1):
+        path.write_text(f"---\n{new}\n---\n" + text[m.end():])
+        return True, had
+    return False, had
+
+
+def walk(reg, dirs):
+    """(agent, tool, path, want, have) for every registered agent in every tree."""
+    for agent in sorted(reg["agents"]):
+        for tool in TOOLS:
+            p = dirs[tool] / f"{agent}.md"
+            have = None
+            if p.is_file():
+                m = FRONT.match(p.read_text())
+                if m:
+                    have = next((l.split(":", 1)[1].strip() for l in m.group(1).split("\n")
+                                 if re.match(r"^model:\s", l)), None)
+            yield agent, tool, p, model_for(reg, agent, tool), have
+
+
+def cmd_list(reg, dirs, args):
+    agents = reg["agents"]
+    if args.agent:
+        if args.agent not in agents:
+            die(f"{args.agent} is not in the registry")
+        spec = agents[args.agent]
+        print(f"{args.agent}\n  step      {spec.get('step','(unstated)')}")
+        for tool in TOOLS:
+            src = "registry" if tool in spec else "default"
+            print(f"  {tool:<9} {model_for(reg, args.agent, tool):<26} ({src})")
+        if spec.get("why"):
+            print(f"  why       {spec['why']}")
+        return 0
+
+    tools = [args.tool] if args.tool else list(TOOLS)
+    width = max(len(a) for a in agents)
+    head = f"{'agent':<{width}}  " + "".join(f"{t:<26}" for t in tools) + "step"
+    print(head)
+    print("-" * len(head))
+    for agent in sorted(agents, key=lambda a: (agents[a].get("step", ""), a)):
+        row = f"{agent:<{width}}  "
+        for tool in tools:
+            mark = "" if tool in agents[agent] else " ·"
+            row += f"{model_for(reg, agent, tool) + mark:<26}"
+        print(row + agents[agent].get("step", ""))
+    shown = ", ".join(f"{t}: {reg['defaults'][t]}" for t in tools)
+    print(f"\n· = the tool's default ({shown})")
+    return 0
+
+
+def cmd_set(reg, dirs, args, registry_path):
+    if args.agent not in reg["agents"]:
+        die(f"{args.agent} is not in the registry; add it there first so its step is stated")
+    if not (args.claude or args.opencode or args.why):
+        die("name what to change: --claude, --opencode or --why")
+    spec = reg["agents"][args.agent]
+    changed = {}
+    for tool, val in (("claude", args.claude), ("opencode", args.opencode)):
+        if val:
+            changed[tool] = (model_for(reg, args.agent, tool), val)
+            spec[tool] = val
+    if args.why:
+        spec["why"] = args.why
+    registry_path.write_text(json.dumps(reg, indent=2) + "\n")
+    stamped = []
+    for tool in TOOLS:
+        p = dirs[tool] / f"{args.agent}.md"
+        if p.is_file():
+            wrote, _ = stamp(p, model_for(reg, args.agent, tool))
+            if wrote:
+                stamped.append(str(p))
+    print(json.dumps({"agent": args.agent, "changed": {k: {"from": a, "to": b}
+                                                       for k, (a, b) in changed.items()},
+                      "restamped": stamped}, indent=2))
+    return 0
+
+
+def cmd_apply(reg, dirs, check):
+    stale, missing, wrote = [], [], 0
+    for agent, tool, p, want, have in walk(reg, dirs):
+        if not p.is_file():
+            missing.append(f"{tool}/{agent}.md")
+            continue
+        if have == want:
+            continue
+        if check:
+            stale.append(f"{tool}/{agent}.md: has {have or '(none)'}, registry says {want}")
+        else:
+            ok, _ = stamp(p, want)
+            wrote += 1 if ok else 0
+    known = set(reg["agents"])
+    for tool in TOOLS:
+        if dirs[tool].is_dir():
+            for p in sorted(dirs[tool].glob("*.md")):
+                if p.stem not in known:
+                    missing.append(f"{tool}/{p.stem}.md (no registry entry)")
+    for m in missing:
+        print(f"  unregistered or missing: {m}")
+    if check:
+        for s in stale:
+            print(f"  stale: {s}")
+        if stale or missing:
+            print(f"\n{len(stale)} stale, {len(missing)} unregistered")
+            return 1
+        print(f"up to date: {len(reg['agents'])} agents × {len(TOOLS)} trees")
+        return 0
+    print(f"wrote {wrote} frontmatter changes across {len(reg['agents'])} agents × {len(TOOLS)} trees")
+    return 1 if missing else 0
+
+
+def main():
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("action", nargs="?", default="list")
+    ap.add_argument("agent", nargs="?")
+    ap.add_argument("--tool", choices=TOOLS)
+    ap.add_argument("--claude")
+    ap.add_argument("--opencode")
+    ap.add_argument("--why")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--registry", default=str(DEFAULT_REGISTRY))
+    ap.add_argument("--claude-dir", default=str(DEFAULT_DIRS["claude"]))
+    ap.add_argument("--opencode-dir", default=str(DEFAULT_DIRS["opencode"]))
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args()
+
+    if args.help:
+        print(__doc__.strip())
+        return 0
+
+    # `clerk models <agent>` reads more naturally than `clerk models list <agent>`.
+    if args.action not in ("list", "set", "apply") and args.agent is None:
+        args.agent, args.action = args.action, "list"
+
+    registry_path = Path(args.registry)
+    reg = load(registry_path)
+    dirs = {"claude": Path(args.claude_dir), "opencode": Path(args.opencode_dir)}
+
+    if args.json:
+        print(json.dumps(reg, indent=2))
+        return 0
+    if args.check:
+        return cmd_apply(reg, dirs, check=True)
+    if args.action == "apply":
+        return cmd_apply(reg, dirs, check=False)
+    if args.action == "set":
+        return cmd_set(reg, dirs, args, registry_path)
+    return cmd_list(reg, dirs, args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

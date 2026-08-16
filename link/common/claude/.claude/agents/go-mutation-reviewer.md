@@ -2,7 +2,7 @@
 name: go-mutation-reviewer
 description: Runs go-gremlins mutation testing on changed packages, interprets survived mutants, and surfaces only actionable test gaps. Outputs structured JSON verdict.
 tools: Bash, Glob, Grep, Read
-model: inherit
+model: opus
 color: purple
 ---
 

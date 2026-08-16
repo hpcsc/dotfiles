@@ -1,6 +1,7 @@
 ---
 description: Reviews Elixir code changes for performance issues using project Elixir performance guidelines. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Performance Elixir Reviewer

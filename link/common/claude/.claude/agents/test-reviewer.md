@@ -2,7 +2,7 @@
 name: test-reviewer
 description: Reviews tests for adherence to behavior-driven testing principles across all languages. Checks tests against comprehensive testing guidelines including public API testing, test clarity, anti-patterns, and proper mocking.
 tools: Bash, Glob, Grep, Read, TodoWrite
-model: inherit
+model: opus
 color: purple
 ---
 

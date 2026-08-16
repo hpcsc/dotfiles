@@ -1,6 +1,7 @@
 ---
 description: Refactoring agent that improves code structure while keeping tests green. Language-agnostic counterpart to go-refactorer.
 mode: all
+model: opencode-go/kimi-k3
 ---
 
 # Refactorer

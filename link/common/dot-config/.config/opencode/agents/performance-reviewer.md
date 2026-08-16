@@ -1,6 +1,7 @@
 ---
 description: Reviews code changes for performance issues including missing timeouts, resource leaks, and lack of graceful degradation. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Performance Reviewer

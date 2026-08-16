@@ -2,7 +2,7 @@
 name: js-refactorer
 description: JavaScript refactoring agent that improves code structure while keeping tests green. Follows JS guidelines for naming, architecture, and workflow.
 tools: Bash, Glob, Grep, Read, Edit, Write, TodoWrite
-model: inherit
+model: opus
 color: yellow
 ---
 

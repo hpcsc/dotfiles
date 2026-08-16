@@ -1,6 +1,7 @@
 ---
 description: Reviews Go code changes for concurrency issues using project Go concurrency guidelines. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Concurrency Go Reviewer

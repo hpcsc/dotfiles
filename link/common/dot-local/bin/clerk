@@ -1397,6 +1397,8 @@ USAGE
   clerk land [--integrate|--no-integrate] [--audit-accepted]
                                      archive the breakdown; land the branch only if asked
   clerk verify [--all-closed]        the mechanical half of run-verifier
+  clerk models [<agent>|set|apply]   which model each agent runs on, per harness, and
+                                     the step it serves; set rewrites both at once
   clerk version
 
 The commands that resolve a breakdown — next, status, finish, gate, land, story,

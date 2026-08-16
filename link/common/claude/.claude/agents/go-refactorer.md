@@ -2,7 +2,7 @@
 name: go-refactorer
 description: Go refactoring agent that improves code structure while keeping tests green. Follows project Go guidelines for naming, architecture, and workflow.
 tools: Bash, Glob, Grep, Read, Edit, Write, TodoWrite
-model: inherit
+model: opus
 color: yellow
 ---
 

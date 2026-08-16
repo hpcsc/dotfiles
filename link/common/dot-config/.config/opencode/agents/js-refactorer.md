@@ -1,6 +1,7 @@
 ---
 description: JavaScript refactoring agent that improves code structure while keeping tests green. Follows JS guidelines for naming, architecture, and workflow.
 mode: all
+model: opencode-go/kimi-k3
 ---
 
 # JS Refactorer

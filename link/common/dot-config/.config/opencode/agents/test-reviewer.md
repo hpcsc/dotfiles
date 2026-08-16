@@ -2,6 +2,7 @@
 description: Reviews tests for adherence to behavior-driven testing principles across all languages. Checks tests against comprehensive testing guidelines including public API testing, test clarity, anti-patterns, and proper mocking.
 mode: all
 temperature: 0.1
+model: opencode-go/kimi-k3
 ---
 
 # Test Quality Reviewer (Language-Agnostic)

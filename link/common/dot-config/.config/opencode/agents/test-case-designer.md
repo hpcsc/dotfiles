@@ -1,6 +1,7 @@
 ---
 description: Designs test cases from task acceptance criteria and code context. Outputs a structured test plan for user approval — does not write test code.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Test Case Designer

@@ -1,6 +1,7 @@
 ---
 description: Elixir refactoring agent that improves code structure while keeping tests green. Follows project Elixir guidelines for naming, architecture, and workflow.
 mode: all
+model: opencode-go/kimi-k3
 ---
 
 # Elixir Refactorer

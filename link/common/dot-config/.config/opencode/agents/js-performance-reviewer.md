@@ -1,6 +1,7 @@
 ---
 description: Reviews JavaScript code changes for performance issues including DOM thrashing, closure leaks, large allocations, and inefficient event handling. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Performance JS Reviewer

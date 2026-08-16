@@ -1,6 +1,7 @@
 ---
 description: Reviews JavaScript code changes for logic correctness, edge cases, intent alignment, and test quality against JS testing guidelines. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Semantic JS Reviewer

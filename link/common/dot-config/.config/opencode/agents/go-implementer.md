@@ -1,6 +1,7 @@
 ---
 description: Go implementation agent that writes tests first, then production code. Follows project Go guidelines for naming, architecture, testing, and workflow.
 mode: all
+model: opencode-go/kimi-k3
 ---
 
 # Go Implementer

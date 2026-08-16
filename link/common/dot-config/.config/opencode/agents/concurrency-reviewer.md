@@ -1,6 +1,7 @@
 ---
 description: Reviews code changes for concurrency issues including shared state synchronization, non-atomic operations, and idempotency verification. Outputs structured JSON verdict.
 mode: subagent
+model: opencode-go/kimi-k3
 ---
 
 # Concurrency Reviewer

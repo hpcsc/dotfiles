@@ -2,6 +2,7 @@
 description: Reviews JavaScript tests for adherence to behavior-driven testing principles. Checks tests against JS testing guidelines including public API testing, test clarity, anti-patterns, and proper mocking. Suggests valuable missing tests for uncovered behaviors.
 mode: all
 temperature: 0.1
+model: opencode-go/kimi-k3
 ---
 
 # Test Quality Reviewer for JS

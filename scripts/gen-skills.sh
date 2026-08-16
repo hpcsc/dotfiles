@@ -6,6 +6,10 @@
 # which is the failure class this whole arrangement exists to remove. Guidelines are
 # the opposite — consulted on demand, read partially by design — and stay referenced.
 #
+# The `model:` line is deliberately absent from every seam: agent-models.json owns it
+# for both trees at once, and two writers for one field means whichever ran last wins.
+# Run scripts/gen-agent-models.sh after this one — `task common:gen` does both in order.
+#
 # Usage: scripts/gen-skills.sh [--check]
 #   --check  exit 1 if any generated file is out of date, changing nothing
 
@@ -83,7 +87,10 @@ printf '%s\n' "$TARGETS" | while read -r method tool out; do
   rendered=$(render "$method" "$tool") || { fail=1; continue; }
 
   if [ "$CHECK" = true ]; then
-    if [ ! -f "$out" ] || ! printf '%s\n' "$rendered" | diff -q - "$out" >/dev/null 2>&1; then
+    # The `model:` line is stamped afterwards by gen-agent-models, from the registry that
+    # owns it for both trees. Comparing it here would fail every generated agent for
+    # carrying a field this script deliberately does not write.
+    if [ ! -f "$out" ] || ! printf '%s\n' "$rendered" | diff -q - <(grep -v '^model: ' "$out") >/dev/null 2>&1; then
       printf 'out of date: %s\n' "${out#$ROOT/}" >&2
       exit 1
     fi

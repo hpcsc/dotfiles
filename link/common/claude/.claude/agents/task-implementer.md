@@ -1,5 +1,6 @@
 ---
 name: task-implementer
+model: opus
 description: Implements one task end-to-end in a fresh context — designs tests, implements, refactors, and reviews. Spawns inner agents (test-case-designer, implementer, refactorer, reviewers), writes a distilled summary to tasks/.cycles/task-N.md, and returns a compact JSON status block. Use to keep the orchestrator's context small across many tasks.
 ---
 

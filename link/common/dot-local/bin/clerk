@@ -179,11 +179,12 @@ resolve_learnings_path() {
 # had to be redone by hand every run also the one with no test behind it.
 # --------------------------------------------------------------------------------
 
-FLAG_KEYS='in_place integrate review_plan'
+FLAG_KEYS='in_place integrate review_plan gears'
 
 # Accepts what a hand-written config plausibly says. Anything unrecognised reads as
 # false rather than failing: a typo in this file must never be what turns integration
-# on, and the flags all default off precisely because their "on" is the costly side.
+# on. Off is also what every flag means with nothing set at all, so an unreadable value
+# leaves the run behaving exactly as an unconfigured one.
 truthy() {
   case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
     true|1|yes|on) printf 'true' ;;
@@ -199,8 +200,9 @@ truthy() {
 # character in the description from ever reaching the shell as a pattern.
 #
 # Off wins a request that says both, for the reason truthy() reads an unrecognised
-# value as false: "on" is the irreversible side of all three, so an ambiguous signal
-# must never be what turns one on.
+# value as false: off is what a run does with nothing set, so an ambiguous signal must
+# never be what changes how one is driven. For the three that decide where the work
+# lands, off is the reversible side as well.
 request_flag() {
   local request=$1 on=$2 off=$3 toks
   toks=$(printf '%s' "$request" | tr -s '[:space:]' '\n')
@@ -220,6 +222,7 @@ resolve_flag() {
     in_place)    on='--in-place';    off='--worktree' ;;
     integrate)   on='--integrate';   off='--no-integrate' ;;
     review_plan) on='--review-plan'; off='--no-review-plan' ;;
+    gears)       on='--gears';       off='--no-gears' ;;
   esac
   if [ -n "$request" ] && v=$(request_flag "$request" "$on" "$off"); then
     printf '%s\trequest' "$v"; return
@@ -263,13 +266,14 @@ request_learnings_path() {
 # a key the resolver does not read is worse than no scaffold, because the setting then
 # appears to have been made.
 cmd_init() {
-  local force=false in_place=false integrate=false review_plan=false root path tracked=true
+  local force=false in_place=false integrate=false review_plan=false gears=false root path tracked=true
   while [ $# -gt 0 ]; do
     case "$1" in
       --force)       force=true;       shift ;;
       --in-place)    in_place=true;    shift ;;
       --integrate)   integrate=true;   shift ;;
       --review-plan) review_plan=true; shift ;;
+      --gears)       gears=true;       shift ;;
       *) die "init: unknown argument '$1'" ;;
     esac
   done
@@ -281,10 +285,10 @@ cmd_init() {
   mkdir -p "$root/tasks" || die "init: could not create $root/tasks"
   # Every key is written, including the ones left false. JSON takes no comments, so
   # listing them is the file's only way to tell a reader what it accepts — a scaffold
-  # holding just the one key you asked for teaches nothing about the other two.
+  # holding just the one key you asked for teaches nothing about the rest.
   jq -n --argjson in_place "$in_place" --argjson integrate "$integrate" \
-        --argjson review_plan "$review_plan" \
-    '{in_place: $in_place, integrate: $integrate, review_plan: $review_plan}' > "$path" \
+        --argjson review_plan "$review_plan" --argjson gears "$gears" \
+    '{in_place: $in_place, integrate: $integrate, review_plan: $review_plan, gears: $gears}' > "$path" \
     || die "init: could not write $path"
 
   # A repo that gitignores tasks/ cannot track this file, so the tracked tier is simply
@@ -825,6 +829,13 @@ criteria_counts() {
 
 # Progress, for a human. The breakdown carries no progress checkboxes, so this is what
 # you read instead of skimming the markdown for ticks.
+#
+# `gears` rolls up the two fields the decomposition assessed per task: how sure the plan
+# is that the repo already answers how to build it, and what being wrong about it would
+# cost. Both are reported whatever the `gears` flag says — the flag decides whether a run
+# changes how it drives, never whether the assessment is available to read. `unassessed`
+# lists the tasks carrying neither, which is every task in a breakdown planned before the
+# fields existed; a caller must be able to tell those from tasks genuinely judged routine.
 status_of() {
   local tasks=$1 side=$2 archived=$3 label=${4:-$1} crit
 
@@ -844,9 +855,13 @@ status_of() {
        criteria: {total: ([$crit[].total] | add // 0), ticked: ([$crit[].ticked] | add // 0),
                   unticked: (([$crit[].total] | add // 0) - ([$crit[].ticked] | add // 0))},
        done_with_unticked_criteria: $unwalked,
+       gears: {low_certainty:     [$all[] | select(.certainty == "low")    | .n],
+               high_blast_radius: [$all[] | select(.blast_radius == "high") | .n],
+               unassessed:        [$all[] | select(has("certainty") | not)  | .n]},
        progress: [$all[]
          | ($c[.n | tostring] // {total: 0, ticked: 0}) as $k
          | {n, title, done: (.done == true),
+            certainty: (.certainty // null), blast_radius: (.blast_radius // null),
             criteria: {total: $k.total, ticked: $k.ticked, unticked: ($k.total - $k.ticked)},
             blocked_by: [(.depends_on // [])[] | select(([.] | inside($done)) | not)]}]}' "$side"
 }
@@ -1355,7 +1370,7 @@ usage() {
 clerk — deterministic mechanics for an implementation run
 
 USAGE
-  clerk init [--force] [--in-place] [--integrate] [--review-plan]
+  clerk init [--force] [--in-place] [--integrate] [--review-plan] [--gears]
                                      scaffold tasks/clerk.json with the flags named
                                      set on and the rest written out off
   clerk prepare [--request <text>]   resolve the repo's facts as JSON; the request is
@@ -1373,7 +1388,8 @@ USAGE
                                      refuse that word as the bash builtin)
   clerk sidecar [--force]            recover tasks/<story>.json from a breakdown
                                      written before sidecars existed
-  clerk status                       progress from the sidecar, for a human
+  clerk status                       progress from the sidecar, for a human, plus each
+                                     task's assessed certainty and blast radius
   clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
                                      record a suite run against the SHA it describes
   clerk gate [--audit-accepted] [--tasks-file <f>]
@@ -1387,13 +1403,19 @@ The commands that resolve a breakdown — next, status, finish, gate, land, stor
 sidecar — all take --tasks-file to name it when tasks/ holds more than one. verify
 reads this run's own records instead, and prepare reports every breakdown it found.
 
-Per-repo flag defaults — in_place, integrate, review_plan — come from tasks/clerk.json
-(tracked, a team decision) or tasks/.environment (gitignored, machine-local), in that
-order. `clerk init` scaffolds the first one. prepare reports the resolved values as
-`flags` and where each came from as `flag_sources`; land applies `integrate` itself. A
-flag typed on the command line always wins, and --no-integrate turns off what a config
-file switched on. Pass the request to `prepare --request` and it applies that top layer
-too, reporting `request` as the source; a request saying both reads as off.
+Per-repo flag defaults — in_place, integrate, review_plan, gears — come from
+tasks/clerk.json (tracked, a team decision) or tasks/.environment (gitignored,
+machine-local), in that order. `clerk init` scaffolds the first one. prepare reports the
+resolved values as `flags` and where each came from as `flag_sources`; land applies
+`integrate` itself. A flag typed on the command line always wins, and --no-integrate
+turns off what a config file switched on. Pass the request to `prepare --request` and it
+applies that top layer too, reporting `request` as the source; a request saying both
+reads as off.
+
+`gears` alone changes nothing a command does: it tells the skill reading it whether to
+act on each task's certainty and blast radius or merely report them. Off — the default —
+every task is built straight through, which is what a run does with no configuration at
+all. `clerk status` reports the assessment either way.
 
 Everything here is mechanical. Judgment — writing code, reviewing it, deciding a fix
 is right — stays with the caller.

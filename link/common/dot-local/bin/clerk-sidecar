@@ -181,15 +181,24 @@ def main(argv):
     out = tasks.with_suffix(".json")
     text = tasks.read_text()
 
-    # Regenerating must not discard progress. `done` is the one field here not derived
-    # from the markdown, so it is carried across a --force rewrite. Two sources of prior
+    # Regenerating must not discard what this parse cannot rebuild. Two sources of prior
     # progress: a sidecar being regenerated, and — for a breakdown written when the
     # checklist still carried it — the ticks in the markdown.
     prior = set(ticked(text))
+    # The plan's own judgments and their evidence. These are stated in the markdown, but as
+    # prose this parser does not read, so a --force rewrite would quietly return a current
+    # breakdown to looking unassessed — and unassessed is a claim about the plan, not a
+    # gap in a file. Carried across verbatim, keyed by task number.
+    kept = {}
     if out.exists():
         try:
-            prior |= {t["n"] for t in json.loads(out.read_text()).get("tasks", []) if t.get("done") is True}
-        except (OSError, json.JSONDecodeError, KeyError):
+            for t in json.loads(out.read_text()).get("tasks", []):
+                if t.get("done") is True:
+                    prior.add(t["n"])
+                held = {k: t[k] for k in ("certainty", "blast_radius", "patterns_to_follow") if k in t}
+                if held:
+                    kept[t["n"]] = held
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
             pass
 
     if out.exists() and not force:
@@ -210,6 +219,7 @@ def main(argv):
             "title": t["title"],
             "language": language_of(t["files"]),
             "testable": not t["testable_raw"].lower().startswith("no"),
+            **kept.get(t["n"], {}),
             "depends_on": parse_deps(t["deps_raw"]),
             "affected_files": t["files"],
             "done": t["n"] in prior,

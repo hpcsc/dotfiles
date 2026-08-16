@@ -94,8 +94,8 @@ A high raw file count with a low weighted count is normal in a repo carrying a w
 
 The same two judgments `decompose-to-tasks` makes per task, made here per deliverable — over the deliverable as a whole, not by taking the worst of its tasks.
 
-- **`certainty`** — `high` / `medium` / `low`. How confidently this repo already answers how to build it. `high` needs a precedent you can name by file. `low` means the design is what the deliverable decides.
-- **`blast_radius`** — `high` / `low`. What being wrong costs, whatever the odds. `high` for authentication or authorization, money arithmetic, a schema migration or destructive write, credential handling, personal data, or a contract consumed outside this repository.
+- **`certainty`** — `high` / `medium` / `low`. How confidently this repo already answers how to build it. Each value costs a sentence: `high` needs a precedent you can name by file, `medium` needs that precedent **and** the variation no instance covers, `low` names which of the three low cases applies. When you can write neither of the first two sentences it is `low`, not `medium` — the middle is where a stated partial precedent goes, not where uncertainty goes.
+- **`blast_radius`** — `high` / `low`. What being wrong costs, whatever the odds. `high` for authentication or authorization, money arithmetic, a schema migration or destructive write, credential handling, a change to who can reach personal data, a contract consumed outside this repository, or anything the repo's learnings file names. Judge it by whether being wrong changes who can reach one of those, what happens to it, or whether it can be undone — not by whether the deliverable's files mention it.
 
 They are the plan's answer to a question the driver otherwise has no way to ask. A wave fires every ready deliverable into a background pane at once, and readiness comes from the dependency DAG alone — so absent this, a deliverable rewriting the permission model launches unattended exactly like one adding a formatter, and the plan had the information to say otherwise.
 
@@ -130,7 +130,9 @@ Deliverable count is a result, not a plan. If you have more deliverables than th
 For every deliverable, write **two files** in the **exact `decompose-to-tasks` format** so `implement-flow` adopts them unchanged:
 
 - `tasks/<story-slug>/<deliverable-slug>/tasks.md` — the tasks in prose
-- `tasks/<story-slug>/<deliverable-slug>/tasks.json` — the sidecar beside it, carrying each task's `n`, `title`, `language`, `testable`, `certainty`, `blast_radius`, `depends_on` and `done: false`
+- `tasks/<story-slug>/<deliverable-slug>/tasks.json` — the sidecar beside it, carrying each task's `n`, `title`, `language`, `testable`, `certainty`, `blast_radius`, `patterns_to_follow`, `depends_on` and `done: false`
+
+`patterns_to_follow` in the sidecar is the references alone, as an array — `internal/events/order.go:40-70`, or `task:2` for a precedent an earlier task in the same deliverable creates. Run `clerk lint --rule certainty-unevidenced <each tasks.json>` before returning and fix what it reports: an assessment of `high` or `medium` with no precedent, or one citing a file that is not there, is a claim with nothing behind it.
 
 The sidecar is where a run records progress, so a deliverable without one forces its run through a recovery parse before it can start. Both files describe the same tasks; revise them together.
 
@@ -244,7 +246,7 @@ Before returning, verify:
 - [ ] The deliverable count does not exceed the story's acceptance-criterion count — or names the criterion that genuinely needed two deliverables.
 - [ ] No deliverable exceeds 15 judgment-weighted files, counting generated and mechanical-wiring files at zero; any deliverable whose raw count runs far above its weighted count says why.
 - [ ] Every deliverable leaves the codebase green when merged alone.
-- [ ] Every deliverable carries a `certainty` and a `blast_radius`, and no `certainty: high` lacks a precedent you could name.
+- [ ] Every deliverable carries a `certainty` and a `blast_radius`; no `certainty: high` lacks a precedent you could name, and no `certainty: medium` lacks the variation that precedent does not cover.
 - [ ] The dependency DAG is acyclic; waves are derived from it; wave-1 deliverables have no dependencies.
 - [ ] Each dependent deliverable's `base` (master vs. stacked sibling) matches its `depends_on`.
 - [ ] No scheduling vocabulary ("PR N", wave numbers) in any deliverable title, task, or text that reaches a commit/PR — only in `plan.yaml` and branch names.

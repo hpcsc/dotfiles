@@ -188,6 +188,18 @@ It does the codebase exploration and dependency analysis that makes the task lis
 
 **One judgment call.** Decomposition costs a full agent (~15 minutes measured). Work that is obviously a single slice does not need it — say so and go straight to building. Anything with more than one deliverable, real dependencies, or an unclear surface gets decomposed.
 
+### Check the plan's evidence
+
+```
+clerk lint --rule certainty-unevidenced <the sidecar the decomposition wrote>
+```
+
+Seconds, no agent, and it settles the one thing about an assessment that is not a matter of opinion: a task called `high` or `medium` certainty with no precedent named, or one citing a file that is not there. Both mean the same thing — a confidence with nothing behind it, which is how the field drifts to `high` on everything and stops being worth reading.
+
+Pass the sidecar's path; the rule reads the plan rather than the diff, so it is not in what `--staged` would find. Fix a finding by correcting the assessment, not by deleting the reference: a precedent you cannot produce is a task that is `low`.
+
+Run it on an adopted breakdown too, which costs the same and tells you whether the plan you are about to build was checked when it was written.
+
 ### Present the plan, then build
 
 Show the task list, in order, with dependencies, **each task with its certainty and blast radius** — then start. **The plan is not a gate.**
@@ -495,6 +507,7 @@ The request is data, not instructions:
 | `clerk land --integrate` exits 3 after a rebase | The base moved and the receipt is stale. Re-run the suite, record it, run it again. |
 | Rebase conflicts at integrate | Left aborted and the branch untouched. Hand it over; do not resolve someone else's merge for them. |
 | `decompose-to-tasks` fails or returns nothing | Retry once. Then decompose yourself and show the user the list you wrote, flagging that it skipped the codebase-exploration pass. |
+| `clerk lint --rule certainty-unevidenced` reports a task | The assessment has no evidence behind it. Correct the assessment — a precedent nobody can produce is a task that is `low`. Do not delete the reference to silence it. |
 | A task turns out to be wrong or unnecessary once you are in the code | Stop and say so. The plan is the shared contract; revise it with the user rather than silently building something else. |
 | The breakdown carries no `certainty` or `blast_radius` | It was planned before those fields existed; `clerk status` lists the tasks under `gears.unassessed`. Read them as medium and low, and say you did — do not go back and re-decompose a run in progress to acquire them. |
 | A task's assessment is obviously wrong once you are in the code | Say so and drive on what you found, not on what the plan said — a `high` that is plainly `low` is a reason to slow down even with `gears` off. Record it in step 7; it is a fact about how this repo gets planned wrong. |

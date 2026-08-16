@@ -148,6 +148,37 @@ eq "and so is an empty request" "false" \
 eq "an unknown argument is refused rather than ignored" "2" \
    "$(run "$RF" prepare --nonsense >/dev/null 2>&1; printf '%s' $?)"
 
+# gears is the fourth flag and rides the same ladder. Its default matters more than the
+# others': off is not merely the reversible side, it is the behaviour every run had
+# before the flag existed, so a repo that sets nothing must be unable to acquire it.
+RG=$(new_repo)
+eq "gears is off with nothing set" "false" "$(run "$RG" prepare | jq -r '.flags.gears')"
+eq "and reports no source for it"  "default" "$(run "$RG" prepare | jq -r '.flag_sources.gears')"
+eq "the request turns it on"       "true" \
+   "$(run "$RG" prepare --request 'build the thing --gears' | jq -r '.flags.gears')"
+eq "and --no-gears turns it off again" "false" \
+   "$(run "$RG" prepare --request 'build the thing --no-gears' | jq -r '.flags.gears')"
+# "model the gears of a gearbox" is an ordinary request, and reading the bare word as an
+# instruction would drive a run differently because of what it was asked to build. The
+# source is what proves it: `default` means the request was not what decided this.
+eq "the bare word in prose is not the flag" "false|default" \
+   "$(run "$RG" prepare --request 'model the gears of a gearbox' \
+      | jq -r '[(.flags.gears|tostring), .flag_sources.gears] | join("|")')"
+eq "and neither is one inside a longer token" "false|default" \
+   "$(run "$RG" prepare --request 'rewrite the --gears-config parser' \
+      | jq -r '[(.flags.gears|tostring), .flag_sources.gears] | join("|")')"
+
+mkdir -p "$RG/tasks"; printf '{"gears": true}\n' > "$RG/tasks/clerk.json"
+eq "a tracked config switches it on"   "true" "$(run "$RG" prepare | jq -r '.flags.gears')"
+eq "and the request still outranks it" "false" \
+   "$(run "$RG" prepare --request 'x --no-gears' | jq -r '.flags.gears')"
+
+RI=$(new_repo)
+eq "init writes every flag key, not only the one named" "in_place integrate review_plan gears" \
+   "$(run "$RI" init --gears | jq -r '.flags | keys_unsorted | join(" ")')"
+eq "with the named one on and the rest off" "false false false true" \
+   "$(jq -r '[.in_place, .integrate, .review_plan, .gears] | join(" ")' "$RI/tasks/clerk.json")"
+
 # --------------------------------------------------------------------------------
 printf '\nlearnings path\n'
 
@@ -704,6 +735,26 @@ eq "and the recovered edges block the rest" "2" "$(run "$R9" next | jq -r '.bloc
 eq "it refuses to clobber an existing sidecar" "false" "$(run "$R9" sidecar | jq -r '.written')"
 eq "unless forced"                             "true"  "$(run "$R9" sidecar --force | jq -r '.written')"
 
+# The plan's judgments and their evidence are stated in the markdown as prose this parser
+# does not read, so a --force rewrite that rebuilt only what it parses would quietly return
+# an assessed breakdown to looking unassessed — and "nobody looked" is a claim about the
+# plan, not a gap in a file.
+jq '.tasks[0] += {certainty: "high", blast_radius: "low",
+                  patterns_to_follow: ["internal/events/order.go"]}
+    | .tasks[1] += {certainty: "low", blast_radius: "high"}' \
+  "$R9/tasks/legacy.json" > "$R9/tasks/legacy.tmp" && mv -f "$R9/tasks/legacy.tmp" "$R9/tasks/legacy.json"
+run "$R9" sidecar --force >/dev/null
+eq "a forced rewrite keeps the assessment it cannot re-derive" "high low" \
+   "$(jq -r '.tasks[0] | [.certainty, .blast_radius] | join(" ")' "$R9/tasks/legacy.json")"
+eq "and the evidence behind it" "internal/events/order.go" \
+   "$(jq -r '.tasks[0].patterns_to_follow | join(",")' "$R9/tasks/legacy.json")"
+eq "carried per task, not copied across them" "low high" \
+   "$(jq -r '.tasks[1] | [.certainty, .blast_radius] | join(" ")' "$R9/tasks/legacy.json")"
+eq "a task that never had one still has none" "null" \
+   "$(jq -r '.tasks[2].certainty' "$R9/tasks/legacy.json")"
+eq "and the fields it does re-derive are still rebuilt" "Wire the handler" \
+   "$(jq -r '.tasks[1].title' "$R9/tasks/legacy.json")"
+
 # A breakdown with only a checklist yields numbers and titles but no edges — safe,
 # because a breakdown is emitted in dependency order, but it must say so.
 R10=$(new_repo); mkdir -p "$R10/tasks"
@@ -953,6 +1004,50 @@ eq "an unticked criterion does not shut the gate" "true" \
 eq "though status still says so"                  "2" \
    "$(run "$R17" status | jq -r '.criteria.unticked')"
 
+
+# --------------------------------------------------------------------------------
+printf '\ncertainty and blast radius\n'
+
+# Reported whatever the gears flag says. The flag decides whether a run changes how it
+# drives; it must never decide whether the assessment can be read — a wave whose riskiest
+# task is only findable by opening the sidecar is one where nobody will find it.
+RC1=$(new_repo); mkdir -p "$RC1/tasks"
+printf -- '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n' > "$RC1/tasks/story.md"
+cat > "$RC1/tasks/story.json" <<'EOF'
+{"story":"demo","tasks_file":"tasks/story.md","tasks":[
+ {"n":1,"title":"One","certainty":"high","blast_radius":"low","depends_on":[],"done":false},
+ {"n":2,"title":"Two","certainty":"low","blast_radius":"high","depends_on":[],"done":false},
+ {"n":3,"title":"Three","depends_on":[],"done":false}]}
+EOF
+git -C "$RC1" add -A && git -C "$RC1" commit -qm Plan
+
+S=$(run "$RC1" status)
+eq "status carries each task's assessment through" "high low" \
+   "$(printf '%s' "$S" | jq -r '.progress[0] | [.certainty, .blast_radius] | join(" ")')"
+eq "and rolls up the ones worth looking at" "2|2" \
+   "$(printf '%s' "$S" | jq -r '[(.gears.low_certainty | join(",")), (.gears.high_blast_radius | join(","))] | join("|")')"
+
+# A task planned before the fields existed and one judged routine are different facts, and
+# a reader must be able to tell them apart: reporting the first as `low`/`low` would say
+# the plan looked and found nothing, which it did not.
+eq "an unassessed task is named as unassessed, not as routine" "3" \
+   "$(printf '%s' "$S" | jq -r '.gears.unassessed | join(",")')"
+eq "and reads as null rather than a value it was never given" "[null,null]" \
+   "$(printf '%s' "$S" | jq -c '.progress[2] | [.certainty, .blast_radius]')"
+
+# `next` hands the run the whole task object, so the two travel to the point of use with
+# no second lookup — and a breakdown predating the fields still resolves rather than erroring.
+eq "next hands the assessment to the run with the task" "1 high low" \
+   "$(run "$RC1" next | jq -r '.task | [(.n|tostring), .certainty, .blast_radius] | join(" ")')"
+
+RC2=$(new_repo); mkdir -p "$RC2/tasks"
+printf -- '### Task 1: Legacy\n' > "$RC2/tasks/old.md"
+printf '{"tasks":[{"n":1,"title":"Legacy","depends_on":[],"done":false}]}\n' > "$RC2/tasks/old.json"
+git -C "$RC2" add -A && git -C "$RC2" commit -qm Plan
+eq "a breakdown with no assessments still reports progress" "1" \
+   "$(run "$RC2" status | jq -r '.total')"
+eq "listing every task as unassessed" "1" \
+   "$(run "$RC2" status | jq -r '.gears.unassessed | join(",")')"
 
 # --------------------------------------------------------------------------------
 printf '\nstatus --all\n'
@@ -1898,9 +1993,85 @@ eq "an unknown rule is refused rather than silently skipped" "2" \
    "$(run "$R30" lint --rule nonsense >/dev/null 2>&1; echo $?)"
 
 # --------------------------------------------------------------------------------
+printf '\nlint — a plan assessment with nothing behind it\n'
+
+# The only rule here that reads the plan rather than the diff. `certainty` decides how hard
+# a run drives itself and is assessed by the party that gains from calling everything
+# routine, so what makes it worth anything is that high and medium must name a precedent.
+R31=$(new_repo); mkdir -p "$R31/tasks" "$R31/internal/events"
+printf 'package events\n' > "$R31/internal/events/order.go"
+L() { run "$R31" lint --rule certainty-unevidenced --json tasks/story.json; }
+
+cat > "$R31/tasks/story.json" <<'EOF'
+{"story":"demo","tasks":[
+ {"n":1,"title":"Repeat it","certainty":"high","patterns_to_follow":["internal/events/order.go:40-70"],"depends_on":[]},
+ {"n":2,"title":"Vary it","certainty":"medium","patterns_to_follow":["internal/events/order.go"],"depends_on":[]},
+ {"n":3,"title":"Invent it","certainty":"low","patterns_to_follow":[],"depends_on":[]}]}
+EOF
+eq "a named precedent that resolves passes" "0" "$(L | jq 'length')"
+
+cat > "$R31/tasks/story.json" <<'EOF'
+{"story":"demo","tasks":[
+ {"n":1,"title":"Claim it","certainty":"high","patterns_to_follow":[],"depends_on":[]},
+ {"n":2,"title":"Claim it too","certainty":"medium","depends_on":[]},
+ {"n":3,"title":"Decide it","certainty":"low","patterns_to_follow":[],"depends_on":[]}]}
+EOF
+eq "high and medium with no precedent are both reported" "1,2" \
+   "$(L | jq -r '[.[] | .message | capture("task (?<n>[0-9]+)").n] | join(",")')"
+eq "and low with none is left alone, which is what low means" "0" \
+   "$(L | jq '[.[] | select(.message | contains("task 3"))] | length')"
+eq "a missing field is not a failed assessment" "0" \
+   "$(printf '{"tasks":[{"n":1,"title":"Legacy","depends_on":[]}]}\n' > "$R31/tasks/story.json"; L | jq 'length')"
+
+# The failure the rule exists for. Producing *a* string is free; producing one naming a
+# file that is really there is not, and an invented precedent is how high spreads.
+cat > "$R31/tasks/story.json" <<'EOF'
+{"story":"demo","tasks":[
+ {"n":1,"title":"Cite a ghost","certainty":"high","patterns_to_follow":["internal/events/nope.go:10-20"],"depends_on":[]}]}
+EOF
+eq "a precedent citing a file that is not there is reported" "1" "$(L | jq 'length')"
+eq "and the message names the path, not the line range" "true" \
+   "$(L | jq -r '.[0].message | contains("internal/events/nope.go does not exist")')"
+
+# A task may legitimately follow a pattern an earlier task in the same breakdown creates,
+# which cannot exist on disk when the plan is written.
+cat > "$R31/tasks/story.json" <<'EOF'
+{"story":"demo","tasks":[
+ {"n":1,"title":"Establish it","certainty":"low","patterns_to_follow":[],"depends_on":[]},
+ {"n":2,"title":"Follow it","certainty":"high","patterns_to_follow":["task:1"],"depends_on":[1]},
+ {"n":3,"title":"Follow a ghost","certainty":"high","patterns_to_follow":["task:9"],"depends_on":[]}]}
+EOF
+eq "a forward reference to a sibling task is allowed" "0" \
+   "$(L | jq '[.[] | select(.message | contains("task 2"))] | length')"
+eq "but not to a task the breakdown does not have" "1" \
+   "$(L | jq '[.[] | select(.message | contains("task 3"))] | length')"
+
+# The rule is keyed on shape, not on living under tasks/: a repo may keep breakdowns
+# elsewhere, and a check that silently passes on a path it did not recognise is worse
+# than one that is off.
+printf '{"name":"x","version":"1.0.0"}\n' > "$R31/package.json"
+eq "a json file that is not a sidecar is passed over" "0" \
+   "$(run "$R31" lint --rule certainty-unevidenced --json package.json | jq 'length')"
+eq "and so is one that is not json at all" "0" \
+   "$(run "$R31" lint --rule certainty-unevidenced --json internal/events/order.go | jq 'length')"
+
+# deliver-story hands runs an absolute path into the main checkout, because a worktree does
+# not contain a gitignored tasks/ tree. Stripping leading characters rather than a prefix
+# turned that into a relative path matching nothing — a rule reporting clean on a file it
+# never opened, which is the one failure a linter must not have.
+cat > "$R31/tasks/story.json" <<'EOF'
+{"story":"demo","tasks":[
+ {"n":1,"title":"Claim it","certainty":"high","patterns_to_follow":[],"depends_on":[]}]}
+EOF
+eq "an absolute path is linted, not silently skipped" "1" \
+   "$(run "$R31" lint --rule certainty-unevidenced --json "$R31/tasks/story.json" | jq 'length')"
+eq "and so is one written ./relative" "1" \
+   "$(run "$R31" lint --rule certainty-unevidenced --json ./tasks/story.json | jq 'length')"
+
+# --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

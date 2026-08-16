@@ -162,10 +162,41 @@ run where code lands after the last green. Re-audit narrowed to the lenses that 
 what was fixed, widening to the full panel if any fix touched behaviour.
 
 Then the step no machine does: re-read the request verbatim against the finished branch
-and ask what it asked for that the branch does not do. `clerk verify` handles the
-mechanical checks and reports what it could not settle; `run-verifier` works only that
-residue. `clerk land` gates, archives on the feature branch, and integrates only when
-asked.
+and ask what it asked for that the branch does not do. Then write the theory down — the
+run is the last reader of the branch that understands it without reading it, and a
+reviewer handed a diff and nothing else has to reconstruct from scratch what the run
+could state in five sentences. `clerk verify` handles the mechanical checks and reports
+what it could not settle; `run-verifier` works only that residue. `clerk land` gates,
+archives on the feature branch, and integrates only when asked.
+
+### Certainty is planned, and acting on it is opt-in
+
+`decompose-to-tasks` assesses two things per task, because it has just explored the
+codebase and nothing downstream is better placed to: **`certainty`** (does this repo
+already answer how to build this) and **`blast_radius`** (what being wrong would cost,
+whatever the odds — binary, because it is a veto rather than a gradient). Kept apart
+deliberately: a task written twenty times before against the payments ledger is high on
+both, and averaged into one "risk" score it gets neither the speed it earned nor the care
+it needs.
+
+Every certainty value costs a sentence, which is the only thing keeping the field honest.
+`high` needs a precedent named by file and line; `medium` needs that precedent **and** the
+variation no existing instance covers; unable to write either, it is `low`. Without the
+middle rule the field dies quietly: every task varies its pattern somehow, so `medium` is
+true of nearly everything and never wrong, and a breakdown assessed entirely `medium` is
+indistinguishable from one never assessed at all.
+
+They are always written and always reported — `clerk status` rolls them up, `clerk next`
+hands them to the run, the deliverable driver prints them on every launch line. The
+`gears` flag decides only whether a run **acts** on them, and it is off by default, so a
+run with nothing configured behaves exactly as it always has.
+
+On, a task assessed `low` certainty or `high` blast radius stops after its tests are
+written and red, before any implementation — the tests are where the theory lives, and
+that is the last moment at which being wrong costs only the tests. Two observed signals
+downshift the rest of the run into the same rhythm: an implementation that took more than
+one attempt to go green, and a `clerk lint --staged` finding. It upshifts again after two
+clean tasks, because a pause that arrives on every task stops carrying information.
 
 ---
 
@@ -186,6 +217,7 @@ flowchart LR
     m6["staged tails, vacuous<br/>receipts, unreferenced symbols"]
     m7["which sections of which<br/>guideline a language needs"]
     m8["which commit a fix belongs to,<br/>when only one touched the file"]
+    m9["whether a precedent was named,<br/>and whether it is really there"]
   end
   subgraph J["the model · judgment"]
     direction TB
@@ -195,13 +227,14 @@ flowchart LR
     j4["whether the branch delivers<br/>what was asked"]
     j5["whether one commit<br/>mixes two concerns"]
     j6["which commit a defect came in with,<br/>when several touched the file"]
+    j7["how sure to be, and what<br/>being wrong would cost"]
   end
   M -.->|"facts, refusals,<br/>and what it could not settle"| J
   J -.->|"assertions it cannot infer<br/>--audit-accepted"| M
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
-  class m1,m2,m3,m4,m5,m6,m7,m8 clerk
-  class j1,j2,j3,j4,j5,j6 you
+  class m1,m2,m3,m4,m5,m6,m7,m8,m9 clerk
+  class j1,j2,j3,j4,j5,j6,j7 you
 ```
 
 The right-to-left arrow matters as much as the other one. "The audit's findings are
@@ -212,46 +245,60 @@ it with `--audit-accepted`, and without that the gate stays shut.
 
 | Command | What it settles | Exit |
 |---|---|---|
-| `init [--force] [--in-place] [--integrate] [--review-plan]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
+| `init [--force] [--in-place] [--integrate] [--review-plan] [--gears]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
 | `prepare [--request <text>]` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, which commit skill to invoke, resolved run flags with their sources, every existing worktree and breakdown with its progress, and `resume` — the part-built run to rejoin, paired with its worktree. Given the request, it applies the flags and `--learnings-path` typed in it as the top layer | 0 |
 | `guidelines [--language <L>]... [--caller <p>] [--file FILE]... [--section FILE:HEADING]... [--only]` | The required reading for those languages as text: short files whole, long ones cut to the sections a run must have loaded, plus any file or section named outright; `--only` narrows it to exactly what was named, for an agent that wants its own guideline rather than its language's. A "Not loaded" report for anything a reorganised guideline no longer satisfies | 0 · **2** no guidelines dir |
 | `worktree <kebab-name> [--base <ref>]` | This run's worktree under `.worktrees/`, with `.worktrees/` written to `info/exclude` so it does not read as a dirty tree. Adopts an existing worktree or orphaned branch of that name; refuses the main checkout's own branch | 0 · **2** refused |
 | `branch <kebab-name>` | The in-place counterpart of `worktree`: a feature branch when standing on the default one, a switch when it already exists, a no-op otherwise | 0 · **2** refused |
 | `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
-| `status [--all]` | Progress from the sidecar, plus acceptance criteria walked per task; `--all` walks every breakdown in the repo, in flight and archived | 0 |
+| `status [--all]` | Progress from the sidecar, plus acceptance criteria walked per task and each task's assessed certainty and blast radius rolled up as `gears`; `--all` walks every breakdown in the repo, in flight and archived | 0 |
 | `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it (`complete` is an accepted alias) | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
 | `fixup [--onto <sha>] -- <files>` · `fixup --replay [--force]` | Marks a fix for the commit that introduced it, refusing when several commits in range touch the file or when the files' targets differ; then one autosquash replay, aborted and reverted on conflict, refused on a published range | 0 · **3** needs your judgment |
 | `learn --type <t> --title <s> --learning <s> --apply-when <s>` · `learn --list` | Appends the block to the learnings file resolved from the **repo root**, not the worktree the run is standing in; refuses an exact title collision, leaving dedup on substance to the caller | 0 · **3** title exists |
+| `lint [--staged] [--rule <r>]... [<paths>]` | The conventions a regex settles: a comment naming code by its plan position, scenario-named sibling tests, a method apart from its type — and, over a breakdown's sidecar, a certainty assessed `high` or `medium` with no precedent behind it | 0 clean · **1** findings |
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 
 Every command takes `--tasks-file` when `tasks/` holds more than one breakdown. Exit 2
 is a usage error throughout.
 
+`lint`'s bar is not "is this in the guidelines" but "does this decide without judgment".
+`certainty-unevidenced` is the one rule that reads the plan rather than the diff, and it
+sits just inside that bar: whether a precedent was named, and whether the file it names is
+really there, are lookups. Whether the variation a `medium` claims is genuinely uncovered
+by that precedent is a judgment, so it stays a quality standard the decomposer weighs.
+
+That split is what makes the rule worth having. `certainty` steers how hard a run drives
+itself, and it is assessed by the party that gains from calling everything routine — so
+the guard is that `high` and `medium` must name a precedent, and a guard stated in prose
+for an agent to self-check holds exactly as often as the agent remembers it. Producing *a*
+string is free; producing one that names a file really on disk is not.
+
 ### Per-repo flag defaults
 
-`--in-place`, `--integrate` and `--review-plan` are as often properties of the repo as
-of the run — a repo whose build cannot work from a worktree wants `--in-place` every
-time — so each is also a setting. Two files, highest first:
+`--in-place`, `--integrate`, `--review-plan` and `--gears` are as often properties of the
+repo as of the run — a repo whose build cannot work from a worktree wants `--in-place`
+every time, and one whose work is mostly in a blast radius wants `--gears` — so each is
+also a setting. Two files, highest first:
 
 ```console
 $ clerk init --in-place          # scaffolds the tracked file, in_place already on
 {"created": ".../tasks/clerk.json", "tracked": true,
- "flags": {"in_place": true, "integrate": false, "review_plan": false}, ...}
+ "flags": {"in_place": true, "integrate": false, "review_plan": false, "gears": false}, ...}
 ```
 
 ```jsonc
 // tasks/clerk.json — tracked, a team decision. `clerk init` writes it.
-{ "in_place": true, "integrate": false, "review_plan": false }
+{ "in_place": true, "integrate": false, "review_plan": false, "gears": false }
 
 // tasks/.environment — gitignored, machine-local. JSON, or key=value. Hand-written.
 integrate=true
 ```
 
-`init` writes all three keys even when you name only one: JSON takes no comments, so
+`init` writes all four keys even when you name only one: JSON takes no comments, so
 listing them is the file's only way to say what it accepts. It refuses to overwrite
 without `--force`, and it tells you `tracked: false` in a repo that gitignores `tasks/`
 — there the tracked tier does not exist and the file is machine-local whatever it says.
@@ -259,11 +306,12 @@ without `--force`, and it tells you `tracked: false` in a repo that gitignores `
 `prepare` reports the result as `flags` and what decided each one as `flag_sources`.
 Unrecognised values read as `false`: a typo must never be what turns integration on.
 
-**The request outranks both files, in both directions.** `--worktree`, `--no-integrate`
-and `--no-review-plan` turn off what a file switched on, which is what makes defaulting
-one on safe to begin with. `land` is the only command that consumes a flag itself, so it
-applies `integrate` in code; the other two are resolved by `prepare` and read by the
-prose, because they change what the model does rather than what a command does.
+**The request outranks both files, in both directions.** `--worktree`, `--no-integrate`,
+`--no-review-plan` and `--no-gears` turn off what a file switched on, which is what makes
+defaulting one on safe to begin with. `land` is the only command that consumes a flag
+itself, so it applies `integrate` in code; the other three are resolved by `prepare` and
+read by the prose, because they change what the model does rather than what a command
+does.
 
 > Precedence deliberately matches `test_command`: a tracked team decision beats a
 > machine-local preference beats a built-in default. One ladder, learned once.
@@ -272,7 +320,7 @@ prose, because they change what the model does rather than what a command does.
 
 | File | Holds | Written by |
 |---|---|---|
-| `tasks/<story>.json` | The dependency graph and **`done` per task** — the only record of progress | `decompose-to-tasks`, `clerk sidecar`, `clerk finish` |
+| `tasks/<story>.json` | The dependency graph, each task's assessed certainty and blast radius with the precedent behind them, and **`done` per task** — the only record of progress | `decompose-to-tasks`, `clerk sidecar`, `clerk finish` |
 | `tasks/<story>.md` | The tasks in prose: behaviour, criteria, affected files, dependencies | `decompose-to-tasks`; nothing rewrites it afterwards |
 | `<git-dir>/clerk/*` | The suite receipt, the archive record, each task's file list | `clerk receipt`, `clerk land`, `clerk finish` |
 

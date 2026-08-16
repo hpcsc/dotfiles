@@ -77,22 +77,30 @@ They measure different things and must not be collapsed into one score. A task r
 
 **`certainty`** — how confidently this repo already answers *how* to build this task. Not how hard it is, and not how large.
 
-| Value | When |
-|---|---|
-| `high` | The task repeats a pattern already in this codebase, and you can name the file and line range it repeats. |
-| `medium` | The pattern exists but this task varies it in a way no existing instance covers. |
-| `low` | No instance exists here, the design is itself what the task decides, or it introduces a dependency, integration or algorithm this repo has not used before. |
+| Value | When | You must be able to write |
+|---|---|---|
+| `high` | The task repeats a pattern already in this codebase. | The precedent: `internal/events/order.go:40-70`. |
+| `medium` | The pattern exists, but this task varies it in a way no existing instance covers. | The precedent **and the variation**: "…but no instance spans two aggregates." |
+| `low` | No instance exists here, the design is itself what the task decides, or it introduces a dependency, integration or algorithm this repo has not used before. | Which of the three, in a clause. |
 
-**`high` requires a precedent you can point at.** If a task's `Patterns to Follow` is empty, its certainty is not `high` — that is the same evidence stated twice, and if you cannot produce the reference you did not have the confidence. This is the rule that keeps the field from drifting to `high` on everything, which is the failure that makes it worthless.
+**Each value costs a sentence, and that is the whole mechanism.** A field nobody has to justify converges on whichever value is never wrong.
+
+- **`high` needs a precedent you can point at.** If a task's `Patterns to Follow` is empty, its certainty is not `high`. If you cannot produce the reference, you did not have the confidence.
+- **`medium` needs the variation named.** This is the one that rots if left alone: every task varies its pattern somehow — that is why it is a task and not a copy — so `medium` is true of almost everything and safe every time. Naming what varies is what makes it a judgment instead of a shrug. "It is a bit different" is not a variation.
+- **When you cannot write either sentence, it is `low`, not `medium`.** Not knowing the pattern well enough to say how this differs from it *is* low certainty. The middle is not where uncertainty goes; it is where a specific, stated, partial precedent goes.
+
+A breakdown that came out entirely `medium` has not assessed anything, and should be redone. One that came out entirely `high` has not looked.
 
 **`blast_radius`** — what being wrong about this task would cost, independent of how likely you are to be wrong. Binary, because it is a veto and not a gradient.
 
 | Value | When |
 |---|---|
-| `high` | Authentication or authorization; money arithmetic, pricing or balances; a schema migration or any destructive or irreversible write; credential, token or secret handling; personal data; a contract consumed outside this repository (a public API shape, an emitted event's schema, a CLI's output format). |
+| `high` | Authentication or authorization; money arithmetic, pricing or balances; a schema migration or any destructive or irreversible write; credential, token or secret handling; a change to who can see personal data or how much of it leaves the system; a contract consumed outside this repository (a public API shape, an emitted event's schema, a CLI's output format). Plus anything the repo's own learnings file names as one — a codebase knows what it is expensive to be wrong about, and this list was written without seeing it. |
 | `low` | Everything else. |
 
 Judge it from what the task *touches*, not from how large its diff is. A one-line change to a permission check is `high`; a four-hundred-line refactor of an internal helper is `low`.
+
+**A category is not a keyword.** A task is not `high` because personal data passes through the function it edits — nearly every task in some repositories does, and a field that is `high` on everything vetoes nothing. It is `high` when getting it wrong changes *who can reach* something on the list, *what happens to it*, or *whether the change can be undone*. A task that reads a balance is `low`; one that writes one is `high`.
 
 Assess every task. A breakdown where nothing is `low` certainty is usually one that skipped this step rather than a story that happens to be routine throughout — but a genuinely routine story exists, so say so in the Summary rather than manufacturing variety.
 
@@ -205,6 +213,7 @@ prose. Both must describe the same tasks — if you revise one, revise the other
       "testable": true,
       "certainty": "high",
       "blast_radius": "low",
+      "patterns_to_follow": ["internal/events/order.go:40-70"],
       "depends_on": [],
       "affected_files": ["path/to/file.go"]
     }
@@ -226,7 +235,26 @@ over prose is not how a run should learn how hard to drive. Emit both on every t
 never omitted and never null; a missing field means "planned before these existed", and
 a task you judged routine must not be indistinguishable from one nobody judged.
 
-Keep every other field the markdown already
+`patterns_to_follow` is the **references** from the markdown section of that name, as an
+array of strings — not its prose. Each entry is a repo-relative path, optionally with a
+line range: `internal/events/order.go`, or `internal/events/order.go:40-70`. Where the
+precedent is something an earlier task in this breakdown creates, name that task instead:
+`task:2`. An empty array is correct for a task with no precedent, and says so.
+
+It is here because it is the evidence for `certainty`, and evidence only a human can read
+is evidence nothing checks. `clerk lint --rule certainty-unevidenced` reads this field:
+a task assessed `high` or `medium` with an empty list is a claim with nothing behind it,
+and an entry naming a file that does not exist is a precedent that was invented rather
+than found — which is precisely how the field drifts to `high` on everything.
+
+```
+clerk lint --rule certainty-unevidenced tasks/[story-name].json
+```
+
+**Run it on your own output before returning**, and fix what it reports. A finding here is
+never a matter of opinion: either the path resolves or it does not.
+
+Keep every other field the markdown
 carries out of the JSON: duplicating prose invites the two to drift, and nothing reads
 it from here.
 
@@ -255,6 +283,8 @@ Before saving, verify:
 - [ ] Dependencies between tasks are explicit
 - [ ] Every task carries a `Certainty` and a `Blast radius`, each with its one-clause reason, in both the markdown and the sidecar
 - [ ] No task is `Certainty: high` without a named precedent in its `Patterns to Follow`
+- [ ] No task is `Certainty: medium` without naming the variation the precedent does not cover
+- [ ] The certainties are not all one value — all-`medium` means the step was skipped, all-`high` means it did not look
 - [ ] Boundaries carries the story's non-goals plus any the decomposition added, or says there are none
 - [ ] Each task is independently committable (codebase stays green)
 - [ ] No code samples, implementation logic, or control flow suggestions included

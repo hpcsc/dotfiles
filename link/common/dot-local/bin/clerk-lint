@@ -15,6 +15,7 @@ Rules:
   comment-plan-position   a comment naming code by its plan position, ticket or task
   test-umbrella           scenario-named sibling tests that belong under one umbrella
   type-methods-split      a method living apart from the file declaring its type
+  certainty-unevidenced   a task assessed high/medium certainty with no precedent behind it
 
 Dispatched to by `clerk` when invoked as `clerk lint`, and runnable on its own.
 """
@@ -64,6 +65,25 @@ def diff_range(root, base, staged):
         if code == 0 and out.strip():
             return [f"{out.strip()}...HEAD"]
     return ["--cached"]
+
+
+def normalise(root, p):
+    """A path every rule can resolve against root. `./x` and `x` name the same file; an
+    absolute path inside the tree is made relative to it, and one outside is left alone —
+    `Path(root) / <absolute>` is that absolute path, so it still resolves.
+
+    Spelt out rather than `lstrip("./")`, which strips characters and not a prefix: it eats
+    the leading dot of `.github/workflows/ci.yml` and every leading slash of an absolute
+    path, leaving a relative path that matches nothing. A rule that silently checks nothing
+    is indistinguishable from a rule that found nothing wrong."""
+    q = Path(p)
+    if q.is_absolute():
+        try:
+            return str(q.resolve().relative_to(Path(root).resolve()))
+        except (ValueError, OSError):
+            return str(q)
+    s = str(q)
+    return s[2:] if s.startswith("./") else s
 
 
 def changed_files(root, rng):
@@ -301,8 +321,115 @@ def check_type_methods(root, path, seen_pkgs, scope):
 
 
 # ---------------------------------------------------------------------------
+# certainty-unevidenced — a plan's assessment with nothing behind it.
+#
+# The other three rules read code. This one reads the breakdown's sidecar, before any code
+# exists, because that is where the mistake it catches is made and where fixing it costs a
+# line rather than a run.
+#
+# `certainty` steers how hard a run drives itself, and it is assessed by the party with
+# every incentive to say `high`: a plan whose tasks are all routine is a tidy plan. The
+# guard is that `high` and `medium` both require a named precedent — so the field is only
+# as honest as that requirement is enforced, and a requirement stated in prose for an agent
+# to self-check is enforced exactly as often as the agent remembers it.
+#
+# Two things decide here without judgment, and nothing else does. Whether the variation a
+# `medium` claims is really uncovered by the precedent is a judgment, so it stays a
+# quality standard the agent weighs; whether a precedent was named at all, and whether the
+# file it names is really there, are lookups.
+# ---------------------------------------------------------------------------
 
-RULES = ("comment-plan-position", "test-umbrella", "type-methods-split")
+NEEDS_PRECEDENT = ("high", "medium")
+LINE_RANGE = re.compile(r":\d+(?:-\d+)?$")
+
+
+def sidecar_tasks(root, path):
+    """The task array, if this file is a breakdown sidecar. Shape rather than location:
+    `tasks/` is conventional but a repo may hold breakdowns elsewhere, and a rule that
+    silently checks nothing because a path did not match is worse than one that is off."""
+    if not path.endswith(".json"):
+        return None
+    try:
+        doc = json.loads((Path(root) / path).read_text())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(doc, dict):
+        return None
+    tasks = doc.get("tasks")
+    if not isinstance(tasks, list) or not tasks:
+        return None
+    if not all(isinstance(t, dict) and "n" in t for t in tasks):
+        return None
+    return tasks
+
+
+def certainty_lines(root, path):
+    """Line number per task number, so a finding points at the assessment rather than at
+    the top of the file. Falls back to line 1 for a task whose key is not on its own line."""
+    at, cur, out = {}, None, {}
+    try:
+        text = (Path(root) / path).read_text()
+    except OSError:
+        return {}
+    for i, line in enumerate(text.splitlines(), 1):
+        m = re.search(r'"n"\s*:\s*(\d+)', line)
+        if m:
+            cur = int(m.group(1))
+            at.setdefault(cur, i)
+        if cur is not None and '"certainty"' in line:
+            out.setdefault(cur, i)
+    return {n: out.get(n, at.get(n, 1)) for n in at}
+
+
+def check_certainty(root, path):
+    tasks = sidecar_tasks(root, path)
+    if tasks is None:
+        return []
+    lines = certainty_lines(root, path)
+    out = []
+    for t in tasks:
+        n = t["n"]
+        line = lines.get(n, 1)
+        certainty = t.get("certainty")
+        if certainty is None:
+            # Planned before the field existed. Reported by `clerk status` as unassessed,
+            # which is the honest thing to say about it; inventing a finding here would
+            # make every legacy breakdown fail a check it could not have passed.
+            continue
+        refs = t.get("patterns_to_follow")
+        refs = refs if isinstance(refs, list) else []
+        if certainty in NEEDS_PRECEDENT and not refs:
+            out.append((path, line, "certainty-unevidenced",
+                        f"task {n} is certainty '{certainty}' with an empty patterns_to_follow — "
+                        f"name the precedent by file and line, or the task is 'low'"))
+            continue
+        for ref in refs:
+            if not isinstance(ref, str) or not ref.strip():
+                out.append((path, line, "certainty-unevidenced",
+                            f"task {n} has an empty entry in patterns_to_follow"))
+                continue
+            ref = ref.strip()
+            # A precedent an earlier task in this breakdown creates cannot exist yet, so it
+            # is named as a task instead of a path. Anything else must resolve on disk: a
+            # plausible path that is not there is an invented precedent, which is exactly
+            # what the requirement to name one exists to prevent.
+            if re.fullmatch(r"task:\d+", ref):
+                if int(ref.split(":")[1]) not in {x["n"] for x in tasks}:
+                    out.append((path, line, "certainty-unevidenced",
+                                f"task {n} cites {ref}, which is not a task in this breakdown"))
+                continue
+            target = LINE_RANGE.sub("", ref)
+            if not (Path(root) / target).exists():
+                out.append((path, line, "certainty-unevidenced",
+                            f"task {n} cites '{ref}' as a precedent, and {target} does not exist — "
+                            f"a precedent that cannot be opened was not found, it was written"))
+    return out
+
+
+# ---------------------------------------------------------------------------
+
+RULES = ("comment-plan-position", "test-umbrella", "type-methods-split",
+         "certainty-unevidenced")
 
 
 def main(argv):
@@ -343,7 +470,7 @@ def main(argv):
     rng = diff_range(root, base, staged)
     # dict.fromkeys, not set(): overlapping roots on the command line hand the same file
     # in twice, and every finding in it would be reported twice.
-    files = list(dict.fromkeys(p.lstrip("./") for p in (paths or changed_files(root, rng))))
+    files = list(dict.fromkeys(normalise(root, p) for p in (paths or changed_files(root, rng))))
     wanted = set(only or RULES)
     scope = set(files)
 
@@ -355,6 +482,8 @@ def main(argv):
             findings += check_test_umbrella(root, f)
         if "type-methods-split" in wanted:
             findings += check_type_methods(root, f, seen_pkgs, scope)
+        if "certainty-unevidenced" in wanted:
+            findings += check_certainty(root, f)
 
     findings.sort(key=lambda x: (x[0], x[1]))
 

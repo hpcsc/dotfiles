@@ -1604,6 +1604,19 @@ T1=$(git -C "$RX" log --format=%H --grep='Add task 1' -1)
 eq "--onto takes the caller's answer" "Add task 1" \
    "$(run "$RX" fixup --base "$BASE" --onto "$T1" -- catalog.txt | jq -r '.subject')"
 
+# Staging is whole-file, so a fix in a file that later commits also touched carries
+# whatever else is uncommitted there, and can only fold hunks whose surrounding lines
+# already exist at the target. Saying so when the fixup is made costs a regrouping;
+# leaving it to the rebase costs the round trip that got you there.
+W=$(run "$RX" fixup --base "$BASE" --onto "$T1" --dry-run -- catalog.txt)
+eq "a file later commits also touched is flagged" "1" \
+   "$(printf '%s' "$W" | jq -r '.also_touched_later["catalog.txt"] | length >= 1' | grep -c true)"
+eq "naming the commits that came after the target" "1" \
+   "$(printf '%s' "$W" | jq -r '.also_touched_later["catalog.txt"] | join(" ")' | grep -c 'Add task 3')"
+eq "and a file only its own commit touched is not" "null" \
+   "$(run "$RX" fixup --base "$BASE" --dry-run -- task2.go | jq -r '.also_touched_later')"
+
+
 # Replaying that one would conflict: it appends to a file every later task also appends
 # to. Aborting and keeping the separate commit is the documented answer, and the branch
 # has to come back untouched.
@@ -1611,6 +1624,8 @@ BEFORE=$(git -C "$RX" rev-parse HEAD)
 eq "a conflicted replay exits 3" "3" \
    "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
 eq "and leaves the branch exactly as it was" "$BEFORE" "$(git -C "$RX" rev-parse HEAD)"
+eq "and names where it conflicted, which is how to regroup" "1" \
+   "$(run "$RX" fixup --base "$BASE" --replay 2>&1 | grep -c 'Conflicted in: catalog.txt')"
 eq "with no rebase left half-done" "false" \
    "$([ -d "$RX/.git/rebase-merge" ] || [ -d "$RX/.git/rebase-apply" ] && echo true || echo false)"
 git -C "$RX" reset -q --hard HEAD~1

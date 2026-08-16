@@ -125,10 +125,23 @@ def cmd_apply(args):
                  "groups": groups}, 3)
         target = targets.pop()
 
+    # Commits that touched these files AFTER the target. Staging is whole-file, so
+    # everything uncommitted in them rides along, and the fold can only carry hunks whose
+    # surrounding lines already exist at the target. That is what makes a shared test file
+    # conflict at replay, long after the work that caused it. Said here it costs a
+    # regrouping; said by the rebase it costs the round trip that got you there.
+    later = {}
+    for f in files:
+        rows = per_file.get(f) or commits_touching(base, f)
+        shas = [c["full"] for c in rows]
+        newer = rows[:shas.index(target)] if target in shas else rows
+        if newer:
+            later[f] = [f"{c['sha']} {c['subject']}" for c in newer]
+
     subject = git("log", "-1", "--format=%s", target).stdout.strip()
     if args.dry_run:
         out({"ok": True, "dry_run": True, "target": target[:12], "subject": subject,
-             "files": files})
+             "files": files, **({"also_touched_later": later} if later else {})})
 
     git("add", "--", *files)
     # Staged but not committed is the tail `clerk verify` reports; if the commit fails
@@ -136,8 +149,17 @@ def cmd_apply(args):
     r = git("commit", f"--fixup={target}", check=False)
     if r.returncode != 0:
         die(f"git commit --fixup failed (files are staged): {r.stderr.strip() or r.stdout.strip()}")
-    return {"ok": True, "target": target[:12], "subject": subject, "files": files,
-            "next_step": "clerk fixup --replay, once every fix is marked"}
+    out_payload = {"ok": True, "target": target[:12], "subject": subject, "files": files,
+                   "next_step": "clerk fixup --replay, once every fix is marked"}
+    if later:
+        out_payload["also_touched_later"] = later
+        out_payload["warning"] = (
+            "these files are also changed by commits after the target. Staging is "
+            "whole-file, so anything else uncommitted in them is in this fixup too, and "
+            "the fold can only carry hunks whose surrounding lines already exist at the "
+            "target. If the fix spans work belonging to more than one commit, revert the "
+            "later-owned hunks, fold this one, then restore them and fold the rest.")
+    return out_payload
 
 
 def cmd_replay(args):
@@ -180,8 +202,13 @@ def cmd_replay(args):
                        text=True,
                        env={**os.environ, "GIT_SEQUENCE_EDITOR": "true", "GIT_EDITOR": "true"})
     if r.returncode != 0:
+        # Read the conflict before aborting throws it away: which paths failed is the
+        # whole of what tells you how to regroup.
+        conflicted = [l for l in git("diff", "--name-only", "--diff-filter=U",
+                                     check=False).stdout.splitlines() if l]
         git("rebase", "--abort", check=False)
-        die(f"the replay conflicted and was aborted; the branch is exactly as it was. "
+        where = f" Conflicted in: {', '.join(conflicted)}." if conflicted else ""
+        die(f"the replay conflicted and was aborted; the branch is exactly as it was.{where} "
             f"Keep the fix as its own commit — untangling a conflicted replay of your own "
             f"branch costs more than the tidier history is worth. git said: "
             f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'conflict'}", 3)

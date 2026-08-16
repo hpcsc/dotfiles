@@ -113,18 +113,18 @@ Assess every task. A breakdown where nothing is `low` certainty is usually one t
 
 Generate the document with these sections:
 
-### 1. Progress
+### 1. Contents
 
-A top-level checklist for tracking task completion. One line per task, all unchecked:
+A table of contents, one numbered line per task:
 
 ```markdown
-## Progress
-- [ ] Task 1: [title]
-- [ ] Task 2: [title]
-- [ ] Task 3: [title]
+## Contents
+1. Task 1: [title]
+2. Task 2: [title]
+3. Task 3: [title]
 ```
 
-This section is updated externally (by the orchestrator or human) as tasks complete. The decompose agent always emits all checkboxes unchecked.
+**Numbered, not checkboxes.** Progress lives in the sidecar and nowhere else, so this section is a way to see the shape of the breakdown without scrolling it, and nothing ever updates it. A checklist here would be a second copy of the one fact a resumed run depends on — and two copies can disagree while the stale one still reads as the answer to whoever opens the file.
 
 ### 2. Story Reference
 Which user story this task list is derived from (file path or inline summary).
@@ -224,9 +224,9 @@ prose. Both must describe the same tasks — if you revise one, revise the other
 }
 ```
 
-`n` matches the markdown's `### Task N:` heading. `done` starts absent — tooling sets it,
-and this file is the only place progress is recorded, so do not add a checkbox list to
-the markdown: a second copy of that fact can go stale while still reading as the answer.
+`n` matches the markdown's `### Task N:` heading. `done` starts `false` — tooling flips it
+as each task lands, and this file is the only place progress is recorded, which is why the
+markdown's Contents section is numbered rather than ticked.
 `depends_on` is an array of
 task numbers (`[]` when a task has none); it is the dependency edge the markdown states
 as **Depends on:**, so the two must agree.

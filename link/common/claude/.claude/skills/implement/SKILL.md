@@ -337,6 +337,7 @@ This costs a read, not an agent, because you are already here. Re-read the reque
 
 - What does the story ask for that this branch does not do?
 - Where does the branch satisfy a task's acceptance criteria by measuring a **proxy** for what was asked rather than the thing itself?
+- Where did a criterion that the story stated as a category — "any construct", "each format", "all four patterns" — become a list in the breakdown? Check the list against the source that defines the set, not against the story's examples. The audit cannot catch this: every lens owns changed source files, the breakdown is owned by none, and each lens judges intent from the diff and your brief rather than from the story.
 
 Quote the story's own words for anything you raise; if you cannot point at the phrase, you are inventing a requirement. Put mismatches to the user as questions and let them decide — you wrote this code, which makes you the worst-placed reader of your own interpretation of the request. Finding nothing is the common result; say so in a line.
 

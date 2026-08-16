@@ -68,6 +68,7 @@ Apply **baby steps** and **vertical slicing**:
 - Split acceptance criteria across tasks when they represent distinct behaviors
 - **Prefer grouping happy path and error handling in the same task** when they belong to the same behavior (e.g., a POST handler and its validation errors). Only split error handling into a separate task when it is non-trivial enough to make the combined task too large.
 - If a story has multiple user-facing behaviors, each behavior is typically its own task
+- **A story criterion that names a category must not become a list.** "Hovering any construct shows its kind", "each export format round-trips", "all four caller patterns" state a set by its rule, and turning that into named members silently drops whichever the enumeration forgets. Keep the category in the task criterion, and if the members must be named, derive them from the source that defines the set — a grammar, a type, a registry — rather than from what the story's examples happened to mention. A story about specs whose Task 1 enumerated eight constructs and omitted `spec` shipped that gap through three adversarial audit rounds, because a lens judges the diff against the task and never re-reads the story.
 - **Tests are part of the slice, not a separate task.** Each task that delivers testable behavior MUST include writing its own tests. Never batch tests into a later task — if a task adds a handler, the same task adds the handler's tests. A task without its tests is not independently committable.
 - **A task marked `Testable: Yes` must be testable through a public API** (exported function, HTTP handler, CLI command). If a task introduces internal artifacts (types, templates, helpers) whose only meaningful tests would call unexported code or execute internal templates directly, either (a) combine it with the task that wires them into a public API, or (b) mark it `Testable: No`. Do not mark a task `Testable: Yes` if the only way to verify it is by testing implementation details.
 
@@ -214,5 +215,6 @@ Before saving, verify:
 - [ ] Each task is independently committable (codebase stays green)
 - [ ] No code samples, implementation logic, or control flow suggestions included
 - [ ] All acceptance criteria from the story are accounted for
+- [ ] No task criterion enumerates members of a category the story stated as a rule
 - [ ] Tasks are ordered logically (dependency-first, then risk/value)
 - [ ] Saved to `tasks/[story-name].md`

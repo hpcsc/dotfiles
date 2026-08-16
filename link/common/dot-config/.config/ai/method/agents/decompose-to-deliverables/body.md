@@ -90,6 +90,17 @@ Against that weighted count, **12 or fewer is in band**; 13–15 warrants naming
 
 A high raw file count with a low weighted count is normal in a repo carrying a wiring or codegen tax, and is not a re-cut trigger. Call it out in the Step 6 summary so whoever reviews the plan knows the diff is mostly machine-written.
 
+### Assess each deliverable: certainty and blast radius
+
+The same two judgments `decompose-to-tasks` makes per task, made here per deliverable — over the deliverable as a whole, not by taking the worst of its tasks.
+
+- **`certainty`** — `high` / `medium` / `low`. How confidently this repo already answers how to build it. `high` needs a precedent you can name by file. `low` means the design is what the deliverable decides.
+- **`blast_radius`** — `high` / `low`. What being wrong costs, whatever the odds. `high` for authentication or authorization, money arithmetic, a schema migration or destructive write, credential handling, personal data, or a contract consumed outside this repository.
+
+They are the plan's answer to a question the driver otherwise has no way to ask. A wave fires every ready deliverable into a background pane at once, and readiness comes from the dependency DAG alone — so absent this, a deliverable rewriting the permission model launches unattended exactly like one adding a formatter, and the plan had the information to say otherwise.
+
+Say in the Step 6 summary which deliverables came out `high` blast radius. That is the plan's recommendation about *how the story should be delivered*, not only about what it contains, and it is the caller's decision to take or overrule.
+
 ### Dependencies and waves
 
 Build the dependency DAG between deliverables, then derive **waves**: a wave is a set of deliverables with no unmet dependencies among them, i.e. the ones that can run **in parallel** in separate worktrees. Wave 1 is every deliverable with no dependencies; wave 2 is every deliverable whose dependencies are all in wave 1; and so on. `wave` is a derived convenience for the driver — the DAG (`depends_on` + `base`) is the source of truth.
@@ -119,7 +130,7 @@ Deliverable count is a result, not a plan. If you have more deliverables than th
 For every deliverable, write **two files** in the **exact `decompose-to-tasks` format** so `implement-flow` adopts them unchanged:
 
 - `tasks/<story-slug>/<deliverable-slug>/tasks.md` — the tasks in prose
-- `tasks/<story-slug>/<deliverable-slug>/tasks.json` — the sidecar beside it, carrying each task's `n`, `title`, `language`, `testable`, `depends_on` and `done: false`
+- `tasks/<story-slug>/<deliverable-slug>/tasks.json` — the sidecar beside it, carrying each task's `n`, `title`, `language`, `testable`, `certainty`, `blast_radius`, `depends_on` and `done: false`
 
 The sidecar is where a run records progress, so a deliverable without one forces its run through a recovery parse before it can start. Both files describe the same tasks; revise them together.
 
@@ -157,6 +168,10 @@ The markdown:
 
 **Testable:** Yes | No — if Yes, tests are written as part of this task.
 
+**Certainty:** high | medium | low — [the reason, in one clause]
+
+**Blast radius:** high | low — [for `high`, what it touches]
+
 **Verification:** [tests pass | go build succeeds | manual wiring check]
 
 **Depends on:** [Task N-1, or "None"]
@@ -165,7 +180,9 @@ The markdown:
 - Total tasks, ordering rationale, which of the deliverable's acceptance criteria are covered.
 ```
 
-The tasks within a deliverable follow all the `decompose-to-tasks` rules (baby steps, vertical, each independently committable and green, tests in the same task as their behavior, `Testable: Yes` only when testable through a public API). Cross-deliverable dependencies are captured in `plan.yaml`, not inside a deliverable's task file — a deliverable's `tasks.md` never references another deliverable.
+**Do not write a `## Theory` section.** The run that builds the deliverable appends one when it finishes, describing the design it actually settled on, and `clerk stack --create` lifts it into the PR body. A theory written before any code exists is a prediction, and it would be indistinguishable in the PR from the account of what was really built.
+
+The tasks within a deliverable follow all the `decompose-to-tasks` rules (baby steps, vertical, each independently committable and green, tests in the same task as their behavior, `Testable: Yes` only when testable through a public API, and both assessments on every task). Cross-deliverable dependencies are captured in `plan.yaml`, not inside a deliverable's task file — a deliverable's `tasks.md` never references another deliverable.
 
 **Boundaries carries the story's non-goals plus the cut you just made.** Splitting a story creates boundaries that did not exist in it: each deliverable now stops somewhere the story did not. Write those down here, because this is the section the audit reads to ask whether anything out of scope was built, and a boundary nobody wrote cannot be checked.
 
@@ -192,11 +209,15 @@ deliverables:
     base: master                             # the default branch, or a sibling deliverable id (stacked)
     wave: 1                                  # derived parallel cohort (informational)
     depends_on: []                           # sibling deliverable ids that must merge (or exist, if stacked) first
+    certainty: high                          # high | medium | low — does the repo already answer how
+    blast_radius: low                        # high | low — what being wrong would cost
     tasks: tasks/<story-slug>/<deliverable-slug>/tasks.md
     status: pending                          # pending | running | in-review | merged
 ```
 
 `status` starts `pending` for every deliverable — the driver advances it. `depends_on` lists sibling `id`s; keep it consistent with each deliverable's `base` (a `base: <id>` implies that id is in `depends_on`).
+
+`certainty` and `blast_radius` are written on every deliverable, never omitted. The driver reports them beside each launch whatever it is configured to do about them, so a missing pair reads as an unassessed deliverable rather than as a routine one.
 
 ---
 
@@ -206,9 +227,10 @@ After writing the manifest and all deliverable files, return a structured summar
 
 1. The manifest path (`tasks/<story-slug>/plan.yaml`).
 2. The deliverable count and the wave grouping (which deliverables are parallel).
-3. Per deliverable: id, one-line intent, base, and its `tasks.md` path.
+3. Per deliverable: id, one-line intent, base, certainty, blast radius, and its `tasks.md` path.
 4. Key codebase findings that drove the cut.
 5. The merge pass: for each adjacent pair, the one-sentence reason they are not one deliverable — so the caller can overrule a cut you kept.
+6. The deliverables you assessed `high` blast radius or `low` certainty, each with its reason, named as the ones least suited to running unattended in a parallel wave.
 
 ---
 
@@ -222,6 +244,7 @@ Before returning, verify:
 - [ ] The deliverable count does not exceed the story's acceptance-criterion count — or names the criterion that genuinely needed two deliverables.
 - [ ] No deliverable exceeds 15 judgment-weighted files, counting generated and mechanical-wiring files at zero; any deliverable whose raw count runs far above its weighted count says why.
 - [ ] Every deliverable leaves the codebase green when merged alone.
+- [ ] Every deliverable carries a `certainty` and a `blast_radius`, and no `certainty: high` lacks a precedent you could name.
 - [ ] The dependency DAG is acyclic; waves are derived from it; wave-1 deliverables have no dependencies.
 - [ ] Each dependent deliverable's `base` (master vs. stacked sibling) matches its `depends_on`.
 - [ ] No scheduling vocabulary ("PR N", wave numbers) in any deliverable title, task, or text that reaches a commit/PR — only in `plan.yaml` and branch names.

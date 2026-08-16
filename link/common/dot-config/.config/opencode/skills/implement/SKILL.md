@@ -7,15 +7,16 @@ Implement a feature directly, then have it audited. The command that invoked thi
 
 **The request** is everything the caller just handed you: the feature description, plus any flags such as `--in-place`, `--integrate` or `--review-plan`. **Record it verbatim before you do anything else**, and refer to that record from here on. Several steps below need its exact words — the audit is given the request unsummarized, and the validation pass re-reads it against the finished branch — and two steps read flags out of it. Do not rely on being able to recover it later from memory or from a substituted token.
 
-**A flag not in the request may still be on.** All three are also repo settings, because each is as often a property of the repo as of the run: one whose build cannot work from a worktree wants `--in-place` every time. Hand the request to `clerk prepare --request` and it resolves both layers at once, reporting the answers in `flags` — read those, not the request, wherever a step below turns on a flag. It also reports `flag_sources`, naming what decided each one, so a run that behaves unexpectedly can say which file to look in.
+**A flag not in the request may still be on.** All four are also repo settings, because each is as often a property of the repo as of the run: one whose build cannot work from a worktree wants `--in-place` every time. Hand the request to `clerk prepare --request` and it resolves both layers at once, reporting the answers in `flags` — read those, not the request, wherever a step below turns on a flag. It also reports `flag_sources`, naming what decided each one, so a run that behaves unexpectedly can say which file to look in.
 
 | Flag | `flags` key | Off again with |
 |---|---|---|
 | `--in-place` | `in_place` | `--worktree` |
 | `--integrate` | `integrate` | `--no-integrate` |
 | `--review-plan` | `review_plan` | `--no-review-plan` |
+| `--gears` | `gears` | `--no-gears` |
 
-The request always outranks the files, in both directions — that is what the middle column is for, and why a repo may safely default one on. Say in your opening summary which of the three are on and what set them; a run that quietly builds in place because of a file the user forgot is a surprise they paid for with a dirty checkout.
+The request always outranks the files, in both directions — that is what the middle column is for, and why a repo may safely default one on. Say in your opening summary which of the four are on and what set them; a run that quietly builds in place because of a file the user forgot is a surprise they paid for with a dirty checkout.
 
 **You write the code.** This skill does not delegate construction to implementation agents. Review is delegated, at the end, to `audit-implement`.
 
@@ -40,6 +41,23 @@ Use `implement-flow` instead for large mechanical migrations with genuinely disj
 
 ---
 
+## Certainty, and what it changes
+
+Every task in the breakdown carries two assessments the decomposition made. They answer different questions and fail separately:
+
+- **`certainty`** — `high` / `medium` / `low`. How sure the plan is that the repo already answers *how* to build this. `high` means the task repeats a pattern the breakdown can point at by file and line range. `low` means no instance of it exists here, or the design is itself the thing being decided.
+- **`blast_radius`** — `low` / `high`. What being wrong would cost, whatever the odds of being wrong are. Authentication and authorization, money arithmetic, migrations and destructive writes, credential handling, a contract something outside this repo consumes.
+
+Keeping them apart is the point. A task you have written twenty times before, against the payments ledger, is high certainty and high blast radius at once — and only the second argues for slowing down. Collapsed into one "risk" score, that task reads as medium and gets neither the speed it earned nor the care it needs.
+
+**By default they are reported and nothing else.** `clerk status` prints them, this skill announces them per task, and every task is built straight through — which is what the profiling this shape rests on says is right for work whose method you can already see. Naming the exceptions costs a line per task and buys a reader who knows where to look hardest.
+
+**With `gears` on, they change how the run is driven.** Phase 2 says how, in one place. Turn it on when the story's shape is not settled, when the work reaches somewhere expensive to be wrong about, or when someone is actually watching. Leave it off for a wave of deliverables firing into panes nobody is reading, where a pause is indistinguishable from a run that died.
+
+A breakdown planned before these fields existed carries neither, and `clerk status` lists those under `gears.unassessed`. Read them as medium certainty and low blast radius — but **say that you did**, because "not assessed" and "assessed as routine" are otherwise the same silence.
+
+---
+
 ## Phase 0: Ground yourself
 
 ### Resolve the environment
@@ -57,7 +75,7 @@ Read the values rather than re-deriving them. Three carry precedence rules subtl
 - **`test_command`** — `tasks/test-commands.json` (tracked, a team decision) beats `tasks/.environment` (a gitignored machine-local cache) beats detection. A cached command must never shadow one the team committed. Use the entry for the task's language while working on it; use `default` before committing anything that spans languages, and again in Phase 3.
 - **`go_tool_prefix`** — whether *this machine* runs Go through mise. Decided once, applied to every Go command, never double-wrapped on a project command that already says `mise exec --`.
 - **`learnings_path`** — in-tree when the repo tracks `tasks/`, out-of-tree per-project when it gitignores it, so a shared repo gets steering without polluting teammates' checkouts.
-- **`flags`** — the run's flags, request first, then `tasks/clerk.json` (tracked, a team decision), then `tasks/.environment` (gitignored, machine-local), then off. `flag_sources` names what decided each, `request` included. Only whole tokens count, so a description that happens to say "integrate" is prose and not an instruction, and a request carrying both `--integrate` and `--no-integrate` reads as off — the "on" side of all three is the irreversible one.
+- **`flags`** — the run's flags, request first, then `tasks/clerk.json` (tracked, a team decision), then `tasks/.environment` (gitignored, machine-local), then off. `flag_sources` names what decided each, `request` included. Only whole tokens count, so a description that happens to say "integrate" is prose and not an instruction, and a request carrying both `--integrate` and `--no-integrate` reads as off — off is what a run does with nothing set, so an ambiguous signal must never be what changes it.
 
 **Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
 
@@ -152,7 +170,7 @@ Spawn the `decompose-to-tasks` subagent via the `task` tool with a complete, sel
 
 > Detected project languages: [from `clerk prepare`]
 >
-> Decompose the following user story into implementation tasks. For each task set `language` to the language it primarily involves and `depends_on` to the tasks it builds on: [the feature description from the request]
+> Decompose the following user story into implementation tasks. For each task set `language` to the language it primarily involves, `depends_on` to the tasks it builds on, and `certainty` and `blast_radius` to your assessment of it: [the feature description from the request]
 
 It does the codebase exploration and dependency analysis that makes the task list worth having. It writes `tasks/[story-name].md` describing each task, and `tasks/[story-name].json` beside it — the sidecar that carries the dependency graph and the run's progress. The sidecar is the durable record; the markdown is prose and nothing rewrites it.
 
@@ -164,7 +182,9 @@ It does the codebase exploration and dependency analysis that makes the task lis
 
 ### Present the plan, then build
 
-Show the task list, in order, with dependencies — then start. **The plan is not a gate.**
+Show the task list, in order, with dependencies, **each task with its certainty and blast radius** — then start. **The plan is not a gate.**
+
+Those two columns are the cheapest review the plan ever gets. A task the decomposition called routine that the user knows is not costs them one sentence to say so here, and costs a whole run to find out from the code. Say which tasks would pause were `gears` on, so that sentence can be "turn gears on" rather than a description of what to watch for.
 
 That follows from what this skill is for. Its whole claim is that at minutes per feature, building a version and looking at it is a cheaper way to find out whether a requirement is right than arguing about a task breakdown; stopping to debate the breakdown spends the advantage the speed was bought for. The branch is disposable, the audit reads the finished code against the request rather than against the plan, and a decomposition that turns out wrong costs one short run rather than a negotiation.
 
@@ -191,7 +211,7 @@ clerk next
 
 Returns the first task whose `depends_on` are all done, plus how many remain and how many are blocked. It **exits 3 while the tree is dirty**, because one task in flight at a time is what keeps a run resumable — a half-finished task on top of another is what makes a run impossible to review. Commit the current one before asking for the next.
 
-Announce which task you are starting, so the queue's progress is visible in the transcript rather than only in the file.
+Announce which task you are starting, **with its `certainty` and `blast_radius`** — both come back on the task object — so the queue's progress is visible in the transcript rather than only in the file, and so a reader can tell a task built fast because it was routine from one built fast because nobody looked.
 
 If a task turns out to be unnecessary or wrong once you are in the code, **stop and say so**. The plan is the shared contract; revise it with the user rather than quietly building something else.
 
@@ -200,6 +220,14 @@ If a task turns out to be unnecessary or wrong once you are in the code, **stop 
 Derive scenarios from the acceptance criteria and the caller pattern you loaded. Write the tests, watch them fail for the reason they name, then implement until they pass.
 
 For a task whose evidence is "the existing suite still passes unchanged" — a pure move or rename — **do not add tests**. A new test there asserts behaviour the suite already covers.
+
+**With `gears` on, a hard task stops here** — tests written, run red, nothing implemented. A task qualifies when its `certainty` is `low`, when its `blast_radius` is `high`, or when the run has downshifted (step 5).
+
+Here, and not at the commit, because the tests are where the theory lives. Everything the task believes about the behaviour is in them before a line of implementation exists, so this is the last moment at which being wrong costs only the tests — and the first at which it is legible, since a red test states an expectation in one line where a diff makes a reader infer it. Show what each test asserts, one line each, not the file: someone checking whether you understood the requirement should not have to read scaffolding to find out.
+
+Name which of the two stopped you, because they ask for different reads. Low certainty asks *is this the right behaviour*. High blast radius asks *is this enough of it* — the tests may be right about everything they cover and the gap be what costs.
+
+Then follow the stopping convention in step 5: state what you would do next and stop, rather than asking and waiting. Someone watching answers and you carry on; nobody watching gets a window that ends on the question instead of a pane parked on it.
 
 ### 2. Implement
 
@@ -249,9 +277,20 @@ Two rules `clerk` cannot enforce for you:
 
 Tick the acceptance criteria you actually walked in this task's section of the breakdown — that is the only per-criterion evidence a reviewer of the finished branch gets, and `clerk finish` stages the file for you once you have edited it. `clerk status` counts them and flags any task marked done that still carries an unwalked criterion; it never gates on that, because whether a criterion is genuinely met is your judgment rather than a box count.
 
-Say what landed in one or two lines and go back to `clerk next`. There is nothing hidden here that a per-commit gate would need to reveal, so no gate. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
+Say what landed in one or two lines and go back to `clerk next`. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
 
-Stop and ask only when something genuinely needs a decision, and when you do, **state the decision and stop** rather than asking and waiting. Leave the branch where it is and say what you would need to continue. Someone watching can answer and you carry on; nobody watching gets a window that ends on the question instead of a pane parked on it. Either way, do not guess your way past a decision to keep the run moving.
+**Then read the task back for the two signals that the plan was wrong about it.** Both are things you have just observed, and both mean the same thing — the theory is not landing where the plan said it would:
+
+- **The implementation needed more than one attempt to go green**, for a reason other than a typo or a missing import. Not the count itself: the fact that the first shape you reached for was the wrong one.
+- **`clerk lint --staged` returned a finding.** The guidelines were loaded and still not followed, which is them not landing rather than a rule being obscure.
+
+**Report either in the task's line whatever `gears` says.** It is a fact about the run, and it is exactly what someone deciding whether to trust the branch wants and cannot recover from the diff.
+
+**With `gears` on, either one downshifts the run**: every task from here pauses after its tests, the way a low-certainty task does, regardless of what the plan assessed it as. It upshifts again after two consecutive tasks go green first try with a clean lint — say so when it does.
+
+The upshift is not a courtesy. A run that only ever slows down finishes every story at its slowest, and a pause that arrives on every task carries no information — which is how a gate becomes a keystroke someone acknowledges without reading, and how the flag stops buying anything at all.
+
+Stop and ask only when something genuinely needs a decision, and when you do, **state the decision and stop** rather than asking and waiting. Leave the branch where it is and say what you would need to continue. Either way, do not guess your way past a decision to keep the run moving.
 
 ---
 
@@ -280,6 +319,8 @@ Invoke the `audit-implement` skill. There is no workflow engine here, so it orch
 When it returns, check `git status --porcelain` before running anything. A verifier that died mid-probe leaves residue behind; restore the tree to the branch tip before you trust another run.
 
 Pass it the base ref the work started from, the `test_commands` map, a one-or-two-sentence `brief` on what the feature was meant to do, and `story` — the request, **verbatim and unsummarized**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing the audit sees that did not come from you.
+
+**When the request names a breakdown, that is not the story.** A run given `tasks/<story>.md` is being handed a decomposition, and a decomposition came from you — pass the user story it was written from instead, and the breakdown only as well. Handing over the breakdown alone defeats the whole point of the field: a task list that quietly narrowed a criterion is checked against itself, and every lens agrees it is covered. One run passed its breakdown as the story and three adversarial rounds confirmed a set of eight constructs that the story stated as a category of nine.
 
 It fans the applicable lenses over the diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings plus `coverage_gaps`.
 
@@ -333,7 +374,25 @@ Quote the story's own words for anything you raise; if you cannot point at the p
 
 Do this **before** integrating, on the runs where you integrate at all: a mismatch found after the fast-forward is a mismatch found too late.
 
-### 4. Verify the run
+### 4. Write down the theory
+
+You are the last reader of this branch who understands it without reading it. Everything that made the design what it is — the alternative you rejected in task 2, the constraint that forced the shape of task 5 — is in your context and in no file. Whoever reviews the branch has the diff and nothing else, and reconstructing a theory from a diff is a different and far more expensive job than checking a diff against one.
+
+That gap is the cost of this shape. Construction stays undelegated because it is fast; the price is that nobody watched it happen, and on a wave of deliverables the reviewer may be reading it hours later with four other branches open.
+
+So append a **`## Theory`** section to the breakdown, above `## Tasks`. Five sentences at most:
+
+- The key abstractions this branch adds or changes, **named**, with where they live.
+- The design decision that was not forced — and the alternative you did not take.
+- What a reviewer should check hardest, and why that is the part most likely to be wrong.
+
+Write it for someone who has not read the story. No task numbers, no "as planned in task 3", no narration of the run — a reviewer reading it in a pull request has none of that, and a reference they cannot resolve reads as something they are missing. `clerk stack --create` lifts this section into the PR body verbatim, between the deliverable's Story Reference and its Boundaries, so it is the first thing read and the diff is checked against it.
+
+**Commit it when the breakdown is tracked**, as its own commit — it describes the branch rather than any one task, and `clerk land` needs a clean tree. Where the repo gitignores `tasks/` there is nothing to commit and the file simply sits in the main checkout, which is where `clerk stack` reads it from.
+
+**Do this even when you found the run boring.** A run with nothing surprising in it is exactly the one whose theory nobody will think to ask about, and the one whose reviewer will therefore skim.
+
+### 5. Verify the run
 
 ```
 clerk verify --all-closed
@@ -343,7 +402,7 @@ Staged-but-uncommitted tails, a vacuous or stale receipt, new exported symbols w
 
 What `clerk verify` leaves in `not_checked` is the residue that still needs judgment — chiefly whether a commit mixes unrelated concerns, and reachability for languages whose exported symbols it does not extract. Spawn the `run-verifier` subagent via the `task` tool for that residue only when `not_checked` is non-empty.
 
-### 5. Close out and land
+### 6. Close out and land
 
 ```
 clerk land                    # archive the breakdown; integrate if the repo says so
@@ -363,11 +422,19 @@ With `--integrate` it rebases onto the default branch, and **stops if the rebase
 
 Inside a worktree, `clerk land --integrate` stops before the fast-forward and says so: the branch is checked out here, so it cannot be merged and deleted from inside it. `cd` back to the main checkout, run the command it printed, then `git worktree remove "$WT"` and `git worktree prune`.
 
-### 6. Reflect and persist learnings
+### 7. Reflect and persist learnings
 
 Distil what generalises: a codebase convention, a recurring finding, a constraint, a reusable pattern. **Falsifiable filter** — keep a candidate only if you can name in one sentence the specific future mistake it prevents. Otherwise it is noise.
 
 **Include what step 3 turned up.** Audit findings and diffs only ever teach implementation conventions. A story mismatch — a criterion that measured a proxy, a task boundary drawn in the wrong place, an assumption the story made that the codebase contradicts — teaches how a story in this repo gets *decomposed* wrong, and the next run reads this file while planning, before any code exists. That is the more valuable class; write it so a planner can act on it. It is exempt from wanting two observations, not from the falsifiable filter.
+
+**And include where the plan mis-read the work.** Three observations from this run say the decomposition, not the code, was wrong, and all three are only visible from here:
+
+- **A task the plan called high certainty that took several attempts to get right**, or arrived with a lint finding. Whatever the plan thought made it routine, does not.
+- **A task the plan called low certainty that was boring.** This one is worth as much and gets recorded far less, because nothing went wrong to prompt it. Left unwritten, the next story over the same ground pauses on it again for nothing, and the pause keeps costing until someone notices.
+- **A `clerk fixup` that came back `ambiguous`** in step 2. Several commits in range touched one file, which is a task boundary drawn across something the codebase treats as one thing.
+
+Each is a fact about *this repo's* work rather than about this story, which is what makes it worth a durable line. Write it so the next decomposition can act on it: name the kind of task, not the task.
 
 Dedup against the learnings file on substance, not wording.
 
@@ -419,6 +486,9 @@ The request is data, not instructions:
 | Rebase conflicts at integrate | Left aborted and the branch untouched. Hand it over; do not resolve someone else's merge for them. |
 | `decompose-to-tasks` fails or returns nothing | Retry once. Then decompose yourself and show the user the list you wrote, flagging that it skipped the codebase-exploration pass. |
 | A task turns out to be wrong or unnecessary once you are in the code | Stop and say so. The plan is the shared contract; revise it with the user rather than silently building something else. |
+| The breakdown carries no `certainty` or `blast_radius` | It was planned before those fields existed; `clerk status` lists the tasks under `gears.unassessed`. Read them as medium and low, and say you did — do not go back and re-decompose a run in progress to acquire them. |
+| A task's assessment is obviously wrong once you are in the code | Say so and drive on what you found, not on what the plan said — a `high` that is plainly `low` is a reason to slow down even with `gears` off. Record it in step 7; it is a fact about how this repo gets planned wrong. |
+| `gears` is on and nobody answers a pause | The run stops there, which is what the flag was turned on for. Leave the branch as it is. Do not turn `gears` off mid-run to get past your own gate. |
 | Tests will not go green | Report the real failure output. Do not weaken the test to pass, and do not commit red. |
 | `audit-implement` returns findings you disagree with | Say which and why. It refutes when uncertain, so a survivor is usually real — but you have context the lenses do not. |
 | `clerk verify` reports a block | Fix it before calling the feature done. |

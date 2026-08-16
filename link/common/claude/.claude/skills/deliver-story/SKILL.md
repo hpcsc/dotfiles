@@ -50,9 +50,12 @@ The dry run prints the worktree name, the resolved base commit and the absolute 
 
 ```
 /implement <absolute path to that deliverable's tasks.md> --in-place
+/implement <absolute path to that deliverable's tasks.md> --in-place --gears
 ```
 
 `--in-place` because the worktree already exists — without it the run scaffolds a second one for the work it is standing in. The deliverable already has a breakdown, so there is nothing to decompose and no reason to add `--review-plan`.
+
+**This is where `--gears` belongs.** It makes the run stop after the tests of any task it assessed low certainty or high blast radius, and wait — which is worth having when you are sitting in front of the pane and worthless when you are not. It is also the answer to a deliverable the driver held back for exactly that reason.
 
 The path must be absolute, or relative to the main checkout: a worktree branches from the default branch and does not contain a gitignored `tasks/` tree. `clerk` resolves a relative one against the main root, but the deliverable's own breakdown is never in the worktree itself.
 
@@ -68,9 +71,11 @@ Spawn the `decompose-to-deliverables` agent, passing the story **as data**. It e
 
 ### Review the plan — GATE (the one human gate)
 
-Present the deliverables, their **waves** (what runs in parallel), the **base/stacking** choice per dependent deliverable, and the branch names. The deliverable boundaries and merge order are expensive to get wrong once pull requests are in flight and cheap to fix now, so this is the single gate:
+Present the deliverables, their **waves** (what runs in parallel), the **base/stacking** choice per dependent deliverable, the branch names, and each deliverable's **certainty and blast radius**. The deliverable boundaries and merge order are expensive to get wrong once pull requests are in flight and cheap to fix now, so this is the single gate:
 
 - Check each deliverable against the sizing rules in `decompose-to-deliverables` Step 3 — one-sentence title, 3–7 tasks, one aggregate, and a judgment-weighted file count in band — and surface any that miss rather than presenting the cut as settled.
+- **Name the `blast_radius: high` deliverables and say what they touch.** This is the one question the plan can answer and the DAG cannot: a wave fires everything ready into background panes at once, so absent a decision here, a deliverable rewriting the permission model is delivered exactly like one adding a formatter. Recommend `--gears` when the cut contains one.
+- **Say how wide the first wave will be**, and offer `--wave-size N` if it is wider than the user will want to read at once. Five deliverables landing together is five pull requests arriving together.
 - Ask the user to approve or request changes.
 - On changes, either let the user edit `plan.yaml` directly, or re-spawn `decompose-to-deliverables` with the feedback, then re-present.
 - Loop until approved. Do NOT proceed to Phase 2 until the plan is approved.
@@ -85,6 +90,13 @@ echo "$HOME/.claude/skills/deliver-story/deliver.sh"     # -> use this absolute 
 bash "<resolved path>" tasks/<story-slug>/plan.yaml --dry-run   # preview the workmux commands first
 bash "<resolved path>" tasks/<story-slug>/plan.yaml            # fire every ready deliverable
 ```
+
+Two flags shape *how much* fires, and both default to today's behaviour — every ready deliverable, all at once:
+
+- **`--gears`** holds back any deliverable the plan marked `blast_radius: high` instead of launching it unattended, and reports it for a run someone is watching. Off, such a deliverable launches like any other and its blast radius is printed on the launch line. Pass it when the plan review turned one up.
+- **`--wave-size N`** launches at most N this pass; the rest stay `pending` and the next run picks them up, exactly as if their dependencies had not merged yet. The DAG says what *can* run in parallel and knows nothing about how many finished branches a person can hold at once — which is the constraint that actually binds, since every deliverable in a wave arrives as a pull request at roughly the same time.
+
+Neither flag hides anything. `certainty` and `blast_radius` are printed beside every launch either way; the flags decide only whether the driver acts on them.
 
 The driver, in one pass:
 1. **Reconciles** — any `running`/`in-review` deliverable whose branch has merged into the default branch is advanced to `merged` — decided by patch id (`git cherry`), so a rebase- or squash-merged branch is recognised rather than reported as unmerged forever; no `gh` needed. That unlocks its dependents.
@@ -160,7 +172,13 @@ A deliverable sitting at `waiting` is usually blocked on a permission prompt, no
 
 ### When a wave finishes: review it, then refresh the stack
 
-Review each finished deliverable's branch (its `tasks.md` and commits describe it by domain behavior — no "PR N" leaks in). Then show the stack:
+**Read each deliverable's `## Theory` section before its diff.** The run appends it to that deliverable's `tasks.md` when it finishes: the abstractions it added, the design decision it took and the alternative it rejected, and what it thinks is most likely to be wrong. Nobody watched the branch being built, so without it every reviewer's first job is reconstructing a theory from a diff — the most expensive way to acquire one, repeated per reviewer. Checking a diff against a stated theory is a different job and a far cheaper one.
+
+Read it as a claim, not as documentation. It was written by the run that wrote the code, so it says what that run *believed* it built — which is exactly what makes a disagreement with the diff worth finding.
+
+A deliverable with no Theory section is one whose run stopped before finishing. Check it against the sidecar rather than reviewing it as complete.
+
+Then review the branch (its `tasks.md` and commits describe it by domain behavior — no "PR N" leaks in), and show the stack:
 
 ```
 clerk stack tasks/<slug>/plan.yaml
@@ -174,7 +192,7 @@ The plan already decided the stack: `base: <sibling-id>` means that deliverable'
 clerk stack tasks/<slug>/plan.yaml --create
 ```
 
-Each PR's title is the deliverable's, and its body is that deliverable's own **Story Reference** and **Boundaries** taken verbatim out of its `tasks.md` — a description written to stand alone, with the out-of-scope list in front of the reviewer rather than in a file nobody opens.
+Each PR's title is the deliverable's, and its body is that deliverable's own **Story Reference**, **Theory** and **Boundaries** taken verbatim out of its `tasks.md` — a description written to stand alone, the design stated before the diff, and the out-of-scope list in front of the reviewer rather than in a file nobody opens.
 
 **Show it again after every merge.** A deliverable whose prerequisite has landed is **retargeted** onto the default branch, because a PR still pointing at a merged branch diffs against code already in the mainline. Merged deliverables, branchless ones and branches carrying no commits are skipped with the reason named, so a re-run is cheap and reads as a status board for the stack.
 
@@ -188,6 +206,7 @@ Once a PR merges, **just run `/deliver-story` again** — it finds the existing 
 - **Task files are passed as absolute main-tree paths.** A deliverable's worktree branches off the default branch and does **not** contain the (often gitignored) `tasks/` tree, so the driver hands `implement` the absolute path into the main checkout. The run reads and checks off its task file there.
 - **Per-deliverable learnings path.** All worktrees of one repo share a git-common-dir, so the repo-keyed learnings default would make parallel deliverables read and append to one file at once. The driver passes an explicit per-deliverable path (`~/.claude/implement-learnings/<repo>/<story-slug>/<deliverable-id>.md`); `implement` takes a path named in the request over the one `clerk prepare` resolved.
 - **No auto-integrate.** Each deliverable stays on its branch for review as a PR — the driver launches `implement` without `--integrate`, which is already its default.
+- **Gears off in a fanned-out wave, by construction.** The driver launches each run without `--gears`, for the same reason it omits `--review-plan`: a pause needs a reader, and these panes have none. What the plan assessed still travels — it is printed on the launch line, it steers what the driver holds back, and it reaches the reviewer through the deliverable's own task file. A deliverable that genuinely wants pauses wants a run in front of a person, which is the by-hand path above.
 - **Verify in the worktree.** Each run is isolated in its own worktree and its `run-verifier` pass runs there; re-check any deliverable by hand with `/verify-run` in its worktree.
 
 ---

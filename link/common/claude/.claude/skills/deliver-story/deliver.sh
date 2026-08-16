@@ -9,14 +9,27 @@
 # (base: <deliverable-id>). Watch progress with `workmux dashboard`.
 #
 # Usage:
-#   deliver.sh [PLAN] [--wave N] [--only id[,id...]] [--mode session|window] [--dry-run]
+#   deliver.sh [PLAN] [--wave N] [--only id[,id...]] [--wave-size N] [--gears]
+#              [--mode session|window] [--dry-run]
 #
-#   PLAN        path to plan.yaml (auto-discovered under tasks/ if a single one exists)
-#   --wave N    only fire deliverables in wave N (default: every ready deliverable)
-#   --only ids  comma-separated deliverable ids to restrict to
-#   --mode      workmux target mode (default: window, falls back to session
-#               when not running inside tmux)
-#   --dry-run   print the workmux commands and status changes without running them
+#   PLAN          path to plan.yaml (auto-discovered under tasks/ if a single one exists)
+#   --wave N      only fire deliverables in wave N (default: every ready deliverable)
+#   --only ids    comma-separated deliverable ids to restrict to
+#   --wave-size N launch at most N deliverables this pass; the rest stay pending for the
+#                 next run. Default: no cap, which is every ready deliverable at once.
+#                 The scarce resource is not review time but how much a reader can hold
+#                 at once, and the DAG knows nothing about that.
+#   --gears       hold back deliverables the plan marked blast_radius: high rather than
+#                 firing them into a pane nobody is watching. Off by default: every
+#                 deliverable launches as it always has, with its assessment printed.
+#   --mode        workmux target mode (default: window, falls back to session
+#                 when not running inside tmux)
+#   --dry-run     print the workmux commands and status changes without running them
+#
+# The plan's certainty and blast_radius are reported on every launch line regardless of
+# --gears. The flag decides whether the driver acts on them, never whether they are
+# visible — a wave whose riskiest deliverable is only identifiable by reading plan.yaml
+# is one where nobody will identify it.
 #
 # Ready = status pending AND either (base is the default branch and every
 # depends_on deliverable is merged) OR (base is a sibling deliverable whose branch carries
@@ -36,20 +49,30 @@ say() { printf 'deliver-story: %s\n' "$1"; }
 MODE=window
 WAVE=""
 ONLY=""
+WAVE_SIZE=""
+GEARS=0
 DRY=0
 PLAN=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wave)    WAVE="$2"; shift 2 ;;
-    --only)    ONLY="$2"; shift 2 ;;
-    --mode)    MODE="$2"; shift 2 ;;
-    --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    --*)       die "unknown option: $1" ;;
-    *)         PLAN="$1"; shift ;;
+    --wave)      WAVE="$2"; shift 2 ;;
+    --only)      ONLY="$2"; shift 2 ;;
+    --wave-size) WAVE_SIZE="$2"; shift 2 ;;
+    --gears)     GEARS=1; shift ;;
+    --no-gears)  GEARS=0; shift ;;
+    --mode)      MODE="$2"; shift 2 ;;
+    --dry-run)   DRY=1; shift ;;
+    -h|--help)   sed -n '2,34p' "$0"; exit 0 ;;
+    --*)         die "unknown option: $1" ;;
+    *)           PLAN="$1"; shift ;;
   esac
 done
+
+case "$WAVE_SIZE" in
+  ''|*[!0-9]*) [ -z "$WAVE_SIZE" ] || die "--wave-size takes a number, got '$WAVE_SIZE'" ;;
+  0) die "--wave-size 0 would launch nothing; omit it for no cap" ;;
+esac
 
 command -v workmux >/dev/null 2>&1 || die "workmux not found on PATH"
 command -v yq      >/dev/null 2>&1 || die "yq not found on PATH"
@@ -170,6 +193,9 @@ in_only() {
 LEARN_DIR="$HOME/.claude/implement-learnings/$REPO/$STORY_SLUG"
 launched=0
 waiting=0
+chosen=0
+deferred=0
+held=""
 launched_handles=""
 
 # The plan's `status` is a latch this script sets; it is not evidence. A run started by
@@ -197,7 +223,7 @@ agent_running_in() {
     awk -v w="$wt" '$0 == w || index($0, w "/") == 1 { found = 1 } END { exit !found }'
 }
 
-while IFS='|' read -r id branch base wave deps tasks status; do
+while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
   [ "$status" = "pending" ] || continue
   in_only "$id" || continue
   [ -n "$WAVE" ] && [ "$wave" != "$WAVE" ] && continue
@@ -243,6 +269,29 @@ while IFS='|' read -r id branch base wave deps tasks status; do
     continue
   fi
 
+  # The plan assessed how sure it is of the method and what being wrong would cost. Both
+  # are printed on every launch line below; only --gears makes the driver act on one.
+  #
+  # High blast radius is held rather than merely flagged because of what a launch is: an
+  # unattended run in a background pane, finishing hours later into a pull request. That
+  # is the right shape for work whose failure is a bad diff and the wrong one for work
+  # whose failure is a permission check that now passes for everyone. Held, not skipped —
+  # the deliverable stays pending and the operator runs it in front of themselves.
+  if [ "$GEARS" -eq 1 ] && [ "$blast" = "high" ]; then
+    say "hold: $id is blast_radius=high — not firing it unattended (--gears). Run it yourself: --only $id --no-gears"
+    held="$held $id"
+    continue
+  fi
+
+  # A cap on how many land in one pass, because the DAG decides what CAN run in parallel
+  # and nothing decides how much a person can read. Deferred deliverables stay pending and
+  # are picked up by the next run, exactly like ones whose dependencies had not merged.
+  if [ -n "$WAVE_SIZE" ] && [ "$chosen" -ge "$WAVE_SIZE" ]; then
+    say "defer: $id is ready but the wave is capped at $WAVE_SIZE — re-run to deliver it"
+    deferred=$((deferred + 1))
+    continue
+  fi
+
   tasks_abs="$MAIN_ROOT/$tasks"
   [ -f "$tasks_abs" ] || die "deliverable $id: task file missing: $tasks_abs"
   bc=$(base_commit "$base") || die "deliverable $id: cannot resolve base '$base'"
@@ -267,7 +316,8 @@ while IFS='|' read -r id branch base wave deps tasks status; do
     pane_target="$handle:.{top-left}"
   fi
 
-  say "launch: $id  branch=$branch  base=$base@${bc%${bc#??????????}}  handle=$handle"
+  chosen=$((chosen + 1))
+  say "launch: $id  branch=$branch  base=$base@${bc%${bc#??????????}}  handle=$handle  certainty=$certainty  blast=$blast"
   # `open` for a worktree that already exists, `add` for one that does not. `add` on an
   # existing worktree would make a second, and `open` on a missing one has nothing to open.
   if [ -n "$resume" ]; then
@@ -294,9 +344,16 @@ while IFS='|' read -r id branch base wave deps tasks status; do
       say "workmux add failed for $id — left pending"
     fi
   fi
-done < <(yq -r '.deliverables[] | [.id, .branch, .base, (.wave | tostring), (.depends_on | join(",")), .tasks, .status] | join("|")' "$PLAN")
+done < <(yq -r '.deliverables[] | [.id, .branch, .base, (.wave | tostring), (.depends_on | join(",")), .tasks, .status, (.certainty // "unassessed"), (.blast_radius // "unassessed")] | join("|")' "$PLAN")
 
 say "done: $launched launched, $waiting waiting. Watch with: workmux dashboard"
+if [ "$deferred" -gt 0 ]; then
+  say "$deferred deferred by --wave-size $WAVE_SIZE — re-run this to deliver them"
+fi
+if [ -n "$held" ]; then
+  say "held back as blast_radius=high:$held"
+  say "  each needs a run you are watching — see the deliver-story skill's by-hand path"
+fi
 
 # Run in the background so the dispatcher is woken instead of polling. This is an
 # early wake, not a completion signal: workmux reports "done" whenever the agent

@@ -72,8 +72,10 @@ flowchart TD
   end
   subgraph P2["Phase 2 · Build, task by task"]
     G1 --> E{"clerk next<br/>first unblocked task<br/>exit 3 if one is in flight"}
-    E --> F["you write it<br/>tests first, implement, read the output"]
-    F --> H["clerk complete N -- files<br/>tick the box, stage those paths only"]
+    E --> T["you write the tests<br/>run them red"]
+    T --> G2{"gears on and the task is<br/>low certainty / high blast?<br/>show the assertions, stop"}
+    G2 --> F["you implement it<br/>until green, read the output"]
+    F --> H["clerk finish N -- files<br/>mark it done, stage those paths only"]
     H --> I["commit agent<br/>writes the message"]
     I --> E
   end
@@ -84,7 +86,8 @@ flowchart TD
     L --> M["you fix the findings<br/>clerk fixup folds each into its commit"]
     M --> N["clerk receipt again<br/>the old one describes a dead tree"]
     N --> O["you re-read the request<br/>against the finished branch"]
-    O --> P["clerk verify<br/>and what it could not settle"]
+    O --> W["you write the theory<br/>into the breakdown, for the reviewer"]
+    W --> P["clerk verify<br/>and what it could not settle"]
     P --> Q["run-verifier<br/>the judgment residue only"]
     Q --> R["clerk land --integrate<br/>gate, archive, rebase, ff-only"]
     R --> S["reflect<br/>clerk learn appends what survives"]
@@ -94,14 +97,14 @@ flowchart TD
   classDef agent fill:#DBE3EE,stroke:#3E5C88,stroke-width:1.5px,color:#16233A
   classDef gate fill:#EFD9E4,stroke:#8A2E5D,stroke-width:2px,color:#3A1024
   class A,B,C,E,H,K,N,P,R clerk
-  class F,M,O,S you
+  class F,M,O,S,T,W you
   class D,I,L,Q agent
-  class G1 gate
+  class G1,G2 gate
   class J you
 ```
 
-Green is `clerk`, orange is the model's own work, blue is a delegated agent, pink is the
-one human gate.
+Green is `clerk`, orange is the model's own work, blue is a delegated agent, pink is a
+human gate. Both gates are opt-in and both are off by default.
 
 The middle band is the loop: `clerk next` → build → `clerk complete` → commit agent →
 back to `clerk next`. Construction is never delegated. Profiling four fully-delegated

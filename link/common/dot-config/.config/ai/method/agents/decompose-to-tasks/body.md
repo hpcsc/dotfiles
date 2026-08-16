@@ -69,6 +69,33 @@ Apply **baby steps** and **vertical slicing**:
 - **Tests are part of the slice, not a separate task.** Each task that delivers testable behavior MUST include writing its own tests. Never batch tests into a later task — if a task adds a handler, the same task adds the handler's tests. A task without its tests is not independently committable.
 - **A task marked `Testable: Yes` must be testable through a public API** (exported function, HTTP handler, CLI command). If a task introduces internal artifacts (types, templates, helpers) whose only meaningful tests would call unexported code or execute internal templates directly, either (a) combine it with the task that wires them into a public API, or (b) mark it `Testable: No`. Do not mark a task `Testable: Yes` if the only way to verify it is by testing implementation details.
 
+### Assess each task: certainty and blast radius
+
+Two judgments per task. You have just explored the codebase, which makes you the only party to this run in a position to make them — the implementer reads the plan, and by the time the code exists the question is already settled.
+
+They measure different things and must not be collapsed into one score. A task repeating a pattern the repo contains twenty times, against the payments ledger, is high certainty and high blast radius at once; averaged into "medium risk" it gets neither the speed it earned nor the care it needs.
+
+**`certainty`** — how confidently this repo already answers *how* to build this task. Not how hard it is, and not how large.
+
+| Value | When |
+|---|---|
+| `high` | The task repeats a pattern already in this codebase, and you can name the file and line range it repeats. |
+| `medium` | The pattern exists but this task varies it in a way no existing instance covers. |
+| `low` | No instance exists here, the design is itself what the task decides, or it introduces a dependency, integration or algorithm this repo has not used before. |
+
+**`high` requires a precedent you can point at.** If a task's `Patterns to Follow` is empty, its certainty is not `high` — that is the same evidence stated twice, and if you cannot produce the reference you did not have the confidence. This is the rule that keeps the field from drifting to `high` on everything, which is the failure that makes it worthless.
+
+**`blast_radius`** — what being wrong about this task would cost, independent of how likely you are to be wrong. Binary, because it is a veto and not a gradient.
+
+| Value | When |
+|---|---|
+| `high` | Authentication or authorization; money arithmetic, pricing or balances; a schema migration or any destructive or irreversible write; credential, token or secret handling; personal data; a contract consumed outside this repository (a public API shape, an emitted event's schema, a CLI's output format). |
+| `low` | Everything else. |
+
+Judge it from what the task *touches*, not from how large its diff is. A one-line change to a permission check is `high`; a four-hundred-line refactor of an internal helper is `low`.
+
+Assess every task. A breakdown where nothing is `low` certainty is usually one that skipped this step rather than a story that happens to be routine throughout — but a genuinely routine story exists, so say so in the Summary rather than manufacturing variety.
+
 ---
 
 ## Step 4: Document Structure
@@ -131,10 +158,16 @@ Each task includes:
 
 **Testable:** Yes | No — Can tests be written for this task's behavior? If Yes, tests are written as part of this task, not deferred.
 
+**Certainty:** high | medium | low — [the reason, in one clause: the precedent for `high`, what is undecided for `low`]
+
+**Blast radius:** high | low — [for `high`, which of the named categories it touches]
+
 **Verification:** [How to verify correctness — e.g., "tests pass", "go build succeeds", "manual wiring check"]
 
 **Depends on:** [Task N-1, or "None"]
 ```
+
+The reason beside each assessment is not decoration. A bare `low` tells a reader to slow down without saying what to look at, and a bare `high` cannot be argued with — whereas "no precedent: this is the first outbound webhook here" can be corrected by anyone who knows there is one.
 
 Every acceptance criterion must be checkable by someone standing in the working tree with the task's changes applied and nothing committed yet — reading a file, running a command, inspecting output. If checking one would mean consulting `git log`, a branch, a remote, or a tag, it is describing the orchestrator's job rather than the task's, and belongs nowhere in the list.
 
@@ -170,6 +203,8 @@ prose. Both must describe the same tasks — if you revise one, revise the other
       "title": "<the same imperative title as the markdown>",
       "language": "Go",
       "testable": true,
+      "certainty": "high",
+      "blast_radius": "low",
       "depends_on": [],
       "affected_files": ["path/to/file.go"]
     }
@@ -182,7 +217,16 @@ and this file is the only place progress is recorded, so do not add a checkbox l
 the markdown: a second copy of that fact can go stale while still reading as the answer.
 `depends_on` is an array of
 task numbers (`[]` when a task has none); it is the dependency edge the markdown states
-as **Depends on:**, so the two must agree. Keep every other field the markdown already
+as **Depends on:**, so the two must agree.
+
+`certainty` and `blast_radius` are the two assessments, as bare values — the reason
+beside each in the markdown stays there. They are duplicated into the sidecar for the
+same reason `depends_on` is: a run reads them per task, from `clerk next`, and a regex
+over prose is not how a run should learn how hard to drive. Emit both on every task,
+never omitted and never null; a missing field means "planned before these existed", and
+a task you judged routine must not be indistinguishable from one nobody judged.
+
+Keep every other field the markdown already
 carries out of the JSON: duplicating prose invites the two to drift, and nothing reads
 it from here.
 
@@ -192,6 +236,7 @@ After saving, return a structured summary containing:
 2. The total number of tasks
 3. A brief ordered list of task titles (e.g., "Task 1: Add event type, Task 2: Create command handler, ...")
 4. Key codebase findings that informed the decomposition
+5. The tasks you assessed `low` certainty or `high` blast radius, each with its one-clause reason — so the caller can overrule an assessment before it is built on, which is far cheaper than discovering it from the code
 
 ---
 
@@ -208,6 +253,8 @@ Before saving, verify:
 - [ ] No test plans included — Behavior and Acceptance Criteria are sufficient
 - [ ] Every task with `Testable: Yes` includes its tests — no separate "add tests" tasks
 - [ ] Dependencies between tasks are explicit
+- [ ] Every task carries a `Certainty` and a `Blast radius`, each with its one-clause reason, in both the markdown and the sidecar
+- [ ] No task is `Certainty: high` without a named precedent in its `Patterns to Follow`
 - [ ] Boundaries carries the story's non-goals plus any the decomposition added, or says there are none
 - [ ] Each task is independently committable (codebase stays green)
 - [ ] No code samples, implementation logic, or control flow suggestions included

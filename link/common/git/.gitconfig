@@ -18,6 +18,7 @@
 	rebase = true
 [rebase]
 	autoStash = true
+	updateRefs = true
 [diff]
 	mnemonicprefix = true
 	submodule = log

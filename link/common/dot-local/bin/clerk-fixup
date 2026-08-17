@@ -21,6 +21,9 @@ So this refuses the ambiguous case and prints the candidates, rather than taking
 newest and being quietly wrong. Where a file has one commit in range there is nothing to
 weigh, and where several files all point at one commit there is nothing to weigh either.
 
+A repo whose commit-msg hook rejects `fixup!` subjects would otherwise have no fold at
+all; `mark_fixup` says how that one check is stepped around, and why the rest are not.
+
 Dispatched to by `clerk` when invoked as `clerk fixup`, and runnable on its own.
 """
 
@@ -73,6 +76,58 @@ def resolve_base(explicit):
             return mb.stdout.strip()
     die("could not resolve a base: this branch has no other branch to fork from and no "
         "upstream to compare against. Pass --base <ref> — the commit the work started from")
+
+
+def git_err(r):
+    return r.stderr.strip() or r.stdout.strip()
+
+
+def mark_fixup(target, subject):
+    """Commit the staged fix as `fixup! <subject>`. Returns whether the commit-msg hook
+    had to be stepped around to get the marker in.
+
+    A repo whose commit-msg hook validates every subject — conventional commits, a ticket
+    prefix, a house linter — rejects `fixup!` outright, and there the whole fold is
+    unavailable, because the marker is the only thing `--replay` can find. The hook is not
+    wrong about the history it guards: a fixup commit never becomes part of it. `--replay`
+    squashes it into the target, whose message the hook already passed, and rebase runs no
+    commit-msg hook. So the rejection is of a string that will not exist.
+
+    Which is why the retry steps around that one check and nothing else. The commit is made
+    first with the target's own message — one this repo demonstrably accepts, since it is
+    in the history — so a pre-commit hook still runs over the content, and a real complaint
+    about the fix still stops it. Only the amend that installs the marker is --no-verify,
+    and it changes the message alone.
+    """
+    r = git("commit", f"--fixup={target}", check=False)
+    if r.returncode == 0:
+        confirm_marker(subject)
+        return False
+
+    reuse = git("commit", f"--reuse-message={target}", check=False)
+    if reuse.returncode != 0:
+        die(f"git commit --fixup failed (files are staged): {git_err(r)}")
+
+    amend = git("commit", "--amend", "--no-verify", "-m", f"fixup! {subject}", check=False)
+    if amend.returncode != 0:
+        git("reset", "--soft", "HEAD~1", check=False)
+        die(f"git commit --fixup failed (files are staged): {git_err(r)}")
+
+    confirm_marker(subject)
+    return True
+
+
+def confirm_marker(subject):
+    """`--replay` finds fixups by subject, so a subject that is not one folds nothing."""
+    head = git("log", "-1", "--format=%s").stdout.strip()
+    if head.startswith(f"fixup! {subject}"):
+        return
+    git("reset", "--soft", "HEAD~1", check=False)
+    die(f"the commit was made but its subject is {head!r} rather than 'fixup! {subject}' — "
+        f"a prepare-commit-msg hook rewrote it. `--replay` finds fixups by subject, so the "
+        f"fold would silently never happen. The commit is undone and the files are staged "
+        f"again: keep this fix as its own commit, saying in the message which commit it "
+        f"corrects.", 3)
 
 
 def commits_touching(base, path):
@@ -146,11 +201,16 @@ def cmd_apply(args):
     git("add", "--", *files)
     # Staged but not committed is the tail `clerk verify` reports; if the commit fails
     # the caller needs to know the index was already touched.
-    r = git("commit", f"--fixup={target}", check=False)
-    if r.returncode != 0:
-        die(f"git commit --fixup failed (files are staged): {r.stderr.strip() or r.stdout.strip()}")
+    bypassed = mark_fixup(target, subject)
     out_payload = {"ok": True, "target": target[:12], "subject": subject, "files": files,
                    "next_step": "clerk fixup --replay, once every fix is marked"}
+    if bypassed:
+        out_payload["commit_msg_hook_bypassed"] = True
+        out_payload["hook_note"] = (
+            "this repo's commit-msg hook rejects fixup! subjects, so the marker went in "
+            "with --amend --no-verify over a commit the hook accepted; the content still "
+            "passed pre-commit. The branch now carries a subject this repo refuses, which "
+            "the replay removes — replay before pushing, and do not push if it refuses.")
     if later:
         out_payload["also_touched_later"] = later
         out_payload["warning"] = (

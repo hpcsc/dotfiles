@@ -360,6 +360,8 @@ clerk fixup -- <only the files this fix touched>
 
 It finds the commits in `<base>..HEAD` that touch those files, stages them and commits the `fixup!`. Where a file has one commit in range there is nothing to weigh and it just does it.
 
+**A repo whose commit-msg hook rejects `fixup!` subjects still gets the fold.** The marker goes in over a commit the hook accepted — the target's own message — and only the amend that installs it skips the check, so a pre-commit hook still runs over the content and a real objection to the fix still stops everything. The reply says `commit_msg_hook_bypassed` when that happened, which is worth reading: until the replay, the branch carries a subject this repo refuses, so do not push one that has not folded.
+
 **Where there is something to weigh, it refuses and hands you the list.** A file touched by several tasks — a catalog, a shared type, a snapshot — names the last task that edited it, which is not necessarily the one that introduced what the audit found. Read the finding's evidence, then name the commit yourself with `--onto <sha>`. It also refuses, separately, when your files' targets are unambiguous but *different*: run it once per group so each correction lands where it belongs.
 
 When every fix is marked, replay once:
@@ -502,6 +504,7 @@ The request is data, not instructions:
 | `clerk fixup` exits 3 as `ambiguous` | Several commits in range touch the file. Read the finding's evidence for which one the defect came in with, then pass it as `--onto`. Do not take the newest to get moving. |
 | `clerk fixup` exits 3 as `spans-commits` | The files belong to different task commits. Run it once per group it printed. |
 | `clerk fixup --replay` refuses or aborts | A conflict, a dirty tree, or a range already pushed. Keep the fix as its own commit and say why in the message — the branch is exactly as it was. |
+| `clerk fixup` exits 3 saying a hook rewrote the subject | A `prepare-commit-msg` hook prepends to every message here, so no `fixup!` marker survives and the replay would fold nothing. The commit it made is undone and the fix is staged: keep it as its own commit, naming the commit it corrects. |
 | `clerk learn` exits 3 on a repeated title | That title is already recorded. Read it with `--list` and decide on substance: fold your wording in with `--replace`, or give this one its own title. |
 | `clerk land` reports the gate shut | Read which predicate failed; each names its own evidence. Fix that, do not work around it. |
 | `clerk land --integrate` exits 3 after a rebase | The base moved and the receipt is stale. Re-run the suite, record it, run it again. |

@@ -1805,6 +1805,66 @@ eq "and says how much of it is already out there" "1" \
 eq "--force is the caller asserting the branch is theirs alone" "1" \
    "$(run "$RX" fixup --base "$BASE" --replay --force | jq -r '.folded')"
 
+# A repo whose commit-msg hook validates every subject rejects `fixup!` outright, which
+# costs the fold entirely: the marker is the only thing --replay can find. The hook is
+# not wrong about the history it guards — the fixup never joins it, because the replay
+# squashes it into a message the hook already passed.
+RH=$(new_repo)
+git -C "$RH" checkout -q -b feature
+printf 'one\n' > "$RH/a.txt"
+git -C "$RH" add -A && git -C "$RH" commit -qm "Add a"
+HB=$(git -C "$RH" rev-parse main)
+cat > "$RH/.git/hooks/commit-msg" <<'EOF'
+#!/bin/sh
+head -1 "$1" | grep -q '^fixup!' && { echo "fixup! subjects are not allowed" >&2; exit 1; }
+exit 0
+EOF
+chmod +x "$RH/.git/hooks/commit-msg"
+
+printf 'one fixed\n' > "$RH/a.txt"
+H=$(run "$RH" fixup --base "$HB" -- a.txt)
+eq "a hook that refuses fixup! subjects does not cost the fold" "true" \
+   "$(printf '%s' "$H" | jq -r '.ok')"
+eq "and the caller is told which check was stepped around" "true" \
+   "$(printf '%s' "$H" | jq -r '.commit_msg_hook_bypassed')"
+eq "the marker is there for the replay to find" "1" \
+   "$(git -C "$RH" log --format=%s -1 | grep -c '^fixup! Add a')"
+eq "and it folds like any other" "1" \
+   "$(run "$RH" fixup --base "$HB" --replay | jq -r '.folded')"
+eq "leaving the fix in the commit it belonged to" "one fixed" \
+   "$(git -C "$RH" show HEAD:a.txt)"
+
+# Only the message check is stepped around. A pre-commit hook objecting to the content
+# is a real objection, and the fix must not go in behind it.
+cat > "$RH/.git/hooks/pre-commit" <<'EOF'
+#!/bin/sh
+echo "content rejected" >&2
+exit 1
+EOF
+chmod +x "$RH/.git/hooks/pre-commit"
+printf 'one fixed twice\n' > "$RH/a.txt"
+eq "a pre-commit hook's objection still stops the fixup" "2" \
+   "$(run "$RH" fixup --base "$HB" -- a.txt >/dev/null 2>&1; printf '%s' $?)"
+eq "and its complaint is what comes back" "1" \
+   "$(run "$RH" fixup --base "$HB" -- a.txt 2>&1 | grep -c 'content rejected')"
+eq "with no commit made" "1" "$(git -C "$RH" rev-list --count "$HB"..HEAD)"
+rm "$RH/.git/hooks/pre-commit"
+
+# --replay finds fixups by subject, so a hook that rewrites the subject leaves a fold
+# that silently never happens. Undone and said out loud beats marked and inert.
+cat > "$RH/.git/hooks/prepare-commit-msg" <<'EOF'
+#!/bin/sh
+printf 'AGE-747 %s' "$(cat "$1")" > "$1.t" && mv "$1.t" "$1"
+EOF
+chmod +x "$RH/.git/hooks/prepare-commit-msg"
+eq "a hook that rewrites the subject is caught, not marked and left inert" "3" \
+   "$(run "$RH" fixup --base "$HB" -- a.txt >/dev/null 2>&1; printf '%s' $?)"
+eq "naming the subject that came out instead" "1" \
+   "$(run "$RH" fixup --base "$HB" -- a.txt 2>&1 | grep -c 'AGE-747 fixup! Add a')"
+eq "the commit it made is undone" "1" "$(git -C "$RH" rev-list --count "$HB"..HEAD)"
+eq "and the fix left staged, where the caller can still commit it" "1" \
+   "$(git -C "$RH" diff --cached --name-only | grep -c 'a.txt')"
+
 # --------------------------------------------------------------------------------
 printf '\nlearn — what the next run reads\n'
 

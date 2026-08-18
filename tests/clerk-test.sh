@@ -636,6 +636,30 @@ eq "and never pushes"                "false"   "$(printf '%s' "$L" | jq -r '.pus
 eq "names the branch it deleted"     "feature" "$(printf '%s' "$L" | jq -r '.deleted_branch')"
 eq "with nothing left behind to say" "null"    "$(printf '%s' "$L" | jq -r '.branch_left')"
 
+# Typing neither --integrate nor --no-integrate is what makes the repo's own decision
+# load-bearing, and land is the only caller that resolves a flag with no request to read.
+# Reaching for the request argument it does not pass aborted the subshell under `set -u`,
+# so land was handed an empty string and read it as an answer — reporting integration off
+# with an unnamed source while a tracked clerk.json said to integrate.
+RCFG=$(new_repo)
+mkdir -p "$RCFG/tasks"
+printf '### Task 1: Only task\n' > "$RCFG/tasks/feature.md"
+printf '{"tasks":[{"n":1,"title":"Only task","depends_on":[],"done":false}]}\n' > "$RCFG/tasks/feature.json"
+printf '{"integrate": true}\n' > "$RCFG/tasks/clerk.json"
+printf 'package a\n' > "$RCFG/a.go"
+git -C "$RCFG" add -A && git -C "$RCFG" commit -qm "Plan"
+git -C "$RCFG" switch -qc feature
+run "$RCFG" finish 1 -- a.go >/dev/null 2>&1
+git -C "$RCFG" commit -qm "Do task 1" -q
+run "$RCFG" receipt --command "go test ./..." --passed >/dev/null
+E=$(run "$RCFG" land --audit-accepted 2>/dev/null)
+eq "land with nothing typed integrates because the repo says to" "true" \
+   "$(printf '%s' "$E" | jq -r '.landed')"
+eq "and names the file that decided it" "tasks/clerk.json" \
+   "$(printf '%s' "$E" | jq -r '.integrate_source')"
+eq "and resolving it says nothing on stderr" "0" \
+   "$(run "$RCFG" land --audit-accepted 2>&1 >/dev/null | wc -l | tr -d ' ')"
+
 # Landing from inside a worktree stops before the merge, and says what has to happen to
 # the worktree first — `git worktree prune` leaves one whose directory still exists, so a
 # next_step that ends at prune sends the caller into a branch delete git will refuse.

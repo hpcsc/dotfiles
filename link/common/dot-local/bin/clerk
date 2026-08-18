@@ -225,7 +225,13 @@ request_flag() {
 # Prints "<value>\t<source>". The source is reported, not decoration: a run that
 # integrated because of a file nobody remembers writing is the failure it prevents.
 resolve_flag() {
-  local root=$1 key=$2 request=$3 cfg="$1/tasks/clerk.json" envf="$1/tasks/.environment" v= on= off=
+  # ${3:-} rather than $3: a caller with no request to offer — land, resolving what the
+  # repo decided — passes two arguments, and under `set -u` reading the third aborts the
+  # subshell this runs in. The caller is left holding an empty string, which reads as a
+  # resolution rather than a crash: land reported `integrate: false` with an empty source
+  # and a sentence ending "integration is off in ", ignoring a tracked clerk.json that
+  # said to integrate.
+  local root=$1 key=$2 request=${3:-} cfg="$1/tasks/clerk.json" envf="$1/tasks/.environment" v= on= off=
   # The spelling a request uses for each flag. Kept beside the resolver because the
   # two must agree: a token this does not list is a flag the caller can type and watch
   # be ignored, which is worse than one that is not offered at all.

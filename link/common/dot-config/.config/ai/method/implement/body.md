@@ -30,6 +30,8 @@ Construction is serial, judgment-dense and context-heavy: every delegated agent 
 
 So: build directly, review adversarially at the end.
 
+What that buys is a lopsided run rather than a uniformly cheap one. A four-task feature delivered this way spent 44 minutes on construction and 89 on the audit loop — the 64% is still there, moved onto the half that earns it. Budget for review being the larger number, and read step 2's round count as the main lever you have over how long a run takes.
+
 **The trap this skill exists to avoid.** Nothing hands you the project's guidelines — left to yourself you follow the code you can see and miss the rules you cannot, then find out at review. Phase 0 is not throat-clearing; loading them is the price of writing the code yourself, and it is much cheaper than the findings it prevents.
 
 Use `implement-flow` instead for large mechanical migrations with genuinely disjoint files, or for unattended overnight runs.
@@ -182,7 +184,7 @@ Run the task's test command and **read the output**. Having written the code is 
 
 Four checks earlier runs paid for, each of which shipped a defect that a passing suite did not catch:
 
-- **A new guard must be shown to fail.** Inject the violation it claims to catch, watch it fail, revert the injection. A test that cannot fail is worse than no test, because it reads as coverage.
+- **A new guard must be shown to fail.** Inject the violation it claims to catch, watch it fail, revert the injection. A test that cannot fail is worse than no test, because it reads as coverage. **Revert from a copy, never with `git checkout`** — before the task is committed, HEAD is the tree *without* this feature, so restoring a tracked file to it erases the work rather than the injection. Copy the file to the scratchpad first and put it back with `/bin/cp -f`, or commit before mutating. One run's mutation loop ended each case with `git checkout -- <dir>` and wiped a finished task in a second; the remaining cases then printed `ok … [no tests to run]`, which reads like a caught mutation rather than an emptied tree.
 - **An absence assertion needs a positive partner.** `expect(x).toBeNull()` on an attribute nothing sets passes when the whole feature is deleted.
 - **Moving code can silently invert a source-scanning test.** A test that locates code with `readFileSync` plus `indexOf`/`substring` bounds starts scanning nothing when the bounds cross, and passes forever.
 - **Look at UI in a browser.** CSS and layout defects are invisible to a green suite. Run the app, open the page, look at it.
@@ -267,7 +269,11 @@ Pass it the base ref the work started from, the `test_commands` map, a one-or-tw
 
 It fans the applicable lenses over the diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings plus `coverage_gaps`.
 
-**Read `coverage_gaps` first** — what the audit could not judge is more actionable than what it could. Then work the findings; each carries evidence you can re-run. Skim the refuted list: a wrongly-refuted finding is this shape's failure mode, and the verifier is instructed to refute when uncertain.
+**Read `coverage_gaps` and `lenses_not_run` first** — what the audit could not judge is more actionable than what it could. Then work the findings; each carries evidence you can re-run. Skim the refuted list: a wrongly-refuted finding is this shape's failure mode, and the verifier is instructed to refute when uncertain.
+
+**What arrives through the gaps has not been through the gate.** A finding is reproduced before it counts. `coverage_gaps`, `lenses_not_run` and `lens_notes` are the opposite channel — what a lens noticed in passing and was not authorised to judge — and nothing in the audit checked any of it. Treat every claim there as a hypothesis: reproduce it yourself before you act on it, before you put it in your summary, and before you write it into the learnings. One run took a lens's passing note that a documented flag was being discarded by the CLI framework, never ran the command, told the user all four documented invocations were silently broken, and committed that to the learnings file where every later run in the repo would read it. The flag worked exactly as documented.
+
+**A gap that survives a round is yours to close.** Each lens owns changed source files under a language it knows, so a diff's documentation, its fixtures and its breakdown are owned by nobody and come back unreviewed however many rounds you run. The second time you read the same gap, the audit is telling you it will never cover that ground: open those files yourself and run whatever they document, or say in your summary that they went unreviewed. One run had three rounds return an identical `lenses_not_run` naming a README, two docs pages and the breakdown — five files, a third of the branch — and landed without a lens ever reading them.
 
 Fix findings **directly**. Do not launch a workflow to apply them — you have the context and they are usually small.
 
@@ -299,9 +305,11 @@ This is also what keeps `clerk verify` meaningful rather than noisy. Its commit-
 
 **Then re-run the suite and record a new receipt.** Step 1's receipt describes a tree that no longer exists. This is the one place in the skill where code changes land after the last green, which is exactly the vacuous-receipt shape the audit itself hunts for. If you changed nothing, say so and keep the existing receipt.
 
-**Then re-audit narrowed, not wholesale.** Every finding carries the `lens` that raised it. Re-invoke `audit-implement` with `lenses` set to just those keys and `recheck` set to the findings you fixed, plus the same `brief` and `story`. That costs the scope pass and those lenses, and skips Verify and Report altogether when nothing is raised — the expected outcome.
+**Then re-audit, and always pass `recheck`.** Every finding carries the `lens` that raised it. Re-invoke `audit-implement` with `recheck` set to the findings you fixed, plus the same `brief` and `story`. Narrow `lenses` to the raising keys only when every fix was a quality fix — a comment removed, a redundant test folded, a name changed — since those cannot break what another lens owns. That costs the scope pass and those lenses, and skips Verify and Report altogether when nothing is raised.
 
-**Widen to the full panel when any fix touched behaviour.** A quality fix — a comment removed, a redundant test folded, a name changed — cannot break what another lens owns, so the raising lens is sufficient. A fix that changes a code path can, and the lens that raised the original finding is not watching for it.
+**A fix that changes a code path needs the whole panel**, because the lens that raised the original finding is not watching for what the fix broke. Expect this to be the common case rather than the exception: most rounds you will pay for the full fan-out, and a round is roughly as expensive as the one before it.
+
+**So say how many rounds you are running before you start the first, and stop there.** Nothing in a round's output tells you whether another would find more, and the rounds do not converge on their own. One run went 7 → 7 → 5 findings over three full rounds, never re-raised a single finding, and turned up fresh medium-severity ones every time — the third round is where it found that the story's headline criterion was unguarded. Two rounds is a reasonable default; three is defensible for behaviour that is hard to see, such as anything rendered. What is not defensible is stopping because the last round felt quiet. Name the last round as the last one and say why, so the user is reading a decision rather than a coincidence — and say what the next round would most likely have looked at.
 
 If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix receipt is the evidence that matters.
 
@@ -309,11 +317,12 @@ If the fixes were trivial and confined — a typo, a single call site — skip t
 
 The audit checked whether the code is correct and whether it matches the brief. Neither it nor the verifier checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a decomposition written from the request rather than from the request itself. This is the only step that reads the request, so it is the only place a decomposition that quietly narrowed the story is caught.
 
-This costs a read, not an agent, because you are already here. Re-read the request **verbatim, from the record you made in Phase 0** — not your memory of it, and not the brief you wrote from it — then read `git log --oneline` and the branch diff, and answer two questions:
+This costs a read, not an agent, because you are already here. Re-read the request **verbatim, from the record you made in Phase 0** — not your memory of it, and not the brief you wrote from it — then read `git log --oneline` and the branch diff, and answer four questions:
 
 - What does the story ask for that this branch does not do?
 - Where does the branch satisfy a task's acceptance criteria by measuring a **proxy** for what was asked rather than the thing itself?
 - Where did a criterion that the story stated as a category — "any construct", "each format", "all four patterns" — become a list in the breakdown? Check the list against the source that defines the set, not against the story's examples. The audit cannot catch this: every lens owns changed source files, the breakdown is owned by none, and each lens judges intent from the diff and your brief rather than from the story.
+- Which test fails when a criterion is violated? Name one per criterion, and for whatever the story states as its headline, make that test fail — the same injection Phase 2 asks for, against the finished branch. A criterion can be fully delivered and completely unguarded at once, and that pair is invisible to every question above: the feature works when you run it, the suite is green, and nothing would notice if it stopped working. One run's headline criterion was that each card is drawn under the slice that states it. Swapping two cards' positions left the entire repository green, and an audit round caught it only after the branch was otherwise finished.
 
 Quote the story's own words for anything you raise; if you cannot point at the phrase, you are inventing a requirement. Put mismatches to the user as questions and let them decide — you wrote this code, which makes you the worst-placed reader of your own interpretation of the request. Finding nothing is the common result; say so in a line.
 

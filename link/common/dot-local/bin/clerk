@@ -1126,12 +1126,23 @@ cmd_verify() {
   #    the tests. Sound-direction-only: zero textual matches proves no reference.
   if [ -n "$base" ]; then
     local gofiles sym deffile hits
-    gofiles=$(git diff --name-only "$base"..HEAD -- '*.go' 2>/dev/null)
+    # Extract from production files only. The rule below asks a symbol to prove it has a
+    # caller outside the tests, and a symbol *defined* in a _test.go file can never answer
+    # it — a `Test…` function least of all, since `go test` discovers it by name and
+    # nothing ever references it. Extracted from the whole diff, every new top-level test
+    # function blocked the gate.
+    gofiles=$(git diff --name-only "$base"..HEAD -- '*.go' ':!*_test.go' 2>/dev/null)
     if [ -n "$gofiles" ]; then
-      for sym in $(git diff "$base"..HEAD -- '*.go' 2>/dev/null \
+      for sym in $(git diff "$base"..HEAD -- '*.go' ':!*_test.go' 2>/dev/null \
           | sed -n 's/^+func \([A-Z][A-Za-z0-9_]*\)(.*/\1/p; s/^+func ([^)]*) \([A-Z][A-Za-z0-9_]*\)(.*/\1/p; s/^+type \([A-Z][A-Za-z0-9_]*\) .*/\1/p' \
           | sort -u); do
-        deffile=$(git grep -l -w -- "$sym" HEAD -- '*.go' 2>/dev/null | head -1)
+        # The declaration, not merely the first file that mentions it. `git grep -l -w`
+        # returns paths in tree order, so it names a caller far more often than the
+        # definition — every one of emod's fixture symbols resolved to a consumer under
+        # internal/cli. That misreports the location, and it silently disarms the
+        # fixture-package rule below, which reads the directory of whatever this returns.
+        deffile=$(git grep -l -E -- "^(func (\([^)]*\) )?$sym\(|type $sym[ 	])" HEAD -- '*.go' 2>/dev/null | head -1)
+        [ -n "$deffile" ] || deffile=$(git grep -l -w -- "$sym" HEAD -- '*.go' 2>/dev/null | head -1)
         # Discounting _test.go callers is what makes this check mean anything — a symbol
         # used only by the test written alongside it is not wired up. A fixture package
         # is the exception that breaks it: it exists to be consumed by _test.go files and

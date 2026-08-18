@@ -455,6 +455,11 @@ eq "and a base that is not HEAD" "false" \
 mkdir -p "$R7/internal/test"
 printf 'package test\n\nfunc Fixture() {}\n' > "$R7/internal/test/kit.go"
 printf 'package x\n\nimport "t/internal/test"\n\nvar _ = test.Fixture\n' > "$R7/use_test.go"
+# A consumer sorting ahead of the declaration. Resolving the definition as "the first
+# file that mentions the symbol" names this file instead of the fixture package, which
+# reads the wrong directory and puts the exemption above out of reach.
+printf 'package x\n\nimport (\n\t"testing"\n\n\t"t/internal/test"\n)\n\nfunc TestThing(t *testing.T) { test.LateFixture() }\n' > "$R7/a_test.go"
+printf 'package test\n\nfunc LateFixture() {}\n' > "$R7/internal/test/late.go"
 git -C "$R7" add -A && git -C "$R7" commit -qm "Add a fixture kit"
 
 V=$(run "$R7" verify --all-closed)
@@ -462,6 +467,14 @@ eq "flags an exported symbol with no non-test caller" "Orphan" \
    "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | split(" ")[0]] | join(",")')"
 eq "but not one in a fixture package, whose callers are all tests" "0" \
    "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | test("Fixture")] | map(select(.)) | length')"
+eq "nor one whose consumer sorts ahead of its declaration" "0" \
+   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | test("LateFixture")] | map(select(.)) | length')"
+# `go test` finds a test function by name and nothing references it, so the rule asks it
+# for the one thing it can never show. Every new one blocked the gate.
+eq "and never a test function, which by definition has no caller" "0" \
+   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | test("TestThing")] | map(select(.)) | length')"
+eq "the finding names where the symbol is declared, not the first file to mention it" "y.go" \
+   "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | .detail | capture("\\((?<f>[^)]*)\\)").f')"
 
 run "$R7" receipt --command "go test ./..." --passed >/dev/null
 V=$(run "$R7" verify)

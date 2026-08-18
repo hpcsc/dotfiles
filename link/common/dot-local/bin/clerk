@@ -59,6 +59,17 @@ state_dir() {
   printf '%s/clerk' "$gd"
 }
 
+# Where `finish` records which files belonged to which task, one directory per breakdown.
+#
+# Keyed on the task number alone these collided: a repo delivering its second story wrote
+# a task 1 record over the first story's, and nothing removed any of them at landing. A
+# tree that had run a ten-task story and then a four-task one kept records 5 through 10
+# from a breakdown archived weeks earlier, and verify's commit-boundary check read every
+# one — warning about a task number the current breakdown does not contain.
+run_records_dir() {
+  printf '%s/tasks/%s' "$1" "$(basename "${2%.md}")"
+}
+
 default_branch() {
   local d=
   # Only ask git when origin/HEAD actually exists. Without a remote, `rev-parse
@@ -738,7 +749,7 @@ cmd_next() {
 # can disagree, and a mirror that has gone stale still reads as authoritative to
 # whoever opens it.
 cmd_finish() {
-  local n= tasks_override= root wt th tasks side dir f tmp staged_tasks=false tracked_tasks=true
+  local n= tasks_override= root wt th tasks side dir records f tmp staged_tasks=false tracked_tasks=true
   n=${1:-}; shift 2>/dev/null || true
   case "$n" in ''|*[!0-9]*) die "finish: first argument must be a task number" ;; esac
 
@@ -798,10 +809,10 @@ cmd_finish() {
     git add -- "$side" || die "finish: could not stage the sidecar — report this and stop. Marking the task done and staging it with its code is precisely what this command exists to do in one step"
   fi
 
-  dir=$(state_dir); mkdir -p "$dir/tasks"
+  dir=$(state_dir); records=$(run_records_dir "$dir" "$tasks"); mkdir -p "$records"
   printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '{n: ($n | tonumber), at: $at, files: (split("\n") | map(select(length > 0)))}' \
-    > "$dir/tasks/$n.json"
+    > "$records/$n.json"
 
   printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg side "$side" --arg st "$staged_tasks" --arg tr "$tracked_tasks" \
     '{task: ($n | tonumber), done: true, sidecar: $side, breakdown_staged: ($st == "true"),
@@ -1063,16 +1074,19 @@ cmd_gate() {
 VACUITY_RE='no files changed|no tests to run|no test files|0 passed|0 tests|skip running tests|no tests ran'
 
 cmd_verify() {
-  local all_closed=false root dir def base head findings notchecked rec
+  local all_closed=false tasks_override= root th tasks dir def base head findings notchecked rec
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --all-closed) all_closed=true; shift ;;
+      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
       *) die "verify: unknown argument '$1'" ;;
     esac
   done
 
   root=$(repo_root) || die "not a git repository"
+  th=$(tasks_home)
+  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else tasks=$(find_tasks_file "$th") || tasks=""; fi
   dir=$(state_dir)
   def=$(default_branch)
   head=$(git rev-parse HEAD 2>/dev/null)
@@ -1173,10 +1187,14 @@ cmd_verify() {
   fi
 
   # 4. commit-boundary — arithmetic, and only possible because `clerk finish` recorded
-  #    which files belonged to which task.
-  if [ -d "$dir/tasks" ] && [ -n "$base" ]; then
+  #    which files belonged to which task. Scoped to one breakdown's records: a repo
+  #    that runs stories one after another holds several sets, and the ones belonging to
+  #    a story already landed describe commits this range does not contain.
+  local records=
+  [ -n "$tasks" ] && records=$(run_records_dir "$dir" "$tasks")
+  if [ -n "$records" ] && [ -d "$records" ] && [ -n "$base" ]; then
     local tf n files c count
-    for tf in "$dir"/tasks/*.json; do
+    for tf in "$records"/*.json; do
       [ -f "$tf" ] || continue
       n=$(jq -r '.n' "$tf")
       files=$(jq -r '.files[]' "$tf")
@@ -1191,8 +1209,12 @@ cmd_verify() {
           "task $n's files appear in $count commits — its work was split or swept into another task's commit"
       fi
     done
+  elif [ -z "$base" ]; then
+    add_gap "commit-boundary — no merge-base with a default branch, so the run's own commits could not be scoped"
+  elif [ -z "$tasks" ]; then
+    add_gap "commit-boundary — no single breakdown under $th/tasks, so this run's task records could not be identified; name it with --tasks-file"
   else
-    add_gap "commit-boundary — no per-task file records; run tasks through 'clerk finish' for this check"
+    add_gap "commit-boundary — no per-task file records for $(basename "${tasks%.md}"); run tasks through 'clerk finish' for this check"
   fi
 
   local clean
@@ -1293,6 +1315,11 @@ cmd_land() {
     mkdir -p "$dir"
     jq -n --arg p "$archive_path" --arg n "$name" \
       '{path: $p, name: $n}' > "$dir/archived.json"
+    # Archiving is where the records stop meaning anything: the breakdown has left
+    # tasks/, so nothing can resolve them again, and left behind they are what a later
+    # story's verify reads. Done here rather than after integration because a run that
+    # archives and declines to integrate has finished with them just the same.
+    /bin/rm -rf "$(run_records_dir "$dir" "$tasks")"
   fi
 
   if [ "$integrate" != true ]; then
@@ -1407,14 +1434,18 @@ USAGE
                                      report the landing predicates; exit 0 only if all pass
   clerk land [--integrate|--no-integrate] [--audit-accepted]
                                      archive the breakdown; land the branch only if asked
-  clerk verify [--all-closed]        the mechanical half of run-verifier
+  clerk verify [--all-closed] [--tasks-file <f>]
+                                     the mechanical half of run-verifier
   clerk models [<agent>|set|apply]   which model each agent runs on, per harness, and
                                      the step it serves; set rewrites both at once
   clerk version
 
 The commands that resolve a breakdown — next, status, finish, gate, land, story,
-sidecar — all take --tasks-file to name it when tasks/ holds more than one. verify
-reads this run's own records instead, and prepare reports every breakdown it found.
+sidecar, verify — all take --tasks-file to name it when tasks/ holds more than one, and
+prepare reports every breakdown it found. verify wants it for the same reason finish
+does: per-task file records are filed under the breakdown they belong to, so naming the
+wrong one, or none where several are in flight, reads another story's records or no
+records at all. land removes a breakdown's records when it archives it.
 
 Per-repo flag defaults — in_place, integrate, review_plan, gears — come from
 tasks/clerk.json (tracked, a team decision) or tasks/.environment (gitignored,

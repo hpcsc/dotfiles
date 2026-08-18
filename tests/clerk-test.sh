@@ -571,6 +571,16 @@ eq "and says the gate is why"            "gate did not open" "$(printf '%s' "$L"
 eq "and exits non-zero"                  "1" "$RC"
 
 run "$R8" finish 1 -- tasks/feature.md >/dev/null 2>&1
+R8DIR="$(git -C "$R8" rev-parse --absolute-git-dir)/clerk/tasks"
+eq "finish files a task's record under its own breakdown" "1" \
+   "$(ls "$R8DIR/feature"/*.json 2>/dev/null | wc -l | tr -d ' ')"
+# Keyed on the task number alone these collided across stories and outlived the runs
+# that wrote them, so a later verify read the file lists of a breakdown archived weeks
+# earlier and warned about task numbers the current one does not have.
+mkdir -p "$R8DIR/elsewhere"
+printf '{"n":9,"at":"2026-01-01T00:00:00Z","files":["tasks/feature.md"]}' > "$R8DIR/elsewhere/9.json"
+eq "and verify reads only the breakdown it was given" "0" \
+   "$(run "$R8" verify --tasks-file tasks/feature.md | jq -r '[.findings[] | select(.check=="commit-boundary")] | length')"
 git -C "$R8" add -A && git -C "$R8" commit -qm "Do task 1"
 run "$R8" receipt --command "go test ./..." --passed >/dev/null
 
@@ -584,6 +594,10 @@ eq "the sidecar is archived alongside it" "1" \
 eq "and it does not land without being asked" "false" "$(printf '%s' "$L" | jq -r '.landed')"
 eq "but it says how to land it"               "true"  \
    "$(printf '%s' "$L" | jq -r '.to_land | test("merge --ff-only")')"
+eq "archiving takes the breakdown's task records with it" "0" \
+   "$(ls -d "$R8DIR/feature" 2>/dev/null | wc -l | tr -d ' ')"
+eq "and leaves a breakdown still in flight alone" "1" \
+   "$(ls "$R8DIR/elsewhere"/*.json 2>/dev/null | wc -l | tr -d ' ')"
 
 # A repo whose tasks/ holds several breakdowns. Every other command refuses that and
 # says to name one. land used to archive nothing and still report the landing worked,
@@ -857,8 +871,8 @@ printf 'edit\n' >> "$WT2/a.go"
 C=$(run "$WT2" finish 1 -- a.go); RC=$?
 eq "complete succeeds inside a worktree" "0" "$RC"
 eq "and stages the worktree's sidecar" "2" "$(git -C "$WT2" diff --cached --name-only | wc -l | tr -d ' ')"
-eq "and records its state under the worktree git dir" "1" \
-   "$(ls "$(git -C "$WT2" rev-parse --absolute-git-dir)/clerk/tasks"/*.json 2>/dev/null | wc -l | tr -d ' ')"
+eq "and records its state under the worktree git dir, filed under the breakdown" "1" \
+   "$(ls "$(git -C "$WT2" rev-parse --absolute-git-dir)/clerk/tasks/wt"/*.json 2>/dev/null | wc -l | tr -d ' ')"
 eq "the main checkout's sidecar is untouched" "false" \
    "$(jq -r '.tasks[0].done' "$R13/tasks/wt.json")"
 

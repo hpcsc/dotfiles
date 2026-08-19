@@ -570,10 +570,29 @@ cmd_prepare() {
 # info/exclude rather than .gitignore because editing a tracked file to hide a scratch
 # directory is itself an uncommitted change, and the common dir resolves to the main
 # .git from inside any worktree, so the line is written once per repo.
+#
+# The directory itself is not a preference. Claude Code's EnterWorktree allows a path
+# under `.claude/worktrees/` without asking and prompts for every other one, as a safety
+# check its own permission rules cannot allowlist and auto mode is forbidden to approve
+# — so a run there stops on a dialog at the same step every time, and the location is
+# the only lever that moves it. No other harness has that rule, or any reason to carry
+# Claude's directory in its repos, so everything else keeps `.worktrees/`.
 # --------------------------------------------------------------------------------
 
+# CLERK_WORKTREE_DIR wins, then `worktree_dir` in tasks/.environment — machine-local,
+# which is the scope this belongs to. tasks/clerk.json is deliberately not read: it is
+# tracked, and a value right for the harness of whoever committed it is wrong for the
+# next person's.
+worktree_dir() {
+  local root=$1 v=
+  if [ -n "${CLERK_WORKTREE_DIR:-}" ]; then printf '%s' "${CLERK_WORKTREE_DIR%/}"; return; fi
+  v=$(env_get "$root/tasks/.environment" worktree_dir) || v=
+  if [ -n "$v" ]; then printf '%s' "${v%/}"; return; fi
+  if [ -n "${CLAUDECODE:-}" ]; then printf '.claude/worktrees'; else printf '.worktrees'; fi
+}
+
 cmd_worktree() {
-  local name= base= common parent path branch_exists=false existing created=false excluded=false
+  local name= base= common parent dir path branch_exists=false existing created=false excluded=false
   while [ $# -gt 0 ]; do
     case "$1" in
       --base) need_value $# --base; base=$2; shift 2 ;;
@@ -591,7 +610,8 @@ cmd_worktree() {
   common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) \
     || die "not a git repository"
   parent=$(dirname "$common")
-  path="$parent/.worktrees/$name"
+  dir=$(worktree_dir "$parent")
+  path="$parent/$dir/$name"
 
   # Already has a home. Adopting it is the whole point: a second worktree for one
   # feature strands the first one's commits somewhere nobody looks.
@@ -615,8 +635,8 @@ cmd_worktree() {
     return 0
   fi
 
-  if ! grep -qxF '.worktrees/' "$common/info/exclude" 2>/dev/null; then
-    mkdir -p "$common/info" && printf '.worktrees/\n' >> "$common/info/exclude" \
+  if ! grep -qxF "$dir/" "$common/info/exclude" 2>/dev/null; then
+    mkdir -p "$common/info" && printf '%s/\n' "$dir" >> "$common/info/exclude" \
       && excluded=true
   fi
 
@@ -633,10 +653,10 @@ cmd_worktree() {
     created=true
   fi
 
-  jq -n --arg path "$path" --arg branch "$name" --arg base "$base" \
+  jq -n --arg path "$path" --arg branch "$name" --arg base "$base" --arg dir "$dir" \
     --argjson created "$created" --argjson excluded "$excluded" \
     --argjson adopted "$([ "$branch_exists" = true ] && printf true || printf false)" \
-    '{path: $path, branch: $branch, created: $created, adopted: $adopted, excluded: $excluded,
+    '{path: $path, branch: $branch, dir: $dir, created: $created, adopted: $adopted, excluded: $excluded,
       base: (if $base == "" then null else $base end),
       note: (if $adopted
              then "the branch already existed; its commits are here"
@@ -1421,8 +1441,9 @@ USAGE
                                      scanned for the flags and --learnings-path it
                                      carries, which outrank every config file
   clerk worktree <kebab-name> [--base <ref>]
-                                     create (or adopt) this run's worktree under
-                                     .worktrees/, excluded from the repo's status
+                                     create (or adopt) this run's worktree, excluded from
+                                     the repo's status; under .claude/worktrees/ when the
+                                     harness is Claude Code, else .worktrees/
   clerk branch <kebab-name>          the in-place counterpart: a feature branch when
                                      standing on the default one, else a no-op
   clerk next [--allow-dirty]         the first task whose dependencies are all done;

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+
+# Open the newest assess-merge-risk memo for a repo, read-only, in neovim.
+#
+# The skill prints a glance block to the terminal and saves its working — effects
+# table, blast-radius lenses, failure modes, evidence ledger — to
+# <repo>/.claude/merge-risk/pr-<N>.md. This opens the most recently written of
+# those, so there is no filename to carry from the block to the editor: the memo
+# you just generated is the one that opens.
+#
+# Called from the Prefix + R menu in ~/.tmux.conf with the pane's cwd as $1, which
+# is how it knows which repo to look in. Takes a directory, not a PR number,
+# because a tmux binding knows where the pane is and not what you were reading.
+#
+# Read-only on purpose: a memo records a decision that was made at a point in time.
+# Editing it after the fact rewrites history rather than correcting it — re-run the
+# skill instead, which overwrites the file with a fresh assessment.
+
+# A tmux key binding runs this with the server's environment, which can lack the
+# interactive shell's PATH. The mise shim dir supplies nvim; /opt/homebrew/bin
+# supplies git on macOS (on Linux it comes from /usr/bin, already on PATH).
+_prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
+[[ -d /opt/homebrew/bin ]] && _prefix="$_prefix:/opt/homebrew/bin"
+export PATH="$_prefix:$PATH"
+unset _prefix
+
+# Pause before returning, so a message is readable before the popup closes over it.
+die() {
+  echo "$1" >&2
+  read -r -s -n 1 -p "press any key"
+  exit 1
+}
+
+start_dir="${1:-$PWD}"
+
+root=$(git -C "$start_dir" rev-parse --show-toplevel 2>/dev/null) \
+  || die "not inside a git repository: $start_dir"
+
+memo=$(ls -t "$root"/.claude/merge-risk/*.md 2>/dev/null | head -1)
+[[ -n "$memo" ]] || die "no merge-risk memo in ${root##*/} — run /assess-merge-risk <pr> first"
+
+exec nvim -R "$memo"

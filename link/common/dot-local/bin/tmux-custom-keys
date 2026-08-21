@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+
+# List the key bindings that ~/.tmux.conf and its plugins add or change — everything
+# that is not a tmux default — each with its -N note; or browse them in fzf, where
+# Enter runs the chosen binding. Bound to Prefix + ? (in a popup), in place of tmux's own.
+#
+#   tmux-custom-keys                  aligned list of the custom bindings
+#   tmux-custom-keys --all            the same for every binding (what Prefix + ? lists)
+#   tmux-custom-keys --fzf [pane]     picker; Enter runs the binding in pane (default: the
+#                                     pane under the popup), ctrl-a toggles all ⇄ custom
+#   tmux-custom-keys --rows [--all]   fzf rows: coloured line, TAB, command (feeds --fzf)
+#
+# tmux has no "non-default" switch, and its plain list-keys output carries no notes,
+# so this diffs the plain listing against a throwaway server started with no config,
+# then looks each surviving key up in its table's noted (-N) listing. Mouse bindings
+# are left out, as Prefix + ? leaves them out.
+
+set -euo pipefail
+
+# A key binding runs this with the tmux server's environment, which can lack the
+# interactive shell's PATH: fzf lives in ~/.fzf/bin and, on macOS, tmux in /opt/homebrew/bin.
+for dir in /opt/homebrew/bin "$HOME/.fzf/bin"; do
+  if [[ -d "$dir" ]]; then PATH="$dir:$PATH"; fi
+done
+export PATH
+
+mode=custom format=list pane=
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --all)  mode=all ;;
+    --rows) format=rows ;;
+    --fzf)  format=fzf ;;
+    -*)     echo "usage: tmux-custom-keys [--all] [--rows | --fzf [pane]]" >&2; exit 2 ;;
+    *)      pane=$1 ;;
+  esac
+  shift
+done
+
+current=$(tmux list-keys)
+if [[ $mode == all ]]; then
+  listing=$current
+else
+  scratch=$(mktemp -d)
+  trap 'rm -rf "$scratch"' EXIT
+  defaults=$(tmux -S "$scratch/sock" -f /dev/null start-server \; list-keys \; kill-server)
+  listing=$(comm -13 <(sort <<<"$defaults") <(sort <<<"$current"))
+fi
+
+if [[ -z "$listing" ]]; then
+  echo "no key bindings differ from tmux's defaults"
+  exit 0
+fi
+
+# One table's bindings as TAB-separated "table key note command" lines, note empty when
+# the key has none. The plain listing escapes keys the way a config file would write
+# them (\" \% "M-{" C-\\) while the -N listing prints them bare, so raw() undoes that
+# before the join. A key the -N listing cannot show — one in a table with no notes at
+# all, where tmux prints key and command with nothing between — keeps an empty note.
+table_tsv() {
+  local table=$1
+  awk -v table="$table" '
+    function raw(key) {
+      if (key ~ /^\\.$/) return substr(key, 2)
+      if (key ~ /^".*"$/ || (substr(key, 1, 1) == q && substr(key, length(key), 1) == q))
+        key = substr(key, 2, length(key) - 2)
+      gsub(/\\"/, "\"", key)
+      gsub(/\\\\/, "\\\\", key)
+      return key
+    }
+    BEGIN { q = sprintf("%c", 39) }
+    NR == FNR {
+      for (i = 1; i <= NF; i++) if ($i == "-T") break
+      if ($(i + 1) != table) next
+      key = raw($(i + 2))
+      if (key ~ /Mouse|Wheel|Click/) next
+      cmd = $0
+      sub(/^bind-key +(-r +)?-T +[^ ]+ +[^ ]+ +/, "", cmd)
+      cmds[key] = cmd
+      order[++n] = key
+      next
+    }
+    NF && ($1 in cmds) && !($1 in seen) {
+      rest = $0
+      sub(/^[^ ]+ +/, "", rest)
+      printf "%s\t%s\t%s\t%s\n", table, $1, (rest == cmds[$1]) ? "" : rest, cmds[$1]
+      seen[$1] = 1
+    }
+    END {
+      for (k = 1; k <= n; k++)
+        if (!(order[k] in seen)) printf "%s\t%s\t\t%s\n", table, order[k], cmds[order[k]]
+    }
+  ' <(printf '%s\n' "$listing") <(tmux list-keys -Na -T "$table")
+}
+
+# root first, then prefix, then the rest — the order Prefix + ? uses.
+tables() {
+  local all
+  all=$(awk '{ for (i = 1; i <= NF; i++) if ($i == "-T") { print $(i + 1); break } }' <<<"$listing" | sort -u)
+  for t in root prefix; do
+    if grep -qx "$t" <<<"$all"; then echo "$t"; fi
+  done
+  grep -vxE 'root|prefix' <<<"$all" || true
+}
+
+# The key column shows the chord as you would press it: bare for root, "C-b x" for
+# prefix, "table x" for anything else. With format=rows each line is coloured and ends
+# in TAB and the command, for fzf's --with-nth / {2}; a binding without a note shows
+# its command dimmed in place of one.
+render() {
+  awk -F '\t' -v format="$1" -v prefix="$(tmux show-option -gv prefix)" '
+    {
+      chord = ($1 == "root") ? $2 : ($1 == "prefix") ? prefix " " $2 : $1 " " $2
+      chords[NR] = chord; notes[NR] = $3; cmds[NR] = $4
+      if (length(chord) > width) width = length(chord)
+    }
+    END {
+      for (i = 1; i <= NR; i++) {
+        padded = sprintf("%-" width "s", chords[i])
+        if (format == "rows") {
+          text = (notes[i] != "") ? notes[i] : "\033[2m" cmds[i] "\033[0m"
+          printf "\033[1;36m%s\033[0m  %s\t%s\n", padded, text, cmds[i]
+        } else {
+          printf "%s  %s\n", padded, (notes[i] != "") ? notes[i] : cmds[i]
+        }
+      }
+    }
+  '
+}
+
+rows() {
+  for t in $(tables); do table_tsv "$t"; done | render "$1"
+}
+
+case $format in
+  list) rows list ;;
+  rows) rows rows ;;
+  fzf)
+    # Resolved up front: by the time Enter is pressed another client may have become
+    # the "current" one, and the binding should run where the popup was opened.
+    [[ -n "$pane" ]] || pane=$(tmux display-message -p '#{pane_id}')
+    self=$0
+    # FZF_DEFAULT_OPTS is cleared because a --height from the user's shell setup would
+    # leave most of the popup empty.
+    row=$(rows rows | FZF_DEFAULT_OPTS= fzf --ansi --delimiter $'\t' --with-nth 1 \
+      --layout reverse --info inline --prompt "$mode> " \
+      --header 'enter: run   esc: close   ctrl-a: all ⇄ custom' \
+      --preview 'printf "%s\n" {2}' --preview-window 'down,4,wrap' \
+      --bind "ctrl-a:transform:[ \"\$FZF_PROMPT\" = 'custom> ' ] \
+        && echo 'change-prompt(all> )+reload(\"$self\" --rows --all)' \
+        || echo 'change-prompt(custom> )+reload(\"$self\" --rows)'") || exit 0
+    # -b -d: the popup must close before the binding runs, or one that opens its own
+    # popup or menu (D, R, S) would collide with this one.
+    tmux run-shell -b -d 0.2 -t "$pane" -C "${row#*$'\t'}"
+    ;;
+esac

@@ -40,11 +40,17 @@ tasks:
     cmds:
       - ./tests/guidelines-test.sh
 
+  test:tmux-custom-keys:
+    desc: Run the tmux-custom-keys fixture tests
+    cmds:
+      - ./tests/tmux-custom-keys-test.sh
+
   test:
     desc: Run every test suite
     cmds:
       - task: test:clerk
       - task: test:guidelines
+      - task: test:tmux-custom-keys
       - task: gen:skills:check
       - task: gen:agent-models:check
 

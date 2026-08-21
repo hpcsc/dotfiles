@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+# Build a second-level Prefix + R menu for a category of things to read, from the
+# repo the pane sits in.
+# Called as: claude-read-menu <category> <pane-cwd> <client-name>
+#
+# The client is passed through because run-shell has no attached client of its own,
+# and a display-menu without -c silently renders nowhere.
+#
+# The rows are generated rather than written into ~/.tmux.conf because the files
+# change with the work: today's stories are not next week's. Only the active set
+# becomes rows — completed/ is excluded, and a menu needs a distinct key per row and
+# has to fit on screen anyway. Adding a category means one case below and one row in
+# the top menu.
+
+_prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
+[[ -d /opt/homebrew/bin ]] && _prefix="$_prefix:/opt/homebrew/bin"
+export PATH="$_prefix:$PATH"
+unset _prefix
+
+category="${1:?usage: claude-read-menu <tasks|stories> <dir> [client]}"
+start_dir="${2:-$PWD}"
+client="${3:-}"
+
+# -c only when a client was passed, so the script still runs from a plain shell.
+target=()
+[[ -n "$client" ]] && target=(-c "$client")
+
+root=$(git -C "$start_dir" rev-parse --show-toplevel 2>/dev/null) || {
+  tmux display-message "${target[@]}" "not inside a git repository"
+  exit 1
+}
+
+case "$category" in
+  tasks)   dir="$root/tasks";        title=" tasks " ;;
+  stories) dir="$root/user-stories"; title=" user stories " ;;
+  *)       tmux display-message "${target[@]}" "unknown category: $category"; exit 1 ;;
+esac
+
+if [[ ! -d "$dir" ]]; then
+  tmux display-message "${target[@]}" "no ${dir##*/}/ in ${root##*/}"
+  exit 0
+fi
+
+# -I because tasks/ is gitignored in some repos, and an ignored file is still one
+# worth reading. Newest first: the thing you want is usually the thing last written.
+# Read loop rather than mapfile: the shebang resolves before the PATH above, so this
+# runs under macOS's bash 3.2, which has no mapfile.
+files=()
+while IFS= read -r file; do
+  [[ -n "$file" ]] && files+=("$file")
+done < <(
+  fd -I --type f --extension md --extension yaml --exclude completed . "$dir" 2>/dev/null \
+    | xargs -r ls -t 2>/dev/null
+)
+
+if [[ ${#files[@]} -eq 0 ]]; then
+  tmux display-message "${target[@]}" "nothing active in ${dir##*/}/"
+  exit 0
+fi
+
+# Resolved once and embedded absolute, so a row carries a command rather than a copy
+# of this script's whole PATH.
+nvim_bin=$(command -v nvim) || {
+  tmux display-message "${target[@]}" "nvim not found on PATH"
+  exit 1
+}
+
+menu=()
+key=1
+for file in "${files[@]}"; do
+  rel=${file#"$dir"/}
+  # <age-748-long-story-name>/<deliverable>/tasks.md reads better as
+  # age-748/<deliverable>: the ticket identifies the story, the rest is noise.
+  label=$(printf '%s' "$rel" | sed -E 's#^([a-zA-Z]+-[0-9]+)-[^/]*/#\1/#')
+  # Read-only: these are records of work, and editing one by hand desynchronises it
+  # from the skill that generated it.
+  menu+=(
+    "$label" "$key"
+    "display-popup -E -w 90% -h 85% -T ' $label ' '\"$nvim_bin\" -R \"$file\"'"
+  )
+  key=$((key + 1))
+  [[ $key -gt 9 ]] && break
+done
+
+tmux display-menu "${target[@]}" -x C -y C -T "$title" "${menu[@]}"

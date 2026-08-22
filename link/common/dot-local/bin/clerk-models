@@ -17,6 +17,8 @@ it, and stamps the trees from it, so the frontmatter is output rather than input
   clerk models apply                 restamp both trees from the registry
   clerk models --check               fail if a tree disagrees with the registry
 
+--registry, --claude-dir and --opencode-dir point any of these at other files.
+
 Dispatched to by `clerk` when invoked as `clerk models`, and runnable on its own.
 """
 
@@ -50,7 +52,8 @@ def model_for(reg, agent, tool):
 
 
 def stamp(path, want):
-    """Set `model:` in this file's frontmatter. Returns the previous value, or None.
+    """Set `model:` in this file's frontmatter. Returns (whether the file was written,
+    the previous value or None); a file with no frontmatter is (False, None).
 
     Only the model line is touched — the rest of the frontmatter belongs to whichever
     harness reads it, and the registry has no opinion about the order of the others.
@@ -92,7 +95,7 @@ def walk(reg, dirs):
             yield agent, tool, p, model_for(reg, agent, tool), have
 
 
-def cmd_list(reg, dirs, args):
+def cmd_list(reg, args):
     agents = reg["agents"]
     if args.agent:
         if args.agent not in agents:
@@ -157,6 +160,11 @@ def cmd_apply(reg, dirs, check):
             continue
         if have == want:
             continue
+        if have is None and not FRONT.match(p.read_text()):
+            # Nothing to stamp into. Left in the stale list this read as "has (none)"
+            # forever — apply wrote nothing and said nothing, and --check never cleared.
+            missing.append(f"{tool}/{agent}.md (no frontmatter to stamp)")
+            continue
         if check:
             stale.append(f"{tool}/{agent}.md: has {have or '(none)'}, registry says {want}")
         else:
@@ -204,21 +212,25 @@ def main():
     # `clerk models <agent>` reads more naturally than `clerk models list <agent>`.
     if args.action not in ("list", "set", "apply") and args.agent is None:
         args.agent, args.action = args.action, "list"
+    if args.action not in ("list", "set", "apply"):
+        die(f"unknown action '{args.action}' — list, set or apply, or an agent's name")
 
     registry_path = Path(args.registry)
     reg = load(registry_path)
     dirs = {"claude": Path(args.claude_dir), "opencode": Path(args.opencode_dir)}
 
+    # The action decides; --json and --check qualify list and apply. Read first, `--json`
+    # turned `set X --claude Y --json` into a print that set nothing.
+    if args.action == "set":
+        if not args.agent:
+            die("set needs an agent: clerk models set <agent> --claude <tier> [--opencode <id>] [--why ...]")
+        return cmd_set(reg, dirs, args, registry_path)
+    if args.action == "apply" or args.check:
+        return cmd_apply(reg, dirs, check=args.check)
     if args.json:
         print(json.dumps(reg, indent=2))
         return 0
-    if args.check:
-        return cmd_apply(reg, dirs, check=True)
-    if args.action == "apply":
-        return cmd_apply(reg, dirs, check=False)
-    if args.action == "set":
-        return cmd_set(reg, dirs, args, registry_path)
-    return cmd_list(reg, dirs, args)
+    return cmd_list(reg, args)
 
 
 if __name__ == "__main__":

@@ -178,9 +178,9 @@ def cmd_apply(args):
     # regrouping; said by the rebase it costs the round trip that got you there.
     later = {}
     for f in files:
-        rows = per_file.get(f) or commits_touching(base, f)
-        shas = [c["full"] for c in rows]
-        newer = rows[:shas.index(target)] if target in shas else rows
+        # target..HEAD, not a slice of base..HEAD: an --onto target that never touched the
+        # file is not in that list, and slicing at it reported every commit as "later".
+        newer = commits_touching(target, f)
         if newer:
             later[f] = [f"{c['sha']} {c['subject']}" for c in newer]
 

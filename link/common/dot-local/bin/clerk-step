@@ -797,6 +797,20 @@ def next_step(ctx):
     return present(ctx, r)
 
 
+# What the caller reads from `facts`: the repo as prepare resolved it, minus what clerk
+# keeps for itself — the receipt, the run, the worktrees, the breakdown list, the code
+# tree (its own field). Every row already carries the fact it turns on, so the rest is
+# orientation; the rest was also a third of every reply, repeated on every call.
+FACTS_KEYS = ("repo_root", "work_tree", "in_worktree", "branch", "default_branch", "base", "clean",
+              "languages", "test_commands", "test_command", "go_tool_prefix",
+              "learnings_path", "learnings_path_source", "commit_skill",
+              "tasks_file", "tasks_home", "tasks_tracked", "flags", "flag_sources", "resume")
+
+
+def facts_for(ctx):
+    return {k: ctx.prepare.get(k) for k in FACTS_KEYS if k in ctx.prepare}
+
+
 def present(ctx, r):
     out = {"run": ctx.run.slug, "step": r["step"]}
     for k, v in r.items():
@@ -808,7 +822,7 @@ def present(ctx, r):
     out["code_tree"] = ctx.head_ct
     out["harness"] = ctx.harness
     out["instructions"], out["instructions_elided"] = instructions_text(ctx, r["step"])
-    out["facts"] = ctx.prepare
+    out["facts"] = facts_for(ctx)
     return out
 
 
@@ -998,7 +1012,7 @@ def cmd_step(ctx):
                 "why_not_done": "no run is open for this branch",
                 "done_by": "clerk step --start <slug> --request \"<the request, verbatim>\"",
                 "open_runs": open_run_summaries(ctx), "resume": ctx.prepare.get("resume"),
-                "instructions": instructions_for("start", ctx.harness), "facts": ctx.prepare}
+                "instructions": instructions_for("start", ctx.harness), "facts": facts_for(ctx)}
     return next_step(ctx)
 
 

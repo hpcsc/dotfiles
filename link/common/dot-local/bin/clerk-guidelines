@@ -276,29 +276,25 @@ def main():
     # Files that arrived as part of a set get that set's treatment. A file reached ONLY
     # by --section was asked for one section by name, and giving it the bundle's four
     # instead answers a precise request with whatever was going.
-    plan, bundled = [], set()
+    plan = []
     if not args.only:
-        for f in ALWAYS:
-            plan.append(f); bundled.add(f)
+        plan.extend(ALWAYS)
     elif args.caller:
-        plan.append("testing/caller-patterns.md"); bundled.add("testing/caller-patterns.md")
+        plan.append("testing/caller-patterns.md")
     for lang in languages:
         for f in LANGUAGE_FILES.get(lang, []):
             if f not in plan:
                 plan.append(f)
-            bundled.add(f)
     # After the language bundle, not before: a concept is taken from the first file in
     # the plan that declares it, so `--file testing/patterns.md` backs up whatever the
     # language guideline does not carry rather than shadowing what it does.
     for f in args.files:
         if f not in plan:
             plan.append(f)
-        bundled.add(f)
     for flag, f in OPTIONAL_FILES.items():
         if getattr(args, flag):
             if f not in plan:
                 plan.append(f)
-            bundled.add(f)
 
     # Split on the FIRST colon only: headings contain them ("Assertion Strictness:
     # Match to What You're Testing"), filenames do not.
@@ -315,8 +311,9 @@ def main():
     unknown = [l for l in languages if l not in LANGUAGE_FILES]
 
     # Resolve every heading in the plan in one ast-grep call, before reading anything.
+    # --list names files and never slices one, so it has no headings to resolve.
     present = [str(root / rel) for rel in plan if (root / rel).is_file()]
-    h2_map = h2_lines_for(present)
+    h2_map = None if args.list else h2_lines_for(present)
 
     # What was asked for, by concept. --caller is the one bit of sugar: which caller a
     # component has is a per-task judgment, not a fixed part of any role's reading.

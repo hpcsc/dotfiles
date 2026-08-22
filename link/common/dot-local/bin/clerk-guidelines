@@ -23,7 +23,6 @@ guideline does not have.
 Dispatched to by `clerk` when invoked as `clerk guidelines`, and runnable on its own.
 """
 
-import argparse
 import json
 import os
 import re
@@ -32,7 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die  # noqa: E402
+from clerk_lib import Parser, clerk, die  # noqa: E402
 
 DEFAULT_ROOT = Path.home() / ".config" / "ai" / "guidelines"
 
@@ -232,7 +231,7 @@ def detect_languages(cwd):
 
 
 def main():
-    ap = argparse.ArgumentParser(add_help=False)
+    ap = Parser()
     ap.add_argument("--language", action="append", default=[],
                     help="repeatable; defaults to what `clerk prepare` detects")
     ap.add_argument("--caller", choices=sorted(CALLERS),
@@ -251,7 +250,6 @@ def main():
     ap.add_argument("--state", action="store_true", help="add the shared-state guideline")
     ap.add_argument("--guidelines-dir", default=os.environ.get("CLERK_GUIDELINES_DIR"))
     ap.add_argument("--list", action="store_true", help="name the files and sections, no bodies")
-    ap.add_argument("-h", "--help", action="store_true")
     args = ap.parse_args()
 
     if args.help:

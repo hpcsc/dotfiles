@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, emit, facts, resolve_tasks_arg  # noqa: E402
+from clerk_lib import Parser, die, emit, facts, resolve_tasks_arg  # noqa: E402
 
 TASK_HEADING = re.compile(r"^###\s+Task\s+(\d+):\s*(.*)$")
 FIELD = re.compile(r"^\*\*([^*]+):?\*\*\s*(.*)$")
@@ -121,18 +121,15 @@ def ticked(text):
 
 
 def main(argv):
-    force = False
-    override = None
-    i = 0
-    while i < len(argv):
-        if argv[i] == "--force":
-            force = True
-            i += 1
-        elif argv[i] == "--tasks-file":
-            override = argv[i + 1] if i + 1 < len(argv) else ""
-            i += 2
-        else:
-            die(f"unknown argument '{argv[i]}'")
+    ap = Parser()
+    ap.add_argument("--force", action="store_true", help="rewrite a sidecar that already exists")
+    ap.add_argument("--tasks-file", metavar="FILE", help="the breakdown, when tasks/ holds more than one")
+    args = ap.parse_args(argv)
+    if args.help:
+        print(__doc__.strip())
+        print("\nUSAGE\n  clerk sidecar [--force] [--tasks-file <f>]")
+        return 0
+    force, override = args.force, args.tasks_file
 
     f = facts()
     tasks_home = f.get("tasks_home") or f.get("repo_root")

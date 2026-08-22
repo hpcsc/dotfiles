@@ -22,13 +22,12 @@ before writing.
 Dispatched to by `clerk` when invoked as `clerk learn`, and runnable on its own.
 """
 
-import argparse
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, emit, facts, git  # noqa: E402
+from clerk_lib import Parser, die, emit, facts, git  # noqa: E402
 
 TYPES = ["convention", "recurring-finding", "constraint", "pattern"]
 
@@ -66,7 +65,7 @@ def existing_titles(path):
 
 
 def main():
-    ap = argparse.ArgumentParser(add_help=False)
+    ap = Parser()
     ap.add_argument("--type", choices=TYPES)
     ap.add_argument("--title")
     ap.add_argument("--learning")
@@ -76,7 +75,6 @@ def main():
     ap.add_argument("--path", help="the learnings file; defaults to what clerk prepare resolves")
     ap.add_argument("--replace", action="store_true", help="rewrite an entry with this title")
     ap.add_argument("--list", action="store_true", help="what is already recorded")
-    ap.add_argument("-h", "--help", action="store_true")
     args = ap.parse_args()
 
     if args.help:

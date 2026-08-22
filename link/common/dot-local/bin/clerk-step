@@ -768,6 +768,10 @@ def parse(argv, spec):
     i = 0
     while i < len(argv):
         a = argv[i]
+        if a.startswith("--") and "=" in a and a.split("=", 1)[0] in spec and spec[a.split("=", 1)[0]] != "bool":
+            # --flag=value, the spelling every other clerk command takes as well.
+            a, v = a.split("=", 1)
+            argv = argv[:i] + [a, v] + argv[i + 1:]
         if a in spec:
             t = spec[a]
             if t == "bool":

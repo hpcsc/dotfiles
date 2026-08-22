@@ -20,14 +20,13 @@ it, and stamps the trees from it, so the frontmatter is output rather than input
 Dispatched to by `clerk` when invoked as `clerk models`, and runnable on its own.
 """
 
-import argparse
 import json
 import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die  # noqa: E402
+from clerk_lib import Parser, die  # noqa: E402
 
 HOME = Path.home()
 DEFAULT_REGISTRY = HOME / ".config/ai/method/agent-models.json"
@@ -184,7 +183,7 @@ def cmd_apply(reg, dirs, check):
 
 
 def main():
-    ap = argparse.ArgumentParser(add_help=False)
+    ap = Parser()
     ap.add_argument("action", nargs="?", default="list")
     ap.add_argument("agent", nargs="?")
     ap.add_argument("--tool", choices=TOOLS)
@@ -196,7 +195,6 @@ def main():
     ap.add_argument("--registry", default=str(DEFAULT_REGISTRY))
     ap.add_argument("--claude-dir", default=str(DEFAULT_DIRS["claude"]))
     ap.add_argument("--opencode-dir", default=str(DEFAULT_DIRS["opencode"]))
-    ap.add_argument("-h", "--help", action="store_true")
     args = ap.parse_args()
 
     if args.help:

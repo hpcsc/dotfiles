@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, facts  # noqa: E402
+from clerk_lib import Parser, clerk, die, facts  # noqa: E402
 
 
 def run(*args, cwd=None):
@@ -239,17 +239,16 @@ def render(story, rows, will_create):
 
 
 def main(argv):
-    create = as_json = False
-    plan_arg = None
-    for a in argv:
-        if a == "--create":
-            create = True
-        elif a == "--json":
-            as_json = True
-        elif a.startswith("-"):
-            die(f"unknown argument '{a}'")
-        else:
-            plan_arg = a
+    ap = Parser()
+    ap.add_argument("--create", action="store_true", help="open and retarget the PRs; without it, only print the stack")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("plan", nargs="?", help="a plan.yaml; default: every live plan under tasks/")
+    args = ap.parse_args(argv)
+    if args.help:
+        print(__doc__.strip())
+        print("\nUSAGE\n  clerk stack [<plan.yaml>] [--create] [--json]")
+        return 0
+    create, as_json, plan_arg = args.create, args.json, args.plan
 
     repo_root = facts().get("repo_root")
     if not repo_root:

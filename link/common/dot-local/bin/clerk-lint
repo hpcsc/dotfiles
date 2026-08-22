@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, facts, git  # noqa: E402
+from clerk_lib import Parser, die, facts, git  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -411,31 +411,19 @@ RULES = ("comment-plan-position", "test-umbrella", "type-methods-split",
 
 
 def main(argv):
-    staged = as_json = False
-    base = None
-    only = []
-    paths = []
-    i = 0
-    while i < len(argv):
-        a = argv[i]
-        if a == "--staged":
-            staged = True
-        elif a == "--json":
-            as_json = True
-        elif a == "--base":
-            base = argv[i + 1] if i + 1 < len(argv) else die("--base needs a ref")
-            i += 1
-        elif a == "--rule":
-            r = argv[i + 1] if i + 1 < len(argv) else die("--rule needs a name")
-            if r not in RULES:
-                die(f"unknown rule '{r}' (known: {', '.join(RULES)})")
-            only.append(r)
-            i += 1
-        elif a.startswith("-"):
-            die(f"unknown argument '{a}'")
-        else:
-            paths.append(a)
-        i += 1
+    ap = Parser()
+    ap.add_argument("--staged", action="store_true", help="the index, not a range")
+    ap.add_argument("--base", metavar="REF", help="lint REF...HEAD; default: the merge-base with the default branch")
+    ap.add_argument("--rule", action="append", default=[], choices=RULES, metavar="NAME",
+                    help="repeatable; only these rules")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("paths", nargs="*", help="files to lint instead of the changed set")
+    args = ap.parse_args(argv)
+    if args.help:
+        print(__doc__.strip())
+        print("\nUSAGE\n  clerk lint [--staged | --base <ref>] [--rule <name>]... [--json] [<path>...]")
+        return 0
+    staged, as_json, base, only, paths = args.staged, args.json, args.base, args.rule, args.paths
 
     # work_tree, never repo_root: inside a worktree they differ, and repo_root is the main
     # checkout. Linting there reads another branch's index and disk — --cached finds nothing

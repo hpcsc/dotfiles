@@ -27,14 +27,13 @@ all; `mark_fixup` says how that one check is stepped around, and why the rest ar
 Dispatched to by `clerk` when invoked as `clerk fixup`, and runnable on its own.
 """
 
-import argparse
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, emit, facts  # noqa: E402
+from clerk_lib import Parser, die, emit, facts  # noqa: E402
 from clerk_lib import git as git_raw  # noqa: E402
 
 
@@ -276,7 +275,7 @@ def cmd_replay(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(add_help=False)
+    ap = Parser()
     ap.add_argument("--base")
     ap.add_argument("--onto", help="name the target commit yourself when several are plausible")
     ap.add_argument("--replay", action="store_true", help="autosquash every marked fixup")
@@ -284,7 +283,6 @@ def main():
     ap.add_argument("--force", action="store_true", help="replay even if the range is published")
     ap.add_argument("--autostash", action="store_true",
                     help="set unrelated working-tree changes aside and restore them after")
-    ap.add_argument("-h", "--help", action="store_true")
     ap.add_argument("files", nargs="*")
     args = ap.parse_args()
 

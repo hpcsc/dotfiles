@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, facts, git_ok, gitout, resolve_tasks_arg, worktree_for  # noqa: E402
+from clerk_lib import Parser, die, facts, git_ok, gitout, resolve_tasks_arg, worktree_for  # noqa: E402
 
 
 def git(*args):
@@ -205,18 +205,15 @@ def render_table(stories):
 
 
 def main(argv):
-    table = False
-    plan_arg = None
-    for arg in argv:
-        if arg == "--table":
-            table = True
-        elif arg.startswith("-"):
-            die(f"unknown argument '{arg}'")
-        else:
-            plan_arg = arg
-
-    if not git_ok("rev-parse", "--git-dir"):
-        die("not a git repository")
+    ap = Parser()
+    ap.add_argument("--table", action="store_true", help="a table for a human instead of JSON")
+    ap.add_argument("plan", nargs="?", help="a plan.yaml; default: every live plan under tasks/")
+    args = ap.parse_args(argv)
+    if args.help:
+        print(__doc__.strip())
+        print("\nUSAGE\n  clerk story [<plan.yaml>] [--table]")
+        return 0
+    table, plan_arg = args.table, args.plan
 
     f = facts()
     tasks_home = f.get("tasks_home") or f.get("repo_root")

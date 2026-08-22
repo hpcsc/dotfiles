@@ -23,6 +23,30 @@ die() { printf 'clerk: %s\n' "$1" >&2; exit 2; }
 
 need() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
 
+# The directory this script really lives in, through any symlink. `dirname "$0"` alone
+# answers ~/.local/bin when clerk is linked there, which is the one directory a plugin
+# missing from PATH is guaranteed not to be in.
+self_dir() {
+  local p=$0 d
+  while [ -L "$p" ]; do
+    d=$(dirname "$p"); p=$(readlink "$p")
+    case "$p" in /*) ;; *) p="$d/$p" ;; esac
+  done
+  (cd "$(dirname "$p")" 2>/dev/null && pwd -P)
+}
+
+# The executable behind `clerk <name>`: clerk-<name> on PATH, else beside this script.
+# One resolution for every caller — the dispatcher looked on PATH alone while `finish`
+# also tried its own directory, so a plugin not yet linked into ~/.local/bin ran inside
+# `clerk finish` and was "unknown" to `clerk lint` a moment later.
+plugin_bin() {
+  local p
+  p=$(command -v "clerk-$1" 2>/dev/null) && { printf '%s' "$p"; return 0; }
+  p="$(self_dir)/clerk-$1"
+  [ -x "$p" ] && { printf '%s' "$p"; return 0; }
+  return 1
+}
+
 # Guards every flag that takes a value, called as `need_value $# --flag`.
 #
 # `shift 2` with one argument left does nothing and returns 1. Nothing here runs under
@@ -910,8 +934,7 @@ cmd_finish() {
   # Only a finding refuses. A lint that cannot run is reported and does not block: the
   # task is still done, and hiding that behind a tooling error would be the worse lie.
   local lint_bin lint_out lint_rc lint_state=clean
-  lint_bin=$(command -v clerk-lint 2>/dev/null) || lint_bin=
-  [ -z "$lint_bin" ] && [ -x "$(dirname "$0")/clerk-lint" ] && lint_bin="$(dirname "$0")/clerk-lint"
+  lint_bin=$(plugin_bin lint) || lint_bin=
   if [ -n "$lint_bin" ]; then
     lint_out=$("$lint_bin" --staged --json 2>/dev/null); lint_rc=$?
     printf '%s' "$lint_out" | jq -e . >/dev/null 2>&1 || lint_out='[]'
@@ -1636,13 +1659,14 @@ EOF
   list_plugins
 }
 
-# An executable named clerk-<name> on PATH is a subcommand. Listing what is actually
-# installed beats naming them here, which would go stale the moment one is added.
+# An executable named clerk-<name> on PATH, or beside this script, is a subcommand — the
+# same two places plugin_bin looks, in the same order. Listing what is actually installed
+# beats naming them here, which would go stale the moment one is added.
 list_plugins() {
   local dir f name found=
-  printf '\nSUBCOMMANDS ON PATH\n'
+  printf '\nSUBCOMMANDS\n'
   IFS=:
-  for dir in $PATH; do
+  for dir in $PATH $(self_dir); do
     [ -d "$dir" ] || continue
     for f in "$dir"/clerk-*; do
       [ -x "$f" ] && [ -f "$f" ] || continue
@@ -1679,13 +1703,13 @@ case "${1:-}" in
   version) printf 'clerk %s\n' "$CLERK_VERSION" ;;
   ''|-h|--help|help) usage ;;
   *)
-    # git's model: an executable named clerk-<name> on PATH becomes `clerk <name>`. The
-    # plugin owns stdio either way and its exit status is clerk's; a logged one is called
-    # rather than exec'd so its exit can be recorded on the way out. Built-ins are matched
-    # first, above — a plugin cannot shadow one, so what `clerk next` does never depends on
-    # what happens to be on PATH.
-    if command -v "clerk-$1" >/dev/null 2>&1; then
-      sub="clerk-$1"; name=$1; shift
+    # git's model: an executable named clerk-<name> becomes `clerk <name>`. The plugin
+    # owns stdio either way and its exit status is clerk's; a logged one is called rather
+    # than exec'd so its exit can be recorded on the way out. Built-ins are matched first,
+    # above — a plugin cannot shadow one, so what `clerk next` does never depends on what
+    # happens to be on PATH.
+    if sub=$(plugin_bin "$1"); then
+      name=$1; shift
       case "$LOGGED_PLUGINS" in
         *" $name "*)
           ldir=$(ledger_dir 2>/dev/null) || ldir=

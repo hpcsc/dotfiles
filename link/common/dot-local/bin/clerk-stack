@@ -24,12 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-
-
-def die(msg):
-    print(f"clerk: stack: {msg}", file=sys.stderr)
-    sys.exit(2)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import clerk, die, facts  # noqa: E402
 
 
 def run(*args, cwd=None):
@@ -40,18 +36,16 @@ def run(*args, cwd=None):
     return p.returncode, p.stdout.strip(), p.stderr.strip()
 
 
-def sibling(name, args):
-    """Run a sibling clerk executable and parse its JSON. Falling back to the bare name
-    keeps this working when only some of the family is on PATH."""
-    exe = str(HERE / name) if (HERE / name).exists() else name
-    code, out, err = run(exe, *args)
-    if code != 0:
+def stories_for(plan_arg):
+    """`clerk story`, through the dispatcher, so what stack stacks is exactly what story
+    derives — the same executable whichever of the two is asked."""
+    rc, data, err = clerk("story", *([plan_arg] if plan_arg else []))
+    if rc != 0:
         sys.stderr.write(err + "\n")
-        sys.exit(code)
-    try:
-        return json.loads(out or "null")
-    except json.JSONDecodeError:
-        die(f"{name} did not return JSON")
+        sys.exit(rc)
+    if data is None:
+        die("clerk story did not return JSON")
+    return data
 
 
 def order(deliverables):
@@ -257,12 +251,11 @@ def main(argv):
         else:
             plan_arg = a
 
-    facts = sibling("clerk", ["prepare"])
-    repo_root = facts.get("repo_root")
+    repo_root = facts().get("repo_root")
     if not repo_root:
         die("not a git repository")
 
-    stories = sibling("clerk-story", [plan_arg] if plan_arg else [])
+    stories = stories_for(plan_arg)
     if not stories:
         die("no story to stack")
 

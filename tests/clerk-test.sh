@@ -1784,8 +1784,8 @@ BEFORE=$(git -C "$RX" rev-parse HEAD)
 eq "a conflicted replay exits 3" "3" \
    "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
 eq "and leaves the branch exactly as it was" "$BEFORE" "$(git -C "$RX" rev-parse HEAD)"
-eq "and names where it conflicted, which is how to regroup" "1" \
-   "$(run "$RX" fixup --base "$BASE" --replay 2>&1 | grep -c 'Conflicted in: catalog.txt')"
+eq "and names where it conflicted, which is how to regroup" "conflicted|catalog.txt" \
+   "$(run "$RX" fixup --base "$BASE" --replay 2>/dev/null | jq -r '[.reason, (.conflicted | join(","))] | join("|")')"
 eq "with no rebase left half-done" "false" \
    "$([ -d "$RX/.git/rebase-merge" ] || [ -d "$RX/.git/rebase-apply" ] && echo true || echo false)"
 git -C "$RX" reset -q --hard HEAD~1
@@ -1924,8 +1924,8 @@ EOF
 chmod +x "$RH/.git/hooks/prepare-commit-msg"
 eq "a hook that rewrites the subject is caught, not marked and left inert" "3" \
    "$(run "$RH" fixup --base "$HB" -- a.txt >/dev/null 2>&1; printf '%s' $?)"
-eq "naming the subject that came out instead" "1" \
-   "$(run "$RH" fixup --base "$HB" -- a.txt 2>&1 | grep -c 'AGE-747 fixup! Add a')"
+eq "naming the subject that came out instead" "subject-rewritten|AGE-747 fixup! Add a" \
+   "$(run "$RH" fixup --base "$HB" -- a.txt 2>/dev/null | jq -r '[.reason, .subject] | join("|")')"
 eq "the commit it made is undone" "1" "$(git -C "$RH" rev-list --count "$HB"..HEAD)"
 eq "and the fix left staged, where the caller can still commit it" "1" \
    "$(git -C "$RH" diff --cached --name-only | grep -c 'a.txt')"

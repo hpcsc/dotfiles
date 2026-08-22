@@ -23,11 +23,12 @@ Dispatched to by `clerk` when invoked as `clerk learn`, and runnable on its own.
 """
 
 import argparse
-import json
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit, facts, git  # noqa: E402
 
 TYPES = ["convention", "recurring-finding", "constraint", "pattern"]
 
@@ -36,24 +37,10 @@ HEADER = "# Implementation learnings\n"
 TITLE = re.compile(r"^## +(.*?)\s*$")
 
 
-def die(msg, code=2):
-    print(json.dumps({"ok": False, "error": msg}, indent=2))
-    sys.exit(code)
-
-
-def out(payload, code=0):
-    print(json.dumps(payload, indent=2))
-    sys.exit(code)
-
-
 def resolve_path(explicit):
     if explicit:
         return Path(explicit).expanduser()
-    clerk = Path(__file__).resolve().parent / "clerk"
-    r = subprocess.run([str(clerk), "prepare"], capture_output=True, text=True)
-    if r.returncode != 0:
-        die("clerk prepare failed; pass --path with the learnings file this run was given")
-    p = json.loads(r.stdout).get("learnings_path")
+    p = facts().get("learnings_path")
     if not p:
         die("clerk prepare resolved no learnings_path; pass --path")
     return Path(p)
@@ -61,8 +48,7 @@ def resolve_path(explicit):
 
 def in_repo_history(path):
     """Whether git would ever track this file: inside the repo, and not ignored."""
-    r = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                       capture_output=True, text=True)
+    r = git("rev-parse", "--path-format=absolute", "--git-common-dir")
     if r.returncode != 0:
         return False
     root = Path(r.stdout.strip()).parent
@@ -70,8 +56,7 @@ def in_repo_history(path):
         path.resolve().relative_to(root.resolve())
     except ValueError:
         return False
-    return subprocess.run(["git", "check-ignore", "-q", str(path)],
-                          cwd=root, capture_output=True).returncode != 0
+    return git("check-ignore", "-q", str(path), cwd=root).returncode != 0
 
 
 def existing_titles(path):
@@ -104,8 +89,8 @@ def main():
     path = resolve_path(args.path)
 
     if args.list:
-        out({"ok": True, "path": str(path), "exists": path.is_file(),
-             "titles": existing_titles(path)})
+        emit({"ok": True, "path": str(path), "exists": path.is_file(),
+              "titles": existing_titles(path)})
 
     missing = [n for n, v in (("--type", args.type), ("--title", args.title),
                               ("--learning", args.learning),
@@ -116,9 +101,10 @@ def main():
 
     titles = existing_titles(path)
     if args.title in titles and not args.replace:
-        die(f"'{args.title}' is already recorded. Dedup on substance is yours to judge — "
-            f"read it with --list, then either fold your wording into it with --replace or "
-            f"give this one its own title", 3)
+        emit({"ok": False, "reason": "duplicate-title", "title": args.title,
+              "detail": "already recorded. Dedup on substance is yours to judge — read it with "
+                        "--list, then either fold your wording into it with --replace or give "
+                        "this one its own title"}, 3)
 
     # The dash joins two parts, so it only belongs when there are two. A run that names
     # its feature and not a task is ordinary — the learning came from the whole of it
@@ -156,13 +142,13 @@ def main():
     # entirely, which is the out-of-tree learnings file, and reading that as "tracked"
     # would tell the caller to commit a file git has never heard of.
     tracked = in_repo_history(path)
-    out({"ok": True, "path": str(path), "title": args.title, "type": args.type,
-         "replaced": replaced, "entries": len(existing_titles(path)),
-         "in_tree": tracked,
-         "note": ("this file is tracked, so committing it is what makes teammates inherit "
-                  "the learning — and leaving it uncommitted leaves the tree dirty for the "
-                  "next run" if tracked else
-                  "this file is outside the repo's history, so nothing here dirties the tree")})
+    emit({"ok": True, "path": str(path), "title": args.title, "type": args.type,
+          "replaced": replaced, "entries": len(existing_titles(path)),
+          "in_tree": tracked,
+          "note": ("this file is in the repo and not ignored, so committing it is what makes "
+                   "teammates inherit the learning — and leaving it uncommitted leaves the "
+                   "tree dirty for the next run" if tracked else
+                   "this file is outside the repo's history, so nothing here dirties the tree")})
 
 
 if __name__ == "__main__":

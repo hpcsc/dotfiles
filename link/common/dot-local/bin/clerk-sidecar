@@ -10,40 +10,16 @@ Dispatched to by `clerk` when invoked as `clerk sidecar`, and runnable on its ow
 
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-CLERK = Path(__file__).resolve().parent / "clerk"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit, facts, resolve_tasks_arg  # noqa: E402
 
 TASK_HEADING = re.compile(r"^###\s+Task\s+(\d+):\s*(.*)$")
 FIELD = re.compile(r"^\*\*([^*]+):?\*\*\s*(.*)$")
 CHECKLIST = re.compile(r"^\s*-\s*\[([ xX])\]\s*Task\s+(\d+):\s*(.*)$")
 BACKTICKED = re.compile(r"`([^`]+)`")
-
-
-def die(msg):
-    print(f"clerk: sidecar: {msg}", file=sys.stderr)
-    sys.exit(2)
-
-
-def facts():
-    exe = str(CLERK) if CLERK.exists() else "clerk"
-    p = subprocess.run([exe, "prepare"], capture_output=True, text=True, check=False)
-    if p.returncode != 0:
-        sys.stderr.write(p.stderr)
-        sys.exit(p.returncode)
-    return json.loads(p.stdout)
-
-
-def resolve_tasks_arg(arg, tasks_home):
-    """A relative path is written the way the repo reads on disk, but cwd inside a
-    worktree is not where an excluded breakdown lives."""
-    p = Path(arg)
-    if p.is_absolute() or p.exists():
-        return p
-    candidate = Path(tasks_home) / arg
-    return candidate if candidate.exists() else p
 
 
 def parse_deps(raw):
@@ -202,8 +178,7 @@ def main(argv):
             pass
 
     if out.exists() and not force:
-        print(json.dumps({"written": False, "path": str(out), "note": "already exists; pass --force to rewrite"}, indent=2))
-        return 0
+        emit({"written": False, "path": str(out), "note": "already exists; pass --force to rewrite"})
 
     parsed = parse_sections(text)
     source = "sections"
@@ -246,21 +221,15 @@ def main(argv):
         if source == "checklist"
         else "check the extracted dependencies against the breakdown before relying on them"
     )
-    print(
-        json.dumps(
-            {
-                "written": True,
-                "path": str(out),
-                "tasks": len(tasks_json),
-                "recovered_from": source,
-                "note": note,
-                "next_step": "commit it alongside the breakdown it describes — until then it is loose in the tree and `clerk next` will read that as work in flight",
-                "extracted": [{"n": t["n"], "title": t["title"], "depends_on": t["depends_on"]} for t in tasks_json],
-            },
-            indent=2,
-        )
-    )
-    return 0
+    emit({
+        "written": True,
+        "path": str(out),
+        "tasks": len(tasks_json),
+        "recovered_from": source,
+        "note": note,
+        "next_step": "commit it alongside the breakdown it describes — until then it is loose in the tree and `clerk next` will read that as work in flight",
+        "extracted": [{"n": t["n"], "title": t["title"], "depends_on": t["depends_on"]} for t in tasks_json],
+    })
 
 
 if __name__ == "__main__":

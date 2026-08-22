@@ -34,14 +34,12 @@ import json
 from dataclasses import dataclass, field
 import os
 import re
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-CLERK = HERE / "clerk"
-PROG = Path(sys.argv[0]).name
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import NAME, clerk, die, emit, git, gitout  # noqa: E402
 
 CALLERS = ("ui", "inbound", "outbound", "async", "exported")
 
@@ -53,44 +51,13 @@ VALIDATE_QUESTIONS = [
 ]
 
 
-def die(msg, code=2):
-    print(f"{PROG.replace('-', ' ')}: {msg}", file=sys.stderr)
-    sys.exit(code)
-
-
-def emit(obj, code=0):
-    print(json.dumps(obj, indent=2))
-    sys.exit(code)
-
-
 def now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # --------------------------------------------------------------------------------
-# git and clerk
+# git
 # --------------------------------------------------------------------------------
-
-def git(*args, cwd=None):
-    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
-
-
-def gitout(*args, cwd=None):
-    r = git(*args, cwd=cwd)
-    return r.stdout.strip() if r.returncode == 0 else None
-
-
-def clerk_json(*args, cwd=None, env=None):
-    """Run a clerk command and parse its JSON. Returns (exit code, parsed or None, stderr)."""
-    r = subprocess.run([str(CLERK), *args], cwd=cwd, capture_output=True, text=True, env=env)
-    data = None
-    if r.stdout.strip():
-        try:
-            data = json.loads(r.stdout)
-        except json.JSONDecodeError:
-            data = None
-    return r.returncode, data, r.stderr.strip()
-
 
 def ref_exists(branch, cwd):
     return git("show-ref", "--verify", "--quiet", f"refs/heads/{branch}", cwd=cwd).returncode == 0
@@ -301,7 +268,7 @@ def build_ctx(explicit_run=None, harness=None):
         die("not a git repository")
     # `clerk prepare` is the facts, and with the request it is the facts with the run's
     # flags applied — so it is asked once to find the run, and again once the run is known.
-    rc, prep, err = clerk_json("prepare", cwd=cwd)
+    rc, prep, err = clerk("prepare", cwd=cwd)
     if rc != 0 or not prep:
         die(f"clerk prepare failed: {err or 'no output'}")
     ctx = Ctx(cwd=cwd, common=common, git_dir=gitout("rev-parse", "--absolute-git-dir", cwd=cwd),
@@ -310,7 +277,7 @@ def build_ctx(explicit_run=None, harness=None):
     ctx.run = resolve_run(ctx, explicit_run)
     if ctx.run is not None:
         request = ctx.run.meta.get("request") or ""
-        rc, prep, err = clerk_json("prepare", "--request", request, cwd=cwd)
+        rc, prep, err = clerk("prepare", "--request", request, cwd=cwd)
         if rc != 0 or not prep:
             die(f"clerk prepare failed: {err or 'no output'}")
         ctx.prepare = prep
@@ -508,7 +475,7 @@ def row_isolate(ctx):
 
 
 def lint_sidecar(side_path, cwd):
-    rc, data, err = clerk_json("lint", "--rule", "certainty-unevidenced", "--json", str(side_path), cwd=cwd)
+    rc, data, err = clerk("lint", "--rule", "certainty-unevidenced", "--json", str(side_path), cwd=cwd)
     if rc not in (0, 1):
         die(f"clerk lint failed: {err}")
     return data or []
@@ -552,7 +519,7 @@ def row_task(ctx):
         return row("task", False, kind="derived", why_not_done="no sidecar to read tasks from")
     # `clerk next` owns which task is ready — the dependency rule is applied, not repeated.
     # --allow-dirty because a dirty tree is reported on the row, not a reason to stop asking.
-    rc, nx, err = clerk_json("next", "--allow-dirty", "--tasks-file", str(tf), cwd=ctx.cwd)
+    rc, nx, err = clerk("next", "--allow-dirty", "--tasks-file", str(tf), cwd=ctx.cwd)
     if nx is None:
         die(f"clerk next failed: {err}")
     total, remaining = nx.get("total", 0), nx.get("remaining", 0)
@@ -673,7 +640,7 @@ def row_verify(ctx):
     args = ["verify", "--all-closed"]
     if tf is not None and not archived:
         args += ["--tasks-file", str(tf)]
-    rc, data, err = clerk_json(*args, cwd=ctx.cwd)
+    rc, data, err = clerk(*args, cwd=ctx.cwd)
     if data is None:
         die(f"clerk verify failed: {err}")
     clean = bool(data.get("clean"))
@@ -831,7 +798,7 @@ def cmd_start(slug, request, harness):
     common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
     if not common:
         die("not a git repository")
-    rc, prep, err = clerk_json("prepare", cwd=cwd)
+    rc, prep, err = clerk("prepare", cwd=cwd)
     if rc != 0 or not prep:
         die(f"clerk prepare failed: {err}")
     if slug == prep.get("default_branch"):
@@ -886,7 +853,7 @@ def cmd_done(ctx, step_id, argv):
         ctx.run.write("breakdown.json", {"tasks_file": str(tf), "sidecar": str(side),
                                          "approved": bool(o["--approved"]) or bool(prev.get("approved")),
                                          "lint_hash": file_hash(side), "at": now()})
-        rc, st, _ = clerk_json("status", "--tasks-file", str(tf), cwd=ctx.cwd)
+        rc, st, _ = clerk("status", "--tasks-file", str(tf), cwd=ctx.cwd)
         emit({"bound": True, "tasks_file": str(tf), "approved": bool(o["--approved"]) or bool(prev.get("approved")),
               "plan": (st or {}).get("progress"), "gears": (st or {}).get("gears"), "next": "clerk step"})
     if step_id == "tests":
@@ -1075,7 +1042,7 @@ def main_audit(argv):
 
 
 if __name__ == "__main__":
-    if PROG == "clerk-audit":
+    if NAME == "audit":
         main_audit(sys.argv[1:])
     else:
         main_step(sys.argv[1:])

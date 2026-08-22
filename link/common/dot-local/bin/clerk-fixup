@@ -28,27 +28,21 @@ Dispatched to by `clerk` when invoked as `clerk fixup`, and runnable on its own.
 """
 
 import argparse
-import json
 import os
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit, facts  # noqa: E402
+from clerk_lib import git as git_raw  # noqa: E402
 
 
 def git(*args, check=True):
-    r = subprocess.run(["git", *args], capture_output=True, text=True)
+    r = git_raw(*args)
     if check and r.returncode != 0:
         die(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r
-
-
-def die(msg, code=2):
-    print(json.dumps({"ok": False, "error": msg}, indent=2))
-    sys.exit(code)
-
-
-def out(payload, code=0):
-    print(json.dumps(payload, indent=2))
-    sys.exit(code)
 
 
 def resolve_base(explicit):
@@ -57,15 +51,11 @@ def resolve_base(explicit):
         if r.returncode != 0:
             die(f"--base {explicit} is not a commit")
         return r.stdout.strip()
-    # The same merge-base `clerk prepare` reports, derived the same way, so a caller
-    # that passes neither gets the branch point rather than a guess.
-    head = git("symbolic-ref", "--quiet", "--short", "HEAD", check=False).stdout.strip()
-    for cand in ("main", "master"):
-        r = git("rev-parse", "--verify", f"refs/heads/{cand}", check=False)
-        if r.returncode == 0 and cand != head:
-            mb = git("merge-base", "HEAD", cand, check=False)
-            if mb.returncode == 0:
-                return mb.stdout.strip()
+    # The merge-base `clerk prepare` reports — the one `verify` scopes its own checks by —
+    # so a caller that passes neither gets the branch point rather than a guess.
+    f = facts()
+    if f.get("base") and f.get("branch") != f.get("default_branch"):
+        return f["base"]
     # Standing on the default branch there is no other branch to fork from, which is the
     # ordinary shape of an --in-place run: the work is a run of local commits that have
     # not been pushed. Their base is where the branch and its upstream last agreed.
@@ -123,11 +113,12 @@ def confirm_marker(subject):
     if head.startswith(f"fixup! {subject}"):
         return
     git("reset", "--soft", "HEAD~1", check=False)
-    die(f"the commit was made but its subject is {head!r} rather than 'fixup! {subject}' — "
-        f"a prepare-commit-msg hook rewrote it. `--replay` finds fixups by subject, so the "
-        f"fold would silently never happen. The commit is undone and the files are staged "
-        f"again: keep this fix as its own commit, saying in the message which commit it "
-        f"corrects.", 3)
+    emit({"ok": False, "reason": "subject-rewritten", "subject": head,
+          "detail": f"the commit was made but its subject is {head!r} rather than 'fixup! "
+                    f"{subject}' — a prepare-commit-msg hook rewrote it. `--replay` finds fixups "
+                    f"by subject, so the fold would silently never happen. The commit is undone "
+                    f"and the files are staged again: keep this fix as its own commit, saying in "
+                    f"the message which commit it corrects."}, 3)
 
 
 def commits_touching(base, path):
@@ -150,9 +141,10 @@ def cmd_apply(args):
 
     untouched = [f for f, c in per_file.items() if not c]
     if untouched:
-        die(f"no commit in {base[:12]}..HEAD touches {', '.join(untouched)} — this is new "
-            f"work rather than a correction to work already committed, so it wants its "
-            f"own commit with a message saying why", 3)
+        emit({"ok": False, "reason": "untouched", "files": untouched,
+              "detail": f"no commit in {base[:12]}..HEAD touches {', '.join(untouched)} — this "
+                        f"is new work rather than a correction to work already committed, so it "
+                        f"wants its own commit with a message saying why"}, 3)
 
     if args.onto:
         r = git("rev-parse", "--verify", f"{args.onto}^{{commit}}", check=False)
@@ -162,22 +154,22 @@ def cmd_apply(args):
     else:
         ambiguous = {f: c for f, c in per_file.items() if len(c) > 1}
         if ambiguous:
-            out({"ok": False, "reason": "ambiguous",
+            emit({"ok": False, "reason": "ambiguous",
                  "detail": "more than one commit in range touches these files. The last "
                            "one to edit a file is not necessarily the one the defect came "
                            "in with — read the finding's evidence and name it with --onto.",
-                 "candidates": ambiguous}, 3)
+                  "candidates": ambiguous}, 3)
 
         targets = {c[0]["full"] for c in per_file.values()}
         if len(targets) > 1:
             groups = {}
             for f, c in per_file.items():
                 groups.setdefault(c[0]["sha"], []).append(f)
-            out({"ok": False, "reason": "spans-commits",
+            emit({"ok": False, "reason": "spans-commits",
                  "detail": "each file has one unambiguous target, but they differ. Run "
                            "once per group so each correction lands on the commit it "
                            "belongs to.",
-                 "groups": groups}, 3)
+                  "groups": groups}, 3)
         target = targets.pop()
 
     # Commits that touched these files AFTER the target. Staging is whole-file, so
@@ -195,8 +187,8 @@ def cmd_apply(args):
 
     subject = git("log", "-1", "--format=%s", target).stdout.strip()
     if args.dry_run:
-        out({"ok": True, "dry_run": True, "target": target[:12], "subject": subject,
-             "files": files, **({"also_touched_later": later} if later else {})})
+        emit({"ok": True, "dry_run": True, "target": target[:12], "subject": subject,
+              "files": files, **({"also_touched_later": later} if later else {})})
 
     git("add", "--", *files)
     # Staged but not committed is the tail `clerk verify` reports; if the commit fails
@@ -232,13 +224,15 @@ def cmd_replay(args):
     # the working tree also modifies, restoring it can conflict and the caller is the
     # one who knows whether that is likely.
     if git("status", "--porcelain").stdout.strip() and not args.autostash:
-        die("the tree is dirty; a rebase needs it clean. Commit or stash the loose work, "
-            "or pass --autostash to set it aside and put it back around the replay", 3)
+        emit({"ok": False, "reason": "dirty-tree",
+              "detail": "the tree is dirty; a rebase needs it clean. Commit or stash the loose "
+                        "work, or pass --autostash to set it aside and put it back around the "
+                        "replay"}, 3)
 
     pending = [l for l in git("log", "--format=%s", f"{base}..HEAD").stdout.splitlines()
                if l.startswith("fixup!") or l.startswith("squash!")]
     if not pending:
-        out({"ok": True, "folded": 0, "note": "nothing marked for fixup; nothing to replay"})
+        emit({"ok": True, "folded": 0, "note": "nothing marked for fixup; nothing to replay"})
 
     # Rewriting a published commit rewrites history someone else may have. The skill
     # says keep the fix as its own commit in that case; this refuses rather than
@@ -249,10 +243,11 @@ def cmd_replay(args):
         u = upstream.stdout.strip()
         published = git("rev-list", "--count", f"{base}..{u}", check=False).stdout.strip()
         if published.isdigit() and int(published) > 0:
-            die(f"{published} commit(s) in this range are already on {u}; folding would "
-                f"rewrite history someone else may have. Keep the fix as its own commit "
-                f"and say why in the message, or pass --force if this branch is yours "
-                f"alone", 3)
+            emit({"ok": False, "reason": "published", "upstream": u, "commits": int(published),
+                  "detail": f"{published} commit(s) in this range are already on {u}; folding "
+                            f"would rewrite history someone else may have. Keep the fix as its "
+                            f"own commit and say why in the message, or pass --force if this "
+                            f"branch is yours alone"}, 3)
 
     before = git("rev-parse", "HEAD").stdout.strip()
     # Both editors, because --autosquash opens the sequence editor and a fixup commit
@@ -267,11 +262,11 @@ def cmd_replay(args):
         conflicted = [l for l in git("diff", "--name-only", "--diff-filter=U",
                                      check=False).stdout.splitlines() if l]
         git("rebase", "--abort", check=False)
-        where = f" Conflicted in: {', '.join(conflicted)}." if conflicted else ""
-        die(f"the replay conflicted and was aborted; the branch is exactly as it was.{where} "
-            f"Keep the fix as its own commit — untangling a conflicted replay of your own "
-            f"branch costs more than the tidier history is worth. git said: "
-            f"{r.stderr.strip().splitlines()[-1] if r.stderr.strip() else 'conflict'}", 3)
+        emit({"ok": False, "reason": "conflicted", "conflicted": conflicted,
+              "git": r.stderr.strip().splitlines()[-1] if r.stderr.strip() else "conflict",
+              "detail": "the replay conflicted and was aborted; the branch is exactly as it was. "
+                        "Keep the fix as its own commit — untangling a conflicted replay of your "
+                        "own branch costs more than the tidier history is worth."}, 3)
 
     return {"ok": True, "folded": len(pending), "autostashed": args.autostash,
             "was": before[:12],
@@ -305,8 +300,8 @@ def main():
     # --force is asserted, not inferred: only the caller knows whether the branch is
     # shared, so cmd_replay refuses a published range unless told otherwise.
     if args.replay:
-        out(cmd_replay(args))
-    out(cmd_apply(args))
+        emit(cmd_replay(args))
+    emit(cmd_apply(args))
 
 
 if __name__ == "__main__":

@@ -31,6 +31,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import clerk, die  # noqa: E402
+
 DEFAULT_ROOT = Path.home() / ".config" / "ai" / "guidelines"
 
 HEADING = re.compile(r"^## +(.*?)\s*$")
@@ -72,11 +75,6 @@ ALWAYS = ["testing/caller-patterns.md", "comments.md"]
 SLICED = {"testing/caller-patterns.md", "testing/patterns.md",
           "go/testing-patterns.md", "javascript/testing-patterns.md",
           "elixir/testing-patterns.md"}
-
-
-def die(msg):
-    print(f"clerk guidelines: {msg}", file=sys.stderr)
-    sys.exit(2)
 
 
 # tree-sitter's markdown grammar, via ast-grep. `atx_h2_marker` matches only a genuine
@@ -225,17 +223,12 @@ def emit_sections(path, lines, wanted, out, resolved, literals=(), h2=None):
 
 def detect_languages(cwd):
     """Ask clerk, so this agrees with what the rest of the run was told."""
-    clerk = Path(__file__).resolve().parent / "clerk"
-    try:
-        r = subprocess.run([str(clerk), "prepare"], cwd=cwd, capture_output=True, text=True)
-    except OSError as e:
-        die(f"could not run clerk prepare: {e}")
-    if r.returncode != 0:
+    rc, data, err = clerk("prepare", cwd=cwd)
+    if rc != 0 or data is None:
         # Pass its reason through. "clerk prepare failed" sent the reader looking at this
         # command, when what it actually says is "not a git repository".
-        why = r.stderr.strip() or f"exit {r.returncode}"
-        die(f"{why} — pass --language explicitly to skip detection")
-    return json.loads(r.stdout).get("languages", [])
+        die(f"{err or f'clerk prepare exited {rc}'} — pass --language explicitly to skip detection")
+    return data.get("languages", [])
 
 
 def main():

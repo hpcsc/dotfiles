@@ -22,33 +22,11 @@ Dispatched to by `clerk` when invoked as `clerk lint`, and runnable on its own.
 
 import json
 import re
-import subprocess
 import sys
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-
-
-def die(msg):
-    print(f"clerk: lint: {msg}", file=sys.stderr)
-    sys.exit(2)
-
-
-def run(*args, cwd=None):
-    try:
-        p = subprocess.run(args, capture_output=True, text=True, cwd=cwd, check=False)
-    except OSError as e:
-        return 1, "", str(e)
-    return p.returncode, p.stdout, p.stderr.strip()
-
-
-def facts():
-    exe = str(HERE / "clerk") if (HERE / "clerk").exists() else "clerk"
-    code, out, err = run(exe, "prepare")
-    if code != 0:
-        sys.stderr.write(err + "\n")
-        sys.exit(code)
-    return json.loads(out)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, facts, git  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -61,9 +39,9 @@ def diff_range(root, base, staged):
     if base:
         return [f"{base}...HEAD"]
     for ref in ("origin/HEAD", "origin/main", "origin/master", "main", "master"):
-        code, out, _ = run("git", "-C", root, "merge-base", "HEAD", ref)
-        if code == 0 and out.strip():
-            return [f"{out.strip()}...HEAD"]
+        r = git("merge-base", "HEAD", ref, cwd=root)
+        if r.returncode == 0 and r.stdout.strip():
+            return [f"{r.stdout.strip()}...HEAD"]
     return ["--cached"]
 
 
@@ -87,21 +65,21 @@ def normalise(root, p):
 
 
 def changed_files(root, rng):
-    code, out, _ = run("git", "-C", root, "diff", "--name-only", "--diff-filter=ACMR", *rng)
-    if code != 0:
+    r = git("diff", "--name-only", "--diff-filter=ACMR", *rng, cwd=root)
+    if r.returncode != 0:
         return []
-    return [l for l in out.splitlines() if l]
+    return [l for l in r.stdout.splitlines() if l]
 
 
 def added_lines(root, path, rng):
     """(line number in the new file, text) for lines this change introduced. Linting whole
     files instead would report every comment written before the rule existed, which is the
     fastest way to have a check switched off."""
-    code, out, _ = run("git", "-C", root, "diff", "-U0", *rng, "--", path)
-    if code != 0:
+    r = git("diff", "-U0", *rng, "--", path, cwd=root)
+    if r.returncode != 0:
         return []
     lines, n = [], 0
-    for raw in out.splitlines():
+    for raw in r.stdout.splitlines():
         h = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
         if h:
             n = int(h.group(1))

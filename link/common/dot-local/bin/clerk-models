@@ -26,17 +26,15 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die  # noqa: E402
+
 HOME = Path.home()
 DEFAULT_REGISTRY = HOME / ".config/ai/method/agent-models.json"
 DEFAULT_DIRS = {"claude": HOME / ".claude/agents",
                 "opencode": HOME / ".config/opencode/agents"}
 FRONT = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 TOOLS = ("claude", "opencode")
-
-
-def die(msg, code=2):
-    print(f"clerk models: {msg}", file=sys.stderr)
-    sys.exit(code)
 
 
 def load(path):

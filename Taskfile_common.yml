@@ -34,6 +34,7 @@ tasks:
     desc: Run the clerk fixture tests
     cmds:
       - ./tests/clerk-test.sh
+      - ./tests/clerk-step-test.sh
 
   test:guidelines:
     desc: Check the live guidelines and agents against each other

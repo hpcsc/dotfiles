@@ -1,0 +1,979 @@
+#!/usr/bin/env python3
+"""clerk step — which step of an implement run comes next, computed rather than remembered.
+
+The implement skill is a long procedure, and the order of its steps lived only in the
+model's reading of it. clerk enforced a rule inside a few steps — one task in flight, the
+receipt at HEAD before landing — and nothing enforced the transitions between them, so a
+model that does not hold long instructions well skipped a step and nothing noticed.
+
+This command holds the order. It evaluates a fixed table of steps from the top, against
+git state and a ledger under the common git dir, and returns the first step that is not
+done together with the instructions for it. There is no counter to advance: position is
+recomputed on every call, so a stopped run continues with the same call, and the model
+cannot move past a step by saying so. Steps whose completion is a judgment — the plan is
+bound, the story was re-read — are recorded with `--done`, the way `gate` takes
+`--audit-accepted`: asserted and stamped with the code tree it applies to, never inferred.
+
+The ledger lives in <git-common-dir>/clerk/runs/<slug>/ and the slug is the branch name,
+which is the pairing `clerk prepare` already uses to match a worktree to its breakdown. It
+sits in the common dir rather than the worktree's because the last steps of a run — the
+fast-forward and the learnings — happen in the main checkout after the worktree is gone.
+
+Receipts and acceptances are compared by code tree, the HEAD tree minus the breakdown
+files under tasks/, not by SHA: the Theory section lands as a tasks/-only commit after the
+last green, and a SHA comparison would call that green stale and send the run back to the
+suite for a documentation change.
+
+Invoked as `clerk step`, and as `clerk audit` through the clerk-audit symlink, which
+records the rounds and the acceptance that the audit step reads.
+"""
+
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+CLERK = HERE / "clerk"
+PROG = Path(sys.argv[0]).name
+
+STEPS = ["start", "ground", "isolate", "plan", "task", "suite", "audit",
+         "validate", "theory", "verify", "land", "learn"]
+CALLERS = ("ui", "inbound", "outbound", "async", "exported")
+
+# Everything under tasks/ that is a plan rather than code: breakdowns, sidecars, the
+# deliverable manifest, the archive. A source package that happens to be called tasks/
+# keeps counting as code.
+PLAN_FILE_RE = re.compile(r"^tasks/.*\.(md|json|ya?ml)$")
+
+VALIDATE_QUESTIONS = [
+    "What does the story ask for that this branch does not do?",
+    "Where does the branch satisfy a task's acceptance criteria by measuring a proxy for what was asked rather than the thing itself?",
+    "Where did a criterion the story stated as a category become a list in the breakdown? Check the list against the source that defines the set.",
+    "Which test fails when a criterion is violated? Name one per criterion, and make the headline one fail.",
+]
+
+
+def die(msg, code=2):
+    print(f"{PROG.replace('-', ' ')}: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def emit(obj, code=0):
+    print(json.dumps(obj, indent=2))
+    sys.exit(code)
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# --------------------------------------------------------------------------------
+# git and clerk
+# --------------------------------------------------------------------------------
+
+def git(*args, cwd=None):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+
+
+def gitout(*args, cwd=None):
+    r = git(*args, cwd=cwd)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def clerk_json(*args, cwd=None, env=None):
+    """Run a clerk command and parse its JSON. Returns (exit code, parsed or None, stderr)."""
+    r = subprocess.run([str(CLERK), *args], cwd=cwd, capture_output=True, text=True, env=env)
+    data = None
+    if r.stdout.strip():
+        try:
+            data = json.loads(r.stdout)
+        except json.JSONDecodeError:
+            data = None
+    return r.returncode, data, r.stderr.strip()
+
+
+def code_tree(rev, cwd):
+    """The identity of the code at `rev`: its tree listing minus the plan files."""
+    r = git("ls-tree", "-r", rev, cwd=cwd)
+    if r.returncode != 0:
+        return None
+    keep = []
+    for line in r.stdout.splitlines():
+        _, _, path = line.partition("\t")
+        if PLAN_FILE_RE.match(path):
+            continue
+        keep.append(line)
+    return hashlib.sha1("\n".join(keep).encode()).hexdigest()
+
+
+def worktree_for(branch, cwd):
+    out = git("worktree", "list", "--porcelain", cwd=cwd).stdout
+    path = None
+    for line in out.splitlines():
+        if line.startswith("worktree "):
+            path = line[len("worktree "):]
+        elif line == f"branch refs/heads/{branch}":
+            return path
+    return None
+
+
+def ref_exists(branch, cwd):
+    return git("show-ref", "--verify", "--quiet", f"refs/heads/{branch}", cwd=cwd).returncode == 0
+
+
+def is_ancestor(branch, of, cwd):
+    return git("merge-base", "--is-ancestor", branch, of, cwd=cwd).returncode == 0
+
+
+def detect_harness():
+    h = os.environ.get("CLERK_HARNESS")
+    if h:
+        return h
+    if os.environ.get("CLAUDECODE"):
+        return "claude"
+    if any(k.startswith("OPENCODE") for k in os.environ):
+        return "opencode"
+    return "claude"
+
+
+# --------------------------------------------------------------------------------
+# The ledger
+# --------------------------------------------------------------------------------
+
+class Run:
+    def __init__(self, path):
+        self.dir = Path(path)
+        self.slug = self.dir.name
+
+    def exists(self):
+        return (self.dir / "run.json").exists()
+
+    def read(self, name, default=None):
+        p = self.dir / name
+        if not p.exists():
+            return default
+        try:
+            return json.loads(p.read_text())
+        except json.JSONDecodeError:
+            die(f"ledger file {p} is not valid JSON — report this and stop; do not repair it by hand")
+
+    def write(self, name, obj):
+        self.dir.mkdir(parents=True, exist_ok=True)
+        tmp = self.dir / f"{name}.tmp"
+        tmp.write_text(json.dumps(obj, indent=2) + "\n")
+        tmp.replace(self.dir / name)
+
+    @property
+    def meta(self):
+        return self.read("run.json", {})
+
+    @property
+    def finished(self):
+        return bool(self.meta.get("finished"))
+
+    @property
+    def done(self):
+        return self.read("done.json", {})
+
+    def mark(self, key, record):
+        d = self.done
+        d[key] = record
+        self.write("done.json", d)
+
+
+def runs_root(common):
+    return Path(common) / "clerk" / "runs"
+
+
+def all_runs(common):
+    root = runs_root(common)
+    if not root.exists():
+        return []
+    return [Run(p) for p in sorted(root.iterdir()) if (p / "run.json").exists()]
+
+
+def run_summary(run, cwd):
+    bd = run.read("breakdown.json")
+    progress = None
+    side_path = Path(bd["sidecar"]) if bd else None
+    if side_path and not side_path.exists():
+        cand = side_path.parent / "completed" / side_path.name
+        side_path = cand if cand.exists() else side_path
+    if side_path and side_path.exists():
+        side = json.loads(side_path.read_text())
+        tasks = side.get("tasks", [])
+        progress = {"done": sum(1 for t in tasks if t.get("done")), "total": len(tasks)}
+    return {"slug": run.slug, "request": run.meta.get("request"), "started_at": run.meta.get("started_at"),
+            "finished": run.finished, "branch_exists": ref_exists(run.slug, cwd),
+            "breakdown": bd["tasks_file"] if bd else None, "tasks": progress}
+
+
+# --------------------------------------------------------------------------------
+# Context: the facts every step reads
+# --------------------------------------------------------------------------------
+
+class Ctx:
+    pass
+
+
+def build_ctx(explicit_run=None, harness=None):
+    cwd = os.getcwd()
+    common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
+    if not common:
+        die("not a git repository")
+    ctx = Ctx()
+    ctx.cwd = cwd
+    ctx.common = common
+    ctx.git_dir = gitout("rev-parse", "--absolute-git-dir", cwd=cwd)
+    ctx.branch = gitout("rev-parse", "--abbrev-ref", "HEAD", cwd=cwd)
+    ctx.head = gitout("rev-parse", "HEAD", cwd=cwd)
+    ctx.head_ct = code_tree("HEAD", cwd) if ctx.head else None
+
+    rc, prep, err = clerk_json("prepare", cwd=cwd)
+    if rc != 0 or not prep:
+        die(f"clerk prepare failed: {err or 'no output'}")
+    ctx.default = prep.get("default_branch")
+
+    ctx.run = resolve_run(ctx, explicit_run)
+    if ctx.run is not None:
+        request = ctx.run.meta.get("request") or ""
+        rc, prep2, err = clerk_json("prepare", "--request", request, cwd=cwd)
+        if rc == 0 and prep2:
+            prep = prep2
+    ctx.prepare = prep
+    ctx.flags = prep.get("flags", {})
+    ctx.work_tree = prep.get("work_tree")
+    ctx.repo_root = prep.get("repo_root")
+    ctx.in_worktree = bool(prep.get("in_worktree"))
+    ctx.harness = harness or (ctx.run.meta.get("harness") if ctx.run else None) or detect_harness()
+    return ctx
+
+
+def resolve_run(ctx, explicit):
+    """Which ledger this call belongs to. On a feature branch it is the one named by the
+    branch. On the default branch it is the single unfinished run; several means the
+    caller has to say which, the way `prepare` refuses to pick between breakdowns."""
+    if explicit:
+        run = Run(runs_root(ctx.common) / explicit)
+        if not run.exists():
+            die(f"no run '{explicit}' — `clerk step --status` from the default branch lists them")
+        return run
+    on_feature = ctx.branch and ctx.branch != ctx.default and ctx.branch != "HEAD"
+    if on_feature:
+        run = Run(runs_root(ctx.common) / ctx.branch)
+        return run if run.exists() else None
+    open_runs = [r for r in all_runs(ctx.common) if not r.finished]
+    if len(open_runs) == 1:
+        return open_runs[0]
+    if not open_runs:
+        return None
+    emit({"step": "start", "blocked": True,
+          "reason": f"{len(open_runs)} runs are open; name the one this call is for with --run <slug>",
+          "open_runs": [run_summary(r, ctx.cwd) for r in open_runs]}, 3)
+
+
+# --------------------------------------------------------------------------------
+# Instructions — the method text for a step, or a built-in summary of it
+# --------------------------------------------------------------------------------
+
+BUILTIN = {
+    "start": "No run is open here. Record the request verbatim: `clerk step --start <kebab-slug> --request \"<the request>\"`. The slug becomes the branch name.",
+    "ground": "Read `facts` — it is `clerk prepare` for this request. Then load the guidelines yourself: `clerk guidelines`, and name the caller pattern with `clerk guidelines --caller <ui|inbound|outbound|async|exported>` (add `--dom` or `--state` when the work touches them). Read what it prints. Then record it: `clerk step --done ground --caller <pattern> [--dom] [--state]`.",
+    "isolate": "Give the run a branch of its own so the user's checkout stays free. Run the command in `done_by`, then enter the worktree it reports and call `clerk step` again from there.",
+    "plan": "Adopt the breakdown `facts.resume` names, or decompose the request with the decompose-to-tasks agent (pass the languages, the learnings file and the guidelines). A single-slice story still gets a one-task breakdown; write it and run `clerk sidecar`. Then bind it: `clerk step --done plan --tasks-file <path>`. It lints the assessments and refuses on findings.",
+    "task": "Build this task yourself. Tests first where they apply; run them red. Implement until green, and read the output. Then `clerk finish <n> -- <every file this task changed>`, `clerk lint --staged`, and commit with the commit skill — never `git commit` in Bash. Say in one line what landed. Then `clerk step`.",
+    "tests": "This task pauses after its tests. Write them, run them red, and show what each asserts in one line each. Then stop: state what you would do next and end your turn. When the reader says go: `clerk step --done tests <n>`.",
+    "suite": "Run the default test command in `facts.work_tree` and read the output. Then `clerk receipt --command \"<command>\" --passed --output-file <captured output>`.",
+    "audit": "Say how many rounds you will run: `clerk audit plan --rounds <n>`. Invoke audit-implement with `story` set to the request verbatim (it is in `story`), the base, the test commands and a one-sentence brief. When it returns, check `git status --porcelain` for residue, then `clerk audit round --report <findings.json>`. Fix findings directly, fold each into its commit with `clerk fixup`, re-run the suite and record a new receipt. Re-audit with recheck. When the findings are fixed or accepted: `clerk audit accept`.",
+    "validate": "Re-read the request in `story` — verbatim, not your memory of it — against `log` and the diff, and answer the four `questions`. Quote the story's words for anything you raise. Record it: `clerk step --done validate [--mismatch \"<quoted>\"]...`. A mismatch stops the run until the user decides: then `clerk step --done validate --resolved`.",
+    "theory": "Append a `## Theory` section to the breakdown, above `## Tasks`, five sentences at most: the abstractions this branch adds or changes and where they live, the decision that was not forced and the alternative not taken, what a reviewer should check hardest. Commit it as its own commit when the breakdown is tracked.",
+    "verify": "`clerk verify --all-closed` ran; its result is in `verify`. Fix every block. When `not_checked` is not empty, spawn the run-verifier agent for that residue only, then `clerk step --done verify-residue`.",
+    "land": "Close out: `clerk land` archives the breakdown and integrates only when the repo or the request says so. Follow `done_by`.",
+    "learn": "Distil what generalises — a convention, a recurring finding, a constraint, a pattern — keeping only what names the future mistake it prevents. `clerk learn --list` to dedup, then `clerk learn --type <t> --title ... --learning ... --apply-when ... --feature <slug>`. A clean run has none: `clerk step --done learn --none`.",
+    "finished": "The run is complete.",
+}
+
+
+def method_dir():
+    return Path(os.environ.get("CLERK_METHOD_DIR") or Path.home() / ".config" / "ai" / "method" / "implement")
+
+
+def render_method(text, harness):
+    """Resolve {{seam:name}} and {{include:path}} the way gen-skills.sh does, for one harness."""
+    mdir = method_dir()
+    out = []
+    for line in text.splitlines():
+        m = re.match(r"^\{\{seam:([a-z-]+)\}\}$", line)
+        if m:
+            p = mdir / "seams" / harness / f"{m.group(1)}.md"
+            out.append(p.read_text().rstrip("\n") if p.exists() else f"<!-- no seam {harness}/{m.group(1)} -->")
+            continue
+        m = re.match(r"^\{\{include:([a-z0-9/-]+\.md)\}\}$", line)
+        if m:
+            p = mdir.parent / m.group(1)
+            out.append(p.read_text().rstrip("\n") if p.exists() else f"<!-- no include {m.group(1)} -->")
+            continue
+        out.append(line)
+    return "\n".join(out).strip("\n")
+
+
+def instructions_for(step_id, harness):
+    p = method_dir() / "steps" / f"{step_id}.md"
+    if p.exists():
+        return render_method(p.read_text(), harness)
+    return BUILTIN.get(step_id, "")
+
+
+# --------------------------------------------------------------------------------
+# The step table. Each row answers: is it done, and if not, why and what does it.
+# --------------------------------------------------------------------------------
+
+def row(step_id, done, **fields):
+    r = {"step": step_id, "done": done}
+    r.update(fields)
+    return r
+
+
+def breakdown_files(ctx):
+    """(tasks_file, sidecar, archived) for the bound breakdown. `clerk land` moves both
+    into tasks/completed/, and a run that has landed still reads them from there."""
+    bd = ctx.run.read("breakdown.json")
+    if not bd:
+        return None, None, False
+    tf, side = Path(bd["tasks_file"]), Path(bd["sidecar"])
+    if tf.exists():
+        return tf, side, False
+    home = Path(ctx.prepare.get("tasks_home") or ctx.cwd)
+    atf = home / "tasks" / "completed" / tf.name
+    if atf.exists():
+        return atf, atf.with_suffix(".json"), True
+    return tf, side, False
+
+
+def sidecar_tasks(ctx):
+    bd = ctx.run.read("breakdown.json")
+    if not bd:
+        return None, None
+    _, side, _ = breakdown_files(ctx)
+    if not side.exists():
+        return bd, None
+    return bd, json.loads(side.read_text()).get("tasks", [])
+
+
+def row_ground(ctx):
+    rec = ctx.run.done.get("ground")
+    if rec and rec.get("caller"):
+        return row("ground", True, caller=rec["caller"])
+    if not ctx.prepare.get("clean"):
+        return row("ground", False, blocked=True, stop=True, kind="derived",
+                   reason="the tree is dirty — never build on top of someone else's loose work; stop and ask",
+                   why_not_done="tree dirty")
+    return row("ground", False, kind="asserted",
+               why_not_done="the guidelines were not recorded as read for this run",
+               done_by="clerk guidelines; clerk guidelines --caller <pattern> [--dom] [--state]; then clerk step --done ground --caller <pattern>")
+
+
+def landed_elsewhere(ctx):
+    """True when the run has left its branch for a reason the table accepts: the branch
+    was merged or deleted, or its worktree holds the archive record."""
+    slug = ctx.run.slug
+    if not ctx.run.read("breakdown.json"):
+        return False
+    if not ref_exists(slug, ctx.cwd):
+        return True
+    if ctx.default and is_ancestor(slug, ctx.default, ctx.cwd):
+        return True
+    wt = worktree_for(slug, ctx.cwd)
+    if wt:
+        gd = gitout("rev-parse", "--absolute-git-dir", cwd=wt)
+        if gd and (Path(gd) / "clerk" / "archived.json").exists():
+            return True
+    return False
+
+
+def row_isolate(ctx):
+    slug = ctx.run.slug
+    if ctx.branch == slug:
+        in_place = bool(ctx.flags.get("in_place"))
+        mode = "worktree" if ctx.in_worktree else "in-place"
+        fallback = (not ctx.in_worktree) and (not in_place)
+        return row("isolate", True, mode=mode, fallback=fallback, path=ctx.work_tree)
+    if landed_elsewhere(ctx):
+        return row("isolate", True, mode="landed", note="the run has left its branch; it landed")
+    if ref_exists(slug, ctx.cwd):
+        wt = worktree_for(slug, ctx.cwd)
+        if wt:
+            return row("isolate", False, kind="derived", action="enter", path=wt,
+                       why_not_done=f"the run's worktree is {wt} and this call is not in it",
+                       done_by=f"enter {wt} (EnterWorktree with that path on Claude Code; cd elsewhere), then clerk step")
+        return row("isolate", False, kind="derived", action="switch",
+                   why_not_done=f"branch {slug} exists with no worktree; this run builds in place",
+                   done_by=f"clerk branch {slug}; then clerk step")
+    if ctx.flags.get("in_place"):
+        return row("isolate", False, kind="derived", action="branch",
+                   why_not_done="in_place is on and the run has no branch yet",
+                   done_by=f"clerk branch {slug}; then clerk step")
+    return row("isolate", False, kind="derived", action="worktree",
+               why_not_done="the run has no worktree yet",
+               done_by=f"clerk worktree {slug}; enter the path it reports; then clerk step")
+
+
+def lint_sidecar(side_path, cwd):
+    rc, data, err = clerk_json("lint", "--rule", "certainty-unevidenced", "--json", str(side_path), cwd=cwd)
+    if rc not in (0, 1):
+        die(f"clerk lint failed: {err}")
+    return data or []
+
+
+def file_hash(path):
+    return hashlib.sha1(Path(path).read_bytes()).hexdigest()
+
+
+def row_plan(ctx):
+    bd = ctx.run.read("breakdown.json")
+    resume = ctx.prepare.get("resume")
+    if not bd:
+        return row("plan", False, kind="asserted",
+                   why_not_done="no breakdown is bound to this run",
+                   resume=resume, breakdowns=ctx.prepare.get("breakdowns"),
+                   done_by="clerk step --done plan --tasks-file <tasks/<story>.md> [--approved]")
+    tf, side, archived = breakdown_files(ctx)
+    if archived:
+        return row("plan", True, tasks_file=str(tf), sidecar=str(side), archived=True)
+    if not side.exists():
+        return row("plan", False, kind="derived", tasks_file=bd["tasks_file"],
+                   why_not_done=f"no sidecar at {side} — run `clerk sidecar` to recover one, then bind again",
+                   done_by=f"clerk sidecar; clerk step --done plan --tasks-file {bd['tasks_file']}")
+    if file_hash(side) != bd.get("lint_hash"):
+        findings = lint_sidecar(side, ctx.cwd)
+        if findings:
+            return row("plan", False, kind="derived", tasks_file=bd["tasks_file"], findings=findings,
+                       why_not_done="the sidecar changed and `lint certainty-unevidenced` now reports findings",
+                       done_by="correct the assessments, then clerk step --done plan --tasks-file again")
+    if ctx.flags.get("review_plan") and not bd.get("approved"):
+        return row("plan", False, kind="asserted", stop=True, tasks_file=bd["tasks_file"],
+                   why_not_done="review_plan is on and the plan is not approved",
+                   done_by=f"show the plan and wait for approval; then clerk step --done plan --tasks-file {bd['tasks_file']} --approved")
+    return row("plan", True, tasks_file=bd["tasks_file"], sidecar=bd["sidecar"])
+
+
+def task_progress(tasks):
+    done = {t["n"] for t in tasks if t.get("done")}
+    open_ = [t for t in tasks if t["n"] not in done]
+    ready = [t for t in open_ if all(d in done for d in (t.get("depends_on") or []))]
+    return done, open_, ready
+
+
+def row_task(ctx):
+    bd, tasks = sidecar_tasks(ctx)
+    if tasks is None:
+        return row("task", False, kind="derived", why_not_done="no sidecar to read tasks from")
+    done, open_, ready = task_progress(tasks)
+    progress = {"done": len(done), "total": len(tasks), "remaining": len(open_), "blocked": len(open_) - len(ready)}
+    if not open_:
+        return row("task", True, progress=progress)
+    if not ready:
+        return row("task", False, blocked=True, stop=True, kind="derived", progress=progress,
+                   reason="open tasks remain but none is unblocked — the dependency graph has a cycle or names a task that is not there",
+                   why_not_done="no ready task")
+    cur = min(ready, key=lambda t: t["n"])
+    n = cur["n"]
+    gears = bool(ctx.flags.get("gears"))
+    certainty = cur.get("certainty")
+    blast = cur.get("blast_radius")
+    pauses = gears and (certainty == "low" or blast == "high")
+    shown = str(n) in (ctx.run.done.get("tests") or {})
+    fields = dict(n=n, task=cur, certainty=certainty, blast_radius=blast,
+                  unassessed=(certainty is None and blast is None),
+                  tree_dirty=not ctx.prepare.get("clean"), progress=progress,
+                  commit_skill=ctx.prepare.get("commit_skill"))
+    if pauses and not shown:
+        return row("tests", False, kind="asserted", stop=True,
+                   why_not_done=f"task {n} pauses after its tests ({'certainty low' if certainty == 'low' else 'blast radius high'}) and they were not shown",
+                   done_by=f"write the tests, run them red, show the assertions, stop; then clerk step --done tests {n}",
+                   **fields)
+    return row("task", False, kind="derived", pause_after_tests=pauses,
+               why_not_done=f"task {n} is open",
+               done_by=f"clerk finish {n} -- <files>; clerk lint --staged; commit with the {fields['commit_skill']} skill; then clerk step",
+               **fields)
+
+
+def receipt_state(ctx):
+    """(fresh, receipt, why) — fresh when the receipt passed and describes HEAD's code tree."""
+    p = Path(ctx.git_dir) / "clerk" / "receipt.json"
+    if not p.exists():
+        return False, None, "no suite receipt recorded"
+    rec = json.loads(p.read_text())
+    if not rec.get("passed"):
+        return False, rec, f"the recorded receipt failed: {rec.get('command')}"
+    rct = code_tree(rec.get("sha", ""), ctx.cwd)
+    if rct != ctx.head_ct:
+        return False, rec, f"the receipt describes {rec.get('sha', '')[:8]}, whose code differs from HEAD's — the code changed after the suite ran"
+    return True, rec, None
+
+
+def row_suite(ctx):
+    fresh, rec, why = receipt_state(ctx)
+    if fresh:
+        return row("suite", True, receipt={"sha": rec["sha"], "command": rec["command"], "at": rec.get("at")})
+    cmd = ctx.prepare.get("test_command")
+    return row("suite", False, kind="derived", why_not_done=why, test_command=cmd, work_tree=ctx.work_tree,
+               done_by=f"run `{cmd}` in {ctx.work_tree}; clerk receipt --command \"{cmd}\" --passed --output-file <file>")
+
+
+def row_audit(ctx):
+    aud = ctx.run.read("audit.json", {})
+    rounds = aud.get("rounds", [])
+    accepted = aud.get("accepted")
+    fields = dict(story=ctx.run.meta.get("request"), base=ctx.prepare.get("base"),
+                  test_commands=ctx.prepare.get("test_commands"),
+                  rounds_planned=aud.get("rounds_planned"), rounds_done=len(rounds),
+                  last_round_fresh=bool(rounds) and rounds[-1].get("code_tree") == ctx.head_ct)
+    if accepted and accepted.get("code_tree") == ctx.head_ct:
+        return row("audit", True, rounds_done=len(rounds), accepted_at=accepted.get("at"))
+    if not rounds:
+        why = "no audit round is recorded for this run"
+    elif not accepted:
+        why = f"{len(rounds)} round(s) recorded, findings not yet accepted"
+    else:
+        why = "the acceptance describes an earlier code tree — the code changed since"
+    return row("audit", False, kind="asserted", why_not_done=why,
+               done_by="clerk audit plan --rounds <n>; audit-implement; clerk audit round --report <json>; fix + clerk fixup + suite + clerk receipt; ...; clerk audit accept",
+               **fields)
+
+
+def row_validate(ctx):
+    rec = ctx.run.read("validate.json")
+    base = ctx.prepare.get("base")
+    log = gitout("log", "--oneline", f"{base}..HEAD", cwd=ctx.cwd) if base else gitout("log", "--oneline", "-20", cwd=ctx.cwd)
+    fields = dict(story=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=VALIDATE_QUESTIONS)
+    if rec and rec.get("code_tree") == ctx.head_ct:
+        if rec.get("mismatches") and not rec.get("resolved"):
+            return row("validate", False, blocked=True, stop=True, kind="asserted",
+                       reason="mismatches were recorded; put them to the user and stop. After the decision: clerk step --done validate --resolved",
+                       mismatches=rec["mismatches"], why_not_done="unresolved mismatches", **fields)
+        return row("validate", True, mismatches=rec.get("mismatches", []))
+    why = "the request was not re-read against this code tree" if not rec else "validated at an earlier code tree — the code changed since"
+    return row("validate", False, kind="asserted", why_not_done=why,
+               done_by="clerk step --done validate [--mismatch \"<quoted words>\"]...", **fields)
+
+
+def row_theory(ctx):
+    tf, _, archived = breakdown_files(ctx)
+    if tf is None:
+        return row("theory", False, kind="derived", why_not_done="no breakdown is bound to this run")
+    text = tf.read_text() if tf.exists() else ""
+    if not re.search(r"^## Theory\b", text, re.M):
+        return row("theory", False, kind="derived", tasks_file=str(tf),
+                   why_not_done=f"no `## Theory` section in {tf}",
+                   done_by="write the section; commit it when the breakdown is tracked; then clerk step")
+    if ctx.prepare.get("tasks_tracked") and not archived:
+        dirty = git("status", "--porcelain", "--", str(tf), cwd=ctx.cwd).stdout.strip()
+        if dirty:
+            return row("theory", False, kind="derived", tasks_file=str(tf),
+                       why_not_done="the Theory is written but not committed",
+                       done_by="commit the breakdown as its own commit; then clerk step")
+    return row("theory", True, tasks_file=str(tf))
+
+
+def row_verify(ctx):
+    # A pass is recorded at its code tree, so the tasks/-only commits that follow — the
+    # Theory, the archive — do not send the run back through git grep, and a run that has
+    # landed is not re-verified against a receipt `clerk verify` still compares by SHA.
+    passed = ctx.run.done.get("verify")
+    if passed and passed.get("code_tree") == ctx.head_ct:
+        return row("verify", True, cached=True)
+    tf, _, archived = breakdown_files(ctx)
+    args = ["verify", "--all-closed"]
+    if tf is not None and not archived:
+        args += ["--tasks-file", str(tf)]
+    rc, data, err = clerk_json(*args, cwd=ctx.cwd)
+    if data is None:
+        die(f"clerk verify failed: {err}")
+    clean = bool(data.get("clean"))
+    not_checked = data.get("not_checked", [])
+    residue = ctx.run.done.get("verify-residue")
+    residue_ok = bool(residue) and residue.get("code_tree") == ctx.head_ct
+    if clean and (not not_checked or residue_ok):
+        ctx.run.mark("verify", {"at": now(), "code_tree": ctx.head_ct, "not_checked": not_checked})
+        return row("verify", True, findings=data.get("findings", []), not_checked=not_checked)
+    if not clean:
+        why = "clerk verify reports a block"
+        done_by = "fix the block; then clerk step"
+    else:
+        why = "clerk verify left checks in not_checked that need judgment"
+        done_by = "spawn run-verifier for the residue only; then clerk step --done verify-residue"
+    return row("verify", False, kind="derived" if not clean else "asserted", why_not_done=why,
+               verify=data, done_by=done_by)
+
+
+def row_land(ctx):
+    slug = ctx.run.slug
+    if ctx.branch == slug:
+        archived = (Path(ctx.git_dir) / "clerk" / "archived.json").exists()
+        if not archived:
+            return row("land", False, kind="derived", why_not_done="the breakdown is not archived",
+                       integrate=ctx.flags.get("integrate"),
+                       done_by="clerk land [--integrate|--no-integrate] — the gate wants --audit-accepted once the audit is accepted")
+        if ctx.flags.get("integrate") and ctx.in_worktree:
+            return row("land", False, kind="derived",
+                       why_not_done="archived; integration is on and cannot finish from inside the worktree",
+                       done_by=f"leave the worktree keeping the branch (ExitWorktree keep on Claude Code), run the command `clerk land` printed in {ctx.repo_root}, then clerk step there")
+        return row("land", True, archived=True, integrated=False)
+    if not ref_exists(slug, ctx.cwd):
+        return row("land", True, archived=True, integrated=True)
+    wt = worktree_for(slug, ctx.cwd)
+    if ctx.default and is_ancestor(slug, ctx.default, ctx.cwd):
+        if wt:
+            return row("land", False, kind="derived", why_not_done=f"merged; the worktree at {wt} remains",
+                       done_by=f"git worktree remove {wt} && git branch -d {slug}; then clerk step")
+        return row("land", False, kind="derived", why_not_done=f"merged; branch {slug} remains",
+                   done_by=f"git branch -d {slug}; then clerk step")
+    cmd = f"git -C {ctx.repo_root} merge --ff-only {slug}"
+    if wt:
+        cmd += f" && git -C {ctx.repo_root} worktree remove {wt}"
+    cmd += f" && git -C {ctx.repo_root} branch -d {slug}"
+    return row("land", False, kind="derived", why_not_done=f"archived on {slug}, not yet on {ctx.default}",
+               done_by=f"{cmd}; then clerk step")
+
+
+def row_learn(ctx):
+    rec = ctx.run.done.get("learn")
+    if rec:
+        return row("learn", True, none=bool(rec.get("none")))
+    return row("learn", False, kind="asserted", why_not_done="learnings were not recorded for this run",
+               learnings_path=ctx.prepare.get("learnings_path"),
+               done_by=f"clerk learn ... --feature {ctx.run.slug}; then clerk step --done learn [--none]")
+
+
+ROWS = [("ground", row_ground), ("isolate", row_isolate), ("plan", row_plan), ("task", row_task),
+        ("suite", row_suite), ("audit", row_audit), ("validate", row_validate), ("theory", row_theory),
+        ("verify", row_verify), ("land", row_land), ("learn", row_learn)]
+
+
+def active_rows(ctx):
+    """A run that has left its branch by landing is past everything the branch held: only
+    the integration and the learnings remain, and both are read from the main checkout."""
+    if ctx.branch != ctx.run.slug and landed_elsewhere(ctx):
+        return [(n, f) for n, f in ROWS if n in ("land", "learn")]
+    return ROWS
+
+
+def evaluate(ctx):
+    """The first row that is not done, or the finished marker."""
+    for _, fn in active_rows(ctx):
+        r = fn(ctx)
+        if not r["done"]:
+            return r
+    return row("finished", True)
+
+
+def present(ctx, r):
+    out = {"run": ctx.run.slug, "step": r["step"]}
+    for k, v in r.items():
+        if k in ("step", "done"):
+            continue
+        out[k] = v
+    out.setdefault("stop", False)
+    out.setdefault("blocked", False)
+    out["harness"] = ctx.harness
+    out["instructions"] = instructions_for(r["step"], ctx.harness)
+    out["facts"] = ctx.prepare
+    return out
+
+
+# --------------------------------------------------------------------------------
+# clerk step
+# --------------------------------------------------------------------------------
+
+def parse(argv, spec):
+    """Tiny flag parser: spec maps --flag to 'bool' | 'value' | 'list'."""
+    opts = {k: ([] if t == "list" else (False if t == "bool" else None)) for k, t in spec.items()}
+    rest = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a in spec:
+            t = spec[a]
+            if t == "bool":
+                opts[a] = True
+                i += 1
+            else:
+                if i + 1 >= len(argv):
+                    die(f"{a} needs a value")
+                if t == "list":
+                    opts[a].append(argv[i + 1])
+                else:
+                    opts[a] = argv[i + 1]
+                i += 2
+        elif a.startswith("--") and a not in spec:
+            die(f"unknown argument '{a}'")
+        else:
+            rest.append(a)
+            i += 1
+    return opts, rest
+
+
+def cmd_start(slug, request, harness):
+    if not slug or not request:
+        die("--start <slug> needs --request \"<the request, verbatim>\"")
+    cwd = os.getcwd()
+    if git("check-ref-format", "--branch", slug, cwd=cwd).returncode != 0:
+        die(f"'{slug}' is not a usable branch name")
+    common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
+    if not common:
+        die("not a git repository")
+    rc, prep, err = clerk_json("prepare", cwd=cwd)
+    if rc != 0 or not prep:
+        die(f"clerk prepare failed: {err}")
+    if slug == prep.get("default_branch"):
+        die(f"'{slug}' is the default branch; a run needs a branch of its own")
+    run = Run(runs_root(common) / slug)
+    if run.exists() and not run.finished:
+        emit({"started": False, "reason": f"run '{slug}' is open — continue it with `clerk step`, or `clerk step --rm {slug}` to abandon it",
+              "run": run_summary(run, cwd)}, 3)
+    if run.exists():
+        for p in run.dir.iterdir():
+            p.unlink()
+    run.write("run.json", {"slug": slug, "request": request, "started_at": now(), "launch_cwd": cwd,
+                           "launch_branch": prep.get("branch"), "harness": harness or detect_harness(),
+                           "finished": False})
+    emit({"started": True, "run": slug, "ledger": str(run.dir), "request": request,
+          "next": "clerk step"})
+
+
+def resolve_tasks_path(ctx, p):
+    cand = [Path(p)]
+    if not Path(p).is_absolute():
+        cand = [Path(ctx.cwd) / p, Path(ctx.prepare.get("tasks_home") or ctx.cwd) / p]
+    for c in cand:
+        if c.exists():
+            return c.resolve()
+    die(f"no breakdown at {p}", 1)
+
+
+def cmd_done(ctx, step_id, argv):
+    if ctx.run is None:
+        die("no run is open here — `clerk step --start <slug> --request ...` first", 3)
+    if step_id == "ground":
+        o, _ = parse(argv, {"--caller": "value", "--dom": "bool", "--state": "bool"})
+        if o["--caller"] not in CALLERS:
+            die(f"--caller must be one of {', '.join(CALLERS)}")
+        ctx.run.mark("ground", {"caller": o["--caller"], "dom": o["--dom"], "state": o["--state"],
+                                "at": now(), "code_tree": ctx.head_ct})
+        emit({"done": "ground", "caller": o["--caller"], "next": "clerk step"})
+    if step_id == "plan":
+        o, _ = parse(argv, {"--tasks-file": "value", "--approved": "bool"})
+        if not o["--tasks-file"]:
+            die("--done plan needs --tasks-file <tasks/<story>.md>")
+        tf = resolve_tasks_path(ctx, o["--tasks-file"])
+        side = tf.with_suffix(".json")
+        if not side.exists():
+            emit({"bound": False, "reason": f"no sidecar beside {tf} — run `clerk sidecar` to recover one, then bind again"}, 1)
+        findings = lint_sidecar(side, ctx.cwd)
+        if findings:
+            emit({"bound": False, "reason": "lint certainty-unevidenced reports findings — correct the assessment, do not delete the reference",
+                  "findings": findings}, 1)
+        prev = ctx.run.read("breakdown.json") or {}
+        ctx.run.write("breakdown.json", {"tasks_file": str(tf), "sidecar": str(side),
+                                         "approved": bool(o["--approved"]) or bool(prev.get("approved")),
+                                         "lint_hash": file_hash(side), "at": now()})
+        rc, st, _ = clerk_json("status", "--tasks-file", str(tf), cwd=ctx.cwd)
+        emit({"bound": True, "tasks_file": str(tf), "approved": bool(o["--approved"]) or bool(prev.get("approved")),
+              "plan": (st or {}).get("progress"), "gears": (st or {}).get("gears"), "next": "clerk step"})
+    if step_id == "tests":
+        _, rest = parse(argv, {})
+        if len(rest) != 1 or not rest[0].isdigit():
+            die("--done tests <n>")
+        d = ctx.run.done
+        tests = d.get("tests") or {}
+        tests[rest[0]] = {"at": now(), "code_tree": ctx.head_ct}
+        ctx.run.mark("tests", tests)
+        emit({"done": "tests", "n": int(rest[0]), "next": "clerk step"})
+    if step_id == "validate":
+        o, _ = parse(argv, {"--mismatch": "list", "--resolved": "bool"})
+        rec = ctx.run.read("validate.json") or {}
+        if o["--resolved"]:
+            if rec.get("code_tree") != ctx.head_ct:
+                die("nothing to resolve: no validation is recorded at this code tree", 1)
+            rec["resolved"] = True
+            rec["resolved_at"] = now()
+        else:
+            rec = {"code_tree": ctx.head_ct, "at": now(), "mismatches": o["--mismatch"], "resolved": False}
+        ctx.run.write("validate.json", rec)
+        emit({"done": "validate", "mismatches": rec["mismatches"], "resolved": rec["resolved"],
+              "next": "clerk step" if not rec["mismatches"] or rec["resolved"] else "put the mismatches to the user and stop"})
+    if step_id == "verify-residue":
+        ctx.run.mark("verify-residue", {"at": now(), "code_tree": ctx.head_ct})
+        emit({"done": "verify-residue", "next": "clerk step"})
+    if step_id == "learn":
+        o, _ = parse(argv, {"--none": "bool"})
+        ctx.run.mark("learn", {"none": o["--none"], "at": now()})
+        emit({"done": "learn", "none": o["--none"], "next": "clerk step"})
+    die(f"unknown step '{step_id}' — --done takes ground, plan, tests, validate, verify-residue or learn")
+
+
+def cmd_status(ctx):
+    if ctx.run is None:
+        emit({"run": None, "step": "start", "open_runs": [run_summary(r, ctx.cwd) for r in all_runs(ctx.common) if not r.finished]})
+    # Rows are evaluated in order and only up to the first that is not done: every later
+    # row reads state the earlier ones produce, and verify runs git grep over the diff.
+    rows = []
+    current = "finished"
+    active = dict(active_rows(ctx))
+    for name, fn in ROWS:
+        if name not in active:
+            rows.append({"step": name, "done": True, "note": "landed"})
+            continue
+        if current != "finished":
+            rows.append({"step": name, "done": None})
+            continue
+        r = fn(ctx)
+        rows.append({k: v for k, v in r.items() if k in ("step", "done", "why_not_done", "n", "mode", "fallback", "path", "progress", "blocked")})
+        if not r["done"]:
+            current = r["step"]
+    emit({"run": ctx.run.slug, "request": ctx.run.meta.get("request"), "finished": ctx.run.finished,
+          "current": current, "rows": rows})
+
+
+def cmd_rm(slug):
+    cwd = os.getcwd()
+    common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
+    if not common:
+        die("not a git repository")
+    run = Run(runs_root(common) / slug)
+    if not run.exists():
+        die(f"no run '{slug}'")
+    for p in run.dir.iterdir():
+        p.unlink()
+    run.dir.rmdir()
+    emit({"removed": slug})
+
+
+def main_step(argv):
+    spec = {"--start": "value", "--request": "value", "--done": "value", "--status": "bool",
+            "--rm": "value", "--run": "value", "--harness": "value", "-h": "bool", "--help": "bool"}
+    # --done's own flags belong to the step; split them off before parsing ours.
+    if "--done" in argv:
+        i = argv.index("--done")
+        head, tail = argv[: i + 2], argv[i + 2:]
+        o, rest = parse(head, spec)
+        ctx = build_ctx(o["--run"], o["--harness"])
+        cmd_done(ctx, o["--done"], tail)
+    o, rest = parse(argv, spec)
+    if o["-h"] or o["--help"]:
+        print(__doc__.strip().splitlines()[0])
+        print("\nusage: clerk step [--start <slug> --request <text>] [--done <step> ...] [--status] [--rm <slug>] [--run <slug>] [--harness <name>]")
+        sys.exit(0)
+    if rest:
+        die(f"unexpected argument '{rest[0]}'")
+    if o["--start"]:
+        cmd_start(o["--start"], o["--request"], o["--harness"])
+    if o["--rm"]:
+        cmd_rm(o["--rm"])
+    ctx = build_ctx(o["--run"], o["--harness"])
+    if o["--status"]:
+        cmd_status(ctx)
+    if ctx.run is None:
+        open_runs = [run_summary(r, ctx.cwd) for r in all_runs(ctx.common) if not r.finished]
+        emit({"run": None, "step": "start", "stop": False, "blocked": False,
+              "why_not_done": "no run is open for this branch",
+              "done_by": "clerk step --start <slug> --request \"<the request, verbatim>\"",
+              "open_runs": open_runs, "resume": ctx.prepare.get("resume"),
+              "instructions": instructions_for("start", ctx.harness), "facts": ctx.prepare})
+    r = evaluate(ctx)
+    if r["step"] == "finished" and not ctx.run.finished:
+        meta = ctx.run.meta
+        meta["finished"] = True
+        meta["finished_at"] = now()
+        ctx.run.write("run.json", meta)
+    emit(present(ctx, r))
+
+
+# --------------------------------------------------------------------------------
+# clerk audit — the rounds and the acceptance the audit step reads
+# --------------------------------------------------------------------------------
+
+def report_summary(path):
+    text = sys.stdin.read() if path == "-" else Path(path).read_text()
+    try:
+        rep = json.loads(text)
+    except json.JSONDecodeError:
+        die(f"{path} is not valid JSON")
+    if not isinstance(rep, dict):
+        rep = {}
+
+    def count(k):
+        v = rep.get(k)
+        return len(v) if isinstance(v, list) else None
+
+    return {"findings": count("findings"), "refuted": count("refuted"), "coverage_gaps": count("coverage_gaps"),
+            "lenses": rep.get("lenses"), "lenses_not_run": rep.get("lenses_not_run")}
+
+
+def main_audit(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print("usage: clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>] | accept [--early <why>] | status")
+        sys.exit(0)
+    verb, args = argv[0], argv[1:]
+    o, rest = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value", "--early": "value", "--run": "value"})
+    ctx = build_ctx(o["--run"])
+    if ctx.run is None:
+        die("no run is open here — `clerk step --start` first", 3)
+    aud = ctx.run.read("audit.json", {"rounds_planned": None, "rounds": [], "accepted": None})
+    if verb == "status":
+        emit(aud)
+    if verb == "plan":
+        if not o["--rounds"] or not o["--rounds"].isdigit():
+            die("plan needs --rounds <n>")
+        aud["rounds_planned"] = int(o["--rounds"])
+        ctx.run.write("audit.json", aud)
+        emit({"rounds_planned": aud["rounds_planned"], "rounds_done": len(aud["rounds"])})
+    if verb == "round":
+        if not o["--report"]:
+            die("round needs --report <findings.json> (or - for stdin)")
+        fresh, rec, why = receipt_state(ctx)
+        if not fresh:
+            emit({"recorded": False, "reason": f"the suite must be green at this code tree before an audit round counts: {why}"}, 3)
+        if not ctx.prepare.get("clean"):
+            emit({"recorded": False, "reason": "the tree is dirty — a verifier left residue or work is in flight; restore the branch tip first"}, 3)
+        planned = aud.get("rounds_planned")
+        if o["--replan"]:
+            if not o["--replan"].isdigit():
+                die("--replan needs a number")
+            planned = aud["rounds_planned"] = int(o["--replan"])
+        if planned is not None and len(aud["rounds"]) >= planned:
+            emit({"recorded": False, "reason": f"{planned} round(s) were planned and {len(aud['rounds'])} recorded — say why another is needed with --replan <n>"}, 3)
+        summary = report_summary(o["--report"])
+        entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
+                 "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary}
+        aud["rounds"].append(entry)
+        ctx.run.write("audit.json", aud)
+        emit({"recorded": True, "round": entry, "rounds_planned": planned})
+    if verb == "accept":
+        rounds = aud.get("rounds", [])
+        planned = aud.get("rounds_planned")
+        at_head = [r for r in rounds if r.get("code_tree") == ctx.head_ct]
+        if not rounds:
+            emit({"accepted": False, "reason": "no audit round is recorded — record one first"}, 3)
+        if not at_head and not o["--early"]:
+            emit({"accepted": False, "reason": "no round describes this code tree — run a round, or pass --early \"<why the fixes need no re-audit>\""}, 3)
+        if planned is not None and len(rounds) < planned and not o["--early"]:
+            emit({"accepted": False, "reason": f"{planned} rounds planned, {len(rounds)} recorded — run the rest, or pass --early \"<why>\""}, 3)
+        aud["accepted"] = {"at": now(), "code_tree": ctx.head_ct, "sha": ctx.head,
+                           "rounds": len(rounds), "reason": o["--early"]}
+        ctx.run.write("audit.json", aud)
+        emit({"accepted": True, "rounds": len(rounds), "early": o["--early"], "next": "clerk step"})
+    die(f"unknown verb '{verb}' — plan, round, accept or status")
+
+
+if __name__ == "__main__":
+    if PROG == "clerk-audit":
+        main_audit(sys.argv[1:])
+    else:
+        main_step(sys.argv[1:])

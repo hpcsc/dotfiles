@@ -1,0 +1,341 @@
+#!/usr/bin/env bash
+# Fixture-repo tests for `clerk step` and `clerk audit`. No framework: each case builds a
+# throwaway git repo, runs the command, and asserts on its JSON. Run with:
+# tests/clerk-step-test.sh
+#
+# The property under test is the one the step table claims: no step is reachable without
+# the evidence of the step before it. Each row of the table gets at least one case that
+# shows what holds it closed and what opens it.
+set -uo pipefail
+BIN="$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-local/bin"
+CLERK="$BIN/clerk"
+# The dispatcher finds clerk-step on PATH; a fresh checkout has not stowed it yet.
+export PATH="$BIN:$PATH"
+# The worktree directory depends on this; the assertions read paths from output, but a
+# deterministic run is easier to read when it fails.
+unset CLAUDECODE
+export CLERK_HARNESS=claude
+PASS=0
+FAIL=0
+ok()   { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
+bad()  { FAIL=$((FAIL + 1)); printf '  FAIL %s\n     expected: %s\n     actual:   %s\n' "$1" "$2" "$3"; }
+eq()   { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "$2" "$3"; fi; }
+
+new_repo() {
+  local d
+  d=$(cd "$(mktemp -d)" && pwd -P)
+  git -C "$d" init -q -b main
+  git -C "$d" config user.email clerk@test
+  git -C "$d" config user.name  Clerk
+  git -C "$d" config commit.gpgsign false
+  git -C "$d" config tag.gpgsign false
+  printf 'seed\n' > "$d/README.md"
+  git -C "$d" add -A && git -C "$d" commit -qm "Seed"
+  printf '%s' "$d"
+}
+run() { (cd "$1" && shift && "$CLERK" "$@"); }
+# Exit code of a command whose output is not wanted.
+rc() { run "$@" >/dev/null 2>&1; printf '%s' $?; }
+field() { jq -r "$1"; }
+
+# A two-task breakdown whose sidecar takes extra per-task fields as a JSON object.
+seed() {  # repo slug t1-extra t2-extra
+  local repo=$1 slug=$2 x1=${3:-{\}} x2=${4:-{\}}
+  mkdir -p "$repo/tasks"
+  printf '# %s\n\n## Tasks\n\n### Task 1: One\n- [ ] a\n\n### Task 2: Two\n- [ ] b\n' "$slug" > "$repo/tasks/$slug.md"
+  jq -n --arg s "$slug" --argjson x1 "$x1" --argjson x2 "$x2" \
+    '{story: $s, tasks_file: ("tasks/" + $s + ".md"), tasks: [
+       ({n: 1, title: "One", language: "Go", depends_on: [], affected_files: ["a.go"], done: false} + $x1),
+       ({n: 2, title: "Two", language: "Go", depends_on: [1], affected_files: ["b.go"], done: false} + $x2)]}' \
+    > "$repo/tasks/$slug.json"
+}
+commit_all() { git -C "$1" add -A && git -C "$1" commit -qm "$2"; }
+# Walk a run to the point where every task is done and committed.
+build_tasks() {  # dir
+  printf 'a\n' > "$1/a.go"; run "$1" finish 1 -- a.go >/dev/null; commit_all "$1" "Task 1"
+  printf 'b\n' > "$1/b.go"; run "$1" finish 2 -- b.go >/dev/null; commit_all "$1" "Task 2"
+}
+
+# --------------------------------------------------------------------------------
+printf '\nstart — a run is opened with the request, once\n'
+
+R=$(new_repo)
+eq "a fresh repo has no run, and step says so" "start|null" \
+   "$(run "$R" step | jq -r '[.step, (.run|tostring)] | join("|")')"
+eq "and exits 0 — asking what to do is never an error" "0" "$(rc "$R" step)"
+eq "--start without a request is a usage error" "2" "$(rc "$R" step --start w1)"
+eq "the default branch is not a slug" "2" "$(rc "$R" step --start main --request x)"
+eq "a name git would refuse is refused" "2" "$(rc "$R" step --start 'bad name' --request x)"
+S=$(run "$R" step --start w1 --request "Add a widget --gears")
+eq "--start opens the run" "true|w1" "$(printf '%s' "$S" | jq -r '[(.started|tostring), .run] | join("|")')"
+eq "the ledger lives under the common git dir" "$R/.git/clerk/runs/w1" "$(printf '%s' "$S" | field .ledger)"
+eq "the request is kept verbatim" "Add a widget --gears" "$(jq -r .request "$R/.git/clerk/runs/w1/run.json")"
+eq "a second --start on an open run is refused" "3" "$(rc "$R" step --start w1 --request again)"
+eq "and names the run it would have clobbered" "w1" \
+   "$(run "$R" step --start w1 --request again 2>/dev/null | field .run.slug)"
+eq "the first step is ground" "ground|asserted" "$(run "$R" step | jq -r '[.step, .kind] | join("|")')"
+eq "and its facts are clerk prepare, with the request's flags applied" "true|request" \
+   "$(run "$R" step | jq -r '[(.facts.flags.gears|tostring), .facts.flag_sources.gears] | join("|")')"
+eq "the instructions carry the built-in text when no method step file exists" "true" \
+   "$(run "$R" step | jq -r '.instructions | contains("clerk guidelines")')"
+
+# --------------------------------------------------------------------------------
+printf '\nground — the guidelines are recorded as read; a dirty tree stops the run\n'
+
+printf 'loose\n' > "$R/loose.txt"
+G=$(run "$R" step)
+eq "a dirty tree at ground is blocked, not skipped" "ground|true|true" \
+   "$(printf '%s' "$G" | jq -r '[.step, (.blocked|tostring), (.stop|tostring)] | join("|")')"
+rm "$R/loose.txt"
+eq "--done ground needs a known caller pattern" "2" "$(rc "$R" step --done ground --caller sideways)"
+eq "--done ground with one is recorded" "ground|ui" \
+   "$(run "$R" step --done ground --caller ui | jq -r '[.done, .caller] | join("|")')"
+eq "and the run moves to isolate" "isolate" "$(run "$R" step | field .step)"
+
+# --------------------------------------------------------------------------------
+printf '\nisolate — the run gets a branch of its own, and step follows it there\n'
+
+I=$(run "$R" step)
+eq "with in_place off the action is a worktree, named with the slug" "worktree|true" \
+   "$(printf '%s' "$I" | jq -r '[.action, (.done_by | contains("clerk worktree w1") | tostring)] | join("|")')"
+WT=$(run "$R" worktree w1 | field .path)
+I=$(run "$R" step)
+eq "once the worktree exists, step from the main checkout says enter it" "enter|$WT" \
+   "$(printf '%s' "$I" | jq -r '[.action, .path] | join("|")')"
+eq "inside the worktree the run is found by its branch" "w1|plan" \
+   "$(run "$WT" step | jq -r '[.run, .step] | join("|")')"
+eq "--status reports isolate as a worktree" "true|worktree" \
+   "$(run "$WT" step --status | jq -r '.rows[] | select(.step == "isolate") | [(.done|tostring), .mode] | join("|")')"
+
+# Two open runs from the main checkout is an ambiguity to name, not a guess.
+run "$R" step --start w2 --request "Second" >/dev/null
+eq "two open runs from the default branch is refused" "3" "$(rc "$R" step)"
+eq "and both are listed" "w1 w2" "$(run "$R" step 2>/dev/null | jq -r '[.open_runs[].slug] | join(" ")')"
+eq "--run names the one meant" "w2" "$(run "$R" step --run w2 | field .run)"
+eq "a feature branch with no run of its own is a fresh start, with the open runs listed" "start|2" \
+   "$(git -C "$R" checkout -q -b stray && run "$R" step | jq -r '[.step, (.open_runs|length|tostring)] | join("|")'; git -C "$R" checkout -q main)"
+run "$R" step --rm w2 >/dev/null
+eq "--rm removes a ledger" "false" "$([ -d "$R/.git/clerk/runs/w2" ] && echo true || echo false)"
+
+RI=$(new_repo)
+mkdir -p "$RI/tasks" && printf '{"in_place": true}\n' > "$RI/tasks/clerk.json" && commit_all "$RI" "Config"
+run "$RI" step --start ip --request "In place" >/dev/null
+run "$RI" step --done ground --caller inbound >/dev/null
+eq "with in_place on the action is a branch" "branch" "$(run "$RI" step | field .action)"
+run "$RI" branch ip >/dev/null
+eq "on that branch isolate is done in place" "true|in-place|false" \
+   "$(run "$RI" step --status | jq -r '.rows[] | select(.step == "isolate") | [(.done|tostring), .mode, (.fallback|tostring)] | join("|")')"
+
+# --------------------------------------------------------------------------------
+printf '\nplan — a breakdown is bound, and its assessments are linted before it counts\n'
+
+eq "--done plan needs --tasks-file" "2" "$(rc "$WT" step --done plan)"
+mkdir -p "$WT/tasks" && printf '### Task 1: Only\n' > "$WT/tasks/w1.md"
+eq "a breakdown without a sidecar is refused" "1" "$(rc "$WT" step --done plan --tasks-file tasks/w1.md)"
+eq "and says what recovers one" "true" \
+   "$(run "$WT" step --done plan --tasks-file tasks/w1.md 2>/dev/null | jq -r '.reason | contains("clerk sidecar")')"
+seed "$WT" w1 '{"certainty": "high", "blast_radius": "low", "patterns_to_follow": []}'
+eq "a high certainty with no precedent is refused by the lint" "1" "$(rc "$WT" step --done plan --tasks-file tasks/w1.md)"
+eq "with the findings in the reply" "1" \
+   "$(run "$WT" step --done plan --tasks-file tasks/w1.md 2>/dev/null | jq -r '.findings | length')"
+eq "and the run stays at plan" "plan" "$(run "$WT" step | field .step)"
+seed "$WT" w1 '{"certainty": "low", "blast_radius": "low"}' '{"certainty": "high", "blast_radius": "high", "patterns_to_follow": ["task:1"]}'
+B=$(run "$WT" step --done plan --tasks-file tasks/w1.md)
+eq "a clean sidecar binds" "true|2" "$(printf '%s' "$B" | jq -r '[(.bound|tostring), (.plan|length|tostring)] | join("|")')"
+eq "and the reply is the plan table, certainty and blast radius included" "1:low/low 2:high/high" \
+   "$(printf '%s' "$B" | jq -r '[.plan[] | "\(.n):\(.certainty)/\(.blast_radius)"] | join(" ")')"
+eq "the bound path is absolute" "$WT/tasks/w1.md" "$(jq -r .tasks_file "$R/.git/clerk/runs/w1/breakdown.json")"
+eq "--status shows plan done" "true" "$(run "$WT" step --status | jq -r '.rows[] | select(.step == "plan") | .done')"
+
+# The lint is re-run when the sidecar changes under the binding.
+jq '.tasks[1].patterns_to_follow = []' "$WT/tasks/w1.json" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.json"
+eq "a sidecar edited into a finding reopens plan" "plan|1" \
+   "$(run "$WT" step | jq -r '[.step, (.findings|length|tostring)] | join("|")')"
+jq '.tasks[1].patterns_to_follow = ["task:1"]' "$WT/tasks/w1.json" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.json"
+commit_all "$WT" "Breakdown"
+
+RP=$(new_repo)
+mkdir -p "$RP/tasks" && printf '{"review_plan": true, "in_place": true}\n' > "$RP/tasks/clerk.json" && commit_all "$RP" "Config"
+run "$RP" step --start rp --request "Reviewed" >/dev/null; run "$RP" step --done ground --caller ui >/dev/null; run "$RP" branch rp >/dev/null
+seed "$RP" rp
+run "$RP" step --done plan --tasks-file tasks/rp.md >/dev/null
+eq "with review_plan on the plan is a gate: bound but not approved" "plan|true" \
+   "$(run "$RP" step | jq -r '[.step, (.stop|tostring)] | join("|")')"
+run "$RP" step --done plan --tasks-file tasks/rp.md --approved >/dev/null
+eq "--approved opens it" "task" "$(run "$RP" step | field .step)"
+
+# --------------------------------------------------------------------------------
+printf '\ntask — the first unblocked task, until none is open; gears pauses a hard one after its tests\n'
+
+# w1 has --gears in its request and task 1 is low certainty.
+T=$(run "$WT" step)
+eq "a gears run pauses a low-certainty task before any code" "tests|1|true|asserted" \
+   "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring), (.stop|tostring), .kind] | join("|")')"
+eq "--done tests needs the task number" "2" "$(rc "$WT" step --done tests)"
+run "$WT" step --done tests 1 >/dev/null
+T=$(run "$WT" step)
+eq "shown, the same task is the step, and it says it paused" "task|1|true" \
+   "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring), (.pause_after_tests|tostring)] | join("|")')"
+eq "with progress and its assessment on the task object" "0/2|low|low" \
+   "$(printf '%s' "$T" | jq -r '[(.progress.done|tostring) + "/" + (.progress.total|tostring), .certainty, .blast_radius] | join("|")')"
+eq "task 2 is blocked behind 1" "1" "$(printf '%s' "$T" | field .progress.blocked)"
+printf 'a\n' > "$WT/a.go"
+eq "a dirty tree mid-task is the task in flight, not a block" "task|true|false" \
+   "$(run "$WT" step | jq -r '[.step, (.tree_dirty|tostring), (.blocked|tostring)] | join("|")')"
+run "$WT" finish 1 -- a.go >/dev/null; commit_all "$WT" "Task 1"
+T=$(run "$WT" step)
+eq "once 1 is done and committed, 2 is next — and a high-blast task pauses too" "tests|2" \
+   "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring)] | join("|")')"
+run "$WT" step --done tests 2 >/dev/null
+printf 'b\n' > "$WT/b.go"; run "$WT" finish 2 -- b.go >/dev/null; commit_all "$WT" "Task 2"
+eq "every task done moves the run to suite" "suite" "$(run "$WT" step | field .step)"
+
+# Without gears the assessments are reported and nothing pauses.
+eq "a run without gears never pauses, and says when a task was not assessed" "task|false|true" \
+   "$(run "$RP" step | jq -r '[.step, (.pause_after_tests|tostring), (.unassessed|tostring)] | join("|")')"
+
+RC=$(new_repo)
+run "$RC" step --start cyc --request "Cycle" >/dev/null; run "$RC" step --done ground --caller ui >/dev/null
+git -C "$RC" checkout -q -b cyc
+seed "$RC" cyc '{"depends_on": [2]}'
+run "$RC" step --done plan --tasks-file tasks/cyc.md >/dev/null
+eq "a dependency cycle is a block with a reason, not a silent stall" "task|true" \
+   "$(run "$RC" step | jq -r '[.step, (.blocked|tostring)] | join("|")')"
+
+# --------------------------------------------------------------------------------
+printf '\nsuite — the receipt must be green at this code tree; a tasks/-only commit keeps it\n'
+
+eq "no receipt: suite, with the reason" "suite|no suite receipt recorded" \
+   "$(run "$WT" step | jq -r '[.step, .why_not_done] | join("|")')"
+run "$WT" receipt --command "go test ./..." --failed >/dev/null
+eq "a failed receipt does not open it" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("failed")')"
+run "$WT" receipt --command "go test ./..." --passed >/dev/null
+eq "a green receipt at HEAD moves to audit" "audit" "$(run "$WT" step | field .step)"
+printf '\nnotes\n' >> "$WT/tasks/w1.md"; commit_all "$WT" "Breakdown notes"
+eq "a commit touching only tasks/ leaves the receipt fresh" "audit" "$(run "$WT" step | field .step)"
+printf 'c\n' > "$WT/c.go"; commit_all "$WT" "Code after the suite"
+eq "a commit touching code sends the run back to suite" "suite|true" \
+   "$(run "$WT" step | jq -r '[.step, (.why_not_done | contains("code changed") | tostring)] | join("|")')"
+run "$WT" receipt --command "go test ./..." --passed >/dev/null
+
+# --------------------------------------------------------------------------------
+printf '\naudit — rounds are recorded against a fresh receipt and a clean tree; acceptance is asserted\n'
+
+A=$(run "$WT" step)
+eq "the audit step hands over the request verbatim as the story" "Add a widget --gears" "$(printf '%s' "$A" | field .story)"
+eq "and the base ref the work started from" "$(git -C "$WT" merge-base HEAD main)" "$(printf '%s' "$A" | field .base)"
+REP=$(mktemp); printf '{"findings": [1, 2], "refuted": [3], "coverage_gaps": ["docs"], "lenses": ["semantic:Go"]}' > "$REP"
+eq "a round needs a report" "2" "$(rc "$WT" audit round)"
+printf 'x\n' > "$WT/probe.txt"
+eq "a round on a dirty tree is refused — a verifier's residue is not the branch" "3" "$(rc "$WT" audit round --report "$REP")"
+rm "$WT/probe.txt"
+printf 'd\n' > "$WT/d.go"; commit_all "$WT" "More code"
+eq "a round on a stale receipt is refused — the suite comes first" "3" "$(rc "$WT" audit round --report "$REP")"
+run "$WT" receipt --command "go test ./..." --passed >/dev/null
+eq "accepting with no round recorded is refused" "3" "$(rc "$WT" audit accept)"
+run "$WT" audit plan --rounds 1 >/dev/null
+RD=$(run "$WT" audit round --report "$REP")
+eq "a round records its counts against the code tree" "true|1|2|1|1" \
+   "$(printf '%s' "$RD" | jq -r '[(.recorded|tostring), (.round.n|tostring), (.round.findings|tostring), (.round.refuted|tostring), (.round.coverage_gaps|tostring)] | join("|")')"
+eq "a second round past the plan is refused" "3" "$(rc "$WT" audit round --report "$REP")"
+eq "--replan lets it through, on purpose" "2" "$(run "$WT" audit round --report "$REP" --replan 2 | field .round.n)"
+eq "status shows both rounds" "2|2" "$(run "$WT" audit status | jq -r '[(.rounds_planned|tostring), (.rounds|length|tostring)] | join("|")')"
+eq "accept records the acceptance" "true|2" "$(run "$WT" audit accept | jq -r '[(.accepted|tostring), (.rounds|tostring)] | join("|")')"
+eq "and the run moves to validate" "validate" "$(run "$WT" step | field .step)"
+printf 'e\n' > "$WT/e.go"; commit_all "$WT" "Fix after acceptance"
+run "$WT" receipt --command "go test ./..." --passed >/dev/null
+eq "code changed after acceptance reopens the audit" "audit|true" \
+   "$(run "$WT" step | jq -r '[.step, (.why_not_done | contains("earlier code tree") | tostring)] | join("|")')"
+eq "accept with no round at this tree needs --early and a reason" "3" "$(rc "$WT" audit accept)"
+eq "given one, it is recorded" "trivial fix" "$(run "$WT" audit accept --early "trivial fix" | field .early)"
+
+# --------------------------------------------------------------------------------
+printf '\nvalidate — the request is re-read against the branch; a mismatch parks the run\n'
+
+V=$(run "$WT" step)
+eq "validate hands over the story and the log" "Add a widget --gears|true" \
+   "$(printf '%s' "$V" | jq -r '[.story, ((.log|length) > 3 | tostring)] | join("|")')"
+eq "and the four questions" "4" "$(printf '%s' "$V" | jq -r '.questions | length')"
+eq "--resolved with nothing recorded is refused" "1" "$(rc "$WT" step --done validate --resolved)"
+run "$WT" step --done validate --mismatch "no widget colour" >/dev/null
+eq "a recorded mismatch blocks the run until the user decides" "validate|true|true" \
+   "$(run "$WT" step | jq -r '[.step, (.blocked|tostring), (.stop|tostring)] | join("|")')"
+run "$WT" step --done validate --resolved >/dev/null
+eq "resolved, the run moves to theory" "theory" "$(run "$WT" step | field .step)"
+
+# --------------------------------------------------------------------------------
+printf '\ntheory — the breakdown carries a Theory section, committed when tracked\n'
+
+eq "no section: the reason names the file" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("## Theory")')"
+printf '## Theory\n\nOne abstraction.\n\n' | cat - "$WT/tasks/w1.md" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.md"
+eq "written but not committed is not done" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("not committed")')"
+commit_all "$WT" "Theory"
+eq "committed, the run moves on" "verify" "$(run "$WT" step | field .step)"
+
+# --------------------------------------------------------------------------------
+printf '\nverify — clerk verify runs; blocks hold, residue is asserted reviewed\n'
+
+eq "a stale receipt is a block verify reports, and step repeats it" "verify|true" \
+   "$(run "$WT" step | jq -r '[.step, (.verify.clean | not | tostring)] | join("|")')"
+run "$WT" receipt --command "go test ./..." --passed >/dev/null
+Y=$(run "$WT" step)
+eq "clean with residue is asserted: not_checked is non-empty" "verify|asserted|true" \
+   "$(printf '%s' "$Y" | jq -r '[.step, .kind, ((.verify.not_checked|length) > 0 | tostring)] | join("|")')"
+run "$WT" step --done verify-residue >/dev/null
+eq "--done verify-residue opens it" "land" "$(run "$WT" step | field .step)"
+
+# --------------------------------------------------------------------------------
+printf '\nland — archive, then integrate only when asked; step follows the run to the main checkout\n'
+
+eq "not archived: land, with the command" "true" "$(run "$WT" step | jq -r '.done_by | contains("clerk land")')"
+run "$WT" land --audit-accepted >/dev/null
+eq "archived without integration: the run is landed on its branch" "learn" "$(run "$WT" step | field .step)"
+eq "--done learn needs nothing else when there is nothing to record" "learn|true" \
+   "$(run "$WT" step --done learn --none | jq -r '[.done, (.none|tostring)] | join("|")')"
+eq "and the run is finished" "finished" "$(run "$WT" step | field .step)"
+eq "which the ledger records" "true" "$(jq -r .finished "$R/.git/clerk/runs/w1/run.json")"
+eq "a finished slug can be started again" "true" "$(run "$WT" step --start w1 --request "Round two" | field .started)"
+run "$WT" step --rm w1 >/dev/null
+
+# Integration from a worktree finishes in the main checkout, and step follows.
+RL=$(new_repo)
+mkdir -p "$RL/tasks" && printf '{"integrate": true}\n' > "$RL/tasks/clerk.json" && commit_all "$RL" "Config"
+run "$RL" step --start lz --request "Land it" >/dev/null; run "$RL" step --done ground --caller ui >/dev/null
+WL=$(run "$RL" worktree lz | field .path)
+seed "$WL" lz; run "$WL" step --done plan --tasks-file tasks/lz.md >/dev/null; commit_all "$WL" "Breakdown"
+build_tasks "$WL"
+run "$WL" receipt --command true --passed >/dev/null
+run "$WL" audit round --report "$REP" >/dev/null; run "$WL" audit accept >/dev/null
+run "$WL" step --done validate >/dev/null
+printf '## Theory\n\nX.\n\n' | cat - "$WL/tasks/lz.md" > "$WL/tasks/lz.tmp" && /bin/mv -f "$WL/tasks/lz.tmp" "$WL/tasks/lz.md"; commit_all "$WL" "Theory"
+run "$WL" receipt --command true --passed >/dev/null
+run "$WL" step --done verify-residue >/dev/null
+eq "the worktree run reaches land" "land" "$(run "$WL" step | field .step)"
+eq "land --integrate inside a worktree stops before the fast-forward" "3" "$(rc "$WL" land --audit-accepted --integrate)"
+eq "and step says to finish from the main checkout" "true" \
+   "$(run "$WL" step | jq -r '.done_by | contains("leave the worktree")')"
+L=$(run "$RL" step)
+eq "from the main checkout the same run is found, at land" "lz|land" "$(printf '%s' "$L" | jq -r '[.run, .step] | join("|")')"
+eq "with the fast-forward command" "true" "$(printf '%s' "$L" | jq -r '.done_by | contains("merge --ff-only lz")')"
+git -C "$RL" merge -q --ff-only lz && git -C "$RL" worktree remove "$WL" && git -C "$RL" branch -qd lz
+eq "merged and gone, the run moves to learn in the main checkout" "learn" "$(run "$RL" step | field .step)"
+eq "whose learnings path is reported" "$RL/tasks/learnings.md" "$(run "$RL" step | field .learnings_path)"
+
+# --------------------------------------------------------------------------------
+printf '\ninstructions — the method step file is printed when it exists, seams resolved per harness\n'
+
+MD=$(mktemp -d); mkdir -p "$MD/implement/steps" "$MD/implement/seams/claude" "$MD/implement/seams/opencode" "$MD/shared"
+printf 'Ground yourself.\n{{seam:enter}}\n{{include:shared/note.md}}\n' > "$MD/implement/steps/ground.md"
+printf 'EnterWorktree\n' > "$MD/implement/seams/claude/enter.md"
+printf 'cd into it\n' > "$MD/implement/seams/opencode/enter.md"
+printf 'shared note\n' > "$MD/shared/note.md"
+RM=$(new_repo); run "$RM" step --start m --request "Method" >/dev/null
+eq "the step file replaces the built-in text, with the claude seam" "Ground yourself.|EnterWorktree|shared note" \
+   "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step | jq -r '.instructions | split("\n") | join("|")')"
+eq "and the opencode seam when asked" "cd into it" \
+   "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step --harness opencode | jq -r '.instructions | split("\n") | .[1]')"
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$RI" "$RP" "$RC" "$RL" "$RM" "$MD" "$REP" 2>/dev/null
+printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ]

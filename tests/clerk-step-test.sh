@@ -289,7 +289,9 @@ eq "--done verify-residue opens it" "land" "$(run "$WT" step | field .step)"
 printf '\nland — archive, then integrate only when asked; step follows the run to the main checkout\n'
 
 eq "not archived: land, with the command" "true" "$(run "$WT" step | jq -r '.done_by | contains("clerk land")')"
-run "$WT" land --audit-accepted >/dev/null
+eq "the gate opens on the acceptance clerk audit recorded — no flag needed" "true|true" \
+   "$(run "$WT" gate | jq -r '[(.checks[] | select(.name == "audit-accepted") | .ok | tostring), (.ok|tostring)] | join("|")')"
+run "$WT" land >/dev/null
 eq "archived without integration: the run is landed on its branch" "learn" "$(run "$WT" step | field .step)"
 eq "--done learn needs nothing else when there is nothing to record" "learn|true" \
    "$(run "$WT" step --done learn --none | jq -r '[.done, (.none|tostring)] | join("|")')"

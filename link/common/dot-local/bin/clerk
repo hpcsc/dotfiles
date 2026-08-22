@@ -1191,11 +1191,22 @@ cmd_gate() {
   checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
     '. + [{name: "receipt-fresh", ok: $ok, detail: $d}]')
 
-  # 4. the judgment one — asserted, never inferred
+  # 4. the judgment one — asserted, never inferred. `clerk audit accept` is that assertion
+  #    made once and recorded against the code tree it applies to, so a run driven by
+  #    `clerk step` does not repeat it here; the flag stays for a run driven without the
+  #    ledger, and an acceptance from an earlier code tree counts for nothing.
+  local ldir accepted_ct=
   if [ "$audit_accepted" = true ]; then
     passed=true; detail="caller asserted audit findings are fixed or explicitly accepted"
   else
-    passed=false; detail="pass --audit-accepted once the audit's findings are fixed or the user has accepted them"
+    ldir=$(ledger_dir 2>/dev/null) || ldir=
+    [ -n "$ldir" ] && [ -f "$ldir/audit.json" ] \
+      && accepted_ct=$(jq -r '.accepted.code_tree // empty' "$ldir/audit.json" 2>/dev/null)
+    if [ -n "$accepted_ct" ] && [ "$accepted_ct" = "$(code_tree "$head")" ]; then
+      passed=true; detail="clerk audit accept recorded the acceptance for this code tree"
+    else
+      passed=false; detail="pass --audit-accepted once the audit's findings are fixed or the user has accepted them (clerk audit accept records that)"
+    fi
   fi
   checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
     '. + [{name: "audit-accepted", ok: $ok, detail: $d}]')

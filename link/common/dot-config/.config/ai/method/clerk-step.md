@@ -164,8 +164,10 @@ not to the SHA. Reason: the Theory section and the archive are `tasks/`-only com
 come after the last receipt. `gate` and `verify` compared the receipt SHA to HEAD, so in a
 repository that tracks `tasks/` the Theory commit made the receipt stale, and `land`
 refused until the model ran the suite again for a docs-only change. Both now compare by
-code tree. `prepare` reports the code tree at HEAD and `clerk step` reports the one it
-computed, so one test holds the bash and Python implementations equal.
+code tree, through one helper in clerk: `prepare` reports the tree at HEAD and whether
+the recorded receipt still describes it, and `clerk step` reads both from there rather
+than computing its own. The same goes for the run a call belongs to and the task that is
+ready: `prepare` names the run, `clerk next` names the task, and step applies the answer.
 
 ## The step table
 
@@ -250,14 +252,17 @@ Hooks are a second layer for what clerk cannot see, and each harness has its own
 
 `clerk step` and `clerk audit` are one Python file, standard library only, next to the
 other Python plugins. The bash core gained the event log, the `code_tree` helper, the
-lint inside `finish`, and the ledger read in `gate`.
+lint inside `finish`, and the ledger read in `gate`. What every plugin does the same way
+— die and emit, git, the `clerk prepare` call, breakdown resolution, argument parsing as
+`clerk <name>` — lives in `clerk_lib.py` beside them, imported by path so it works
+stowed or not.
 
 The direction stays one Python package: the core is bash 3.2 with `jq` calls that build
 JSON by hand, 9 of the 10 `clerk-*` files are Python already, and the ledger is JSON that
 every subcommand reads and writes. `tests/clerk-test.sh` is black-box, so it is the
 contract for a port one subcommand at a time. Rules for the port:
 
-- One `git()` helper with `cwd`, `check`, captured output, and a clerk error type.
+- One `git()` helper with `cwd`, captured output, and die() for the error — `clerk_lib`'s.
 - Never `shell=True`. Argument lists keep the request and the paths out of a shell.
 - Use shell from Python in two cases only: a fixed pipeline with no decisions and no user
   input, or a whole bash subcommand not yet ported. Never split one subcommand across the

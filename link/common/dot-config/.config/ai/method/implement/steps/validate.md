@@ -11,5 +11,7 @@ This costs a read, not an agent, because you are already here. Re-read the reque
 
 Quote the story's own words for anything you raise; if you cannot point at the phrase, you are inventing a requirement. Put mismatches to the user as questions and let them decide — you wrote this code, which makes you the worst-placed reader of your own interpretation of the request. Finding nothing is the common result; say so in a line.
 
+Record it: `clerk step --done validate`, with `--mismatch "<the story's words>"` once per mismatch. A recorded mismatch parks the run until the user decides; then `clerk step --done validate --resolved`.
+
 Do this **before** integrating, on the runs where you integrate at all: a mismatch found after the fast-forward is a mismatch found too late.
 

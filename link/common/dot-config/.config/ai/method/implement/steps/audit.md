@@ -8,6 +8,8 @@ This is where review happens.
 
 When it returns, check `git status --porcelain` before running anything. A verifier that died mid-probe leaves residue behind; restore the tree to the branch tip before you trust another run.
 
+Before the first round, say how many you will run: `clerk audit plan --rounds <n>`. When a round returns and the tree is restored, record it: `clerk audit round --report <the findings JSON>` — it refuses while the suite is not green at this code tree or the tree is dirty, which is the order this step exists to keep. When the findings are fixed or the user has accepted them: `clerk audit accept`. `clerk land` reads that acceptance.
+
 Pass it the base ref the work started from, the `test_commands` map, a one-or-two-sentence `brief` on what the feature was meant to do, and `story` — the request, **verbatim and unsummarized**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The story is the only thing the audit sees that did not come from you.
 
 **When the request names a breakdown, that is not the story.** A run given `tasks/<story>.md` is being handed a decomposition, and a decomposition came from you — pass the user story it was written from instead, and the breakdown only as well. Handing over the breakdown alone defeats the whole point of the field: a task list that quietly narrowed a criterion is checked against itself, and every lens agrees it is covered. One run passed its breakdown as the story and three adversarial rounds confirmed a set of eight constructs that the story stated as a category of nine.
@@ -56,5 +58,5 @@ This is also what keeps `clerk verify` meaningful rather than noisy. Its commit-
 
 **So say how many rounds you are running before you start the first, and stop there.** Nothing in a round's output tells you whether another would find more, and the rounds do not converge on their own. One run went 7 → 7 → 5 findings over three full rounds, never re-raised a single finding, and turned up fresh medium-severity ones every time — the third round is where it found that the story's headline criterion was unguarded. Two rounds is a reasonable default; three is defensible for behaviour that is hard to see, such as anything rendered. What is not defensible is stopping because the last round felt quiet. Name the last round as the last one and say why, so the user is reading a decision rather than a coincidence — and say what the next round would most likely have looked at.
 
-If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix receipt is the evidence that matters.
+If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix receipt is the evidence that matters, and `clerk audit accept --early "<why>"` records that decision.
 

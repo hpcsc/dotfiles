@@ -28,7 +28,7 @@ clerk learn --type convention --title "<short title>" \
 
 **Dedup is still yours.** It refuses an exact title collision, and that is the whole of what a script can settle; matching on substance is judgment, which is what `--list` is for. `--replace` folds new wording into an entry that already exists.
 
-A clean run produces no learnings, and that is fine — say so rather than manufacturing one to fill the section.
+A clean run produces no learnings, and that is fine — say so rather than manufacturing one to fill the section, and record it with `clerk step --done learn --none`; a `clerk learn` that wrote an entry is the evidence otherwise. The step's `plan_signals` lists the three observations above as the run recorded them: the tasks called `high` that were retried or refused by the lint, the `low` ones that were neither, the `fixup` calls that came back ambiguous.
 
 **Committing is a decision; writing is not.** `in_tree` in the output says which regime you are in. When it is true the file is part of the repo's history: offer to commit so teammates inherit it — writing changes what your next run reads, committing changes what everyone's does — and when you leave it uncommitted, say so, because the next run in this repo finds the tree dirty and stops to ask about a file this one left there.
 

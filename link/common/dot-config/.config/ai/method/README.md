@@ -169,6 +169,27 @@ could state in five sentences. `clerk verify` handles the mechanical checks and 
 what it could not settle; `run-verifier` works only that residue. `clerk land` gates,
 archives on the feature branch, and integrates only when asked.
 
+### The order is clerk's
+
+The phases above are a table `clerk step` evaluates from the top — ground, isolate, plan,
+task, suite, audit, validate, theory, verify, land, learn — against the repository and a
+ledger under `<git-common-dir>/clerk/runs/<slug>/`. It returns the first row that is not
+done with the method text for it, and the skill is one loop: `clerk step`, do that, `clerk
+step`. Position is recomputed on every call, so a stopped run continues with the same call
+and nothing is advanced by saying so.
+
+Most rows are **derived**: the evidence is a clerk command having run, and every command
+that produces evidence appends its run to the ledger's `events.jsonl` on the way out —
+`guidelines --caller` grounds the run, `finish` lints the staged set before it marks a task
+done, `receipt` binds the green, `audit round` and `audit accept` record the audit, `land`
+stamps what it decided, `learn` writes the entry. The rest are **asserted**, the way the
+gate takes `--audit-accepted`: the breakdown is bound, the tests were shown, the story was
+re-read, the verifier's residue was reviewed — recorded with `clerk step --done`, stamped
+with the code tree they apply to. Receipts and acceptances compare by code tree, the HEAD
+tree minus the plan files under `tasks/`, so the Theory and archive commits do not stale a
+green. The method text lives one step per file under `implement/steps/`, read by the
+generator for the whole document and by `clerk step` one at a time.
+
 ### Certainty is planned, and acting on it is opt-in
 
 `decompose-to-tasks` assesses two things per task, because it has just explored the
@@ -262,6 +283,8 @@ it with `--audit-accepted`, and without that the gate stays shut.
 | `models [<agent>]` · `models set <agent> --claude <m> --opencode <m>` | Which model each agent runs on in each harness and the step it serves, from one registry; `set` rewrites the registry and restamps both trees | 0 · **1** stale · **2** unknown agent |
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
+| `step [--start <slug> --request <text>] [--done <step> …] [--status] [--run <slug>] [--rm <slug>]` | The first step of the run that is not done, with the method text for it, computed from the repository and the run's ledger on every call; `--start` opens a run and records the request verbatim; `--done` records the steps whose completion is a judgment | 0 · **3** several open runs |
+| `audit plan --rounds <n>` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and the gate read | 0 · **3** refused |
 
 Every command takes `--tasks-file` when `tasks/` holds more than one breakdown. Exit 2
 is a usage error throughout.
@@ -324,6 +347,7 @@ does.
 | `tasks/<story>.json` | The dependency graph, each task's assessed certainty and blast radius with the precedent behind them, and **`done` per task** — the only record of progress | `decompose-to-tasks`, `clerk sidecar`, `clerk finish` |
 | `tasks/<story>.md` | The tasks in prose: behaviour, criteria, affected files, dependencies | `decompose-to-tasks`; nothing rewrites it afterwards |
 | `<git-dir>/clerk/*` | The suite receipt, the archive record, each task's file list | `clerk receipt`, `clerk land`, `clerk finish` |
+| `<git-common-dir>/clerk/runs/<slug>/` | The run's ledger: the request, the events every logged command appended, the bound breakdown, the audit rounds and acceptance, the validation, what `land` decided | `clerk step`, `clerk audit`, every logged command |
 
 **One place, deliberately.** The breakdown used to carry a `- [ ]` checklist as well, and
 two files holding the one fact a resumed run depends on can disagree — while a mirror

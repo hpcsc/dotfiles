@@ -4,11 +4,7 @@
 
 ### The loop
 
-```
-clerk next
-```
-
-Returns the first task whose `depends_on` are all done, plus how many remain and how many are blocked. It **exits 3 while the tree is dirty**, because one task in flight at a time is what keeps a run resumable — a half-finished task on top of another is what makes a run impossible to review. Commit the current one before asking for the next.
+`clerk step` returns the task: the first whose `depends_on` are all done, with how many remain and how many are blocked, and — with `gears` on — whether it pauses after its tests. One task in flight at a time is what keeps a run resumable; a task is done when `clerk finish` marked it and its commit left the tree clean, and `clerk step` returns it until then.
 
 Announce which task you are starting, **with its `certainty` and `blast_radius`** — both come back on the task object — so the queue's progress is visible in the transcript rather than only in the file, and so a reader can tell a task built fast because it was routine from one built fast because nobody looked.
 
@@ -46,20 +42,16 @@ Four checks earlier runs paid for, each of which shipped a defect that a passing
 ### 4. Commit the task
 
 ```
-clerk finish <n> -- <every file this task changed>
+clerk finish <n> [--retried] -- <every file this task changed>
 ```
 
-Then check the staged set against the conventions that decide without judgment:
+It stages exactly those paths, lints the staged set, and only then sets `done: true` on the task in the sidecar and stages it alongside, so the progress record and the change it stands for land in one commit. **A lint finding refuses the whole step** — exit 1, the findings in the reply, the paths still staged. Each is a rule from the guidelines you already read: a comment that names code by its plan position or cites a ticket, sibling tests that belong under one umbrella, a method living apart from the file declaring its type. Each is settled by looking rather than weighing, so a finding is a defect, not an opinion to argue with: fix it and run the same `clerk finish` again. If a finding is genuinely wrong, that is a bug in the rule — say so, and fix the rule rather than working around it.
 
-```
-clerk lint --staged
-```
+Run into it here rather than at review: the audit would raise the same defects, and there each costs a lens to find, a verifier to confirm and a `--fixup` rebase to fold back into the commit that introduced it — against seconds now, while you are still holding the code in mind.
 
-It reports comments that name code by its plan position or cite a ticket, sibling tests that belong under one umbrella, and a method living apart from the file declaring its type. Each is a rule from the guidelines you already read, and each is settled by looking rather than weighing — so a finding here is a defect, not an opinion to argue with. Fix it and `git add` the file again; do not re-run `clerk finish`, which refuses a task already done.
+Pass `--retried` when the implementation needed more than one attempt to go green for a reason other than a typo or a missing import — not the count itself, the fact that the first shape you reached for was the wrong one. It is recorded, and with `gears` on it is one of the two signals that downshift the run.
 
-Run it here rather than leaving it to review. The audit will raise these anyway, and there it costs a lens to find, a verifier to confirm, and a `--fixup` rebase to fold the fix back into the commit that introduced it — against seconds now, while you are still holding the code in mind. If a finding is genuinely wrong, that is a bug in the rule: say so, and fix the rule rather than working around it.
-
-`clerk finish` sets `done: true` on the task in the sidecar and stages it alongside those paths, so the progress record and the change it stands for land in one commit. The sidecar is the only place completion is recorded; the breakdown is prose, and is not rewritten. `clerk status` prints progress when you want to read it. A sidecar committed without its code makes a later run skip work it never did; code committed without the sidecar makes it redo work. `clerk finish` refuses a path that does not exist and refuses a task already done, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
+The sidecar is the only place completion is recorded; the breakdown is prose, and is not rewritten. `clerk status` prints progress when you want to read it. A sidecar committed without its code makes a later run skip work it never did; code committed without the sidecar makes it redo work. `clerk finish` refuses a path that does not exist and refuses a task already done, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
 
 Then write the message, which is judgment rather than mechanics:
 
@@ -76,16 +68,16 @@ Two rules `clerk` cannot enforce for you:
 
 Tick the acceptance criteria you actually walked in this task's section of the breakdown — that is the only per-criterion evidence a reviewer of the finished branch gets, and `clerk finish` stages the file for you once you have edited it. `clerk status` counts them and flags any task marked done that still carries an unwalked criterion; it never gates on that, because whether a criterion is genuinely met is your judgment rather than a box count.
 
-Say what landed in one or two lines and go back to `clerk next`. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
+Say what landed in one or two lines and call `clerk step`. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
 
 **Then read the task back for the two signals that the plan was wrong about it.** Both are things you have just observed, and both mean the same thing — the theory is not landing where the plan said it would:
 
 - **The implementation needed more than one attempt to go green**, for a reason other than a typo or a missing import. Not the count itself: the fact that the first shape you reached for was the wrong one.
 - **`clerk lint --staged` returned a finding.** The guidelines were loaded and still not followed, which is them not landing rather than a rule being obscure.
 
-**Report either in the task's line whatever `gears` says.** It is a fact about the run, and it is exactly what someone deciding whether to trust the branch wants and cannot recover from the diff.
+**Report either in the task's line whatever `gears` says.** It is a fact about the run, and it is exactly what someone deciding whether to trust the branch wants and cannot recover from the diff. Say the first with `--retried` on `clerk finish` as well; the second is a `clerk finish` refusal and is already on the record.
 
-**With `gears` on, either one downshifts the run**: every task from here pauses after its tests, the way a low-certainty task does, regardless of what the plan assessed it as. It upshifts again after two consecutive tasks go green first try with a clean lint — say so when it does.
+**With `gears` on, either one downshifts the run**: every task from here pauses after its tests, the way a low-certainty task does, regardless of what the plan assessed it as. It upshifts again after two consecutive tasks go green first try with a clean lint — say so when it does. `clerk step` computes the gear from the record and reports it as `gear`; announcing it is yours.
 
 The upshift is not a courtesy. A run that only ever slows down finishes every story at its slowest, and a pause that arrives on every task carries no information — which is how a gate becomes a keystroke someone acknowledges without reading, and how the flag stops buying anything at all.
 

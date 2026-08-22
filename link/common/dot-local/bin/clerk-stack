@@ -124,17 +124,20 @@ def has_origin(repo_root):
 
 
 def existing_pr(branch, cwd):
-    code, out, _ = run(
+    """(the open PR for `branch` or None, the error when gh could not say). A gh failure
+    must not read as "no PR": every row would then be marked for creation — on top of a
+    PR that exists, or while gh is not even signed in."""
+    code, out, err = run(
         "gh", "pr", "list", "--head", branch, "--state", "open",
         "--json", "number,baseRefName,url,isDraft", cwd=cwd,
     )
     if code != 0:
-        return None
+        return None, err or f"gh exited {code}"
     try:
         rows = json.loads(out or "[]")
     except json.JSONDecodeError:
-        return None
-    return rows[0] if rows else None
+        return None, "gh pr list did not return JSON"
+    return (rows[0] if rows else None), None
 
 
 def plan_stack(story):
@@ -168,8 +171,11 @@ def annotate(rows, repo_root, origin):
             continue
         # Without an origin there is no PR to find, and asking `gh` anyway costs a
         # subprocess per deliverable to be told the same thing.
-        pr = existing_pr(r["branch"], repo_root) if origin else None
-        if pr is None:
+        pr, err = existing_pr(r["branch"], repo_root) if origin else (None, None)
+        if err:
+            r["action"] = "unknown"
+            r["error"] = err
+        elif pr is None:
             r["action"] = "create"
         elif pr["baseRefName"] != r["base"]:
             r["action"] = "retarget"
@@ -185,17 +191,19 @@ def annotate(rows, repo_root, origin):
 
 def apply(rows, repo_root):
     for r in rows:
-        if r["action"] == "create":
+        if r["action"] == "unknown":
+            print(f"  gh could not list PRs for {r['branch']}: {r['error']}", file=sys.stderr)
+            r["action"] = "failed"
+        elif r["action"] == "create":
             code, _, err = run("git", "-C", repo_root, "push", "-u", "origin", r["branch"])
             if code != 0:
                 print(f"  push failed for {r['branch']}: {err}", file=sys.stderr)
                 r["action"] = "failed"
                 continue
             body = pr_body(r["tasks_file"]) or ""
-            args = ["gh", "pr", "create", "--draft", "--base", r["base"],
-                    "--head", r["branch"], "--title", r["title"]]
-            args += ["--body", body] if body else ["--body", ""]
-            code, out, err = run(*args, cwd=repo_root)
+            code, out, err = run("gh", "pr", "create", "--draft", "--base", r["base"],
+                                 "--head", r["branch"], "--title", r["title"], "--body", body,
+                                 cwd=repo_root)
             if code != 0:
                 print(f"  gh pr create failed for {r['branch']}: {err}", file=sys.stderr)
                 r["action"] = "failed"
@@ -219,7 +227,7 @@ def render(story, rows, will_create):
     wid = max((len(r["id"]) for r in rows), default=0)
     wbr = max((len(r["branch"]) for r in rows), default=0)
     for r in rows:
-        mark = {"create": "+", "retarget": "~", "current": "=", "skip": " ", "failed": "!"}.get(r["action"], "?")
+        mark = {"create": "+", "retarget": "~", "current": "=", "skip": " ", "failed": "!", "unknown": "?"}[r["action"]]
         line = f"  {mark} {r['id']:<{wid}}  {r['branch']:<{wbr}}  ->  {r['base']}"
         if r["action"] == "skip":
             line += f"   ({r['skip']})"
@@ -227,6 +235,8 @@ def render(story, rows, will_create):
             line += f"   (#{r['pr']} currently on {r['from_base']})"
         elif r["action"] == "current":
             line += f"   (#{r['pr']} already correct)"
+        elif r["action"] == "unknown":
+            line += f"   (gh: {r['error']})"
         if r.get("base_note"):
             line += f"   [{r['base_note']}]"
         print(line)
@@ -272,11 +282,12 @@ def main(argv):
     if create and not origin:
         die("no `origin` remote, and a stacked PR needs its base branch pushed")
 
-    out = []
+    out, failed = [], 0
     for story in stories:
         rows = annotate(plan_stack(story), repo_root, origin)
         if create:
             rows = apply(rows, repo_root)
+        failed += sum(1 for r in rows if r["action"] == "failed")
         if as_json:
             out.append({"plan": story["plan"], "deliverables": rows})
         else:
@@ -284,7 +295,9 @@ def main(argv):
             print()
     if as_json:
         print(json.dumps(out, indent=2))
-    return 0
+    # A row that failed is in the output either way; the exit code says so too, for a
+    # driver that reads nothing else.
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

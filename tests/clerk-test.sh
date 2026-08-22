@@ -2240,9 +2240,28 @@ eq "and so is one written ./relative" "1" \
    "$(run "$R31" lint --rule certainty-unevidenced --json ./tasks/story.json | jq 'length')"
 
 # --------------------------------------------------------------------------------
+printf '\nfinish — the staged set is linted before the task is marked done\n'
+
+R32=$(new_repo)
+seed_breakdown "$R32" story false false
+git -C "$R32" add -A && git -C "$R32" commit -qm "Breakdown"
+printf 'package p\n\n// see APP-1234\nfunc A() {}\n' > "$R32/a.go"
+F=$(run "$R32" finish 1 -- a.go); FRC=$?
+eq "a finding refuses the finish with exit 1" "1" "$FRC"
+eq "and reports it as a lint finding on the task" "1|false|1" \
+   "$(printf '%s' "$F" | jq -r '[(.task|tostring), (.done|tostring), (.lint_findings|length|tostring)] | join("|")')"
+eq "the task is not marked done" "false" "$(jq -r '.tasks[0].done' "$R32/tasks/story.json")"
+eq "the paths stay staged for the fix" "a.go" "$(git -C "$R32" diff --cached --name-only)"
+printf 'package p\n\nfunc A() {}\n' > "$R32/a.go"
+F=$(run "$R32" finish 1 -- a.go)
+eq "fixed, the same finish marks it done and says the lint was clean" "true|clean" \
+   "$(printf '%s' "$F" | jq -r '[(.done|tostring), .lint] | join("|")')"
+eq "and the sidecar agrees" "true" "$(jq -r '.tasks[0].done' "$R32/tasks/story.json")"
+
+# --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

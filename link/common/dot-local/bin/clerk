@@ -879,14 +879,39 @@ cmd_finish() {
     [ -e "$f" ] || die "finish: '$f' does not exist — stage only what this task actually changed"
   done
 
+  # Explicit paths only. `git add -A` sweeps whatever the user left loose in the tree
+  # into this task's commit, and untangling that later means rewriting history.
+  git add -- "$@" || die "finish: staging failed — report this and stop; do not stage by hand"
+
+  # The staged set is linted BEFORE the task is marked done, and a finding refuses the
+  # whole step with the paths left staged. The method asked for `clerk lint --staged`
+  # after finish; a rule the model runs is a rule the model can skip, and the audit then
+  # paid a lens, a verifier and a fixup to find what a regex settles here in a second.
+  # Only a finding refuses. A lint that cannot run is reported and does not block: the
+  # task is still done, and hiding that behind a tooling error would be the worse lie.
+  local lint_bin lint_out lint_rc lint_state=clean
+  lint_bin=$(command -v clerk-lint 2>/dev/null) || lint_bin=
+  [ -z "$lint_bin" ] && [ -x "$(dirname "$0")/clerk-lint" ] && lint_bin="$(dirname "$0")/clerk-lint"
+  if [ -n "$lint_bin" ]; then
+    lint_out=$("$lint_bin" --staged --json 2>/dev/null); lint_rc=$?
+    printf '%s' "$lint_out" | jq -e . >/dev/null 2>&1 || lint_out='[]'
+    if [ "$lint_rc" -eq 1 ]; then
+      printf '%s\n' "$@" | jq -R -s --arg n "$n" --argjson findings "$lint_out" \
+        '{task: ($n | tonumber), done: false, lint_findings: $findings,
+          staged: (split("\n") | map(select(length > 0))),
+          next_step: "fix each finding — a defect, not an opinion — then run clerk finish again; the paths stay staged"}'
+      return 1
+    elif [ "$lint_rc" -ne 0 ]; then
+      lint_state="could not run (exit $lint_rc)"
+    fi
+  else
+    lint_state="not installed"
+  fi
+
   tmp="${side}.clerk.$$"
   jq --argjson n "$n" '.tasks |= map(if .n == $n then .done = true else . end)' "$side" > "$tmp" \
     || die "finish: could not rewrite $side — report this and stop; do not mark it done by hand"
   cat "$tmp" > "$side"; rm -f "$tmp"
-
-  # Explicit paths only. `git add -A` sweeps whatever the user left loose in the tree
-  # into this task's commit, and untangling that later means rewriting history.
-  git add -- "$@" || die "finish: staging failed — report this and stop; do not stage by hand"
   # The breakdown is still a file a run edits: progress left it, but each task section
   # carries its acceptance criteria as checkboxes, ticked by hand as they are verified.
   # finish does not manage that content — but leaving it modified after a step whose
@@ -915,8 +940,9 @@ cmd_finish() {
     > "$records/$n.json"
 
   printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg side "$side" --arg st "$staged_tasks" --arg tr "$tracked_tasks" \
+    --arg lint "$lint_state" \
     '{task: ($n | tonumber), done: true, sidecar: $side, breakdown_staged: ($st == "true"),
-      breakdown_tracked: ($tr == "true"),
+      breakdown_tracked: ($tr == "true"), lint: $lint,
       staged: (split("\n") | map(select(length > 0))),
       next_step: "invoke the commit skill — the message is judgment, not mechanics"}'
 }
@@ -1532,7 +1558,8 @@ USAGE
   clerk next [--allow-dirty]         the first task whose dependencies are all done;
                                      exit 3 if a task is still in flight
   clerk finish <n> [--retried] -- <files...>
-                                     tick the checkbox and stage those paths with it
+                                     stage those paths, lint the staged set, and only
+                                     then mark the task done; exit 1 on a finding
                                      (`complete` is accepted too, but some sandboxes
                                      refuse that word as the bash builtin)
   clerk sidecar [--force]            recover tasks/<story>.json from a breakdown

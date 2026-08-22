@@ -432,9 +432,8 @@ printf 'c\n' > "$RS/c.go"; run "$RS" finish 3 -- c.go >/dev/null; commit_all "$R
 eq "two clean tasks in a row upshift: the next builds straight through" "task|4|normal|false" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"
 printf 'package d\n\n// Fixes ABC-123\nvar D = 1\n' > "$RS/d.go"
-run "$RS" finish 4 -- d.go >/dev/null
-eq "a lint --staged finding after finish is an exit 1 on the record" "1" "$(rc "$RS" lint --staged)"
-printf 'package d\n\nvar D = 1\n' > "$RS/d.go"; commit_all "$RS" "T4"
+eq "a finish whose staged set has a lint finding is refused, and that refusal is on the record" "1" "$(rc "$RS" finish 4 -- d.go)"
+printf 'package d\n\nvar D = 1\n' > "$RS/d.go"; run "$RS" finish 4 -- d.go >/dev/null; commit_all "$RS" "T4"
 eq "and it downshifts again, naming the lint" "tests|5|low|true" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.last_task_signals.lint_findings|tostring)] | join("|")')"
 

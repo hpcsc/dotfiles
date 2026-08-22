@@ -337,6 +337,16 @@ eq "the step file replaces the built-in text, with the claude seam" "Ground your
 eq "and the opencode seam when asked" "cd into it" \
    "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step --harness opencode | jq -r '.instructions | split("\n") | .[1]')"
 
+# The real method: the step files the generator concatenates are the ones step prints.
+REAL="$(cd "$BIN/../dot-config/.config/ai/method/implement" && pwd -P)"
+eq "ground prints Phase 0 of the method, with the shared prepare fragment resolved" "true|true" \
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step | jq -r '[(.instructions | contains("## Phase 0: Ground yourself") | tostring), (.instructions | contains("clerk prepare --request") | tostring)] | join("|")')"
+run "$RM" step --done ground --caller ui >/dev/null
+eq "isolate prints the claude worktree seam" "true" \
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step | jq -r '.instructions | contains("### Set up an isolated worktree")')"
+eq "or the opencode one" "true" \
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --harness opencode | jq -r '.instructions | contains("### Isolate the work")')"
+
 # --------------------------------------------------------------------------------
 printf '\nevents — the commands that produce evidence log their run to the ledger on the way out\n'
 

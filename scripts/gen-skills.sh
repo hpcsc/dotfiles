@@ -44,39 +44,50 @@ render() {
   [ -f "$body" ]  || { printf 'gen-skills: missing body %s\n' "$body" >&2; return 1; }
   [ -d "$seams" ] || { printf 'gen-skills: missing seams %s\n' "$seams" >&2; return 1; }
 
-  # Substitute every {{seam:name}} with seams/<tool>/<name>.md. An unresolved marker is
-  # an error rather than a silent hole: a SKILL.md missing its worktree section reads
-  # as complete and simply omits a step.
+  # Substitute every {{seam:name}} with seams/<tool>/<name>.md and every {{include:path}}
+  # with the file under the method root. An unresolved marker is an error rather than a
+  # silent hole: a SKILL.md missing its worktree section reads as complete and simply
+  # omits a step. An included file may itself carry seam and include markers, one level
+  # down: the step files under implement/steps/ are read by this script for the whole
+  # document and by `clerk step` one at a time, and both resolve the same markers.
   awk -v seams="$seams" -v method="$METHOD" '
-    /^\{\{seam:[a-z-]+\}\}$/ {
-      name = $0
-      sub(/^\{\{seam:/, "", name); sub(/\}\}$/, "", name)
+    function marker_name(line, kind) {
+      sub("^\\{\\{" kind ":", "", line); sub(/\}\}$/, "", line); return line
+    }
+    function emit_seam(name,   path, line, r) {
       path = seams "/" name ".md"
-      if ((getline line < path) < 0) {
+      if ((r = (getline line < path)) < 0) {
         printf("gen-skills: no seam %s\n", path) > "/dev/stderr"
         exit 3
       }
+      if (r == 0) { close(path); return }
       print line
       while ((getline line < path) > 0) print line
       close(path)
-      next
     }
-    # Fragments shared between skills, as opposed to per-tool variants. Included, not
-    # referenced, for the same reason seams are: a procedure the agent must follow in
-    # full should arrive in full.
-    /^\{\{include:[a-z0-9\/-]+\.md\}\}$/ {
-      name = $0
-      sub(/^\{\{include:/, "", name); sub(/\}\}$/, "", name)
-      path = method "/" name
-      if ((getline line < path) < 0) {
+    function emit_include(rel, depth,   path, line, r) {
+      path = method "/" rel
+      if ((r = (getline line < path)) < 0) {
         printf("gen-skills: no shared fragment %s\n", path) > "/dev/stderr"
         exit 3
       }
-      print line
-      while ((getline line < path) > 0) print line
+      if (r == 0) { close(path); return }
+      do {
+        if (line ~ /^\{\{seam:[a-z-]+\}\}$/) emit_seam(marker_name(line, "seam"))
+        else if (line ~ /^\{\{include:[a-z0-9\/-]+\.md\}\}$/ && depth < 2) emit_include(marker_name(line, "include"), depth + 1)
+        else if (line ~ /\{\{(seam|include):/) {
+          printf("gen-skills: unresolved marker in %s: %s\n", path, line) > "/dev/stderr"
+          exit 3
+        }
+        else print line
+      } while ((getline line < path) > 0)
       close(path)
-      next
     }
+    /^\{\{seam:[a-z-]+\}\}$/ { emit_seam(marker_name($0, "seam")); next }
+    # Fragments shared between skills, as opposed to per-tool variants. Included, not
+    # referenced, for the same reason seams are: a procedure the agent must follow in
+    # full should arrive in full.
+    /^\{\{include:[a-z0-9\/-]+\.md\}\}$/ { emit_include(marker_name($0, "include"), 1); next }
     /\{\{(seam|include):/ { printf("gen-skills: malformed marker: %s\n", $0) > "/dev/stderr"; exit 3 }
     { print }
   ' "$body"

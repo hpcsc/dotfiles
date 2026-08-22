@@ -430,8 +430,13 @@ def render_method(text, harness):
     return "\n".join(out).strip("\n")
 
 
+# The gears pause is a moment inside the task step, and the method text for it is the
+# task's; the built-in summary says what to show and where to stop.
+STEP_TEXT_ALIAS = {"tests": "task"}
+
+
 def instructions_for(step_id, harness):
-    p = method_dir() / "steps" / f"{step_id}.md"
+    p = method_dir() / "steps" / f"{STEP_TEXT_ALIAS.get(step_id, step_id)}.md"
     if p.exists():
         return render_method(p.read_text(), harness)
     return BUILTIN.get(step_id, "")

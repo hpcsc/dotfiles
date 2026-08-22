@@ -1596,6 +1596,10 @@ usage() {
   cat <<'EOF'
 clerk — deterministic mechanics for an implementation run
 
+A run is driven by `clerk step`: open it once with `clerk step --start <slug> --request
+"<the request, verbatim>"`, then call `clerk step`, do what it says, and call it again
+until it reports finished. The commands below are what those steps run.
+
 USAGE
   clerk init [--force] [--in-place] [--integrate] [--review-plan] [--gears]
                                      scaffold tasks/clerk.json with the flags named
@@ -1609,31 +1613,32 @@ USAGE
                                      harness is Claude Code, else .worktrees/
   clerk branch <kebab-name>          the in-place counterpart: a feature branch when
                                      standing on the default one, else a no-op
-  clerk next [--allow-dirty]         the first task whose dependencies are all done;
+  clerk next [--allow-dirty] [--tasks-file <f>]
+                                     the first task whose dependencies are all done;
                                      exit 3 if a task is still in flight
-  clerk finish <n> [--retried] -- <files...>
+  clerk finish <n> [--retried] [--tasks-file <f>] -- <files...>
                                      stage those paths, lint the staged set, and only
                                      then mark the task done; exit 1 on a finding
                                      (`complete` is accepted too, but some sandboxes
                                      refuse that word as the bash builtin)
-  clerk sidecar [--force]            recover tasks/<story>.json from a breakdown
-                                     written before sidecars existed
-  clerk status                       progress from the sidecar, for a human, plus each
-                                     task's assessed certainty and blast radius
+  clerk status [--all] [--tasks-file <f>]
+                                     progress from the sidecar, for a human, plus each
+                                     task's assessed certainty and blast radius; --all
+                                     walks every breakdown, archived ones included
   clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
                                      record a suite run against the SHA it describes
   clerk gate [--audit-accepted] [--tasks-file <f>]
                                      report the landing predicates; exit 0 only if all pass
-  clerk land [--integrate|--no-integrate] [--audit-accepted]
+  clerk land [--integrate|--no-integrate] [--audit-accepted] [--feature-name <n>] [--tasks-file <f>]
                                      archive the breakdown; land the branch only if asked
   clerk verify [--all-closed] [--tasks-file <f>]
                                      the mechanical half of run-verifier
-  clerk models [<agent>|set|apply]   which model each agent runs on, per harness, and
-                                     the step it serves; set rewrites both at once
   clerk version
 
-The commands that resolve a breakdown — next, status, finish, gate, land, story,
-sidecar, verify — all take --tasks-file to name it when tasks/ holds more than one, and
+Every flag that takes a value is written --flag <value>.
+
+The commands that resolve a breakdown — next, status, finish, gate, land, verify, and
+the sidecar plugin — take --tasks-file to name it when tasks/ holds more than one, and
 prepare reports every breakdown it found. verify wants it for the same reason finish
 does: per-task file records are filed under the breakdown they belong to, so naming the
 wrong one, or none where several are in flight, reads another story's records or no
@@ -1659,12 +1664,20 @@ EOF
   list_plugins
 }
 
+# What a plugin says it is: the first line of its docstring reading `clerk <name> — ...`.
+# Read from the file rather than kept here, so the listing cannot go stale; an executable
+# that answers to two names (clerk-audit is clerk-step) carries a line for each.
+plugin_desc() {  # <file> <name>
+  awk -v n="$2" 'NR > 40 { exit } { sub(/^"""/, "") }
+    index($0, "clerk " n " — ") == 1 { print substr($0, length("clerk " n " — ") + 1); exit }' "$1" 2>/dev/null
+}
+
 # An executable named clerk-<name> on PATH, or beside this script, is a subcommand — the
 # same two places plugin_bin looks, in the same order. Listing what is actually installed
 # beats naming them here, which would go stale the moment one is added.
 list_plugins() {
   local dir f name found=
-  printf '\nSUBCOMMANDS\n'
+  printf '\nSUBCOMMANDS  (clerk-<name> on PATH, or beside clerk; `clerk <name> --help` for each)\n'
   IFS=:
   for dir in $PATH $(self_dir); do
     [ -d "$dir" ] || continue
@@ -1673,7 +1686,7 @@ list_plugins() {
       name=$(basename "$f"); name=${name#clerk-}
       case " $found " in *" $name "*) continue ;; esac
       found="$found $name"
-      printf '  clerk %-24s %s\n' "$name" "$f"
+      printf '  clerk %-12s %s\n' "$name" "$(plugin_desc "$f" "$name")"
     done
   done
   unset IFS

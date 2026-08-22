@@ -152,12 +152,14 @@ def main(argv):
         die(f"task file not found: {tasks}")
 
     out = tasks.with_suffix(".json")
+    if out.exists() and not force:
+        emit({"written": False, "path": str(out), "note": "already exists; pass --force to rewrite"})
     text = tasks.read_text()
 
     # Regenerating must not discard what this parse cannot rebuild. Two sources of prior
     # progress: a sidecar being regenerated, and — for a breakdown written when the
     # checklist still carried it — the ticks in the markdown.
-    prior = set(ticked(text))
+    prior = ticked(text)
     # The plan's own judgments and their evidence. These are stated in the markdown, but as
     # prose this parser does not read, so a --force rewrite would quietly return a current
     # breakdown to looking unassessed — and unassessed is a claim about the plan, not a
@@ -165,17 +167,19 @@ def main(argv):
     kept = {}
     if out.exists():
         try:
-            for t in json.loads(out.read_text()).get("tasks", []):
-                if t.get("done") is True:
-                    prior.add(t["n"])
-                held = {k: t[k] for k in ("certainty", "blast_radius", "patterns_to_follow") if k in t}
-                if held:
-                    kept[t["n"]] = held
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
-            pass
-
-    if out.exists() and not force:
-        emit({"written": False, "path": str(out), "note": "already exists; pass --force to rewrite"})
+            existing = json.loads(out.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            # Not silently empty: a sidecar that cannot be read is a sidecar whose progress
+            # and assessments this rewrite would erase without saying so.
+            die(f"{out} exists but cannot be read ({e}) — move it aside if the rewrite should start from nothing")
+        for t in existing.get("tasks", []) if isinstance(existing, dict) else []:
+            if not isinstance(t, dict) or "n" not in t:
+                continue
+            if t.get("done") is True:
+                prior.add(t["n"])
+            held = {k: t[k] for k in ("certainty", "blast_radius", "patterns_to_follow") if k in t}
+            if held:
+                kept[t["n"]] = held
 
     parsed = parse_sections(text)
     source = "sections"

@@ -38,7 +38,7 @@ Pass the sidecar's path; the rule reads the plan rather than the diff, so it is 
 
 Run it on an adopted breakdown too, which costs the same and tells you whether the plan you are about to build was checked when it was written.
 
-**Then bind it to the run:** `clerk step --done plan --tasks-file <the breakdown>`. It runs this lint itself and refuses on a finding, and on success it prints the task table — certainty and blast radius included — which is the plan presented.
+**Then bind it to the run:** `clerk step --done plan --tasks-file <the breakdown>`. It runs this lint itself and refuses on a finding, and on success it prints the task table — certainty and blast radius included — which is the plan presented, with the first task under `next`.
 
 ### Present the plan, then build
 

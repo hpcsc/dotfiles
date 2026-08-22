@@ -4,7 +4,7 @@
 
 ### The loop
 
-`clerk step` returns the task: the first whose `depends_on` are all done, with how many remain and how many are blocked, and — with `gears` on — whether it pauses after its tests. One task in flight at a time is what keeps a run resumable; a task is done when `clerk finish` marked it and its commit left the tree clean, and `clerk step` returns it until then.
+`clerk step` returns the task: the first whose `depends_on` are all done, with how many remain and how many are blocked, and — with `gears` on — whether it pauses after its tests. One task in flight at a time is what keeps a run resumable; a task is done when `clerk finish` marked it and its commit left the tree clean. `clerk finish` hands you the step that follows that commit as `after_commit` — the next task, or the suite — so you act on it once the commit is in; `clerk step` returns the task again until then, and `clerk finish` refuses the next task while this one's files sit uncommitted in the index.
 
 Announce which task you are starting, **with its `certainty` and `blast_radius`** — both come back on the task object — so the queue's progress is visible in the transcript rather than only in the file, and so a reader can tell a task built fast because it was routine from one built fast because nobody looked.
 
@@ -68,7 +68,7 @@ Two rules `clerk` cannot enforce for you:
 
 Tick the acceptance criteria you actually walked in this task's section of the breakdown — that is the only per-criterion evidence a reviewer of the finished branch gets, and `clerk finish` stages the file for you once you have edited it. `clerk status` counts them and flags any task marked done that still carries an unwalked criterion; it never gates on that, because whether a criterion is genuinely met is your judgment rather than a box count.
 
-Say what landed in one or two lines and call `clerk step`. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
+Say what landed in one or two lines and act on finish's `after_commit`. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
 
 **Then read the task back for the two signals that the plan was wrong about it.** Both are things you have just observed, and both mean the same thing — the theory is not landing where the plan said it would:
 

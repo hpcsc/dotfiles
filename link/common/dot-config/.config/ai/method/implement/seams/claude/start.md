@@ -1,4 +1,5 @@
 ```
 clerk step --start <kebab-slug> --request "<the request, verbatim>"
-clerk step
 ```
+
+It opens the run and returns the first step under `next`.

@@ -31,12 +31,15 @@ Open the run once, then repeat one call until it says `finished`:
 
 ```
 clerk step --start <kebab-slug> --request "<the request, verbatim>" --harness opencode
-clerk step
 ```
+
+It opens the run and returns the first step under `next`.
 
 `--harness opencode` is said once: the run records it, and every later `clerk step` renders its instructions for this harness — `cd` rather than EnterWorktree, the `task` tool rather than the Agent tool. Without it clerk cannot tell the harnesses apart from the shell it is called from.
 
 `clerk step` evaluates a fixed table of steps — ground, isolate, plan, task (once per task), suite, audit, validate, theory, verify, land, learn — against the repository and the run's ledger, and returns the **first step that is not done**, with the method text for it in `instructions`. Read the whole object, do exactly what `instructions` says, then call `clerk step` again. Nothing else: the next step appears when this one's evidence exists, and not before. The order is clerk's; the work inside each step is yours.
+
+**The commands that close a step hand you the next one.** `clerk step --start`, every `clerk step --done …`, `clerk audit accept`, `clerk branch`, `clerk land` and `clerk learn` return the step that follows under `next`, exactly as `clerk step` would print it; `clerk finish` returns it under `after_commit`, because its own next move is the commit, which clerk cannot make for you. Act on that object as you would on a `clerk step` reply — there is no need to ask again. Call `clerk step` when you have no such reply in hand: after `clerk guidelines`, after entering a worktree, after a receipt, after a commit that did not land, or whenever you are unsure where the run stands.
 
 The slug becomes the branch name, so choose it as you would a feature branch. It is also how the run is found again: on its branch, by the branch; from the default branch, as the one open run — `clerk step` says when there are several, and `--run <slug>` names one.
 

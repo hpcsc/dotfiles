@@ -207,9 +207,9 @@ def task_signals(run):
             n = int(argv[0])
             sig = signals.setdefault(n, {"retried": False, "lint_findings": False, "attempts": 0})
             sig["attempts"] += 1
-            if rc != 0:
+            if rc == 1:
                 sig["lint_findings"] = True
-            else:
+            elif rc == 0:
                 sig["retried"] = sig["retried"] or "--retried" in argv
                 if n not in order:
                     order.append(n)
@@ -465,11 +465,11 @@ def row_isolate(ctx):
                        done_by=f"enter {wt} (EnterWorktree with that path on Claude Code; cd elsewhere), then clerk step")
         return row("isolate", False, kind="derived", action="switch",
                    why_not_done=f"branch {slug} exists with no worktree; this run builds in place",
-                   done_by=f"clerk branch {slug}; then clerk step")
+                   done_by=f"clerk branch {slug} — it returns the step that follows as next")
     if ctx.flags.get("in_place"):
         return row("isolate", False, kind="derived", action="branch",
                    why_not_done="in_place is on and the run has no branch yet",
-                   done_by=f"clerk branch {slug}; then clerk step")
+                   done_by=f"clerk branch {slug} — it returns the step that follows as next")
     return row("isolate", False, kind="derived", action="worktree",
                why_not_done="the run has no worktree yet",
                done_by=f"clerk worktree {slug}; enter the path it reports; then clerk step")
@@ -554,7 +554,7 @@ def row_task(ctx):
                    **fields)
     return row("task", False, kind="derived", pause_after_tests=pauses,
                why_not_done=f"task {n} is open",
-               done_by=f"clerk finish {n} [--retried] -- <files> (it lints the staged set); commit with the {fields['commit_skill']} skill; then clerk step",
+               done_by=f"clerk finish {n} [--retried] -- <files> (it lints the staged set and returns the step after the commit as after_commit); commit with the {fields['commit_skill']} skill; then act on after_commit",
                **fields)
 
 
@@ -672,7 +672,7 @@ def row_land(ctx):
         if not archived:
             return row("land", False, kind="derived", why_not_done="the breakdown is not archived",
                        integrate=ctx.flags.get("integrate"),
-                       done_by="clerk land [--integrate|--no-integrate] — the gate wants --audit-accepted once the audit is accepted")
+                       done_by="clerk land [--integrate|--no-integrate] — it returns the step that follows as next")
         integrate = stamp.get("integrate") if stamp else ctx.flags.get("integrate")
         if integrate and ctx.in_worktree:
             return row("land", False, kind="derived",
@@ -742,6 +742,20 @@ def evaluate(ctx):
         if not r["done"]:
             return r
     return row("finished", True)
+
+
+def next_step(ctx):
+    """The step that follows, as `clerk step` would print it. Returned by every command
+    that closes a step — --start, each --done, audit accept — so the caller acts on it
+    instead of asking for it in a second call. The one write is the run's own
+    `finished`, stamped the first time the table is walked to its end."""
+    r = evaluate(ctx)
+    if r["step"] == "finished" and not ctx.run.finished and not ctx.read_only:
+        meta = ctx.run.meta
+        meta["finished"] = True
+        meta["finished_at"] = now()
+        ctx.run.write("run.json", meta)
+    return present(ctx, r)
 
 
 def present(ctx, r):
@@ -820,7 +834,7 @@ def cmd_start(slug, request, harness):
                            "launch_branch": prep.get("branch"), "harness": harness or detect_harness(),
                            "finished": False})
     return {"started": True, "run": slug, "ledger": str(run.dir), "request": request,
-            "next": "clerk step"}
+            "next": next_step(build_ctx(slug, harness))}
 
 
 def resolve_tasks_path(ctx, p):
@@ -839,7 +853,7 @@ def done_ground(ctx, argv):
         die(f"--caller must be one of {', '.join(CALLERS)}")
     ctx.run.mark("ground", {"caller": o["--caller"], "dom": o["--dom"], "state": o["--state"],
                             "at": now(), "code_tree": ctx.head_ct})
-    return {"done": "ground", "caller": o["--caller"], "next": "clerk step"}
+    return {"done": "ground", "caller": o["--caller"]}
 
 
 def done_plan(ctx, argv):
@@ -860,7 +874,7 @@ def done_plan(ctx, argv):
                                      "lint_hash": file_hash(side), "at": now()})
     rc, st, _ = clerk("status", "--tasks-file", str(tf), cwd=ctx.cwd)
     return {"bound": True, "tasks_file": str(tf), "approved": approved,
-            "plan": (st or {}).get("progress"), "gears": (st or {}).get("gears"), "next": "clerk step"}
+            "plan": (st or {}).get("progress"), "gears": (st or {}).get("gears")}
 
 
 def done_tests(ctx, argv):
@@ -870,7 +884,7 @@ def done_tests(ctx, argv):
     tests = ctx.run.done.get("tests") or {}
     tests[rest[0]] = {"at": now(), "code_tree": ctx.head_ct}
     ctx.run.mark("tests", tests)
-    return {"done": "tests", "n": int(rest[0]), "next": "clerk step"}
+    return {"done": "tests", "n": int(rest[0])}
 
 
 def done_validate(ctx, argv):
@@ -884,19 +898,18 @@ def done_validate(ctx, argv):
     else:
         rec = {"code_tree": ctx.head_ct, "at": now(), "mismatches": o["--mismatch"], "resolved": False}
     ctx.run.write("validate.json", rec)
-    return {"done": "validate", "mismatches": rec["mismatches"], "resolved": rec["resolved"],
-            "next": "clerk step" if not rec["mismatches"] or rec["resolved"] else "put the mismatches to the user and stop"}
+    return {"done": "validate", "mismatches": rec["mismatches"], "resolved": rec["resolved"]}
 
 
 def done_verify_residue(ctx, argv):
     ctx.run.mark("verify-residue", {"at": now(), "code_tree": ctx.head_ct})
-    return {"done": "verify-residue", "next": "clerk step"}
+    return {"done": "verify-residue"}
 
 
 def done_learn(ctx, argv):
     o, _ = parse(argv, {"--none": "bool"})
     ctx.run.mark("learn", {"none": o["--none"], "at": now()})
-    return {"done": "learn", "none": o["--none"], "next": "clerk step"}
+    return {"done": "learn", "none": o["--none"]}
 
 
 # The steps whose completion is a judgment: recorded with `--done`, never derived.
@@ -910,7 +923,9 @@ def cmd_done(ctx, step_id, argv):
     handler = DONE.get(step_id)
     if handler is None:
         die(f"unknown step '{step_id}' — --done takes {', '.join(DONE)}")
-    return handler(ctx, argv)
+    payload = handler(ctx, argv)
+    payload["next"] = next_step(ctx)
+    return payload
 
 
 def cmd_status(ctx):
@@ -938,21 +953,14 @@ def cmd_status(ctx):
 
 
 def cmd_step(ctx):
-    """The next step, or `start` when no run is open here. The one write is the run's own
-    `finished`, stamped the first time the table is walked to its end."""
+    """The next step, or `start` when no run is open here."""
     if ctx.run is None:
         return {"run": None, "step": "start", "stop": False, "blocked": False,
                 "why_not_done": "no run is open for this branch",
                 "done_by": "clerk step --start <slug> --request \"<the request, verbatim>\"",
                 "open_runs": open_run_summaries(ctx), "resume": ctx.prepare.get("resume"),
                 "instructions": instructions_for("start", ctx.harness), "facts": ctx.prepare}
-    r = evaluate(ctx)
-    if r["step"] == "finished" and not ctx.run.finished:
-        meta = ctx.run.meta
-        meta["finished"] = True
-        meta["finished_at"] = now()
-        ctx.run.write("run.json", meta)
-    return present(ctx, r)
+    return next_step(ctx)
 
 
 def cmd_rm(slug):
@@ -1067,7 +1075,7 @@ def audit_accept(ctx, aud, o):
     aud["accepted"] = {"at": now(), "code_tree": ctx.head_ct, "sha": ctx.head,
                        "rounds": len(rounds), "reason": o["--early"]}
     ctx.run.write("audit.json", aud)
-    return {"accepted": True, "rounds": len(rounds), "early": o["--early"], "next": "clerk step"}
+    return {"accepted": True, "rounds": len(rounds), "early": o["--early"], "next": next_step(ctx)}
 
 
 AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept, "status": audit_status}

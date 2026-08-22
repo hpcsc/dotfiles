@@ -1064,7 +1064,7 @@ cmd_status() {
 
   if [ "$all" = true ]; then
     {
-      for f in $(breakdown_paths "$th" yes); do
+      breakdown_paths "$th" yes | while IFS= read -r f; do
         [ -f "$f" ] || continue
         side="${f%.md}.json"
         [ -f "$side" ] || continue
@@ -1153,7 +1153,7 @@ cmd_gate() {
   checks="[]"
 
   # 1. every task checked off
-  local tasks unchecked detail passed
+  local tasks detail passed
   if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else tasks=$(find_tasks_file "$th") || tasks=""; fi
   if [ -z "$tasks" ] && [ -f "$dir/archived.json" ]; then
     # The breakdown having been archived IS the evidence every task closed — archiving
@@ -1335,7 +1335,7 @@ cmd_verify() {
         # definition — every one of emod's fixture symbols resolved to a consumer under
         # internal/cli. That misreports the location, and it silently disarms the
         # fixture-package rule below, which reads the directory of whatever this returns.
-        deffile=$(git grep -l -E -- "^(func (\([^)]*\) )?$sym\(|type $sym[ 	])" HEAD -- '*.go' 2>/dev/null | head -1)
+        deffile=$(git grep -l -E -- "^(func (\([^)]*\) )?${sym}\(|type ${sym}[ 	])" HEAD -- '*.go' 2>/dev/null | head -1)
         [ -n "$deffile" ] || deffile=$(git grep -l -w -- "$sym" HEAD -- '*.go' 2>/dev/null | head -1)
         # Discounting _test.go callers is what makes this check mean anything — a symbol
         # used only by the test written alongside it is not wired up. A fixture package
@@ -1521,7 +1521,7 @@ cmd_land() {
   fi
 
   [ -n "$def" ] || die "land: cannot resolve a default branch"
-  [ "$branch" != "$def" ] && : || die "land: already on $def — nothing to integrate"
+  [ "$branch" != "$def" ] || die "land: already on $def — nothing to integrate"
 
   before=$(git rev-parse HEAD)
   if ! git rebase "$def" >/dev/null 2>&1; then

@@ -78,7 +78,7 @@ eq "the first step is ground" "ground|derived" "$(run "$R" step | jq -r '[.step,
 eq "and its facts are clerk prepare, with the request's flags applied" "true|request" \
    "$(run "$R" step | jq -r '[(.facts.flags.gears|tostring), .facts.flag_sources.gears] | join("|")')"
 eq "without a method step file the instructions say so and defer to done_by" "true|true" \
-   "$(CLERK_METHOD_DIR="$R/no-method" run "$R" step | jq -r '[(.instructions | contains("no method text")), (.done_by | contains("clerk guidelines"))] | map(tostring) | join("|")')"
+   "$(CLERK_METHOD_DIR="$R/no-method" run "$R" step --full | jq -r '[(.instructions | contains("no method text")), (.done_by | contains("clerk guidelines"))] | map(tostring) | join("|")')"
 
 # --------------------------------------------------------------------------------
 printf '\nground — the guidelines are recorded as read; a dirty tree stops the run\n'
@@ -345,19 +345,25 @@ printf 'cd into it\n' > "$MD/implement/seams/opencode/enter.md"
 printf 'shared note\n' > "$MD/shared/note.md"
 RM=$(new_repo); run "$RM" step --start m --request "Method" >/dev/null
 eq "the step file replaces the built-in text, with the claude seam" "Ground yourself.|EnterWorktree|shared note" \
-   "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step | jq -r '.instructions | split("\n") | join("|")')"
+   "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step --full | jq -r '.instructions | split("\n") | join("|")')"
+# The text travels once per step per session; the same step asked again is a pointer.
+eq "the same step asked again is a pointer that names --full" "true|true" \
+   "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step | jq -r '[(.instructions_elided|tostring), (.instructions | contains("clerk step --full") | tostring)] | join("|")')"
+eq "another session is sent the text" "false|Ground yourself." \
+   "$(CLAUDE_CODE_SESSION_ID=elsewhere CLERK_METHOD_DIR="$MD/implement" run "$RM" step | jq -r '[(.instructions_elided|tostring), (.instructions | split("\n") | .[0])] | join("|")')"
 eq "and the opencode seam when asked" "cd into it" \
-   "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step --harness opencode | jq -r '.instructions | split("\n") | .[1]')"
+   "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step --harness opencode --full | jq -r '.instructions | split("\n") | .[1]')"
 
 # The real method: the step files the generator concatenates are the ones step prints.
 REAL="$(cd "$BIN/../dot-config/.config/ai/method/implement" && pwd -P)"
 eq "ground prints Phase 0 of the method, with the shared prepare fragment resolved" "true|true" \
-   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step | jq -r '[(.instructions | contains("## Phase 0: Ground yourself") | tostring), (.instructions | contains("clerk prepare --request") | tostring)] | join("|")')"
-run "$RM" step --done ground --caller ui >/dev/null
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --full | jq -r '[(.instructions | contains("## Phase 0: Ground yourself") | tostring), (.instructions | contains("clerk prepare --request") | tostring)] | join("|")')"
+eq "a step change prints the new step's text in full, unasked" "isolate|false" \
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --done ground --caller ui | jq -r '[.next.step, (.next.instructions_elided|tostring)] | join("|")')"
 eq "isolate prints the claude worktree seam" "true" \
-   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step | jq -r '.instructions | contains("### Set up an isolated worktree")')"
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --full | jq -r '.instructions | contains("### Set up an isolated worktree")')"
 eq "or the opencode one" "true" \
-   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --harness opencode | jq -r '.instructions | contains("### Isolate the work")')"
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --harness opencode --full | jq -r '.instructions | contains("### Isolate the work")')"
 
 # --------------------------------------------------------------------------------
 printf '\nevents — the commands that produce evidence log their run to the ledger on the way out\n'

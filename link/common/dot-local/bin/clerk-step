@@ -260,9 +260,10 @@ class Ctx:
     in_worktree: bool = False
     harness: str = None
     read_only: bool = False  # --status: look without recording anything
+    full: bool = False  # --full: print the step's text even if this session has seen it
 
 
-def build_ctx(explicit_run=None, harness=None, read_only=False):
+def build_ctx(explicit_run=None, harness=None, read_only=False, full=False):
     cwd = os.getcwd()
     common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
     if not common:
@@ -274,7 +275,7 @@ def build_ctx(explicit_run=None, harness=None, read_only=False):
         die(f"clerk prepare failed: {err or 'no output'}")
     ctx = Ctx(cwd=cwd, common=common, git_dir=gitout("rev-parse", "--absolute-git-dir", cwd=cwd),
               branch=prep.get("branch") or None, head=gitout("rev-parse", "HEAD", cwd=cwd),
-              default=prep.get("default_branch"), prepare=prep, read_only=read_only)
+              default=prep.get("default_branch"), prepare=prep, read_only=read_only, full=full)
     ctx.run = resolve_run(ctx, explicit_run)
     if ctx.run is not None:
         request = ctx.run.meta.get("request") or ""
@@ -368,6 +369,23 @@ def render_method(text, harness):
 # task's; the built-in summary says what to show and where to stop.
 STEP_TEXT_ALIAS = {"tests": "task"}
 
+# How long a printed text is taken to still be in the caller's view. Claude Code names
+# its session, so a new session is told apart outright; a harness that does not gets
+# the window alone.
+SHOWN_FOR = 2 * 60 * 60
+
+
+def session_id():
+    return os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("OPENCODE_SESSION_ID") or None
+
+
+def age_seconds(at):
+    try:
+        then = datetime.strptime(at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return float("inf")
+    return (datetime.now(timezone.utc) - then).total_seconds()
+
 
 def instructions_for(step_id, harness):
     p = method_dir() / "steps" / f"{STEP_TEXT_ALIAS.get(step_id, step_id)}.md"
@@ -378,6 +396,27 @@ def instructions_for(step_id, harness):
     return (f"no method text for the {step_id} step: {p} does not exist. `done_by` names "
             f"the command that moves the run on; set CLERK_METHOD_DIR to the implement "
             f"method directory for the full text.")
+
+
+def instructions_text(ctx, step_id):
+    """(text, elided) — the method text in full the first time this session reaches a
+    step, and a one-line pointer while the same text would only be repeated. The task
+    text is ten kilobytes and the task row comes back once per task; printing it every
+    time was most of what a run paid clerk for, and all of it sat in the caller's context
+    already. The pointer goes only to the session that saw the text, within SHOWN_FOR;
+    `--full` prints it again on demand, after a context compaction say."""
+    key = STEP_TEXT_ALIAS.get(step_id, step_id)
+    text = instructions_for(step_id, ctx.harness)
+    if ctx.run is None or ctx.full or step_id in BUILTIN:
+        return text, False
+    shown = ctx.run.read("shown.json") or {}
+    if (shown.get("text") == key and shown.get("session") == session_id()
+            and age_seconds(shown.get("at")) < SHOWN_FOR):
+        return (f"unchanged: the {key} step's text was printed by the reply that first reached this "
+                f"step, and `done_by` says what to run; `clerk step --full` prints it again"), True
+    if not ctx.read_only:
+        ctx.run.write("shown.json", {"text": key, "at": now(), "session": session_id()})
+    return text, False
 
 
 # --------------------------------------------------------------------------------
@@ -768,7 +807,7 @@ def present(ctx, r):
     out.setdefault("blocked", False)
     out["code_tree"] = ctx.head_ct
     out["harness"] = ctx.harness
-    out["instructions"] = instructions_for(r["step"], ctx.harness)
+    out["instructions"], out["instructions_elided"] = instructions_text(ctx, r["step"])
     out["facts"] = ctx.prepare
     return out
 
@@ -978,7 +1017,8 @@ def cmd_rm(slug):
 
 
 STEP_SPEC = {"--start": "value", "--request": "value", "--done": "value", "--status": "bool",
-             "--rm": "value", "--run": "value", "--harness": "value", "-h": "bool", "--help": "bool"}
+             "--rm": "value", "--run": "value", "--harness": "value", "--full": "bool",
+             "-h": "bool", "--help": "bool"}
 
 
 def main_step(argv):
@@ -987,12 +1027,12 @@ def main_step(argv):
         # --done's own flags belong to the step; split them off before parsing ours.
         i = argv.index("--done")
         o, _ = parse(argv[: i + 2], STEP_SPEC)
-        ctx = build_ctx(o["--run"], o["--harness"])
+        ctx = build_ctx(o["--run"], o["--harness"], full=o["--full"])
         emit(cmd_done(ctx, o["--done"], argv[i + 2:]))
     o, rest = parse(argv, STEP_SPEC)
     if o["-h"] or o["--help"]:
         print(__doc__.strip().splitlines()[0])
-        print("\nusage: clerk step [--start <slug> --request <text>] [--done <step> ...] [--status] [--rm <slug>] [--run <slug>] [--harness <name>]")
+        print("\nusage: clerk step [--start <slug> --request <text>] [--done <step> ...] [--status] [--full] [--rm <slug>] [--run <slug>] [--harness <name>]")
         sys.exit(0)
     if rest:
         die(f"unexpected argument '{rest[0]}'")
@@ -1000,7 +1040,7 @@ def main_step(argv):
         emit(cmd_start(o["--start"], o["--request"], o["--harness"]))
     if o["--rm"]:
         emit(cmd_rm(o["--rm"]))
-    ctx = build_ctx(o["--run"], o["--harness"], read_only=bool(o["--status"]))
+    ctx = build_ctx(o["--run"], o["--harness"], read_only=bool(o["--status"]), full=bool(o["--full"]))
     if o["--status"]:
         emit(cmd_status(ctx))
     emit(cmd_step(ctx))

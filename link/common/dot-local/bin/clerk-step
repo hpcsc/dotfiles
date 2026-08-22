@@ -259,9 +259,10 @@ class Ctx:
     repo_root: str = None
     in_worktree: bool = False
     harness: str = None
+    read_only: bool = False  # --status: look without recording anything
 
 
-def build_ctx(explicit_run=None, harness=None):
+def build_ctx(explicit_run=None, harness=None, read_only=False):
     cwd = os.getcwd()
     common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
     if not common:
@@ -273,7 +274,7 @@ def build_ctx(explicit_run=None, harness=None):
         die(f"clerk prepare failed: {err or 'no output'}")
     ctx = Ctx(cwd=cwd, common=common, git_dir=gitout("rev-parse", "--absolute-git-dir", cwd=cwd),
               branch=prep.get("branch") or None, head=gitout("rev-parse", "HEAD", cwd=cwd),
-              default=prep.get("default_branch"), prepare=prep)
+              default=prep.get("default_branch"), prepare=prep, read_only=read_only)
     ctx.run = resolve_run(ctx, explicit_run)
     if ctx.run is not None:
         request = ctx.run.meta.get("request") or ""
@@ -648,7 +649,8 @@ def row_verify(ctx):
     residue = ctx.run.done.get("verify-residue")
     residue_ok = bool(residue) and residue.get("code_tree") == ctx.head_ct
     if clean and (not not_checked or residue_ok):
-        ctx.run.mark("verify", {"at": now(), "code_tree": ctx.head_ct, "not_checked": not_checked})
+        if not ctx.read_only:
+            ctx.run.mark("verify", {"at": now(), "code_tree": ctx.head_ct, "not_checked": not_checked})
         return row("verify", True, findings=data.get("findings", []), not_checked=not_checked)
     if not clean:
         why = "clerk verify reports a block"
@@ -817,8 +819,8 @@ def cmd_start(slug, request, harness):
     run.write("run.json", {"slug": slug, "request": request, "started_at": now(), "launch_cwd": cwd,
                            "launch_branch": prep.get("branch"), "harness": harness or detect_harness(),
                            "finished": False})
-    emit({"started": True, "run": slug, "ledger": str(run.dir), "request": request,
-          "next": "clerk step"})
+    return {"started": True, "run": slug, "ledger": str(run.dir), "request": request,
+            "next": "clerk step"}
 
 
 def resolve_tasks_path(ctx, p):
@@ -831,72 +833,92 @@ def resolve_tasks_path(ctx, p):
     die(f"no breakdown at {p}", 1)
 
 
+def done_ground(ctx, argv):
+    o, _ = parse(argv, {"--caller": "value", "--dom": "bool", "--state": "bool"})
+    if o["--caller"] not in CALLERS:
+        die(f"--caller must be one of {', '.join(CALLERS)}")
+    ctx.run.mark("ground", {"caller": o["--caller"], "dom": o["--dom"], "state": o["--state"],
+                            "at": now(), "code_tree": ctx.head_ct})
+    return {"done": "ground", "caller": o["--caller"], "next": "clerk step"}
+
+
+def done_plan(ctx, argv):
+    o, _ = parse(argv, {"--tasks-file": "value", "--approved": "bool"})
+    if not o["--tasks-file"]:
+        die("--done plan needs --tasks-file <tasks/<story>.md>")
+    tf = resolve_tasks_path(ctx, o["--tasks-file"])
+    side = tf.with_suffix(".json")
+    if not side.exists():
+        emit({"bound": False, "reason": f"no sidecar beside {tf} — run `clerk sidecar` to recover one, then bind again"}, 1)
+    findings = lint_sidecar(side, ctx.cwd)
+    if findings:
+        emit({"bound": False, "reason": "lint certainty-unevidenced reports findings — correct the assessment, do not delete the reference",
+              "findings": findings}, 1)
+    prev = ctx.run.read("breakdown.json") or {}
+    approved = bool(o["--approved"]) or bool(prev.get("approved"))
+    ctx.run.write("breakdown.json", {"tasks_file": str(tf), "sidecar": str(side), "approved": approved,
+                                     "lint_hash": file_hash(side), "at": now()})
+    rc, st, _ = clerk("status", "--tasks-file", str(tf), cwd=ctx.cwd)
+    return {"bound": True, "tasks_file": str(tf), "approved": approved,
+            "plan": (st or {}).get("progress"), "gears": (st or {}).get("gears"), "next": "clerk step"}
+
+
+def done_tests(ctx, argv):
+    _, rest = parse(argv, {})
+    if len(rest) != 1 or not rest[0].isdigit():
+        die("--done tests <n>")
+    tests = ctx.run.done.get("tests") or {}
+    tests[rest[0]] = {"at": now(), "code_tree": ctx.head_ct}
+    ctx.run.mark("tests", tests)
+    return {"done": "tests", "n": int(rest[0]), "next": "clerk step"}
+
+
+def done_validate(ctx, argv):
+    o, _ = parse(argv, {"--mismatch": "list", "--resolved": "bool"})
+    rec = ctx.run.read("validate.json") or {}
+    if o["--resolved"]:
+        if rec.get("code_tree") != ctx.head_ct:
+            die("nothing to resolve: no validation is recorded at this code tree", 1)
+        rec["resolved"] = True
+        rec["resolved_at"] = now()
+    else:
+        rec = {"code_tree": ctx.head_ct, "at": now(), "mismatches": o["--mismatch"], "resolved": False}
+    ctx.run.write("validate.json", rec)
+    return {"done": "validate", "mismatches": rec["mismatches"], "resolved": rec["resolved"],
+            "next": "clerk step" if not rec["mismatches"] or rec["resolved"] else "put the mismatches to the user and stop"}
+
+
+def done_verify_residue(ctx, argv):
+    ctx.run.mark("verify-residue", {"at": now(), "code_tree": ctx.head_ct})
+    return {"done": "verify-residue", "next": "clerk step"}
+
+
+def done_learn(ctx, argv):
+    o, _ = parse(argv, {"--none": "bool"})
+    ctx.run.mark("learn", {"none": o["--none"], "at": now()})
+    return {"done": "learn", "none": o["--none"], "next": "clerk step"}
+
+
+# The steps whose completion is a judgment: recorded with `--done`, never derived.
+DONE = {"ground": done_ground, "plan": done_plan, "tests": done_tests, "validate": done_validate,
+        "verify-residue": done_verify_residue, "learn": done_learn}
+
+
 def cmd_done(ctx, step_id, argv):
     if ctx.run is None:
         die("no run is open here — `clerk step --start <slug> --request ...` first", 3)
-    if step_id == "ground":
-        o, _ = parse(argv, {"--caller": "value", "--dom": "bool", "--state": "bool"})
-        if o["--caller"] not in CALLERS:
-            die(f"--caller must be one of {', '.join(CALLERS)}")
-        ctx.run.mark("ground", {"caller": o["--caller"], "dom": o["--dom"], "state": o["--state"],
-                                "at": now(), "code_tree": ctx.head_ct})
-        emit({"done": "ground", "caller": o["--caller"], "next": "clerk step"})
-    if step_id == "plan":
-        o, _ = parse(argv, {"--tasks-file": "value", "--approved": "bool"})
-        if not o["--tasks-file"]:
-            die("--done plan needs --tasks-file <tasks/<story>.md>")
-        tf = resolve_tasks_path(ctx, o["--tasks-file"])
-        side = tf.with_suffix(".json")
-        if not side.exists():
-            emit({"bound": False, "reason": f"no sidecar beside {tf} — run `clerk sidecar` to recover one, then bind again"}, 1)
-        findings = lint_sidecar(side, ctx.cwd)
-        if findings:
-            emit({"bound": False, "reason": "lint certainty-unevidenced reports findings — correct the assessment, do not delete the reference",
-                  "findings": findings}, 1)
-        prev = ctx.run.read("breakdown.json") or {}
-        ctx.run.write("breakdown.json", {"tasks_file": str(tf), "sidecar": str(side),
-                                         "approved": bool(o["--approved"]) or bool(prev.get("approved")),
-                                         "lint_hash": file_hash(side), "at": now()})
-        rc, st, _ = clerk("status", "--tasks-file", str(tf), cwd=ctx.cwd)
-        emit({"bound": True, "tasks_file": str(tf), "approved": bool(o["--approved"]) or bool(prev.get("approved")),
-              "plan": (st or {}).get("progress"), "gears": (st or {}).get("gears"), "next": "clerk step"})
-    if step_id == "tests":
-        _, rest = parse(argv, {})
-        if len(rest) != 1 or not rest[0].isdigit():
-            die("--done tests <n>")
-        d = ctx.run.done
-        tests = d.get("tests") or {}
-        tests[rest[0]] = {"at": now(), "code_tree": ctx.head_ct}
-        ctx.run.mark("tests", tests)
-        emit({"done": "tests", "n": int(rest[0]), "next": "clerk step"})
-    if step_id == "validate":
-        o, _ = parse(argv, {"--mismatch": "list", "--resolved": "bool"})
-        rec = ctx.run.read("validate.json") or {}
-        if o["--resolved"]:
-            if rec.get("code_tree") != ctx.head_ct:
-                die("nothing to resolve: no validation is recorded at this code tree", 1)
-            rec["resolved"] = True
-            rec["resolved_at"] = now()
-        else:
-            rec = {"code_tree": ctx.head_ct, "at": now(), "mismatches": o["--mismatch"], "resolved": False}
-        ctx.run.write("validate.json", rec)
-        emit({"done": "validate", "mismatches": rec["mismatches"], "resolved": rec["resolved"],
-              "next": "clerk step" if not rec["mismatches"] or rec["resolved"] else "put the mismatches to the user and stop"})
-    if step_id == "verify-residue":
-        ctx.run.mark("verify-residue", {"at": now(), "code_tree": ctx.head_ct})
-        emit({"done": "verify-residue", "next": "clerk step"})
-    if step_id == "learn":
-        o, _ = parse(argv, {"--none": "bool"})
-        ctx.run.mark("learn", {"none": o["--none"], "at": now()})
-        emit({"done": "learn", "none": o["--none"], "next": "clerk step"})
-    die(f"unknown step '{step_id}' — --done takes ground, plan, tests, validate, verify-residue or learn")
+    handler = DONE.get(step_id)
+    if handler is None:
+        die(f"unknown step '{step_id}' — --done takes {', '.join(DONE)}")
+    return handler(ctx, argv)
 
 
 def cmd_status(ctx):
+    """Every row, evaluated in order and only up to the first that is not done: every later
+    row reads state the earlier ones produce, and verify runs git grep over the diff. The
+    context is read-only, so looking records nothing."""
     if ctx.run is None:
-        emit({"run": None, "step": "start", "open_runs": open_run_summaries(ctx)})
-    # Rows are evaluated in order and only up to the first that is not done: every later
-    # row reads state the earlier ones produce, and verify runs git grep over the diff.
+        return {"run": None, "step": "start", "open_runs": open_run_summaries(ctx)}
     rows = []
     current = "finished"
     active = dict(active_rows(ctx))
@@ -911,8 +933,26 @@ def cmd_status(ctx):
         rows.append({k: v for k, v in r.items() if k in ("step", "done", "why_not_done", "n", "mode", "fallback", "path", "progress", "blocked")})
         if not r["done"]:
             current = r["step"]
-    emit({"run": ctx.run.slug, "request": ctx.run.meta.get("request"), "finished": ctx.run.finished,
-          "current": current, "rows": rows})
+    return {"run": ctx.run.slug, "request": ctx.run.meta.get("request"), "finished": ctx.run.finished,
+            "current": current, "rows": rows}
+
+
+def cmd_step(ctx):
+    """The next step, or `start` when no run is open here. The one write is the run's own
+    `finished`, stamped the first time the table is walked to its end."""
+    if ctx.run is None:
+        return {"run": None, "step": "start", "stop": False, "blocked": False,
+                "why_not_done": "no run is open for this branch",
+                "done_by": "clerk step --start <slug> --request \"<the request, verbatim>\"",
+                "open_runs": open_run_summaries(ctx), "resume": ctx.prepare.get("resume"),
+                "instructions": instructions_for("start", ctx.harness), "facts": ctx.prepare}
+    r = evaluate(ctx)
+    if r["step"] == "finished" and not ctx.run.finished:
+        meta = ctx.run.meta
+        meta["finished"] = True
+        meta["finished_at"] = now()
+        ctx.run.write("run.json", meta)
+    return present(ctx, r)
 
 
 def cmd_rm(slug):
@@ -926,20 +966,22 @@ def cmd_rm(slug):
     for p in run.dir.iterdir():
         p.unlink()
     run.dir.rmdir()
-    emit({"removed": slug})
+    return {"removed": slug}
+
+
+STEP_SPEC = {"--start": "value", "--request": "value", "--done": "value", "--status": "bool",
+             "--rm": "value", "--run": "value", "--harness": "value", "-h": "bool", "--help": "bool"}
 
 
 def main_step(argv):
-    spec = {"--start": "value", "--request": "value", "--done": "value", "--status": "bool",
-            "--rm": "value", "--run": "value", "--harness": "value", "-h": "bool", "--help": "bool"}
-    # --done's own flags belong to the step; split them off before parsing ours.
+    """Every branch ends in emit(), which prints and exits; nothing falls through."""
     if "--done" in argv:
+        # --done's own flags belong to the step; split them off before parsing ours.
         i = argv.index("--done")
-        head, tail = argv[: i + 2], argv[i + 2:]
-        o, rest = parse(head, spec)
+        o, _ = parse(argv[: i + 2], STEP_SPEC)
         ctx = build_ctx(o["--run"], o["--harness"])
-        cmd_done(ctx, o["--done"], tail)
-    o, rest = parse(argv, spec)
+        emit(cmd_done(ctx, o["--done"], argv[i + 2:]))
+    o, rest = parse(argv, STEP_SPEC)
     if o["-h"] or o["--help"]:
         print(__doc__.strip().splitlines()[0])
         print("\nusage: clerk step [--start <slug> --request <text>] [--done <step> ...] [--status] [--rm <slug>] [--run <slug>] [--harness <name>]")
@@ -947,25 +989,13 @@ def main_step(argv):
     if rest:
         die(f"unexpected argument '{rest[0]}'")
     if o["--start"]:
-        cmd_start(o["--start"], o["--request"], o["--harness"])
+        emit(cmd_start(o["--start"], o["--request"], o["--harness"]))
     if o["--rm"]:
-        cmd_rm(o["--rm"])
-    ctx = build_ctx(o["--run"], o["--harness"])
+        emit(cmd_rm(o["--rm"]))
+    ctx = build_ctx(o["--run"], o["--harness"], read_only=bool(o["--status"]))
     if o["--status"]:
-        cmd_status(ctx)
-    if ctx.run is None:
-        emit({"run": None, "step": "start", "stop": False, "blocked": False,
-              "why_not_done": "no run is open for this branch",
-              "done_by": "clerk step --start <slug> --request \"<the request, verbatim>\"",
-              "open_runs": open_run_summaries(ctx), "resume": ctx.prepare.get("resume"),
-              "instructions": instructions_for("start", ctx.harness), "facts": ctx.prepare})
-    r = evaluate(ctx)
-    if r["step"] == "finished" and not ctx.run.finished:
-        meta = ctx.run.meta
-        meta["finished"] = True
-        meta["finished_at"] = now()
-        ctx.run.write("run.json", meta)
-    emit(present(ctx, r))
+        emit(cmd_status(ctx))
+    emit(cmd_step(ctx))
 
 
 # --------------------------------------------------------------------------------
@@ -989,60 +1019,75 @@ def report_summary(path):
             "lenses": rep.get("lenses"), "lenses_not_run": rep.get("lenses_not_run")}
 
 
+def audit_status(ctx, aud, o):
+    return aud
+
+
+def audit_plan(ctx, aud, o):
+    if not o["--rounds"] or not o["--rounds"].isdigit():
+        die("plan needs --rounds <n>")
+    aud["rounds_planned"] = int(o["--rounds"])
+    ctx.run.write("audit.json", aud)
+    return {"rounds_planned": aud["rounds_planned"], "rounds_done": len(aud["rounds"])}
+
+
+def audit_round(ctx, aud, o):
+    if not o["--report"]:
+        die("round needs --report <findings.json> (or - for stdin)")
+    fresh, rec, why = receipt_state(ctx)
+    if not fresh:
+        emit({"recorded": False, "reason": f"the suite must be green at this code tree before an audit round counts: {why}"}, 3)
+    if not ctx.prepare.get("clean"):
+        emit({"recorded": False, "reason": "the tree is dirty — a verifier left residue or work is in flight; restore the branch tip first"}, 3)
+    planned = aud.get("rounds_planned")
+    if o["--replan"]:
+        if not o["--replan"].isdigit():
+            die("--replan needs a number")
+        planned = aud["rounds_planned"] = int(o["--replan"])
+    if planned is not None and len(aud["rounds"]) >= planned:
+        emit({"recorded": False, "reason": f"{planned} round(s) were planned and {len(aud['rounds'])} recorded — say why another is needed with --replan <n>"}, 3)
+    summary = report_summary(o["--report"])
+    entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
+             "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary}
+    aud["rounds"].append(entry)
+    ctx.run.write("audit.json", aud)
+    return {"recorded": True, "round": entry, "rounds_planned": planned}
+
+
+def audit_accept(ctx, aud, o):
+    rounds = aud.get("rounds", [])
+    planned = aud.get("rounds_planned")
+    at_head = [r for r in rounds if r.get("code_tree") == ctx.head_ct]
+    if not rounds:
+        emit({"accepted": False, "reason": "no audit round is recorded — record one first"}, 3)
+    if not at_head and not o["--early"]:
+        emit({"accepted": False, "reason": "no round describes this code tree — run a round, or pass --early \"<why the fixes need no re-audit>\""}, 3)
+    if planned is not None and len(rounds) < planned and not o["--early"]:
+        emit({"accepted": False, "reason": f"{planned} rounds planned, {len(rounds)} recorded — run the rest, or pass --early \"<why>\""}, 3)
+    aud["accepted"] = {"at": now(), "code_tree": ctx.head_ct, "sha": ctx.head,
+                       "rounds": len(rounds), "reason": o["--early"]}
+    ctx.run.write("audit.json", aud)
+    return {"accepted": True, "rounds": len(rounds), "early": o["--early"], "next": "clerk step"}
+
+
+AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept, "status": audit_status}
+
+
 def main_audit(argv):
+    """As main_step: every branch ends in emit()."""
     if not argv or argv[0] in ("-h", "--help"):
         print("usage: clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>] | accept [--early <why>] | status")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
-    o, rest = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value", "--early": "value", "--run": "value"})
+    handler = AUDIT.get(verb)
+    if handler is None:
+        die(f"unknown verb '{verb}' — {', '.join(AUDIT)}")
+    o, _ = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value", "--early": "value", "--run": "value"})
     ctx = build_ctx(o["--run"])
     if ctx.run is None:
         die("no run is open here — `clerk step --start` first", 3)
     aud = ctx.run.read("audit.json", {"rounds_planned": None, "rounds": [], "accepted": None})
-    if verb == "status":
-        emit(aud)
-    if verb == "plan":
-        if not o["--rounds"] or not o["--rounds"].isdigit():
-            die("plan needs --rounds <n>")
-        aud["rounds_planned"] = int(o["--rounds"])
-        ctx.run.write("audit.json", aud)
-        emit({"rounds_planned": aud["rounds_planned"], "rounds_done": len(aud["rounds"])})
-    if verb == "round":
-        if not o["--report"]:
-            die("round needs --report <findings.json> (or - for stdin)")
-        fresh, rec, why = receipt_state(ctx)
-        if not fresh:
-            emit({"recorded": False, "reason": f"the suite must be green at this code tree before an audit round counts: {why}"}, 3)
-        if not ctx.prepare.get("clean"):
-            emit({"recorded": False, "reason": "the tree is dirty — a verifier left residue or work is in flight; restore the branch tip first"}, 3)
-        planned = aud.get("rounds_planned")
-        if o["--replan"]:
-            if not o["--replan"].isdigit():
-                die("--replan needs a number")
-            planned = aud["rounds_planned"] = int(o["--replan"])
-        if planned is not None and len(aud["rounds"]) >= planned:
-            emit({"recorded": False, "reason": f"{planned} round(s) were planned and {len(aud['rounds'])} recorded — say why another is needed with --replan <n>"}, 3)
-        summary = report_summary(o["--report"])
-        entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
-                 "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary}
-        aud["rounds"].append(entry)
-        ctx.run.write("audit.json", aud)
-        emit({"recorded": True, "round": entry, "rounds_planned": planned})
-    if verb == "accept":
-        rounds = aud.get("rounds", [])
-        planned = aud.get("rounds_planned")
-        at_head = [r for r in rounds if r.get("code_tree") == ctx.head_ct]
-        if not rounds:
-            emit({"accepted": False, "reason": "no audit round is recorded — record one first"}, 3)
-        if not at_head and not o["--early"]:
-            emit({"accepted": False, "reason": "no round describes this code tree — run a round, or pass --early \"<why the fixes need no re-audit>\""}, 3)
-        if planned is not None and len(rounds) < planned and not o["--early"]:
-            emit({"accepted": False, "reason": f"{planned} rounds planned, {len(rounds)} recorded — run the rest, or pass --early \"<why>\""}, 3)
-        aud["accepted"] = {"at": now(), "code_tree": ctx.head_ct, "sha": ctx.head,
-                           "rounds": len(rounds), "reason": o["--early"]}
-        ctx.run.write("audit.json", aud)
-        emit({"accepted": True, "rounds": len(rounds), "early": o["--early"], "next": "clerk step"})
-    die(f"unknown verb '{verb}' — plan, round, accept or status")
+    emit(handler(ctx, aud, o))
 
 
 if __name__ == "__main__":

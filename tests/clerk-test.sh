@@ -2272,6 +2272,17 @@ eq "fixed, the same finish marks it done and says the lint was clean" "true|clea
    "$(printf '%s' "$F" | jq -r '[(.done|tostring), .lint] | join("|")')"
 eq "and the sidecar agrees" "true" "$(jq -r '.tasks[0].done' "$R32/tasks/story.json")"
 
+# One task in flight: a finish whose commit never happened leaves its paths staged, and
+# the next finish must not sweep them into its own commit.
+printf 'package p\n\nfunc B() {}\n' > "$R32/b.go"
+G=$(run "$R32" finish 2 -- b.go); GRC=$?
+eq "finishing another task while the last one's files are still staged is refused" "3" "$GRC"
+eq "and it names the task that holds them" "another-task-still-staged|true" \
+   "$(printf '%s' "$G" | jq -r '[.reason, (.detail | contains("a.go (task 1)") | tostring)] | join("|")')"
+eq "task 2 is not marked done" "false" "$(jq -r '.tasks[1].done' "$R32/tasks/story.json")"
+git -C "$R32" commit -qm "Task 1"
+eq "committed, the next task finishes" "true" "$(run "$R32" finish 2 -- b.go | jq -r '.done')"
+
 # --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null

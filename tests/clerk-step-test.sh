@@ -68,6 +68,7 @@ eq "the default branch is not a slug" "2" "$(rc "$R" step --start main --request
 eq "a name git would refuse is refused" "2" "$(rc "$R" step --start 'bad name' --request x)"
 S=$(run "$R" step --start w1 --request "Add a widget --gears")
 eq "--start opens the run" "true|w1" "$(printf '%s' "$S" | jq -r '[(.started|tostring), .run] | join("|")')"
+eq "and returns the first step under next" "ground" "$(printf '%s' "$S" | jq -r '.next.step')"
 eq "the ledger lives under the common git dir" "$R/.git/clerk/runs/w1" "$(printf '%s' "$S" | field .ledger)"
 eq "the request is kept verbatim" "Add a widget --gears" "$(jq -r .request "$R/.git/clerk/runs/w1/run.json")"
 eq "a second --start on an open run is refused" "3" "$(rc "$R" step --start w1 --request again)"
@@ -90,6 +91,8 @@ rm "$R/loose.txt"
 eq "--done ground needs a known caller pattern" "2" "$(rc "$R" step --done ground --caller sideways)"
 eq "--done ground with one is recorded" "ground|ui" \
    "$(run "$R" step --done ground --caller ui | jq -r '[.done, .caller] | join("|")')"
+eq "--done returns the step that follows under next, as clerk step would print it" "isolate|worktree" \
+   "$(run "$R" step --done ground --caller ui | jq -r '[.next.step, .next.action] | join("|")')"
 eq "and the run moves to isolate" "isolate" "$(run "$R" step | field .step)"
 
 # --------------------------------------------------------------------------------
@@ -141,6 +144,8 @@ eq "with the findings in the reply" "1" \
 eq "and the run stays at plan" "plan" "$(run "$WT" step | field .step)"
 seed "$WT" w1 '{"certainty": "low", "blast_radius": "low"}' '{"certainty": "high", "blast_radius": "high", "patterns_to_follow": ["task:1"]}'
 B=$(run "$WT" step --done plan --tasks-file tasks/w1.md)
+eq "--done plan returns the first task under next — here pausing for its tests" "tests|1" \
+   "$(printf '%s' "$B" | jq -r '[.next.step, (.next.n|tostring)] | join("|")')"
 eq "a clean sidecar binds" "true|2" "$(printf '%s' "$B" | jq -r '[(.bound|tostring), (.plan|length|tostring)] | join("|")')"
 eq "and the reply is the plan table, certainty and blast radius included" "1:low/low 2:high/high" \
    "$(printf '%s' "$B" | jq -r '[.plan[] | "\(.n):\(.certainty)/\(.blast_radius)"] | join(" ")')"
@@ -182,12 +187,15 @@ eq "task 2 is blocked behind 1" "1" "$(printf '%s' "$T" | field .progress.blocke
 printf 'a\n' > "$WT/a.go"
 eq "a dirty tree mid-task is the task in flight, not a block" "task|true|false" \
    "$(run "$WT" step | jq -r '[.step, (.tree_dirty|tostring), (.blocked|tostring)] | join("|")')"
-run "$WT" finish 1 -- a.go >/dev/null; commit_all "$WT" "Task 1"
+F=$(run "$WT" finish 1 -- a.go); commit_all "$WT" "Task 1"
+eq "finish returns the step after the commit as after_commit — task 2, pausing for its tests" "tests|2" \
+   "$(printf '%s' "$F" | jq -r '[.after_commit.step, (.after_commit.n|tostring)] | join("|")')"
 T=$(run "$WT" step)
 eq "once 1 is done and committed, 2 is next — and a high-blast task pauses too" "tests|2" \
    "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring)] | join("|")')"
 run "$WT" step --done tests 2 >/dev/null
-printf 'b\n' > "$WT/b.go"; run "$WT" finish 2 -- b.go >/dev/null; commit_all "$WT" "Task 2"
+printf 'b\n' > "$WT/b.go"; F=$(run "$WT" finish 2 -- b.go); commit_all "$WT" "Task 2"
+eq "the last finish hands over the suite" "suite" "$(printf '%s' "$F" | jq -r '.after_commit.step')"
 eq "every task done moves the run to suite" "suite" "$(run "$WT" step | field .step)"
 
 # Without gears the assessments are reported and nothing pauses.
@@ -242,7 +250,9 @@ eq "a round records its counts against the code tree" "true|1|2|1|1" \
 eq "a second round past the plan is refused" "3" "$(rc "$WT" audit round --report "$REP")"
 eq "--replan lets it through, on purpose" "2" "$(run "$WT" audit round --report "$REP" --replan 2 | field .round.n)"
 eq "status shows both rounds" "2|2" "$(run "$WT" audit status | jq -r '[(.rounds_planned|tostring), (.rounds|length|tostring)] | join("|")')"
-eq "accept records the acceptance" "true|2" "$(run "$WT" audit accept | jq -r '[(.accepted|tostring), (.rounds|tostring)] | join("|")')"
+A=$(run "$WT" audit accept)
+eq "accept records the acceptance" "true|2" "$(printf '%s' "$A" | jq -r '[(.accepted|tostring), (.rounds|tostring)] | join("|")')"
+eq "and returns the step that follows under next" "validate" "$(printf '%s' "$A" | jq -r '.next.step')"
 eq "and the run moves to validate" "validate" "$(run "$WT" step | field .step)"
 printf 'e\n' > "$WT/e.go"; commit_all "$WT" "Fix after acceptance"
 run "$WT" receipt --command "go test ./..." --passed >/dev/null
@@ -401,8 +411,10 @@ eq "the land event is logged to the run although it ended on main" "land|0" \
 eq "and step, from main, moves the run to learn" "learn" "$(run "$RJ" step | field .step)"
 eq "the learn step carries what the run observed about the plan" "0|0" \
    "$(run "$RJ" step | jq -r '[(.plan_signals.fixup_ambiguous|tostring), (.plan_signals.high_certainty_but_hard|length|tostring)] | join("|")')"
-run "$RJ" learn --type convention --title "Keep it" --learning "A fact." --apply-when "Always." --feature ij --path "$RJ/learned.md" >/dev/null
-eq "a clerk learn write is the evidence: no --done needed" "finished" "$(run "$RJ" step | field .step)"
+LN=$(run "$RJ" learn --type convention --title "Keep it" --learning "A fact." --apply-when "Always." --feature ij --path "$RJ/learned.md")
+eq "a clerk learn write is the evidence: no --done needed, and learn hands over the end" "finished" \
+   "$(printf '%s' "$LN" | jq -r '.next.step')"
+eq "which stamps the run finished" "true" "$(jq -r '.finished' "$RJ/.git/clerk/runs/ij/run.json")"
 
 # --------------------------------------------------------------------------------
 printf '\nsignals — ground is the guidelines run; gears shifts on what the run observed\n'

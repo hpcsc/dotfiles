@@ -161,14 +161,41 @@ ledger_put() {  # <ledger-dir> <file> <json>
   printf '%s\n' "$3" > "$dir/$2.tmp" 2>/dev/null && /bin/mv -f "$dir/$2.tmp" "$dir/$2" 2>/dev/null || true
 }
 
+# Commands whose success closes a step. Their reply carries the step that follows, as
+# `clerk step` would print it — under `next`, or `after_commit` for finish, whose own
+# next move is the commit clerk cannot make — so the caller acts on it rather than
+# spending a round trip asking. Computed after the event is logged, so the row reads the
+# evidence this very command produced: a `--retried` finish shifts the gear it reports.
+# Never for the commands `clerk step` itself runs (verify, lint), which would recurse.
+INLINE_NEXT=' finish branch land learn '
+
+with_next() {  # <name> <rc> <ledger-dir> <output-file>
+  local key=next step_bin nxt
+  case "$INLINE_NEXT" in *" $1 "*) ;; *) cat "$4"; return 0 ;; esac
+  if [ "$2" -ne 0 ] || [ -z "$3" ] || ! step_bin=$(plugin_bin step) \
+     || ! jq -e 'type == "object"' "$4" >/dev/null 2>&1; then
+    cat "$4"; return 0
+  fi
+  [ "$1" = finish ] && key=after_commit
+  if nxt=$("$step_bin" 2>/dev/null) && printf '%s' "$nxt" | jq -e . >/dev/null 2>&1; then
+    jq --arg k "$key" --argjson n "$nxt" '. + {($k): $n}' "$4"
+  else
+    cat "$4"
+  fi
+}
+
 # Runs a built-in and logs it. The ledger is resolved BEFORE the command runs: `land
 # --integrate` ends on the default branch, where the run can no longer be named by the
-# branch it just merged.
+# branch it just merged. The output goes through a file rather than $(...): die() must
+# still exit the process, unlogged — a usage error is not evidence of anything.
 logged() {  # <name> <function> <args...>
   local name=$1 fn=$2 rc ldir; shift 2
   ldir=$(ledger_dir 2>/dev/null) || ldir=
-  "$fn" "$@"; rc=$?
+  CLERK_OUT=$(mktemp "${TMPDIR:-/tmp}/clerk.XXXXXX") || die "cannot create a temp file"
+  trap 'rm -f "$CLERK_OUT"' EXIT
+  "$fn" "$@" > "$CLERK_OUT"; rc=$?
   ledger_log "$ldir" "$name" "$rc" "$@"
+  with_next "$name" "$rc" "$ldir" "$CLERK_OUT"
   return $rc
 }
 
@@ -980,6 +1007,29 @@ cmd_finish() {
     [ -e "$f" ] || die "finish: '$f' does not exist — stage only what this task actually changed"
   done
 
+  # One task in flight. A finish whose commit never happened leaves its paths in the
+  # index, and the next finish would sweep them into its own commit — which verify's
+  # boundary check reports at the end, after the history is already wrong. So a path
+  # that another task's record claims, still staged and not named here, refuses this
+  # one. Named here is fine: two tasks may touch one file in turn. Checked before this
+  # task's paths are added, so the index still says whose they are.
+  local p q owner held=
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    for q in "$@"; do [ "$q" = "$p" ] && continue 2; done
+    owner=$(jq -r --arg p "$p" 'select(.files | index($p)) | .n' "$(run_records_dir "$(state_dir)" "$tasks")"/*.json 2>/dev/null | head -1)
+    [ -n "$owner" ] && held="$held $p (task $owner)"
+  done <<EOF
+$(git diff --cached --name-only 2>/dev/null)
+EOF
+  if [ -n "$held" ]; then
+    printf '%s\n' "$@" | jq -R -s --arg n "$n" --arg held "$held" \
+      '{task: ($n | tonumber), done: false, reason: "another-task-still-staged",
+        detail: ("the index still holds files clerk finish staged for another task:" + $held + " — commit that task (or unstage them) before finishing this one"),
+        named: (split("\n") | map(select(length > 0)))}'
+    return 3
+  fi
+
   # Explicit paths only. `git add -A` sweeps whatever the user left loose in the tree
   # into this task's commit, and untangling that later means rewriting history.
   git add -- "$@" || die "finish: staging failed — report this and stop; do not stage by hand"
@@ -1765,8 +1815,11 @@ case "${1:-}" in
       case "$LOGGED_PLUGINS" in
         *" $name "*)
           ldir=$(ledger_dir 2>/dev/null) || ldir=
-          "$sub" "$@"; rc=$?
+          CLERK_OUT=$(mktemp "${TMPDIR:-/tmp}/clerk.XXXXXX") || die "cannot create a temp file"
+          trap 'rm -f "$CLERK_OUT"' EXIT
+          "$sub" "$@" > "$CLERK_OUT"; rc=$?
           ledger_log "$ldir" "$name" "$rc" "$@"
+          with_next "$name" "$rc" "$ldir" "$CLERK_OUT"
           exit $rc ;;
         *) exec "$sub" "$@" ;;
       esac

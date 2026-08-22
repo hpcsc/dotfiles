@@ -112,7 +112,7 @@ run_records_dir() {
 # exactly one — the rule `clerk step` resolves by, so the two never disagree about which
 # run a command served.
 ledger_dir() {
-  local common runs branch def d n=0 found=
+  local common runs branch def open n
   common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
   runs="$common/clerk/runs"
   [ -d "$runs" ] || return 1
@@ -122,14 +122,23 @@ ledger_dir() {
     [ -f "$runs/$branch/run.json" ] && { printf '%s' "$runs/$branch"; return 0; }
     return 1
   fi
+  open=$(open_runs)
+  n=$(printf '%s\n' "$open" | grep -c '[^[:space:]]')
+  [ "$n" -eq 1 ] && { printf '%s/%s' "$runs" "$open"; return 0; }
+  return 1
+}
+
+# Every run under <git-common-dir>/clerk/runs that has not finished, one slug per line.
+open_runs() {
+  local common runs d
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  runs="$common/clerk/runs"
+  [ -d "$runs" ] || return 0
   for d in "$runs"/*/; do
     [ -f "${d}run.json" ] || continue
-    if [ "$(jq -r '.finished // false' "${d}run.json" 2>/dev/null)" != true ]; then
-      found=${d%/}; n=$((n + 1))
-    fi
+    [ "$(jq -r '.finished // false' "${d}run.json" 2>/dev/null)" != true ] && basename "$d"
   done
-  [ "$n" -eq 1 ] && { printf '%s' "$found"; return 0; }
-  return 1
+  return 0
 }
 
 # Appends one event to the ledger at $1. Never fails the command it records and never
@@ -197,6 +206,33 @@ code_tree() {
   local listing
   listing=$(git ls-tree -r "$1" 2>/dev/null) || return 1
   printf '%s' "$(printf '%s\n' "$listing" | grep -vE $'\t''tasks/.*\.(md|json|ya?ml)$')" | shasum -a 1 | cut -d' ' -f1
+}
+
+# The recorded suite receipt, and whether it still describes HEAD: it passed, and the
+# code it ran against is the code at HEAD — by code tree, not SHA, for the reason above.
+# One judgment, read by gate, verify and prepare (where `clerk step` takes it from).
+receipt_state() {  # <state-dir> <head-sha>
+  local rec="$1/receipt.json" head=$2 rsha rpassed rcmd rat fresh=false why=
+  if [ ! -f "$rec" ]; then
+    jq -n -c '{recorded: false, fresh: false, passed: false, sha: null, command: null, at: null,
+               why: "no suite receipt recorded"}'
+    return 0
+  fi
+  rsha=$(jq -r '.sha // ""' "$rec" 2>/dev/null)
+  rpassed=$(jq -r '.passed // false' "$rec" 2>/dev/null)
+  rcmd=$(jq -r '.command // ""' "$rec" 2>/dev/null)
+  rat=$(jq -r '.at // ""' "$rec" 2>/dev/null)
+  if [ "$rpassed" != true ]; then
+    why="the recorded receipt failed: $rcmd"
+  elif [ "$rsha" != "$head" ] && [ "$(code_tree "$rsha")" != "$(code_tree "$head")" ]; then
+    why="the receipt describes ${rsha:0:8}, whose code differs from HEAD's (${head:0:8}): the tree changed after the suite ran; re-run it"
+  else
+    fresh=true
+  fi
+  jq -n -c --argjson fresh "$fresh" --argjson passed "$([ "$rpassed" = true ] && printf true || printf false)" \
+    --arg sha "$rsha" --arg command "$rcmd" --arg at "$rat" --arg why "$why" \
+    '{recorded: true, fresh: $fresh, passed: $passed, sha: $sha, command: $command, at: $at,
+      why: (if $why == "" then null else $why end)}'
 }
 
 # --------------------------------------------------------------------------------
@@ -521,6 +557,18 @@ EOF
   return 3
 }
 
+# The breakdown a command works on: --tasks-file when given, else the one breakdown under
+# tasks/ — exit 1 when there is none, 3 when there are several. What a command does about
+# either is its own: next, finish and status cannot proceed and die with tasks_hint; gate
+# and verify carry on with a predicate to fail or a gap to report; land dies on several
+# and accepts none, because an archived run has no breakdown left to find.
+breakdown_for() {  # <--tasks-file value or empty>
+  local th
+  if [ -n "$1" ]; then resolve_tasks_arg "$1"; return 0; fi
+  th=$(tasks_home) || return 1
+  find_tasks_file "$th"
+}
+
 # --------------------------------------------------------------------------------
 # prepare
 # --------------------------------------------------------------------------------
@@ -619,12 +667,21 @@ cmd_prepare() {
   commit_skill=$(commit_skill_for "$wt")
   if tree_is_clean; then clean=true; else clean=false; fi
   if is_ignored "$root" tasks; then tracked=false; else tracked=true; fi
-  local ct
+  local ct run= runs_open receipt
   ct=$(code_tree HEAD) || ct=""
+  # The run this tree belongs to, every run still open, and the suite receipt this tree
+  # holds — reported here so `clerk step` reads them rather than resolving each again by
+  # a rule of its own that has to be kept in step with this one.
+  run=$(ledger_dir 2>/dev/null) && run=$(basename "$run") || run=
+  runs_open=$(open_runs | jq -R -s -c 'split("\n") | map(select(length > 0))')
+  receipt=$(receipt_state "$(state_dir)" "$(git rev-parse HEAD 2>/dev/null)")
 
   jq -n \
     --arg version "$CLERK_VERSION" \
     --arg code_tree "$ct" \
+    --arg run "$run" \
+    --argjson runs_open "$runs_open" \
+    --argjson receipt "$receipt" \
     --arg repo_root "$root" \
     --arg work_tree "$wt" \
     --arg branch "$branch" \
@@ -653,6 +710,9 @@ cmd_prepare() {
       default_branch: (if $default_branch == "" then null else $default_branch end),
       base: (if $base == "" then null else $base end),
       code_tree: (if $code_tree == "" then null else $code_tree end),
+      run: (if $run == "" then null else $run end),
+      runs_open: $runs_open,
+      receipt: $receipt,
       clean: $clean,
       languages: $languages,
       test_commands: $test_commands,
@@ -847,10 +907,8 @@ cmd_next() {
   done
 
   root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree); th=$(tasks_home)
-  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else
-    tasks=$(find_tasks_file "$th") || die "$(tasks_hint "$th" next)"
-  fi
+  th=$(tasks_home)
+  tasks=$(breakdown_for "$tasks_override") || die "$(tasks_hint "$th" next)"
   [ -f "$tasks" ] || die "next: task file not found: $tasks"
   side=$(sidecar_for "$tasks") || die "next: no sidecar beside $tasks — run 'clerk sidecar' to recover one from the breakdown, or let decompose-to-tasks write ${tasks%.md}.json"
 
@@ -871,6 +929,7 @@ cmd_next() {
     | [$open[] | select([.depends_on // [] | .[] | select(([.] | inside($done)) | not)] | length == 0)] as $ready
     | {
         done: (($open | length) == 0),
+        total: ($all | length),
         remaining: ($open | length),
         blocked: (($open | length) - ($ready | length)),
         task: ($ready | sort_by(.n) | first // null)
@@ -907,10 +966,8 @@ cmd_finish() {
   [ $# -gt 0 ] || die "finish: name the files this task changed after '--' (never 'git add -A')"
 
   root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree); th=$(tasks_home)
-  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else
-    tasks=$(find_tasks_file "$th") || die "$(tasks_hint "$th" finish)"
-  fi
+  th=$(tasks_home)
+  tasks=$(breakdown_for "$tasks_override") || die "$(tasks_hint "$th" finish)"
   [ -f "$tasks" ] || die "finish: task file not found: $tasks"
   side=$(sidecar_for "$tasks") || die "finish: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
 
@@ -1078,9 +1135,7 @@ cmd_status() {
     return
   fi
 
-  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else
-    tasks=$(find_tasks_file "$th") || die "$(tasks_hint "$th" status)"
-  fi
+  tasks=$(breakdown_for "$tasks_override") || die "$(tasks_hint "$th" status)"
   side=$(sidecar_for "$tasks") || die "status: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
   status_of "$tasks" "$side" false
 }
@@ -1137,7 +1192,7 @@ cmd_receipt() {
 # --------------------------------------------------------------------------------
 
 cmd_gate() {
-  local audit_accepted=false tasks_override= dir root wt th head rec checks ok
+  local audit_accepted=false tasks_override= dir root wt th head checks ok
   while [ $# -gt 0 ]; do
     case "$1" in
       --audit-accepted) audit_accepted=true; shift ;;
@@ -1154,7 +1209,7 @@ cmd_gate() {
 
   # 1. every task checked off
   local tasks detail passed
-  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else tasks=$(find_tasks_file "$th") || tasks=""; fi
+  tasks=$(breakdown_for "$tasks_override") || tasks=""
   if [ -z "$tasks" ] && [ -f "$dir/archived.json" ]; then
     # The breakdown having been archived IS the evidence every task closed — archiving
     # is gated on it. Without this, a second `land` (say, to integrate after a rebase)
@@ -1194,22 +1249,14 @@ cmd_gate() {
     '. + [{name: "tree-clean", ok: $ok, detail: $d}]')
 
   # 3. the receipt must describe the tree being landed, not an earlier one
-  rec="$dir/receipt.json"
-  if [ ! -f "$rec" ]; then
-    passed=false; detail="no suite receipt recorded — run the suite and 'clerk receipt --command ... --passed'"
+  local rs
+  rs=$(receipt_state "$dir" "$head")
+  if [ "$(printf '%s' "$rs" | jq -r '.fresh')" = true ]; then
+    passed=true; detail="green at ${head:0:8}: $(printf '%s' "$rs" | jq -r '.command')"
   else
-    local rsha rpassed rcmd
-    rsha=$(jq -r '.sha' "$rec" 2>/dev/null)
-    rpassed=$(jq -r '.passed' "$rec" 2>/dev/null)
-    rcmd=$(jq -r '.command' "$rec" 2>/dev/null)
-    if [ "$rpassed" != "true" ]; then
-      passed=false; detail="recorded receipt failed: $rcmd"
-    elif [ "$rsha" != "$head" ] && [ "$(code_tree "$rsha")" != "$(code_tree "$head")" ]; then
-      passed=false
-      detail="receipt describes ${rsha:0:8}, HEAD is ${head:0:8} — the tree changed after the suite ran; re-run it"
-    else
-      passed=true; detail="green at ${head:0:8}: $rcmd"
-    fi
+    passed=false; detail=$(printf '%s' "$rs" | jq -r '.why')
+    [ "$(printf '%s' "$rs" | jq -r '.recorded')" = true ] \
+      || detail="$detail — run the suite and 'clerk receipt --command ... --passed'"
   fi
   checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
     '. + [{name: "receipt-fresh", ok: $ok, detail: $d}]')
@@ -1266,7 +1313,7 @@ cmd_verify() {
 
   root=$(repo_root) || die "not a git repository"
   th=$(tasks_home)
-  if [ -n "$tasks_override" ]; then tasks=$(resolve_tasks_arg "$tasks_override"); else tasks=$(find_tasks_file "$th") || tasks=""; fi
+  tasks=$(breakdown_for "$tasks_override") || tasks=""
   dir=$(state_dir)
   def=$(default_branch)
   head=$(git rev-parse HEAD 2>/dev/null)
@@ -1297,18 +1344,13 @@ cmd_verify() {
   # 2. vacuous-receipt — judged from the recorded receipt rather than by re-running,
   #    because the receipt is what the gate trusts and it is what must not be hollow.
   rec="$dir/receipt.json"
-  if [ ! -f "$rec" ]; then
-    add_finding vacuous-receipt block "no suite receipt recorded for this run"
+  local rs rtail
+  rs=$(receipt_state "$dir" "$head")
+  if [ "$(printf '%s' "$rs" | jq -r '.fresh')" != true ]; then
+    add_finding vacuous-receipt block "$(printf '%s' "$rs" | jq -r '.why')"
   else
-    local rsha rpassed rtail rcmd
-    rsha=$(jq -r '.sha' "$rec"); rpassed=$(jq -r '.passed' "$rec")
-    rcmd=$(jq -r '.command' "$rec"); rtail=$(jq -r '.output_tail' "$rec")
-    if [ "$rpassed" != "true" ]; then
-      add_finding vacuous-receipt block "the recorded receipt failed: $rcmd"
-    elif [ "$rsha" != "$head" ] && [ "$(code_tree "$rsha")" != "$(code_tree "$head")" ]; then
-      add_finding vacuous-receipt block \
-        "receipt describes ${rsha:0:8} but HEAD is ${head:0:8} — it does not describe this tree"
-    elif [ -n "$rtail" ] && printf '%s' "$rtail" | grep -qiE "$VACUITY_RE"; then
+    rtail=$(jq -r '.output_tail // ""' "$rec")
+    if [ -n "$rtail" ] && printf '%s' "$rtail" | grep -qiE "$VACUITY_RE"; then
       add_finding vacuous-receipt block \
         "the receipt's output shows nothing ran: $(printf '%s' "$rtail" | grep -iE "$VACUITY_RE" | head -1)"
     elif [ -z "$rtail" ]; then
@@ -1454,18 +1496,15 @@ cmd_land() {
     integrate=$(printf '%s' "$resolved" | cut -f1)
     integrate_src=$(printf '%s' "$resolved" | cut -f2)
   fi
-  if [ -n "$tasks_override" ]; then
-    tasks=$(resolve_tasks_arg "$tasks_override")
-  else
-    # Exit 3 is "several breakdowns, name one"; every other command dies on it. Swallowing
-    # it here archived nothing and still reported success — `archived: null` in an output
-    # whose other fields all say the landing worked, leaving the breakdown in tasks/ to be
-    # counted as in-flight by the next run. Exit 1 is "none", which stays fine: the gate
-    # accepts an already-archived run on its archive record.
-    tasks=$(find_tasks_file "$th"); rc=$?
-    [ "$rc" -eq 3 ] && die "$(tasks_hint "$th" land)"
-    [ "$rc" -ne 0 ] && tasks=""
-  fi
+  # Exit 3 is "several breakdowns, name one"; every other command dies on it. Swallowing
+  # it here archived nothing and still reported success — `archived: null` in an output
+  # whose other fields all say the landing worked, leaving the breakdown in tasks/ to be
+  # counted as in-flight by the next run. Exit 1 is "none", which stays fine: the gate
+  # accepts an already-archived run on its archive record.
+  local rc
+  tasks=$(breakdown_for "$tasks_override"); rc=$?
+  [ "$rc" -eq 3 ] && die "$(tasks_hint "$th" land)"
+  [ "$rc" -ne 0 ] && tasks=""
 
   # Archive first, on the feature branch, so the archive commit rides with the work it
   # belongs to instead of landing on the default branch behind it. It also has to come

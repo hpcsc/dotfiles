@@ -10,6 +10,7 @@ Dispatched to by `clerk` when invoked as `clerk story`, and runnable on its own.
 """
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -73,8 +74,11 @@ def branch_alias_for(deliverable_id):
     """A branch not carrying the planned name is what makes a driver scaffold a second
     worktree for work already under way. Find the one that looks like it and answer for
     that, rather than reporting the deliverable as untouched."""
+    # The id as a whole path segment or dash-separated word: `auth` is found in
+    # `feat/auth` and `auth-v2`, and not inside `reauth-fix`.
+    pat = re.compile(rf"(^|[/-]){re.escape(deliverable_id)}([/-]|$)")
     for name in git("for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines():
-        if deliverable_id in name:
+        if pat.search(name):
             return name
     return None
 
@@ -88,15 +92,18 @@ def unmerged_count(ref, branch):
     return sum(1 for line in out.splitlines() if line.startswith("+"))
 
 
-def base_commit(base, siblings):
-    """A base naming a sibling deliverable means this one stacks on that branch; anything
-    else names a ref, preferring its remote — local and origin can diverge, and branching
-    from the wrong one silently omits work that is already pushed."""
+def base_commit(base, described):
+    """A base naming a sibling deliverable means this one stacks on that branch — the
+    branch the sibling is really on, alias included, which is why this runs after every
+    deliverable is described. Anything else names a ref, preferring its remote: local and
+    origin can diverge, and branching from the wrong one silently omits work already
+    pushed."""
     if not base:
         return None
-    for sib in siblings:
+    for sib in described:
         if sib.get("id") == base:
-            return git("rev-parse", "--verify", "--quiet", f"{sib.get('branch', '')}^{{commit}}") or None
+            branch = sib.get("branch_alias") or sib.get("branch") or ""
+            return git("rev-parse", "--verify", "--quiet", f"{branch}^{{commit}}") or None
     return (
         git("rev-parse", "--verify", "--quiet", f"origin/{base}^{{commit}}")
         or git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
@@ -104,7 +111,7 @@ def base_commit(base, siblings):
     )
 
 
-def describe(deliverable, siblings, tasks_home, ref, worktrees):
+def describe(deliverable, tasks_home, ref, worktrees):
     d = deliverable
     did = d.get("id") or ""
     branch = d.get("branch") or ""
@@ -136,7 +143,7 @@ def describe(deliverable, siblings, tasks_home, ref, worktrees):
         "branch": branch,
         "tasks_file": str(Path(tasks_home) / tasks_rel) if tasks_rel else "",
         "base": d.get("base") or None,
-        "base_commit": base_commit(d.get("base") or "", siblings),
+        "base_commit": None,
         "depends_on": list(d.get("depends_on") or []),
         "branch_exists": exists,
         "branch_alias": alias,
@@ -243,7 +250,9 @@ def main(argv):
     for path in plans:
         doc = load_plan(path)
         siblings = doc.get("deliverables") or []
-        described = [describe(d, siblings, tasks_home, ref, f.get("worktrees")) for d in siblings if d.get("id")]
+        described = [describe(d, tasks_home, ref, f.get("worktrees")) for d in siblings if d.get("id")]
+        for d in described:
+            d["base_commit"] = base_commit(d["base"], described)
         stories.append(
             {
                 "plan": path,

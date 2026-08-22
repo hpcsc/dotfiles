@@ -225,7 +225,7 @@ receipt_state() {  # <state-dir> <head-sha>
   if [ "$rpassed" != true ]; then
     why="the recorded receipt failed: $rcmd"
   elif [ "$rsha" != "$head" ] && [ "$(code_tree "$rsha")" != "$(code_tree "$head")" ]; then
-    why="the receipt describes ${rsha:0:8}, whose code differs from HEAD's (${head:0:8}): the tree changed after the suite ran; re-run it"
+    why="the receipt describes ${rsha:0:8}, HEAD is ${head:0:8} — the tree changed after the suite ran, and the code changed with it, not only tasks/; re-run it"
   else
     fresh=true
   fi

@@ -213,7 +213,7 @@ run "$WT" receipt --command "go test ./..." --passed >/dev/null
 eq "a green receipt at HEAD moves to audit" "audit" "$(run "$WT" step | field .step)"
 printf '\nnotes\n' >> "$WT/tasks/w1.md"; commit_all "$WT" "Breakdown notes"
 eq "a commit touching only tasks/ leaves the receipt fresh" "audit" "$(run "$WT" step | field .step)"
-eq "step's code tree is the one clerk prepare computes — one filter, two implementations, held equal" \
+eq "step's code tree is the one clerk prepare reports" \
    "$(run "$WT" prepare | field .code_tree)" "$(run "$WT" step | field .code_tree)"
 printf 'c\n' > "$WT/c.go"; commit_all "$WT" "Code after the suite"
 eq "a commit touching code sends the run back to suite" "suite|true" \

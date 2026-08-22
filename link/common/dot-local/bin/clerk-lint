@@ -67,7 +67,9 @@ def normalise(root, p):
 def changed_files(root, rng):
     r = git("diff", "--name-only", "--diff-filter=ACMR", *rng, cwd=root)
     if r.returncode != 0:
-        return []
+        # Not an empty set. A diff that could not run would otherwise report "clean — 0
+        # file(s)" with exit 0, and `clerk finish` would take that as a pass.
+        die(f"git diff {' '.join(rng)} failed: {r.stderr.strip() or 'no reason given'}")
     return [l for l in r.stdout.splitlines() if l]
 
 
@@ -77,7 +79,7 @@ def added_lines(root, path, rng):
     fastest way to have a check switched off."""
     r = git("diff", "-U0", *rng, "--", path, cwd=root)
     if r.returncode != 0:
-        return []
+        die(f"git diff {' '.join(rng)} -- {path} failed: {r.stderr.strip() or 'no reason given'}")
     lines, n = [], 0
     for raw in r.stdout.splitlines():
         h = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw)
@@ -465,4 +467,9 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as e:  # noqa: BLE001
+        # A traceback exits 1, and exit 1 is this command's "a finding": `clerk finish`
+        # would refuse the task over an empty list of findings. Anything unplanned is 2.
+        die(f"internal error: {type(e).__name__}: {e}")

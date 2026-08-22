@@ -45,10 +45,11 @@ The slug becomes the branch name, so choose it as you would a feature branch. It
 What comes back, and what each field is for:
 
 - **`step`, `why_not_done`, `done_by`** — which step, what is missing, and the command or commands that supply it. `done_by` is the short form; `instructions` is the method.
+- **`instructions`** — the method text for the step, in full the first time this session reaches it. While the step is unchanged — every task of the task loop, a pause for tests — it is a one-line pointer and `instructions_elided` is `true`: the text is already in your context, and `done_by` names the command. After a context compaction, or whenever the text is no longer in view, `clerk step --full` prints it again.
 - **`kind`** — `derived` means clerk checks the world: run the commands and call `clerk step` again. `asserted` means completion is a judgment of yours: record it with `clerk step --done <step> …` as `done_by` says. Both are stamped with the code tree they apply to.
 - **`stop: true`** — a human gate. Show what the step asks for, say what you would do next, and **end your turn**. The next `clerk step` is the reader's go; do not reason your way past it.
 - **`blocked: true`** — something needs a decision: a dirty tree at the start, a recorded story mismatch, a dependency cycle. Stop and say what `reason` says. Do not route around a block.
-- **`facts`** — `clerk prepare` for this request: languages, the test commands, `work_tree` and `repo_root`, the flags with their sources, the learnings path, the commit skill, `resume`. Read it rather than re-deriving any of it.
+- **`facts`** — `clerk prepare` for this request, the part you read: `work_tree` and `repo_root`, branch, base and default branch, languages, the test commands and the Go tool prefix, the flags with their sources, the learnings path, the commit skill, the breakdown and its home, `resume`. Read it rather than re-deriving any of it. What clerk keeps for itself — the receipt, the run, the worktrees, the breakdown list — is not repeated here; each row carries the fact it turns on.
 - **`story`** — the request, verbatim, on the steps that must hand it over unsummarized: audit and validate.
 - **`code_tree`** — what receipts and acceptances are compared by: the tree minus the plan files under `tasks/`, so a commit that touches only the breakdown does not stale a green.
 

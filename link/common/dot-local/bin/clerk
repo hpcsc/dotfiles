@@ -851,6 +851,11 @@ cmd_finish() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
+      # The implementation needed more than one attempt to go green, for a reason other
+      # than a typo. Nothing here acts on it: it is the model's observation, and it goes
+      # into the run's event log by being on this command line, where `clerk step` reads
+      # it as one of the two signals that downshift a gears run.
+      --retried) shift ;;
       --) shift; break ;;
       *) die "finish: unknown argument '$1'" ;;
     esac
@@ -1526,7 +1531,8 @@ USAGE
                                      standing on the default one, else a no-op
   clerk next [--allow-dirty]         the first task whose dependencies are all done;
                                      exit 3 if a task is still in flight
-  clerk finish <n> -- <files...>     tick the checkbox and stage those paths with it
+  clerk finish <n> [--retried] -- <files...>
+                                     tick the checkbox and stage those paths with it
                                      (`complete` is accepted too, but some sandboxes
                                      refuse that word as the bash builtin)
   clerk sidecar [--force]            recover tasks/<story>.json from a breakdown

@@ -73,7 +73,7 @@ eq "the request is kept verbatim" "Add a widget --gears" "$(jq -r .request "$R/.
 eq "a second --start on an open run is refused" "3" "$(rc "$R" step --start w1 --request again)"
 eq "and names the run it would have clobbered" "w1" \
    "$(run "$R" step --start w1 --request again 2>/dev/null | field .run.slug)"
-eq "the first step is ground" "ground|asserted" "$(run "$R" step | jq -r '[.step, .kind] | join("|")')"
+eq "the first step is ground" "ground|derived" "$(run "$R" step | jq -r '[.step, .kind] | join("|")')"
 eq "and its facts are clerk prepare, with the request's flags applied" "true|request" \
    "$(run "$R" step | jq -r '[(.facts.flags.gears|tostring), .facts.flag_sources.gears] | join("|")')"
 eq "the instructions carry the built-in text when no method step file exists" "true" \
@@ -299,7 +299,6 @@ run "$WT" step --rm w1 >/dev/null
 
 # Integration from a worktree finishes in the main checkout, and step follows.
 RL=$(new_repo)
-mkdir -p "$RL/tasks" && printf '{"integrate": true}\n' > "$RL/tasks/clerk.json" && commit_all "$RL" "Config"
 run "$RL" step --start lz --request "Land it" >/dev/null; run "$RL" step --done ground --caller ui >/dev/null
 WL=$(run "$RL" worktree lz | field .path)
 seed "$WL" lz; run "$WL" step --done plan --tasks-file tasks/lz.md >/dev/null; commit_all "$WL" "Breakdown"
@@ -312,7 +311,9 @@ run "$WL" receipt --command true --passed >/dev/null
 run "$WL" step --done verify-residue >/dev/null
 eq "the worktree run reaches land" "land" "$(run "$WL" step | field .step)"
 eq "land --integrate inside a worktree stops before the fast-forward" "3" "$(rc "$WL" land --audit-accepted --integrate)"
-eq "and step says to finish from the main checkout" "true" \
+eq "its stamp records that integration was asked for, by the request" "true|false|request" \
+   "$(jq -r '[(.integrate|tostring), (.landed|tostring), .integrate_source] | join("|")' "$RL/.git/clerk/runs/lz/land.json")"
+eq "and step reads the stamp — no config says integrate — and says to finish from the main checkout" "true" \
    "$(run "$WL" step | jq -r '.done_by | contains("leave the worktree")')"
 L=$(run "$RL" step)
 eq "from the main checkout the same run is found, at land" "lz|land" "$(printf '%s' "$L" | jq -r '[.run, .step] | join("|")')"
@@ -385,8 +386,59 @@ eq "and the stamp says so, with where integration was decided" "true|true|tasks/
 eq "the land event is logged to the run although it ended on main" "land|0" \
    "$(tail -1 "$RJ/.git/clerk/runs/ij/events.jsonl" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
 eq "and step, from main, moves the run to learn" "learn" "$(run "$RJ" step | field .step)"
+eq "the learn step carries what the run observed about the plan" "0|0" \
+   "$(run "$RJ" step | jq -r '[(.plan_signals.fixup_ambiguous|tostring), (.plan_signals.high_certainty_but_hard|length|tostring)] | join("|")')"
+run "$RJ" learn --type convention --title "Keep it" --learning "A fact." --apply-when "Always." --feature ij --path "$RJ/learned.md" >/dev/null
+eq "a clerk learn write is the evidence: no --done needed" "finished" "$(run "$RJ" step | field .step)"
 
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$RI" "$RP" "$RC" "$RL" "$RM" "$RE" "$RJ" "$MD" "$REP" 2>/dev/null
+printf '\nsignals — ground is the guidelines run; gears shifts on what the run observed\n'
+
+GD=$(mktemp -d)
+RG=$(new_repo)
+run "$RG" step --start g --request "Guided" >/dev/null
+run "$RG" guidelines --guidelines-dir "$GD" --language Go >/dev/null 2>&1
+eq "clerk guidelines without a caller pattern does not ground the run" "ground" "$(run "$RG" step | field .step)"
+run "$RG" guidelines --guidelines-dir "$GD" --language Go --caller async >/dev/null 2>&1
+eq "with one, the run is grounded by the event — no --done" "isolate" "$(run "$RG" step | field .step)"
+eq "and --status names the source" "true" "$(run "$RG" step --status | jq -r '.rows[] | select(.step == "ground") | .done')"
+
+# Five unassessed tasks in a chain, gears on: nothing pauses until the run observes a signal.
+seed_chain() {  # repo slug n
+  local repo=$1 slug=$2 n=$3 i
+  mkdir -p "$repo/tasks"
+  { printf '# %s\n\n## Tasks\n\n' "$slug"; for i in $(seq 1 "$n"); do printf '### Task %s: T%s\n- [ ] c\n\n' "$i" "$i"; done; } > "$repo/tasks/$slug.md"
+  jq -n --arg s "$slug" --argjson n "$n" \
+    '{story: $s, tasks_file: ("tasks/" + $s + ".md"),
+      tasks: [range(1; $n + 1) | {n: ., title: ("T" + tostring), language: "Go", depends_on: (if . == 1 then [] else [. - 1] end), affected_files: [], done: false}]}' \
+    > "$repo/tasks/$slug.json"
+}
+RS=$(new_repo)
+mkdir -p "$RS/tasks" && printf '{"in_place": true, "gears": true}\n' > "$RS/tasks/clerk.json" && commit_all "$RS" "Config"
+run "$RS" step --start sg --request "Shifting" >/dev/null; run "$RS" step --done ground --caller ui >/dev/null; run "$RS" branch sg >/dev/null
+seed_chain "$RS" sg 5; run "$RS" step --done plan --tasks-file tasks/sg.md >/dev/null; commit_all "$RS" "Breakdown"
+eq "an unassessed task in a gears run builds straight through, gear normal" "task|1|normal|false" \
+   "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"
+printf 'a\n' > "$RS/a.go"; run "$RS" finish 1 --retried -- a.go >/dev/null; commit_all "$RS" "T1"
+eq "a retried task downshifts the run: the next task pauses" "tests|2|low|true" \
+   "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.why_not_done | contains("downshifted") | tostring)] | join("|")')"
+eq "and the signal that did it is reported" "true|false" \
+   "$(run "$RS" step | jq -r '[(.last_task_signals.retried|tostring), (.last_task_signals.lint_findings|tostring)] | join("|")')"
+run "$RS" step --done tests 2 >/dev/null
+printf 'b\n' > "$RS/b.go"; run "$RS" finish 2 -- b.go >/dev/null; commit_all "$RS" "T2"
+eq "one clean task is not enough to upshift" "tests|3|low" "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear] | join("|")')"
+run "$RS" step --done tests 3 >/dev/null
+printf 'c\n' > "$RS/c.go"; run "$RS" finish 3 -- c.go >/dev/null; commit_all "$RS" "T3"
+eq "two clean tasks in a row upshift: the next builds straight through" "task|4|normal|false" \
+   "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"
+printf 'package d\n\n// Fixes ABC-123\nvar D = 1\n' > "$RS/d.go"
+run "$RS" finish 4 -- d.go >/dev/null
+eq "a lint --staged finding after finish is an exit 1 on the record" "1" "$(rc "$RS" lint --staged)"
+printf 'package d\n\nvar D = 1\n' > "$RS/d.go"; commit_all "$RS" "T4"
+eq "and it downshifts again, naming the lint" "tests|5|low|true" \
+   "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.last_task_signals.lint_findings|tostring)] | join("|")')"
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$RI" "$RP" "$RC" "$RL" "$RM" "$RE" "$RJ" "$RG" "$RS" "$GD" "$MD" "$REP" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

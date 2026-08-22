@@ -214,6 +214,99 @@ def run_summary(run, cwd):
 
 
 # --------------------------------------------------------------------------------
+# The event log: what clerk commands ran for this run, appended by clerk itself
+# --------------------------------------------------------------------------------
+
+def events(run):
+    p = run.dir / "events.jsonl"
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def flag_value(argv, flag):
+    if flag in argv:
+        i = argv.index(flag)
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    return None
+
+
+def guidelines_read(run):
+    """The `clerk guidelines` run that counts: it succeeded and named the caller pattern."""
+    for e in events(run):
+        if e.get("cmd") != "guidelines" or e.get("exit") != 0:
+            continue
+        argv = e.get("argv", [])
+        caller = flag_value(argv, "--caller")
+        if caller in CALLERS:
+            return {"caller": caller, "dom": "--dom" in argv, "state": "--state" in argv, "at": e.get("at"),
+                    "source": "clerk guidelines"}
+    return None
+
+
+def learn_written(run):
+    for e in events(run):
+        if e.get("cmd") == "learn" and e.get("exit") == 0 and "--title" in e.get("argv", []):
+            return {"at": e.get("at"), "title": flag_value(e.get("argv", []), "--title"), "source": "clerk learn"}
+    return None
+
+
+def task_signals(run):
+    """Per task, the two observed signals the method reads as the plan being wrong about
+    it: `clerk finish N --retried` (the first shape reached for was not the one that went
+    green) and a lint finding — a `lint --staged` that reported after N was finished, or a
+    `finish N` that refused. Returns ({n: {...}}, [n in finish order])."""
+    signals = {}
+    order = []
+    last_done = None
+    for e in events(run):
+        cmd, argv, rc = e.get("cmd"), e.get("argv", []), e.get("exit")
+        if cmd == "lint" and "--staged" in argv and rc == 1 and last_done is not None:
+            signals[last_done]["lint_findings"] = True
+        if cmd == "finish" and argv and str(argv[0]).isdigit():
+            n = int(argv[0])
+            sig = signals.setdefault(n, {"retried": False, "lint_findings": False, "attempts": 0})
+            sig["attempts"] += 1
+            if rc != 0:
+                sig["lint_findings"] = True
+            else:
+                sig["retried"] = sig["retried"] or "--retried" in argv
+                if n not in order:
+                    order.append(n)
+                last_done = n
+    return signals, order
+
+
+def gear(signals, order):
+    """`low` once a task showed a signal, `normal` again after two clean tasks in a row —
+    a pause that arrives on every task stops carrying information."""
+    low, streak = False, 0
+    for n in order:
+        sig = signals.get(n, {})
+        if sig.get("retried") or sig.get("lint_findings"):
+            low, streak = True, 0
+        else:
+            streak += 1
+            if low and streak >= 2:
+                low, streak = False, 0
+    return "low" if low else "normal"
+
+
+def fixup_ambiguities(run):
+    return sum(1 for e in events(run) if e.get("cmd") == "fixup" and e.get("exit") == 3)
+
+
+# --------------------------------------------------------------------------------
 # Context: the facts every step reads
 # --------------------------------------------------------------------------------
 
@@ -234,17 +327,32 @@ def build_ctx(explicit_run=None, harness=None):
     ctx.head = gitout("rev-parse", "HEAD", cwd=cwd)
     ctx.head_ct = code_tree("HEAD", cwd) if ctx.head else None
 
-    rc, prep, err = clerk_json("prepare", cwd=cwd)
-    if rc != 0 or not prep:
-        die(f"clerk prepare failed: {err or 'no output'}")
-    ctx.default = prep.get("default_branch")
-
-    ctx.run = resolve_run(ctx, explicit_run)
+    # `clerk prepare` is the facts, and with the request it is the facts with the run's
+    # flags applied. One call when the branch names the run, which is every call after
+    # isolate; two only from the default branch, where the run has to be found first.
+    ctx.default = None
+    ctx.run = None
+    by_branch = Run(runs_root(common) / ctx.branch) if ctx.branch and ctx.branch != "HEAD" else None
+    if explicit_run is None and by_branch is not None and by_branch.exists():
+        ctx.run = by_branch
+    prep = None
+    if ctx.run is None:
+        rc, prep, err = clerk_json("prepare", cwd=cwd)
+        if rc != 0 or not prep:
+            die(f"clerk prepare failed: {err or 'no output'}")
+        ctx.default = prep.get("default_branch")
+        if ctx.branch == ctx.default and by_branch is not None and by_branch.exists():
+            # A run named after the default branch cannot exist (--start refuses it), so
+            # this is only reachable through a stale ledger; do not adopt it by name.
+            ctx.run = None
+        ctx.run = resolve_run(ctx, explicit_run)
     if ctx.run is not None:
         request = ctx.run.meta.get("request") or ""
         rc, prep2, err = clerk_json("prepare", "--request", request, cwd=cwd)
-        if rc == 0 and prep2:
-            prep = prep2
+        if rc != 0 or not prep2:
+            die(f"clerk prepare failed: {err or 'no output'}")
+        prep = prep2
+        ctx.default = prep.get("default_branch")
     ctx.prepare = prep
     ctx.flags = prep.get("flags", {})
     ctx.work_tree = prep.get("work_tree")
@@ -283,7 +391,7 @@ def resolve_run(ctx, explicit):
 
 BUILTIN = {
     "start": "No run is open here. Record the request verbatim: `clerk step --start <kebab-slug> --request \"<the request>\"`. The slug becomes the branch name.",
-    "ground": "Read `facts` — it is `clerk prepare` for this request. Then load the guidelines yourself: `clerk guidelines`, and name the caller pattern with `clerk guidelines --caller <ui|inbound|outbound|async|exported>` (add `--dom` or `--state` when the work touches them). Read what it prints. Then record it: `clerk step --done ground --caller <pattern> [--dom] [--state]`.",
+    "ground": "Read `facts` — it is `clerk prepare` for this request. Then load the guidelines yourself: `clerk guidelines`, and name the caller pattern with `clerk guidelines --caller <ui|inbound|outbound|async|exported>` (add `--dom` or `--state` when the work touches them). Read what it prints; that run is what records this step. Then `clerk step`.",
     "isolate": "Give the run a branch of its own so the user's checkout stays free. Run the command in `done_by`, then enter the worktree it reports and call `clerk step` again from there.",
     "plan": "Adopt the breakdown `facts.resume` names, or decompose the request with the decompose-to-tasks agent (pass the languages, the learnings file and the guidelines). A single-slice story still gets a one-task breakdown; write it and run `clerk sidecar`. Then bind it: `clerk step --done plan --tasks-file <path>`. It lints the assessments and refuses on findings.",
     "task": "Build this task yourself. Tests first where they apply; run them red. Implement until green, and read the output. Then `clerk finish <n> -- <every file this task changed>`, `clerk lint --staged`, and commit with the commit skill — never `git commit` in Bash. Say in one line what landed. Then `clerk step`.",
@@ -294,7 +402,7 @@ BUILTIN = {
     "theory": "Append a `## Theory` section to the breakdown, above `## Tasks`, five sentences at most: the abstractions this branch adds or changes and where they live, the decision that was not forced and the alternative not taken, what a reviewer should check hardest. Commit it as its own commit when the breakdown is tracked.",
     "verify": "`clerk verify --all-closed` ran; its result is in `verify`. Fix every block. When `not_checked` is not empty, spawn the run-verifier agent for that residue only, then `clerk step --done verify-residue`.",
     "land": "Close out: `clerk land` archives the breakdown and integrates only when the repo or the request says so. Follow `done_by`.",
-    "learn": "Distil what generalises — a convention, a recurring finding, a constraint, a pattern — keeping only what names the future mistake it prevents. `clerk learn --list` to dedup, then `clerk learn --type <t> --title ... --learning ... --apply-when ... --feature <slug>`. A clean run has none: `clerk step --done learn --none`.",
+    "learn": "Distil what generalises — a convention, a recurring finding, a constraint, a pattern — keeping only what names the future mistake it prevents. `clerk learn --list` to dedup, then `clerk learn --type <t> --title ... --learning ... --apply-when ... --feature <slug>`. `plan_signals` lists what this run observed about the plan. A clean run has none: `clerk step --done learn --none`.",
     "finished": "The run is complete.",
 }
 
@@ -366,16 +474,17 @@ def sidecar_tasks(ctx):
 
 
 def row_ground(ctx):
-    rec = ctx.run.done.get("ground")
+    rec = guidelines_read(ctx.run) or ctx.run.done.get("ground")
     if rec and rec.get("caller"):
-        return row("ground", True, caller=rec["caller"])
+        return row("ground", True, caller=rec["caller"], source=rec.get("source", "asserted"))
     if not ctx.prepare.get("clean"):
         return row("ground", False, blocked=True, stop=True, kind="derived",
                    reason="the tree is dirty — never build on top of someone else's loose work; stop and ask",
                    why_not_done="tree dirty")
-    return row("ground", False, kind="asserted",
-               why_not_done="the guidelines were not recorded as read for this run",
-               done_by="clerk guidelines; clerk guidelines --caller <pattern> [--dom] [--state]; then clerk step --done ground --caller <pattern>")
+    return row("ground", False, kind="derived",
+               why_not_done="no `clerk guidelines --caller <pattern>` has run for this run",
+               done_by="clerk guidelines; then clerk guidelines --caller <pattern> [--dom] [--state]; then clerk step. "
+                       "(A repo with no guidelines directory: clerk step --done ground --caller <pattern>)")
 
 
 def landed_elsewhere(ctx):
@@ -486,20 +595,25 @@ def row_task(ctx):
     gears = bool(ctx.flags.get("gears"))
     certainty = cur.get("certainty")
     blast = cur.get("blast_radius")
-    pauses = gears and (certainty == "low" or blast == "high")
+    signals, order = task_signals(ctx.run)
+    g = gear(signals, order)
+    reasons = [r for r, hit in (("certainty low", certainty == "low"), ("blast radius high", blast == "high"),
+                                ("the run downshifted", g == "low")) if hit]
+    pauses = gears and bool(reasons)
     shown = str(n) in (ctx.run.done.get("tests") or {})
     fields = dict(n=n, task=cur, certainty=certainty, blast_radius=blast,
-                  unassessed=(certainty is None and blast is None),
+                  unassessed=(certainty is None and blast is None), gear=g,
+                  last_task_signals=(signals.get(order[-1]) if order else None),
                   tree_dirty=not ctx.prepare.get("clean"), progress=progress,
                   commit_skill=ctx.prepare.get("commit_skill"))
     if pauses and not shown:
         return row("tests", False, kind="asserted", stop=True,
-                   why_not_done=f"task {n} pauses after its tests ({'certainty low' if certainty == 'low' else 'blast radius high'}) and they were not shown",
+                   why_not_done=f"task {n} pauses after its tests ({', '.join(reasons)}) and they were not shown",
                    done_by=f"write the tests, run them red, show the assertions, stop; then clerk step --done tests {n}",
                    **fields)
     return row("task", False, kind="derived", pause_after_tests=pauses,
                why_not_done=f"task {n} is open",
-               done_by=f"clerk finish {n} -- <files>; clerk lint --staged; commit with the {fields['commit_skill']} skill; then clerk step",
+               done_by=f"clerk finish {n} [--retried] -- <files>; clerk lint --staged; commit with the {fields['commit_skill']} skill; then clerk step",
                **fields)
 
 
@@ -614,13 +728,17 @@ def row_verify(ctx):
 
 def row_land(ctx):
     slug = ctx.run.slug
+    stamp = ctx.run.read("land.json")
+    if stamp and stamp.get("landed"):
+        return row("land", True, archived=True, integrated=True, source="land.json")
     if ctx.branch == slug:
-        archived = (Path(ctx.git_dir) / "clerk" / "archived.json").exists()
+        archived = bool(stamp) or (Path(ctx.git_dir) / "clerk" / "archived.json").exists()
         if not archived:
             return row("land", False, kind="derived", why_not_done="the breakdown is not archived",
                        integrate=ctx.flags.get("integrate"),
                        done_by="clerk land [--integrate|--no-integrate] — the gate wants --audit-accepted once the audit is accepted")
-        if ctx.flags.get("integrate") and ctx.in_worktree:
+        integrate = stamp.get("integrate") if stamp else ctx.flags.get("integrate")
+        if integrate and ctx.in_worktree:
             return row("land", False, kind="derived",
                        why_not_done="archived; integration is on and cannot finish from inside the worktree",
                        done_by=f"leave the worktree keeping the branch (ExitWorktree keep on Claude Code), run the command `clerk land` printed in {ctx.repo_root}, then clerk step there")
@@ -642,13 +760,30 @@ def row_land(ctx):
                done_by=f"{cmd}; then clerk step")
 
 
+def plan_signals(ctx):
+    """What this run observed about the plan, for the reflection: the tasks the plan
+    called routine that were not, the ones it called hard that were, and the fixups that
+    found a task boundary drawn across one file."""
+    _, tasks = sidecar_tasks(ctx)
+    signals, order = task_signals(ctx.run)
+    by_n = {t["n"]: t for t in (tasks or [])}
+    hard = lambda n: bool(signals.get(n, {}).get("retried") or signals.get(n, {}).get("lint_findings"))
+    return {
+        "signals": {str(n): signals[n] for n in sorted(signals)},
+        "high_certainty_but_hard": [n for n in order if by_n.get(n, {}).get("certainty") == "high" and hard(n)],
+        "low_certainty_but_clean": [n for n in order if by_n.get(n, {}).get("certainty") == "low" and not hard(n)],
+        "fixup_ambiguous": fixup_ambiguities(ctx.run),
+    }
+
+
 def row_learn(ctx):
-    rec = ctx.run.done.get("learn")
+    rec = learn_written(ctx.run) or ctx.run.done.get("learn")
     if rec:
-        return row("learn", True, none=bool(rec.get("none")))
-    return row("learn", False, kind="asserted", why_not_done="learnings were not recorded for this run",
-               learnings_path=ctx.prepare.get("learnings_path"),
-               done_by=f"clerk learn ... --feature {ctx.run.slug}; then clerk step --done learn [--none]")
+        return row("learn", True, none=bool(rec.get("none")), source=rec.get("source", "asserted"))
+    return row("learn", False, kind="derived", why_not_done="no learning was written for this run",
+               learnings_path=ctx.prepare.get("learnings_path"), plan_signals=plan_signals(ctx),
+               done_by=f"clerk learn --list; clerk learn --type ... --title ... --learning ... --apply-when ... --feature {ctx.run.slug}; "
+                       f"or, for a run with nothing that generalises: clerk step --done learn --none")
 
 
 ROWS = [("ground", row_ground), ("isolate", row_isolate), ("plan", row_plan), ("task", row_task),

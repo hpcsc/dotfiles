@@ -24,8 +24,9 @@ files under tasks/, not by SHA: the Theory section lands as a tasks/-only commit
 last green, and a SHA comparison would call that green stale and send the run back to the
 suite for a documentation change.
 
-Invoked as `clerk step`, and as `clerk audit` through the clerk-audit symlink, which
-records the rounds and the acceptance that the audit step reads.
+Invoked as `clerk step`, and as `clerk audit` through the clerk-audit symlink:
+
+clerk audit — the rounds and the acceptance that the audit step reads.
 """
 
 import hashlib
@@ -41,8 +42,6 @@ HERE = Path(__file__).resolve().parent
 CLERK = HERE / "clerk"
 PROG = Path(sys.argv[0]).name
 
-STEPS = ["start", "ground", "isolate", "plan", "task", "suite", "audit",
-         "validate", "theory", "verify", "land", "learn"]
 CALLERS = ("ui", "inbound", "outbound", "async", "exported")
 
 # Everything under tasks/ that is a plan rather than code: breakdowns, sidecars, the
@@ -389,20 +388,13 @@ def resolve_run(ctx, explicit):
 # Instructions — the method text for a step, or a built-in summary of it
 # --------------------------------------------------------------------------------
 
+# The method's step files are the instructions, and `clerk step` prints the one for the
+# step it returns. Only two steps have no file: `start`, because a run that has not
+# opened has nothing to render yet, and `finished`, which is a sentence. Every other
+# step used to carry a built-in copy of its text as well, for a machine without the
+# method — a second source, and it drifted from the first within a week.
 BUILTIN = {
     "start": "No run is open here. Record the request verbatim: `clerk step --start <kebab-slug> --request \"<the request>\"`. The slug becomes the branch name.",
-    "ground": "Read `facts` — it is `clerk prepare` for this request. Then load the guidelines yourself: `clerk guidelines`, and name the caller pattern with `clerk guidelines --caller <ui|inbound|outbound|async|exported>` (add `--dom` or `--state` when the work touches them). Read what it prints; that run is what records this step. Then `clerk step`.",
-    "isolate": "Give the run a branch of its own so the user's checkout stays free. Run the command in `done_by`, then enter the worktree it reports and call `clerk step` again from there.",
-    "plan": "Adopt the breakdown `facts.resume` names, or decompose the request with the decompose-to-tasks agent (pass the languages, the learnings file and the guidelines). A single-slice story still gets a one-task breakdown; write it and run `clerk sidecar`. Then bind it: `clerk step --done plan --tasks-file <path>`. It lints the assessments and refuses on findings.",
-    "task": "Build this task yourself. Tests first where they apply; run them red. Implement until green, and read the output. Then `clerk finish <n> -- <every file this task changed>`, `clerk lint --staged`, and commit with the commit skill — never `git commit` in Bash. Say in one line what landed. Then `clerk step`.",
-    "tests": "This task pauses after its tests. Write them, run them red, and show what each asserts in one line each. Then stop: state what you would do next and end your turn. When the reader says go: `clerk step --done tests <n>`.",
-    "suite": "Run the default test command in `facts.work_tree` and read the output. Then `clerk receipt --command \"<command>\" --passed --output-file <captured output>`.",
-    "audit": "Say how many rounds you will run: `clerk audit plan --rounds <n>`. Invoke audit-implement with `story` set to the request verbatim (it is in `story`), the base, the test commands and a one-sentence brief. When it returns, check `git status --porcelain` for residue, then `clerk audit round --report <findings.json>`. Fix findings directly, fold each into its commit with `clerk fixup`, re-run the suite and record a new receipt. Re-audit with recheck. When the findings are fixed or accepted: `clerk audit accept`.",
-    "validate": "Re-read the request in `story` — verbatim, not your memory of it — against `log` and the diff, and answer the four `questions`. Quote the story's words for anything you raise. Record it: `clerk step --done validate [--mismatch \"<quoted>\"]...`. A mismatch stops the run until the user decides: then `clerk step --done validate --resolved`.",
-    "theory": "Append a `## Theory` section to the breakdown, above `## Tasks`, five sentences at most: the abstractions this branch adds or changes and where they live, the decision that was not forced and the alternative not taken, what a reviewer should check hardest. Commit it as its own commit when the breakdown is tracked.",
-    "verify": "`clerk verify --all-closed` ran; its result is in `verify`. Fix every block. When `not_checked` is not empty, spawn the run-verifier agent for that residue only, then `clerk step --done verify-residue`.",
-    "land": "Close out: `clerk land` archives the breakdown and integrates only when the repo or the request says so. Follow `done_by`.",
-    "learn": "Distil what generalises — a convention, a recurring finding, a constraint, a pattern — keeping only what names the future mistake it prevents. `clerk learn --list` to dedup, then `clerk learn --type <t> --title ... --learning ... --apply-when ... --feature <slug>`. `plan_signals` lists what this run observed about the plan. A clean run has none: `clerk step --done learn --none`.",
     "finished": "The run is complete.",
 }
 
@@ -439,7 +431,11 @@ def instructions_for(step_id, harness):
     p = method_dir() / "steps" / f"{STEP_TEXT_ALIAS.get(step_id, step_id)}.md"
     if p.exists():
         return render_method(p.read_text(), harness)
-    return BUILTIN.get(step_id, "")
+    if step_id in BUILTIN:
+        return BUILTIN[step_id]
+    return (f"no method text for the {step_id} step: {p} does not exist. `done_by` names "
+            f"the command that moves the run on; set CLERK_METHOD_DIR to the implement "
+            f"method directory for the full text.")
 
 
 # --------------------------------------------------------------------------------
@@ -618,7 +614,7 @@ def row_task(ctx):
                    **fields)
     return row("task", False, kind="derived", pause_after_tests=pauses,
                why_not_done=f"task {n} is open",
-               done_by=f"clerk finish {n} [--retried] -- <files>; clerk lint --staged; commit with the {fields['commit_skill']} skill; then clerk step",
+               done_by=f"clerk finish {n} [--retried] -- <files> (it lints the staged set); commit with the {fields['commit_skill']} skill; then clerk step",
                **fields)
 
 

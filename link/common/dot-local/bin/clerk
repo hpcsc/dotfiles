@@ -70,6 +70,75 @@ run_records_dir() {
   printf '%s/tasks/%s' "$1" "$(basename "${2%.md}")"
 }
 
+# --------------------------------------------------------------------------------
+# The run ledger — opened and read by `clerk step`, appended to here.
+#
+# `clerk step` derives a run's position from evidence, and most of that evidence is a
+# clerk command having run: the guidelines were printed, a task was finished, the suite
+# was recorded. So every command that produces evidence appends one line to the run's
+# events file on its way out — what ran, with what arguments, how it exited, at which
+# HEAD — and `land` leaves a stamp with what it decided. Nothing here judges anything;
+# the ledger is a record and `clerk step` is its reader. A command with no run to log
+# against logs nothing, which is every invocation outside a step-driven run, so nothing
+# about these commands changes there.
+# --------------------------------------------------------------------------------
+
+# The ledger this invocation belongs to, or nothing. On a feature branch it is the run
+# named by the branch; on the default branch it is the one unfinished run, if there is
+# exactly one — the rule `clerk step` resolves by, so the two never disagree about which
+# run a command served.
+ledger_dir() {
+  local common runs branch def d n=0 found=
+  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  runs="$common/clerk/runs"
+  [ -d "$runs" ] || return 1
+  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  def=$(default_branch)
+  if [ -n "$branch" ] && [ "$branch" != HEAD ] && [ "$branch" != "$def" ]; then
+    [ -f "$runs/$branch/run.json" ] && { printf '%s' "$runs/$branch"; return 0; }
+    return 1
+  fi
+  for d in "$runs"/*/; do
+    [ -f "${d}run.json" ] || continue
+    if [ "$(jq -r '.finished // false' "${d}run.json" 2>/dev/null)" != true ]; then
+      found=${d%/}; n=$((n + 1))
+    fi
+  done
+  [ "$n" -eq 1 ] && { printf '%s' "$found"; return 0; }
+  return 1
+}
+
+# Appends one event to the ledger at $1. Never fails the command it records and never
+# prints: a logging error must not turn a finished task into a failed one.
+ledger_log() {  # <ledger-dir> <cmd> <exit> <argv...>
+  local dir=$1 cmd=$2 rc=$3 head; shift 3
+  [ -n "$dir" ] && [ -d "$dir" ] || return 0
+  head=$(git rev-parse HEAD 2>/dev/null)
+  # argv goes in NUL-separated on stdin: jq reads its own options from anywhere on the
+  # command line, so an argv carrying --command or --rule would be parsed as jq's.
+  printf '%s\0' "$@" | jq -R -s -c --arg cmd "$cmd" --arg rc "$rc" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg head "$head" \
+    '{cmd: $cmd, argv: (split("\u0000") | map(select(length > 0))), exit: ($rc | tonumber), at: $at, head: $head}' \
+    >> "$dir/events.jsonl" 2>/dev/null || true
+}
+
+# Writes one stamp file into the ledger at $1, whole or not at all.
+ledger_put() {  # <ledger-dir> <file> <json>
+  local dir=$1
+  [ -n "$dir" ] && [ -d "$dir" ] || return 0
+  printf '%s\n' "$3" > "$dir/$2.tmp" 2>/dev/null && /bin/mv -f "$dir/$2.tmp" "$dir/$2" 2>/dev/null || true
+}
+
+# Runs a built-in and logs it. The ledger is resolved BEFORE the command runs: `land
+# --integrate` ends on the default branch, where the run can no longer be named by the
+# branch it just merged.
+logged() {  # <name> <function> <args...>
+  local name=$1 fn=$2 rc ldir; shift 2
+  ldir=$(ledger_dir 2>/dev/null) || ldir=
+  "$fn" "$@"; rc=$?
+  ledger_log "$ldir" "$name" "$rc" "$@"
+  return $rc
+}
+
 default_branch() {
   local d=
   # Only ask git when origin/HEAD actually exists. Without a remote, `rev-parse
@@ -1347,6 +1416,12 @@ cmd_land() {
     # archives and declines to integrate has finished with them just the same.
     /bin/rm -rf "$(run_records_dir "$dir" "$tasks")"
   fi
+  # Resolved here, on the feature branch, because integration ends on the default one.
+  local ldir
+  ldir=$(ledger_dir 2>/dev/null) || ldir=
+  ledger_put "$ldir" land.json "$(jq -n -c --argjson archived "$archived" --arg i "$integrate" --arg src "$integrate_src" \
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{archived: $archived, integrate: ($i == "true"), integrate_source: $src, landed: false, at: $at}')"
 
   if [ "$integrate" != true ]; then
     jq -n --arg b "$branch" --arg d "$def" --arg wt "$wt" --arg src "$integrate_src" \
@@ -1415,6 +1490,9 @@ cmd_land() {
     holder=$(git worktree list --porcelain 2>/dev/null | awk -v b="refs/heads/$branch" '
       /^worktree /{p=$2} $0 == "branch " b {print p; exit}')
   fi
+  ledger_put "$ldir" land.json "$(jq -n -c --argjson archived "$archived" --arg src "$integrate_src" \
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson deleted "$deleted" \
+    '{archived: $archived, integrate: true, integrate_source: $src, landed: true, deleted_branch: $deleted, at: $at}')"
 
   jq -n --arg d "$def" --arg b "$branch" --argjson archived "$archived" \
     --argjson deleted "$deleted" --arg holder "$holder" --arg src "$integrate_src" \
@@ -1517,27 +1595,41 @@ list_plugins() {
 need git
 need jq
 
+# Plugins whose running is evidence `clerk step` reads. Listed rather than "all of them":
+# the reads — step itself, audit, stack, story, models — run many times a step and say
+# nothing about progress, and the list is what keeps their cost at zero.
+LOGGED_PLUGINS=' guidelines lint fixup learn sidecar '
+
 case "${1:-}" in
-  init)     shift; cmd_init "$@" ;;
+  init)     shift; logged init cmd_init "$@" ;;
   prepare)  shift; cmd_prepare "$@" ;;
-  worktree) shift; cmd_worktree "$@" ;;
-  branch)   shift; cmd_branch "$@" ;;
+  worktree) shift; logged worktree cmd_worktree "$@" ;;
+  branch)   shift; logged branch cmd_branch "$@" ;;
   next)     shift; cmd_next "$@" ;;
   status)   shift; cmd_status "$@" ;;
-  finish|complete) shift; cmd_finish "$@" ;;
-  receipt)  shift; cmd_receipt "$@" ;;
-  verify)   shift; cmd_verify "$@" ;;
-  land)     shift; cmd_land "$@" ;;
+  finish|complete) shift; logged finish cmd_finish "$@" ;;
+  receipt)  shift; logged receipt cmd_receipt "$@" ;;
+  verify)   shift; logged verify cmd_verify "$@" ;;
+  land)     shift; logged land cmd_land "$@" ;;
   gate)    shift; cmd_gate "$@" ;;
   version) printf 'clerk %s\n' "$CLERK_VERSION" ;;
   ''|-h|--help|help) usage ;;
   *)
-    # git's model: an executable named clerk-<name> on PATH becomes `clerk <name>`. exec,
-    # not a call, so the plugin owns stdio and its exit status is clerk's. Built-ins are
-    # matched first, above — a plugin cannot shadow one, so what `clerk next` does never
-    # depends on what happens to be on PATH.
+    # git's model: an executable named clerk-<name> on PATH becomes `clerk <name>`. The
+    # plugin owns stdio either way and its exit status is clerk's; a logged one is called
+    # rather than exec'd so its exit can be recorded on the way out. Built-ins are matched
+    # first, above — a plugin cannot shadow one, so what `clerk next` does never depends on
+    # what happens to be on PATH.
     if command -v "clerk-$1" >/dev/null 2>&1; then
-      sub="clerk-$1"; shift; exec "$sub" "$@"
+      sub="clerk-$1"; name=$1; shift
+      case "$LOGGED_PLUGINS" in
+        *" $name "*)
+          ldir=$(ledger_dir 2>/dev/null) || ldir=
+          "$sub" "$@"; rc=$?
+          ledger_log "$ldir" "$name" "$rc" "$@"
+          exit $rc ;;
+        *) exec "$sub" "$@" ;;
+      esac
     fi
     die "unknown command '$1' (try: clerk help)" ;;
 esac

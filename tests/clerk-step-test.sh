@@ -336,6 +336,57 @@ eq "and the opencode seam when asked" "cd into it" \
    "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step --harness opencode | jq -r '.instructions | split("\n") | .[1]')"
 
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$RI" "$RP" "$RC" "$RL" "$RM" "$MD" "$REP" 2>/dev/null
+printf '\nevents — the commands that produce evidence log their run to the ledger on the way out\n'
+
+RE=$(new_repo)
+run "$RE" receipt --command x --passed >/dev/null
+eq "without a run, nothing is logged and nothing is created" "false" "$([ -d "$RE/.git/clerk/runs" ] && echo true || echo false)"
+run "$RE" step --start ev --request "Events" >/dev/null
+run "$RE" receipt --command "go test ./..." --passed >/dev/null
+EV="$RE/.git/clerk/runs/ev/events.jsonl"
+eq "from the default branch, the one open run is the ledger" "receipt|--command go test ./... --passed|0" \
+   "$(tail -1 "$EV" | jq -r '[.cmd, (.argv | join(" ")), (.exit|tostring)] | join("|")')"
+eq "and the event carries the HEAD it ran at" "$(git -C "$RE" rev-parse HEAD)" "$(tail -1 "$EV" | jq -r .head)"
+run "$RE" lint --rule certainty-unevidenced --json README.md >/dev/null 2>&1
+eq "a logged plugin is recorded too" "lint|0" "$(tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
+eq "an exit other than 0 is recorded as it happened" "land|1" \
+   "$(run "$RE" land >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
+eq "a usage error dies before the log and is not evidence" "land|1" \
+   "$(run "$RE" finish 9 -- nope >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
+eq "reads are not logged" "3" "$(run "$RE" prepare >/dev/null; run "$RE" status >/dev/null 2>&1; run "$RE" step >/dev/null; wc -l < "$EV" | tr -d ' ')"
+WE=$(run "$RE" worktree ev | field .path)
+eq "worktree is logged against the run it isolates" "worktree|ev" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[0]] | join("|")')"
+run "$WE" receipt --command inner --passed >/dev/null
+eq "inside the worktree the branch names the ledger" "receipt|inner" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[1]] | join("|")')"
+run "$RE" step --start ev2 --request "Second" >/dev/null
+run "$RE" receipt --command ambiguous --passed >/dev/null
+eq "two open runs from the default branch: nothing is logged rather than the wrong ledger" "0" \
+   "$(cat "$EV" "$RE/.git/clerk/runs/ev2/events.jsonl" 2>/dev/null | grep -c ambiguous)"
+
+# land leaves a stamp with what it decided, before and after integration.
+RJ=$(new_repo)
+mkdir -p "$RJ/tasks" && printf '{"in_place": true, "integrate": true}\n' > "$RJ/tasks/clerk.json" && commit_all "$RJ" "Config"
+run "$RJ" step --start ij --request "In place, integrated" >/dev/null; run "$RJ" step --done ground --caller ui >/dev/null
+run "$RJ" branch ij >/dev/null
+seed "$RJ" ij; run "$RJ" step --done plan --tasks-file tasks/ij.md >/dev/null; commit_all "$RJ" "Breakdown"
+build_tasks "$RJ"
+run "$RJ" receipt --command true --passed >/dev/null
+run "$RJ" audit round --report "$REP" >/dev/null; run "$RJ" audit accept >/dev/null
+run "$RJ" step --done validate >/dev/null
+printf '## Theory\n\nX.\n\n' | cat - "$RJ/tasks/ij.md" > "$RJ/tasks/ij.tmp" && /bin/mv -f "$RJ/tasks/ij.tmp" "$RJ/tasks/ij.md"; commit_all "$RJ" "Theory"
+run "$RJ" receipt --command true --passed >/dev/null
+run "$RJ" step --done verify-residue >/dev/null
+eq "the in-place run reaches land" "land" "$(run "$RJ" step | field .step)"
+LJ=$(run "$RJ" land --audit-accepted)
+eq "land --integrate in place fast-forwards and deletes the branch" "true|ij" \
+   "$(printf '%s' "$LJ" | jq -r '[(.landed|tostring), .deleted_branch] | join("|")')"
+eq "and the stamp says so, with where integration was decided" "true|true|tasks/clerk.json|true" \
+   "$(jq -r '[(.landed|tostring), (.integrate|tostring), .integrate_source, (.deleted_branch|tostring)] | join("|")' "$RJ/.git/clerk/runs/ij/land.json")"
+eq "the land event is logged to the run although it ended on main" "land|0" \
+   "$(tail -1 "$RJ/.git/clerk/runs/ij/events.jsonl" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
+eq "and step, from main, moves the run to learn" "learn" "$(run "$RJ" step | field .step)"
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$RI" "$RP" "$RC" "$RL" "$RM" "$RE" "$RJ" "$MD" "$REP" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

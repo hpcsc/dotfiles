@@ -1,1 +1,1 @@
-Spawn the `commit` subagent via the `task` tool with the task description and any ticket context carried in the request. The changes are already staged by `clerk complete`; the agent writes the message and creates exactly one commit.
+Spawn the `commit` subagent via the `task` tool with the task description and any ticket context carried in the request. The changes are already staged by `clerk finish`; the agent writes the message and creates exactly one commit.

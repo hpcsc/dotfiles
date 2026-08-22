@@ -30,9 +30,11 @@ The request always outranks the files, in both directions — that is what the m
 Open the run once, then repeat one call until it says `finished`:
 
 ```
-clerk step --start <kebab-slug> --request "<the request, verbatim>"
+clerk step --start <kebab-slug> --request "<the request, verbatim>" --harness opencode
 clerk step
 ```
+
+`--harness opencode` is said once: the run records it, and every later `clerk step` renders its instructions for this harness — `cd` rather than EnterWorktree, the `task` tool rather than the Agent tool. Without it clerk cannot tell the harnesses apart from the shell it is called from.
 
 `clerk step` evaluates a fixed table of steps — ground, isolate, plan, task (once per task), suite, audit, validate, theory, verify, land, learn — against the repository and the run's ledger, and returns the **first step that is not done**, with the method text for it in `instructions`. Read the whole object, do exactly what `instructions` says, then call `clerk step` again. Nothing else: the next step appears when this one's evidence exists, and not before. The order is clerk's; the work inside each step is yours.
 

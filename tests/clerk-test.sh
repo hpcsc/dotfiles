@@ -532,6 +532,21 @@ run "$R4" receipt --command "task test" --passed >/dev/null
 eq "re-running the suite clears it" "true" \
    "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
+# The Theory section and the archive land as tasks/-only commits after the last green.
+printf '\n## Theory\n\nOne abstraction.\n' >> "$R4/tasks/story.md"
+git -C "$R4" add -A && git -C "$R4" commit -qm "Write the theory"
+eq "a commit that touches only the plan files keeps the receipt fresh" "true" \
+   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
+eq "and verify does not call it vacuous either" "0" \
+   "$(run "$R4" verify | jq -r '[.findings[] | select(.check == "vacuous-receipt")] | length')"
+printf 'package p\n' > "$R4/tasks/code.go"
+git -C "$R4" add -A && git -C "$R4" commit -qm "Code under a directory called tasks"
+eq "code under tasks/ still counts as code" "false" \
+   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
+run "$R4" receipt --command "task test" --passed >/dev/null
+eq "prepare reports the code tree the gate compares by" "40" \
+   "$(run "$R4" prepare | jq -r '.code_tree | length')"
+
 printf 'loose\n' > "$R4/loose.txt"
 eq "an untracked file blocks the gate" "false" \
    "$(run "$R4" gate | jq -r '.checks[] | select(.name=="tree-clean") | .ok')"
@@ -652,13 +667,12 @@ git -C "$RCFG" switch -qc feature
 run "$RCFG" finish 1 -- a.go >/dev/null 2>&1
 git -C "$RCFG" commit -qm "Do task 1" -q
 run "$RCFG" receipt --command "go test ./..." --passed >/dev/null
-E=$(run "$RCFG" land --audit-accepted 2>/dev/null)
+E=$(run "$RCFG" land --audit-accepted 2>"$RCFG.err")
 eq "land with nothing typed integrates because the repo says to" "true" \
    "$(printf '%s' "$E" | jq -r '.landed')"
 eq "and names the file that decided it" "tasks/clerk.json" \
    "$(printf '%s' "$E" | jq -r '.integrate_source')"
-eq "and resolving it says nothing on stderr" "0" \
-   "$(run "$RCFG" land --audit-accepted 2>&1 >/dev/null | wc -l | tr -d ' ')"
+eq "and resolving it says nothing on stderr" "0" "$(wc -l < "$RCFG.err" | tr -d ' ')"
 
 # Landing from inside a worktree stops before the merge, and says what has to happen to
 # the worktree first — `git worktree prune` leaves one whose directory still exists, so a

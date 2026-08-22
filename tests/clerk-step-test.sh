@@ -213,6 +213,8 @@ run "$WT" receipt --command "go test ./..." --passed >/dev/null
 eq "a green receipt at HEAD moves to audit" "audit" "$(run "$WT" step | field .step)"
 printf '\nnotes\n' >> "$WT/tasks/w1.md"; commit_all "$WT" "Breakdown notes"
 eq "a commit touching only tasks/ leaves the receipt fresh" "audit" "$(run "$WT" step | field .step)"
+eq "step's code tree is the one clerk prepare computes — one filter, two implementations, held equal" \
+   "$(run "$WT" prepare | field .code_tree)" "$(run "$WT" step | field .code_tree)"
 printf 'c\n' > "$WT/c.go"; commit_all "$WT" "Code after the suite"
 eq "a commit touching code sends the run back to suite" "suite|true" \
    "$(run "$WT" step | jq -r '[.step, (.why_not_done | contains("code changed") | tostring)] | join("|")')"
@@ -275,9 +277,8 @@ eq "committed, the run moves on" "verify" "$(run "$WT" step | field .step)"
 # --------------------------------------------------------------------------------
 printf '\nverify — clerk verify runs; blocks hold, residue is asserted reviewed\n'
 
-eq "a stale receipt is a block verify reports, and step repeats it" "verify|true" \
-   "$(run "$WT" step | jq -r '[.step, (.verify.clean | not | tostring)] | join("|")')"
-run "$WT" receipt --command "go test ./..." --passed >/dev/null
+eq "verify is reached with the receipt still fresh — the Theory commit touched only tasks/" "verify|true" \
+   "$(run "$WT" step | jq -r '[.step, (.verify.clean | tostring)] | join("|")')"
 Y=$(run "$WT" step)
 eq "clean with residue is asserted: not_checked is non-empty" "verify|asserted|true" \
    "$(printf '%s' "$Y" | jq -r '[.step, .kind, ((.verify.not_checked|length) > 0 | tostring)] | join("|")')"

@@ -159,6 +159,22 @@ default_branch() {
 
 tree_is_clean() { [ -z "$(git status --porcelain 2>/dev/null)" ]; }
 
+# The identity of the code at a revision: its tree listing minus the plan files under
+# tasks/ — breakdowns, sidecars, the deliverable manifest, the archive. The gate and
+# verify compare a receipt by this rather than by SHA, because the Theory section and the
+# archive land as tasks/-only commits after the last green, and a SHA comparison called
+# that green stale and sent the run back to the suite for a documentation change. A
+# source package that happens to be called tasks/ keeps counting as code.
+#
+# Must agree byte for byte with clerk-step's code_tree(): the same listing, the same
+# filter, lines joined by newline with none trailing. `prepare` reports it for HEAD so a
+# test can hold the two to that.
+code_tree() {
+  local listing
+  listing=$(git ls-tree -r "$1" 2>/dev/null) || return 1
+  printf '%s' "$(printf '%s\n' "$listing" | grep -vE $'\t''tasks/.*\.(md|json|ya?ml)$')" | shasum -a 1 | cut -d' ' -f1
+}
+
 # --------------------------------------------------------------------------------
 # Language detection — every match, not just the first. A repo with go.mod and
 # package.json is both, and a run that sees only the first tests half of it.
@@ -579,9 +595,12 @@ cmd_prepare() {
   commit_skill=$(commit_skill_for "$wt")
   if tree_is_clean; then clean=true; else clean=false; fi
   if is_ignored "$root" tasks; then tracked=false; else tracked=true; fi
+  local ct
+  ct=$(code_tree HEAD) || ct=""
 
   jq -n \
     --arg version "$CLERK_VERSION" \
+    --arg code_tree "$ct" \
     --arg repo_root "$root" \
     --arg work_tree "$wt" \
     --arg branch "$branch" \
@@ -609,6 +628,7 @@ cmd_prepare() {
       branch: $branch,
       default_branch: (if $default_branch == "" then null else $default_branch end),
       base: (if $base == "" then null else $base end),
+      code_tree: (if $code_tree == "" then null else $code_tree end),
       clean: $clean,
       languages: $languages,
       test_commands: $test_commands,
@@ -1161,7 +1181,7 @@ cmd_gate() {
     rcmd=$(jq -r '.command' "$rec" 2>/dev/null)
     if [ "$rpassed" != "true" ]; then
       passed=false; detail="recorded receipt failed: $rcmd"
-    elif [ "$rsha" != "$head" ]; then
+    elif [ "$rsha" != "$head" ] && [ "$(code_tree "$rsha")" != "$(code_tree "$head")" ]; then
       passed=false
       detail="receipt describes ${rsha:0:8}, HEAD is ${head:0:8} — the tree changed after the suite ran; re-run it"
     else
@@ -1251,7 +1271,7 @@ cmd_verify() {
     rcmd=$(jq -r '.command' "$rec"); rtail=$(jq -r '.output_tail' "$rec")
     if [ "$rpassed" != "true" ]; then
       add_finding vacuous-receipt block "the recorded receipt failed: $rcmd"
-    elif [ "$rsha" != "$head" ]; then
+    elif [ "$rsha" != "$head" ] && [ "$(code_tree "$rsha")" != "$(code_tree "$head")" ]; then
       add_finding vacuous-receipt block \
         "receipt describes ${rsha:0:8} but HEAD is ${head:0:8} — it does not describe this tree"
     elif [ -n "$rtail" ] && printf '%s' "$rtail" | grep -qiE "$VACUITY_RE"; then

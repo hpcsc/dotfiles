@@ -816,6 +816,7 @@ def present(ctx, r):
         out[k] = v
     out.setdefault("stop", False)
     out.setdefault("blocked", False)
+    out["code_tree"] = ctx.head_ct
     out["harness"] = ctx.harness
     out["instructions"] = instructions_for(r["step"], ctx.harness)
     out["facts"] = ctx.prepare

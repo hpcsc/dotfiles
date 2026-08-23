@@ -28,3 +28,8 @@
 
 - When writing or editing code, follow `~/.config/ai/guidelines/comments.md`: default to no comments; add one only when you can name the specific wrong conclusion a reader would draw without it. Read that guideline (it's short) before adding any non-trivial comment.
 
+
+# Document Creation
+
+- When asked to create a document (proposal, notes, report, analysis write-up, diagram source) and no destination is given, create it under `./.scratches/` in the current repo. Group related files in a purpose subfolder (skills use `./.scratches/<skill-name>/<slug>/`).
+- Write elsewhere only when the user names a location, or the document is clearly part of the repo's committed documentation (README, `docs/` pages).

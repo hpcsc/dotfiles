@@ -1,6 +1,6 @@
 ---
 name: profile-run
-description: Profile a finished agentic run — where its wall-clock went, per stage, and what the slowest stage actually spent it on. Answers "why did that take 4 hours" and "why is the implementation step 15-20 minutes" with measurements rather than intuition, then proposes the change that would move the number. Use after an implement-flow / implement-auto / implement run feels slow.
+description: Profile a finished agentic run — where its wall-clock went, per stage, and what the slowest stage actually spent it on. Answers "why did that take 4 hours" and "why is the implementation step 15-20 minutes" with measurements rather than intuition, then proposes the change that would move the number. Use after an implement-flow / implement run feels slow.
 ---
 
 Profile a finished run and say where the time went: $ARGUMENTS

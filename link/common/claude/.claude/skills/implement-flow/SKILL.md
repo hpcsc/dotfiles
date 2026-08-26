@@ -5,7 +5,7 @@ description: Implement a feature fully autonomously in the background as a Workf
 
 Implement a feature autonomously in the background, with **no human gates** — the approval gate is replaced by an independent evidence-closure verifier: $ARGUMENTS
 
-This is the gate-free, background sibling of `implement` / `implement-auto`. `implement-auto` pauses at a plan gate and a per-commit gate, and `implement` pauses at a plan gate when asked to; this one runs the whole story unattended as a single `Workflow` and closes each task on **executed evidence** (raw command output, reproduced findings) rather than a human judge. You review the result afterward as a branch/PR.
+This is the gate-free, background sibling of `implement`. `implement` pauses at a plan gate when asked to; this one runs the whole story unattended as a single `Workflow` and closes each task on **executed evidence** (raw command output, reproduced findings) rather than a human judge. You review the result afterward as a branch/PR.
 
 ---
 
@@ -13,7 +13,7 @@ This is the gate-free, background sibling of `implement` / `implement-auto`. `im
 
 **Use it** when: the story is well-scoped, you're willing to let it run unattended, and you'll review the commits afterward. Best on a dedicated feature branch.
 
-**Do NOT use it** for: changes that are hard to reverse or reach outside the repo (migrations against shared state, deploys, anything destructive), or work where you want to steer at each step. Use `implement` / `implement-auto` (which keep the human gates) for those.
+**Do NOT use it** for: changes that are hard to reverse or reach outside the repo (migrations against shared state, deploys, anything destructive), or work where you want to steer at each step. Use `implement` (which keeps the human gates) for those.
 
 **The axis that decides it: is the *what* already settled?** This skill executes a specification — it proves the code obeys acceptance criteria that a decomposition wrote before any code existed. That is exactly right when the behaviour is known and the work is getting there: a refactor, a migration, a well-understood feature, a bug with a correct answer. It is the wrong tool when the story *is* the thing under investigation, because a mis-framed story produces a flawless-looking run — every receipt real, every criterion evidenced, the wrong thing built correctly. When you are still learning what the right behaviour is, use `implement`: at minutes per feature it is cheap enough to build, look at, and throw away, which is the only thing that actually settles a *what*.
 
@@ -151,7 +151,7 @@ When you review the finished branch, you're auditing receipts, not re-deriving c
 2. Read the returned summary: closed vs. open task counts, the full-suite receipt, `integrated` (whether the branch was landed on the default branch and deleted), and per-task evidence. With `args.integrate` the fully-closed run ends on the default branch — review `git log` there instead of a branch diff; otherwise everything is on the implementation branch as before.
 3. **Read `validation`, always.** Its `questions` are the run's only account of whether the branch delivers what you asked for — every other output tells you the code obeys the criteria it was given. Each question quotes your own words in `asked_for` and names what the branch does instead in `observed`. Answer them; they are addressed to you and nothing else in the run can. An empty list means the pass found no mismatch, not that it was skipped — check `note` if you want to know how far it got.
 4. **Read `premise_doubts`.** Each entry is an implementer or the plan assessor saying, from inside the code, that the task it just built looked misconceived — a criterion measuring a proxy, work already present, behaviour contradicting what the surrounding code is for. None of them blocked anything, by design: they are not evidence and there is no way to execute them. They are the run's only account of whether the plan deserved to be built, so they are worth more per line than anything else it returns.
-5. **Open tasks** (evidence didn't close within `maxResolve`) are the human's queue — their `unresolved` list names the concrete gaps. Resume them with `implement-auto` (gated) or fix manually.
+5. **Open tasks** (evidence didn't close within `maxResolve`) are the human's queue — their `unresolved` list names the concrete gaps. Resume them with `implement` or fix manually.
 6. **Review the learnings file** (`args.learningsPath`) — the reflect step appended any new durable learnings there. If it's the in-tree `tasks/learnings.md`, it's an uncommitted change in your diff: keep, edit, or discard, and commit it if you want teammates to inherit it. If it resolved out-of-tree, it's private steering already in place for the next run — nothing to commit.
 
 ---

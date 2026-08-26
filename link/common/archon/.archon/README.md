@@ -21,8 +21,8 @@ registries, so the workflow never hard-codes a runtime.
 The workflow reuses your existing, **untouched** agents (`decompose-to-tasks`,
 `task-implementer`, `commit`, and the language-specific implementer/refactorer/
 reviewer agents) from `~/.claude/agents` and `~/.config/opencode/agents`. The command
-files above are independent duplicates of the orchestration logic, so the original
-`implement-auto` skill and its agents are never read or changed.
+files above are independent duplicates of the orchestration logic, so the `implement`
+skill and its agents are never read or changed.
 
 ## Run it
 

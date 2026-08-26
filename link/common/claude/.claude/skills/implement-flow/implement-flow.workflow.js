@@ -13,7 +13,7 @@ export const meta = {
 }
 
 // ---------------------------------------------------------------------------
-// Config — mirrors the implement / implement-auto Language Configuration table.
+// Config — mirrors the implement Language Configuration table.
 // ---------------------------------------------------------------------------
 
 const DISCLOSURE =

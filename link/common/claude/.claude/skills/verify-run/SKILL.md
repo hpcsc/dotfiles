@@ -1,6 +1,6 @@
 ---
 name: verify-run
-description: Post-run verification of an autonomous implementation run (implement-flow / implement-auto / implement). Runs the run-verifier agent to catch the failure modes the evidence gate can't see — staged tails, dead code, vacuous receipts, collapsed commits — and, with --fix, remediates them. Use after an unattended run, before trusting its "done".
+description: Post-run verification of an autonomous implementation run (implement-flow / implement). Runs the run-verifier agent to catch the failure modes the evidence gate can't see — staged tails, dead code, vacuous receipts, collapsed commits — and, with --fix, remediates them. Use after an unattended run, before trusting its "done".
 ---
 
 Independently verify what an autonomous run produced — before trusting its result or opening the PR: $ARGUMENTS
@@ -24,5 +24,5 @@ Why this exists: these runs close tasks on **executed evidence**, but "a test ex
 ## Notes
 
 - **General** across Go / JS-TS / Elixir; the agent carries the per-language recipes. A repo-specific cross-boundary invariant (e.g. an event's SNS→SQS filter wiring, unexecutable locally) does **not** belong here — encode it as a hermetic test in that repo so it runs in CI for everyone.
-- **Same agent, three callers.** `implement-flow`'s Finalize spawns `run-verifier` as its integration gate, and `implement` / `implement-auto` can run it post-run — so the `/verify-run` command and the automated gates verify identically.
+- **Same agent, two callers.** `implement-flow`'s Finalize spawns `run-verifier` as its integration gate, and `implement` can run it post-run — so the `/verify-run` command and the automated gates verify identically.
 - **Defense in depth.** The checks overlap the workflow's own receipts on purpose. As the evidence contract absorbs one (worktree-pinned receipts, per-file staging, reachability in the audit), the agent's matching finding goes quiet — the signal it's safe to retire it.

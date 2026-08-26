@@ -2,6 +2,10 @@
 
 This is where review happens.
 
+**First, check the diff can be judged at all.** The audit's scoping pass classifies a change set as having no code when every changed file is documentation, configuration or build plumbing — `.md`/`.txt`, `.json`/`.yaml`/`.toml`/`.lock`, `Makefile`/`Taskfile`, images — and short-circuits the whole run. Apply that test yourself before you launch, because the short-circuit still costs a round trip and still comes back with the ground uncovered. One run retuned the same five lines in nineteen `serverless.yml` files, launched twice, and got two empty reports it was always going to get.
+
+When the diff is that shape, do not launch. Verify it by hand — that the change is uniform where it claims to be, that every file still parses, that the sets you meant to leave alone are absent from the diff — say in your summary what you checked, and record the decision with `clerk audit accept --early "<why>"`. A config change is not exempt from review; it is exempt from *this* review, and saying which is the difference between a gap closed and a gap ignored.
+
 {{seam:audit}}
 
 **Nothing else may touch this tree while the audit is in flight.** Its verifiers prove claims by mutating the working tree — reverting a line to check a test still fails, writing a probe file, deleting it again. That is the substitution test doing its job, and it is why the test-integrity lens is worth having. It also means any command you run against the same tree concurrently is reading a tree mid-experiment: a suite that fails because a probe file vanished under it has told you nothing, and reporting that run either way would be false. Start the audit *after* step 1's suite has finished and its receipt is written, then wait.

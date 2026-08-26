@@ -97,6 +97,7 @@ const LENSES = Array.isArray(ARGS?.lenses) && ARGS.lenses.length
   ? [...new Set(ARGS.lenses.flatMap((k) => String(k).split('+').map((s) => s.trim()).filter(Boolean)))]
   : null
 const RECHECK = Array.isArray(ARGS?.recheck) ? ARGS.recheck : []
+const PRIOR_SCOPE = (typeof ARGS?.priorScope === 'object' && ARGS.priorScope) || null
 const DEPTH = ARGS?.depth ?? 'standard'
 // `deep` buys redundancy where a wrong verdict costs something, not everywhere. Applied
 // to every claim it triples the largest line item in the audit — verification is already
@@ -288,8 +289,22 @@ const SYNTH_SCHEMA = {
 // Prompts
 // ---------------------------------------------------------------------------
 
+// Rounds two and three re-derive a classification that has not changed: same repository,
+// same languages, the same answer to whether the diff touches concurrency. What HAS moved
+// is the range — folding the fixes rewrites every SHA from the target commit on — so the
+// previous scope is handed over to be confirmed against the current diff, never adopted.
+// Reusing it outright would audit the range before the fixes landed.
+const priorScopeBlock = () =>
+  !PRIOR_SCOPE
+    ? ''
+    : `An earlier round of this same audit classified this work as below. The range has moved since — the fixes were folded into the commits that carried the defects, which rewrites their SHAs — so resolve \`base\` and \`head\` and the file list yourself, as usual. Use this only to shorten the judgment calls: confirm each classification against the diff you resolve and correct any that no longer holds, saying in \`summary\` which you changed.\n` +
+      `  languages: ${(PRIOR_SCOPE.languages ?? []).join(', ') || 'none'}\n` +
+      `  concurrency signal: ${PRIOR_SCOPE.signals?.concurrency === true}\n` +
+      `  performance signal: ${PRIOR_SCOPE.signals?.performance === true}\n\n`
+
 const scopePrompt = () =>
   PROMPTS['scope-open'] + '\n\n' +
+  priorScopeBlock() +
   (TARGET === 'branch'
     ? `Target: the current branch's own work. Resolve the base with \`git merge-base HEAD main\` (fall back to \`master\`, then to the default branch \`git symbolic-ref --short refs/remotes/origin/HEAD\` reports)${BASE_REF ? `, unless \`${BASE_REF}\` resolves — prefer that` : ''}, and the head with \`git rev-parse HEAD\`.\n`
     : TARGET === 'staged'

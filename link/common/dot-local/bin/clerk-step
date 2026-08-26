@@ -1077,8 +1077,50 @@ def report_summary(path):
         v = rep.get(k)
         return len(v) if isinstance(v, list) else None
 
+    def texts(k):
+        v = rep.get(k)
+        return [str(x) for x in v] if isinstance(v, list) else []
+
     return {"findings": count("findings"), "refuted": count("refuted"), "coverage_gaps": count("coverage_gaps"),
-            "lenses": rep.get("lenses"), "lenses_not_run": rep.get("lenses_not_run")}
+            "lenses": rep.get("lenses"), "lenses_not_run": rep.get("lenses_not_run"),
+            # Kept, not just counted. A gap that comes back is the audit saying it will
+            # never cover that ground however many rounds run, and a count cannot say it.
+            "gaps_text": texts("coverage_gaps")}
+
+
+GAP_NOISE = {
+    "a", "an", "and", "any", "are", "as", "at", "be", "been", "but", "by", "can", "could",
+    "did", "do", "does", "for", "from", "had", "has", "have", "in", "is", "it", "its",
+    "no", "not", "of", "on", "or", "so", "that", "the", "their", "them", "there", "these",
+    "they", "this", "those", "to", "was", "were", "which", "with", "would",
+}
+
+
+def gap_key(text):
+    """A gap's content words, for recognising one an earlier round already reported.
+
+    Gaps are prose an agent writes fresh every round, so the same uncovered ground comes
+    back reworded and exact matching sees two unrelated gaps."""
+    return frozenset(w for w in re.findall(r"[a-z0-9_]+", str(text).lower()) if w not in GAP_NOISE)
+
+
+def repeated_gaps(current, earlier):
+    """Gaps in `current` that one of `earlier` already covers.
+
+    Measured by containment rather than similarity: one round names the same uncovered
+    ground in half the words of another, and set similarity reads a shorter retelling as
+    a different gap — which is the case this exists to catch."""
+    out = []
+    for gap in current:
+        key = gap_key(gap)
+        if len(key) < 4:
+            continue
+        for prior in earlier:
+            smaller = min(len(key), len(prior))
+            if smaller and len(key & prior) / smaller >= 0.6:
+                out.append(gap)
+                break
+    return out
 
 
 def audit_status(ctx, aud, o):
@@ -1109,11 +1151,18 @@ def audit_round(ctx, aud, o):
     if planned is not None and len(aud["rounds"]) >= planned:
         emit({"recorded": False, "reason": f"{planned} round(s) were planned and {len(aud['rounds'])} recorded — say why another is needed with --replan <n>"}, 3)
     summary = report_summary(o["--report"])
+    gaps = summary["gaps_text"]
+    again = repeated_gaps(gaps, [gap_key(g) for r in aud["rounds"] for g in r.get("gaps_text", [])])
     entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
              "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary}
     aud["rounds"].append(entry)
     ctx.run.write("audit.json", aud)
-    return {"recorded": True, "round": entry, "rounds_planned": planned}
+    out = {"recorded": True, "round": entry, "rounds_planned": planned}
+    # Surfaced on the round that repeats it, not left for a reader to notice across three
+    # JSON blobs. This is the one signal that says a further round will not reach it.
+    if again:
+        out["gaps_repeated"] = again
+    return out
 
 
 def audit_accept(ctx, aud, o):

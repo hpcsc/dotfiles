@@ -489,6 +489,33 @@ eq "a green receipt whose output shows nothing ran is vacuous" "block" \
    "$(run "$R7" verify | jq -r '.findings[] | select(.check=="vacuous-receipt") | .severity')"
 rm -f "$R7/out.txt"
 
+# A package that built and ran with none of its tests matching — every test in it behind
+# a build tag this suite did not ask for. That is a fact about one package, and one of
+# them beside a wall of `ok` lines used to block the whole receipt.
+printf 'ok  \tt/a\t0.2s\nok  \tt/b\t[no tests to run]\nok  \tt/c\t0.1s\n' > "$R7/out.txt"
+run "$R7" receipt --command "go test ./..." --passed --output-file "$R7/out.txt" >/dev/null
+eq "a package with no tests to run beside packages that ran is not vacuous" "0" \
+   "$(run "$R7" verify | jq -r '[.findings[] | select(.check=="vacuous-receipt")] | length')"
+
+# ...but a suite where nothing ran at all still is.
+printf 'ok  \tt/b\t[no tests to run]\n' > "$R7/out.txt"
+run "$R7" receipt --command "go test ./..." --passed --output-file "$R7/out.txt" >/dev/null
+eq "and one where no package ran anything still is" "block" \
+   "$(run "$R7" verify | jq -r '.findings[] | select(.check=="vacuous-receipt") | .severity')"
+rm -f "$R7/out.txt"
+run "$R7" receipt --command "go test ./..." --passed >/dev/null
+
+# A type is reached through values, fields, constructors and wrapper types, none of which
+# spell it with word boundaries, so a textual check cannot show it is unreferenced. It is
+# reported and never gated on; a function with no caller still blocks.
+printf 'package x\n\ntype Orphaned struct{}\n' > "$R7/t.go"
+git -C "$R7" add -A && git -C "$R7" commit -qm "Add a type"
+V=$(run "$R7" verify --all-closed)
+eq "an unreferenced type warns rather than blocking" "warn" \
+   "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | select(.detail | test("Orphaned")) | .severity')"
+eq "while an unreferenced function still blocks" "block" \
+   "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | select(.detail | test("^Orphan ")) | .severity')"
+
 printf 'staged\n' > "$R7/tail.go"; git -C "$R7" add "$R7/tail.go"
 eq "staged-but-uncommitted work blocks" "block" \
    "$(run "$R7" verify | jq -r '.findings[] | select(.check=="staged-tail") | .severity')"

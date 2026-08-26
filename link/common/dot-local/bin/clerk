@@ -1400,9 +1400,25 @@ cmd_verify() {
     add_finding vacuous-receipt block "$(printf '%s' "$rs" | jq -r '.why')"
   else
     rtail=$(jq -r '.output_tail // ""' "$rec")
-    if [ -n "$rtail" ] && printf '%s' "$rtail" | grep -qiE "$VACUITY_RE"; then
-      add_finding vacuous-receipt block \
-        "the receipt's output shows nothing ran: $(printf '%s' "$rtail" | grep -iE "$VACUITY_RE" | head -1)"
+    local vac=
+    if [ -n "$rtail" ]; then
+      # `go test ./...` prints `?  <pkg>  [no test files]` for every package without tests,
+      # beside the `ok` lines of the packages that have them. That line is a fact about one
+      # package, not a suite that ran nothing, so it only counts when no package ran.
+      # `ok <pkg> [no tests to run]` is the same shape: the package built and ran, and
+      # none of its tests matched — every test in it sits behind a build tag the suite
+      # did not ask for. One of those beside 613 `ok` lines blocked the whole receipt.
+      vac=$(printf '%s' "$rtail" | grep -iE "$VACUITY_RE" \
+        | grep -viE 'no test files|^ok[[:space:]].*no tests to run' | head -1)
+      # "did any package actually run" cannot just look for an `ok` line: a package with
+      # no tests to run prints one too, so a suite made entirely of those would answer yes
+      # and exempt itself. Only an `ok` line that is not one of those counts as a run.
+      if [ -z "$vac" ] && ! printf '%s' "$rtail" | grep -E '^ok[[:space:]]' | grep -qvE 'no tests to run'; then
+        vac=$(printf '%s' "$rtail" | grep -iE 'no test files|no tests to run' | head -1)
+      fi
+    fi
+    if [ -n "$vac" ]; then
+      add_finding vacuous-receipt block "the receipt's output shows nothing ran: $vac"
     elif [ -z "$rtail" ]; then
       add_gap "vacuous-receipt — the receipt carries no output tail, so it could not be checked for vacuity; record it with --output-file"
     fi
@@ -1419,9 +1435,20 @@ cmd_verify() {
     # function blocked the gate.
     gofiles=$(git diff --name-only "$base"..HEAD -- '*.go' ':!*_test.go' 2>/dev/null)
     if [ -n "$gofiles" ]; then
-      for sym in $(git diff "$base"..HEAD -- '*.go' ':!*_test.go' 2>/dev/null \
-          | sed -n 's/^+func \([A-Z][A-Za-z0-9_]*\)(.*/\1/p; s/^+func ([^)]*) \([A-Z][A-Za-z0-9_]*\)(.*/\1/p; s/^+type \([A-Z][A-Za-z0-9_]*\) .*/\1/p' \
+      local kind decl
+      for decl in $(git diff "$base"..HEAD -- '*.go' ':!*_test.go' 2>/dev/null \
+          | sed -n 's/^+func \([A-Z][A-Za-z0-9_]*\)(.*/func:\1/p; s/^+func ([^)]*) \([A-Z][A-Za-z0-9_]*\)(.*/func:\1/p; s/^+type \([A-Z][A-Za-z0-9_]*\) .*/type:\1/p' \
           | sort -u); do
+        kind=${decl%%:*}
+        sym=${decl#*:}
+        # A method that satisfies a standard-library interface is called by the runtime or
+        # by a package that never spells its name — encoding/json for MarshalJSON, fmt for
+        # String and Error — so zero textual matches proves nothing about it.
+        case "$sym" in
+          MarshalJSON|UnmarshalJSON|MarshalText|UnmarshalText|MarshalYAML|UnmarshalYAML|MarshalBinary|UnmarshalBinary|\
+          String|Error|GoString|Format|Unwrap|Is|As|Scan|Value|Close|Read|Write|ReadFrom|WriteTo|Seek|ServeHTTP|Len|Less|Swap)
+            continue ;;
+        esac
         # The declaration, not merely the first file that mentions it. `git grep -l -w`
         # returns paths in tree order, so it names a caller far more often than the
         # definition — every one of emod's fixture symbols resolved to a consumer under
@@ -1441,8 +1468,16 @@ cmd_verify() {
             hits=$(git grep -l -w -- "$sym" HEAD -- '*.go' ':!*_test.go' 2>/dev/null | wc -l | tr -d ' ') ;;
         esac
         if [ "${hits:-0}" -le 1 ]; then
-          if [ "$all_closed" = true ]; then
+          # A function with no caller is dead, and naming it is the whole point. A type
+          # is reached through values, fields, constructors and wrapper types, none of
+          # which spell it with word boundaries: a closed set read only via ParseX and
+          # stored in an exported map type, or a struct named only as another struct's
+          # field, both textually orphaned and both breaking the build if deleted. So a
+          # type is reported and never gates on it — the check cannot see far enough.
+          if [ "$all_closed" = true ] && [ "$kind" = func ]; then
             add_finding dead-code block "$sym is defined but referenced nowhere outside its own file and the tests (${deffile#*:})"
+          elif [ "$kind" = type ]; then
+            add_finding dead-code warn "type $sym is referenced nowhere outside its own file and the tests — check the constructors, wrapper types and struct fields that reach it before removing it (${deffile#*:})"
           else
             add_finding dead-code warn "$sym has no non-test caller yet — a later task may still wire it (${deffile#*:})"
           fi

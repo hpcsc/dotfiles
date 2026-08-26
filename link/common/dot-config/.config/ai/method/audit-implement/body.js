@@ -98,7 +98,12 @@ const LENSES = Array.isArray(ARGS?.lenses) && ARGS.lenses.length
   : null
 const RECHECK = Array.isArray(ARGS?.recheck) ? ARGS.recheck : []
 const DEPTH = ARGS?.depth ?? 'standard'
-const VERIFIERS = DEPTH === 'deep' ? 3 : 1
+// `deep` buys redundancy where a wrong verdict costs something, not everywhere. Applied
+// to every claim it triples the largest line item in the audit — verification is already
+// more of a run than all the lenses feeding it — to re-establish comment and naming
+// findings nobody would act on urgently. Low-severity claims get one verifier at any
+// depth; the severity here is the lens's, which is all that is known before verifying.
+const verifiersFor = (f) => (DEPTH === 'deep' && (f.severity === 'high' || f.severity === 'medium') ? 3 : 1)
 const TEST_CMDS = (typeof ARGS === 'object' && ARGS?.testCommands) || {}
 const FULL_TEST_CMD = TEST_CMDS.default ?? ARGS?.testCommand ?? '(detect the project test command: Makefile, package.json scripts, or framework convention)'
 const testCmdFor = (language) => {
@@ -617,8 +622,8 @@ phase('Verify')
 // line. `deep` puts several independent verifiers on each claim and takes majority.
 const verdicts = await parallel(
   candidates.map((f) => () =>
-    parallel(Array.from({ length: VERIFIERS }, (_, i) => () =>
-      agent(verifyPrompt(scope, f, i, VERIFIERS), { label: `verify:${f.id}${VERIFIERS > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
+    parallel(Array.from({ length: verifiersFor(f) }, (_, i) => () =>
+      agent(verifyPrompt(scope, f, i, verifiersFor(f)), { label: `verify:${f.id}${verifiersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
     )).then((vs) => {
       const votes = vs.filter(Boolean)
       if (!votes.length) return { finding: f, survived: false, basis: 'no verifier returned a result' }

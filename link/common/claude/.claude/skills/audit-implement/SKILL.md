@@ -67,7 +67,7 @@ Workflow({
 
   **Only narrow when the fixes could not have changed behaviour** — a comment removed, a redundant test folded, a name changed. A fix that touches a code path can break something a *different* lens owns, and the lens that raised the original finding is not watching for it. Same rule `implement-flow` applies when it narrows its per-task review panel.
 - `args.recheck` — `[{ id, claim, note }]` for the findings you just fixed. The lens is told what was claimed and checks whether it landed, re-raising with the same `id` if not. It keeps its full remit over the diff: a fix can introduce a fresh defect, and a lens restricted to old ids would be blind to exactly that.
-- `args.depth` — `"standard"` (one verifier per finding, the default) or `"deep"` (three independent verifiers per finding, majority vote). Use `deep` before something irreversible.
+- `args.depth` — `"standard"` (one verifier per finding, the default) or `"deep"` (three independent verifiers, majority vote, on the `high` and `medium` findings only). Use `deep` before something irreversible. It does not deepen `low` findings at any setting: verification is the single largest cost in an audit, and low-severity claims are most of what a panel raises.
 - `args.testCommands` / `args.testCommand` — as in Preconditions §3.
 
 Runs in the background; you are notified on completion. Do not poll it.

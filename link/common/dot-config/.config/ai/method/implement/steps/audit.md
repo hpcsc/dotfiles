@@ -56,7 +56,13 @@ This is also what keeps `clerk verify` meaningful rather than noisy. Its commit-
 
 **A fix that changes a code path needs the whole panel**, because the lens that raised the original finding is not watching for what the fix broke. Expect this to be the common case rather than the exception: most rounds you will pay for the full fan-out, and a round is roughly as expensive as the one before it.
 
-**So say how many rounds you are running before you start the first, and stop there.** Nothing in a round's output tells you whether another would find more, and the rounds do not converge on their own. One run went 7 → 7 → 5 findings over three full rounds, never re-raised a single finding, and turned up fresh medium-severity ones every time — the third round is where it found that the story's headline criterion was unguarded. Two rounds is a reasonable default; three is defensible for behaviour that is hard to see, such as anything rendered. What is not defensible is stopping because the last round felt quiet. Name the last round as the last one and say why, so the user is reading a decision rather than a coincidence — and say what the next round would most likely have looked at.
+**So plan two rounds, and earn the third.** Nothing in a round's output tells you whether another would find more, and the rounds do not converge on their own — which cuts both ways, and the count is the largest lever you have over what a run costs.
+
+Across nineteen measured rounds, rounds one and two returned every high-severity defect found and twenty of the thirty-one medium ones. Rounds three onward returned **forty-two more findings and not one of them high**: eleven medium and thirty-one low, for roughly **37% of the whole audit budget**. Two runs kept going to four and five rounds and bought low-severity quality findings at full price.
+
+So: `clerk audit plan --rounds 2`. Run a third only when round two returned a finding of **medium severity or higher** — that is the signal that the branch still has substance in it, and the absence of it is the signal that further rounds will return polish. Behaviour that is hard to see, such as anything rendered, is the one standing exception: plan three there from the start and say why.
+
+Two failures sit either side of that gate, and neither is defensible: stopping because the last round felt quiet, and continuing because the budget allowed it. Name the last round as the last one and say what decided it — the severity gate, or a judgment you are making against it — so the user is reading a decision rather than a coincidence, and say what the next round would most likely have looked at.
 
 If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix receipt is the evidence that matters, and `clerk audit accept --early "<why>"` records that decision.
 

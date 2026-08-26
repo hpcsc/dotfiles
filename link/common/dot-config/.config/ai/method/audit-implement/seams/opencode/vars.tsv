@@ -1,0 +1,4 @@
+reading	the caller-patterns guideline and this language's testing-patterns guideline
+disclosure	Load these with one `clerk guidelines` call rather than reading the files: it cuts each to the sections that matter and prints them as text. `--language <L>` for a language bundle, `--file` and `--section FILE:HEADING` for anything named outright, `--only` to get just what you named.
+comments_guide	`~/.config/ai/guidelines/comments.md`
+test_command	<the test command you resolved in Phase 0>

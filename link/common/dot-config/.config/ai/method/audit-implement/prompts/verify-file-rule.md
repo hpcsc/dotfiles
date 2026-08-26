@@ -1,0 +1,1 @@
+Open a file with `Read`, whole, and do not reopen it — tool calls here run one at a time, so a file taken in `sed -n` slices costs a model round-trip per slice. Editing a file to mutate it and restoring it afterwards is a different thing and stays.

@@ -1,0 +1,1 @@
+**You orchestrate this yourself.** There is no workflow engine here: you resolve the scope with your own shell, spawn the review agents, spawn the verifiers, and assemble the report. Only the lenses and the verifiers are subagents, because only they need to be *independent* of the person who wrote the code.

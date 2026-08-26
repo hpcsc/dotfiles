@@ -5,14 +5,19 @@ vars:
 
 tasks:
   gen:skills:
-    desc: Regenerate per-tool SKILL.md files from the shared method body and seams
+    desc: Regenerate per-tool SKILL.md files, and audit-implement's workflow script, from the shared method bodies and seams
     cmds:
       - "{{.SCRIPT_DIR}}/gen-skills.sh"
+      # audit-implement's prompts are shared with its opencode skill but reach the Claude
+      # side as a Workflow script, which cannot read a file at run time. Same sources, a
+      # generator that can splice them into JavaScript.
+      - "{{.SCRIPT_DIR}}/gen-workflow.py"
 
   gen:skills:check:
-    desc: Fail if a generated SKILL.md is out of date with its source
+    desc: Fail if a generated SKILL.md or workflow script is out of date with its source
     cmds:
       - "{{.SCRIPT_DIR}}/gen-skills.sh --check"
+      - "{{.SCRIPT_DIR}}/gen-workflow.py --check"
 
   gen:agent-models:
     desc: Stamp each agent's model into both trees from the registry

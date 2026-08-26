@@ -1,0 +1,1 @@
+Your lens is CONCURRENCY. The scoping pass found this diff actually touches concurrent code, so there is something here to judge: unsynchronised shared state, a non-atomic read-modify-write, a lock ordering that can deadlock, a goroutine/task that outlives its context, an operation that is not idempotent under retry or redelivery.

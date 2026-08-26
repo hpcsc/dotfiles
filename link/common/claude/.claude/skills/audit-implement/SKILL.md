@@ -7,6 +7,11 @@ Audit finished work: $ARGUMENTS
 
 This is the **review half** of construct-directly-then-audit. You implement, committing as you go; this workflow then audits what you built, from the outside, with lenses that never saw you write it.
 
+<!-- GENERATED from ~/.config/ai/method/audit-implement/. Edit the body, a seam or a file
+     under prompts/, then run `task gen:skills` — edits made here are overwritten. The
+     prompts/ fragments are shared with the other harness, so a change to one of them
+     changes both. -->
+
 ---
 
 ## Why this exists, and when it beats `implement-flow`
@@ -77,7 +82,7 @@ Runs in the background; you are notified on completion. Do not poll it.
 
    A lens that dies to a transport error is retried, and if it still returns nothing it is named in `coverage_gaps` — a panel that quietly thins out otherwise reports as full coverage. `lenses` lists what ran and `lenses_attempted` what was launched; when they differ, the audit is narrower than it looks. If *every* lens fails the run returns an `error` rather than an empty finding list, because "no lens raised a finding" and "no lens ran" produce the same empty list and mean opposite things.
    - **Semantic** (per language) — correctness: wrong conditions, unhandled errors, boundaries, broken contracts for existing callers, and code that works but does something other than the brief claims.
-   - **Guidelines** (per language) — the project's own conventions as its guideline files define them, plus comment usage per `comments.md`. A convention it cannot point at is a preference, not a finding.
+   - **Guidelines** (per language) — the project's own conventions as its guideline files define them, plus comment usage per `comments.md`. A convention it cannot point at is a preference, not a finding, and **correctness is not its remit**: over 19 measured rounds every runtime defect it raised had already been raised by semantic or tests, so each one bought a second verifier and nothing else. It now reports those in `note` instead. Only Go, JS/TS and Elixir have a conventions reviewer — a diff of SQL, CUE, shell or Terraform gets none, and says so in `lenses_not_run` rather than passing silently.
    - **Test integrity** (when any test file changed) — the highest-yield lens, because a passing suite says nothing about whether it *could* fail. It hunts source-scanning guards that inverted when code moved, absence assertions that pass with the feature deleted, tautologies and vacuous passthroughs (substitution test), redundant tests, and behaviour no test would catch the loss of.
    - **Concurrency / performance** — only when the scoping pass found a real signal. Both are otherwise skipped and *reported as skipped*, because a specialist lens with nothing to judge returns nothing, every time.
 
@@ -85,7 +90,7 @@ Runs in the background; you are notified on completion. Do not poll it.
 
 4. **Verify** — every candidate finding goes to an independent agent instructed to **refute** it. A **runtime** claim must be reproduced by execution — a failing test, a `-race` run, a benchmark, a direct invocation — and the raw output is the evidence; unreproduced means dropped. A **quality** claim is not dischargeable by execution, so it is checked differently rather than discarded: the verifier must find the rule (guideline, CLAUDE.md, or consistent surrounding practice) and cite the specific line. A vacuity claim about a test *is* checkable — break what the test names and see whether it still passes.
 
-5. **Report** — survivors are ranked and returned with their evidence and a `confidence` of `confirmed` (reproduced, or rule cited at a line) or `plausible`. Refuted candidates come back separately with *why* they were dropped, so you can disagree. And `coverage_gaps` names what the audit could **not** judge — a lens that did not run, a changed file no language claimed, a claim nobody could test.
+5. **Report** — survivors are **re-graded against one severity rubric** and then ranked, with their evidence and a `confidence` of `confirmed` (reproduced, or rule cited at a line) or `plausible`. The re-grade is not cosmetic: each lens grades alone and the scales drift apart, so `low` has meant both "a doc comment does not open with the symbol name" and "a live DynamoDB read per mailbox on every request". This is the only stage that sees the whole panel at once, so it is the only place the grades can be made comparable — severity is graded on what the defect costs, not on how central it is to the lens that found it. Refuted candidates come back separately with *why* they were dropped, so you can disagree. And `coverage_gaps` names what the audit could **not** judge — a lens that did not run, a changed file no language claimed, a claim nobody could test.
 
 ---
 

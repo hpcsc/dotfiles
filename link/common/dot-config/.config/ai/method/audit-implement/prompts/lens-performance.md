@@ -1,0 +1,1 @@
+Your lens is PERFORMANCE. The scoping pass found this diff actually touches I/O, queries, unbounded loops or hot-path allocation. Judge only what you can point at concretely — an N+1 query, an unbounded read, an allocation inside a loop, a missing timeout or limit. Do not raise speculative micro-optimisation; if you can measure it, measure it.

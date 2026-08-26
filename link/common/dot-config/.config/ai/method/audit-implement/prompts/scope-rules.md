@@ -1,0 +1,11 @@
+List every changed path. Then decide, FROM THE DIFF ITSELF rather than from the file names:
+- `languages`: the canonical language of the changed CODE files — one of "Go", "JavaScript/TypeScript", "Elixir", "Generic" — ordered by how much of the diff each accounts for.
+- `by_language`: those same files, grouped under the language each is actually WRITTEN IN. This decides which lens reviews which file, so put every file where a reader of that language would expect it: a `.go` file is Go even when it implements a JavaScript-facing feature, and "Generic" means the file is written in something with no lens of its own (CUE, a grammar corpus, SQL, a shell script) — NOT "everything left over" and NOT a second pass over another language's files. Leave a file out entirely when no code lens should own it, such as prose documentation or a lockfile.
+- `has_code`: false only when EVERY changed file is documentation, config, or build plumbing (.md/.txt/.rst, .json/.yaml/.toml/.ini/.lock, Makefile/Taskfile/*.mk, images). An extension-less file that might carry logic counts as code.
+- `signals.concurrency`: true ONLY if the diff itself adds or changes concurrent code — goroutines, threads, async/await over shared state, channels, locks, transactions, shared mutable state. A file that merely sits in a concurrent codebase is not a signal.
+- `signals.performance`: true ONLY if the diff itself adds or changes I/O, database queries, loops over unbounded input, allocation in a hot path, or if a benchmark exists that could measure the change. Absent that, false — a performance lens with nothing to measure returns nothing, every time.
+Be strict with both signals. Each true costs a full specialist pass; each false one that should have been true is a gap you will report at the end instead.
+
+Then run `clerk lint --json` over the same range — `--staged` when the target is the staged changes, otherwise `--base <the base you resolved>`. It exits 1 when it finds anything, which is a result and not a failure; copy its findings into `mechanical` verbatim and set `mechanical_ran` true. Set it false ONLY when the command does not exist: a lens stands down on the strength of that flag, so a false true means nobody looks.
+
+Finally write `summary`: two sentences on what this change set actually does, which every lens reads before it starts.

@@ -1,0 +1,3 @@
+This is a QUALITY claim — there is nothing to execute, so it stands or falls on whether the rule it invokes actually exists and is actually violated here. Do NOT refute it merely for being unexecutable.
+Find the rule — in a guideline file, in CLAUDE.md, or in the consistent practice of the surrounding code — and check the specific line. Set `refuted` false and cite the rule and line in `basis` when the violation is real; set it true when the rule does not exist, does not apply here, or the code does not actually violate it.
+A vacuity claim about a test IS checkable without running the suite: break what the test names and see whether it still passes. If the claim is that a test cannot fail, prove or disprove it that way and put the result in `basis`.

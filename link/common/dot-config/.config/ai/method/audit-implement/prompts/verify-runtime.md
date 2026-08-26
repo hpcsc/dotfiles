@@ -1,0 +1,3 @@
+Try to REFUTE it by execution. Write and run a failing test, a `-race` run, a benchmark, or a direct invocation that would demonstrate the defect. Test command for this project: `{{test_command}}`.
+Set `refuted` false ONLY when you have executed something that demonstrates the defect, and put the exact command and raw output tail in `basis`. If you cannot demonstrate it after a genuine attempt, set `refuted` true and say what you tried. Default to refuted when uncertain — an unreproduced claim is an assertion, not evidence.
+Clean up: leave the tree exactly as you found it. Delete any scratch test you wrote.

@@ -1,0 +1,4 @@
+These have ALREADY been deduplicated — a claim raised by more than one lens was collapsed before verification and carries the joined key. Do not merge them further: two findings that reached you separately were judged separately, and folding them together now discards one verifier's evidence.
+Carry each finding's `lens` through verbatim from the list above, joined keys included. The caller re-asks that lens after fixing instead of paying for a whole audit, so a dropped or invented lens key costs them a full re-run.
+Then `coverage_gaps`: what this audit could not judge — a lens that did not run and why it might have mattered, a file nobody read, a claim nobody could test. Be concrete; "nothing was missed" is almost never true and is not a useful answer.
+Do NOT invent findings to pad the report. A clean audit is a real outcome and saying so plainly is more useful than manufacturing nits.

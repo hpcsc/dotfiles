@@ -1,1 +1,2 @@
 Produce `findings`: every survivor, ranked most severe first, each with `confidence` "confirmed" when execution reproduced it or a quality rule was cited at a specific line, "plausible" otherwise.
+A survivor marked NOT EXECUTED reached you because nobody could run the check, not because anyone established it: give it `confidence: "plausible"` and carry the reason into its evidence, so the caller can see the difference between a defect proved and a defect nobody could test.

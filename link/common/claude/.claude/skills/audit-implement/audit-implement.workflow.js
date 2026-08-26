@@ -42,7 +42,7 @@ const PROMPTS = {
   "mechanical": "ALREADY CHECKED MECHANICALLY. `clerk lint` ran over this whole diff before you started, so do not re-report what it covers:\n- Comments naming code by plan position or citing a ticket id \u2014 covered completely. Do not hunt for them.\n- Sibling scenario tests that belong under one umbrella, and a method living apart from the file declaring its type \u2014 covered only for the shapes it can see. It matches lines rather than declarations, so a type inside a grouped `type ( ... )` block or a generic `type Box[T any]` is invisible to it. Report one of those yourself; it will not have been.",
   "regrade": "RE-GRADE SEVERITY ACROSS THE WHOLE SET before you rank. Each lens graded its own findings without seeing the others, so the scales do not line up \u2014 a performance lens calling a per-request live-service read `low` and a guidelines lens calling a doc-comment convention `low` cannot both be right. Apply one rubric: high = a wrong or lost outcome for a user or caller in normal operation, or a security or data-integrity failure; medium = a real but bounded or conditional cost \u2014 degraded behaviour under load, a wrong result on an edge path, or a test that cannot fail for the behaviour it names; low = no runtime symptom and no operational cost. Where you change a grade, say so in that finding's evidence with one clause naming the cost you graded on. Do not touch `nature`, `lens` or the claim itself.",
   "report-open": "Assemble the final audit report from verified material only.",
-  "report-rules": "Produce `findings`: every survivor, ranked most severe first, each with `confidence` \"confirmed\" when execution reproduced it or a quality rule was cited at a specific line, \"plausible\" otherwise.",
+  "report-rules": "Produce `findings`: every survivor, ranked most severe first, each with `confidence` \"confirmed\" when execution reproduced it or a quality rule was cited at a specific line, \"plausible\" otherwise.\nA survivor marked NOT EXECUTED reached you because nobody could run the check, not because anyone established it: give it `confidence: \"plausible\"` and carry the reason into its evidence, so the caller can see the difference between a defect proved and a defect nobody could test.",
   "report-tail": "These have ALREADY been deduplicated \u2014 a claim raised by more than one lens was collapsed before verification and carries the joined key. Do not merge them further: two findings that reached you separately were judged separately, and folding them together now discards one verifier's evidence.\nCarry each finding's `lens` through verbatim from the list above, joined keys included. The caller re-asks that lens after fixing instead of paying for a whole audit, so a dropped or invented lens key costs them a full re-run.\nThen `coverage_gaps`: what this audit could not judge \u2014 a lens that did not run and why it might have mattered, a file nobody read, a claim nobody could test. Be concrete; \"nothing was missed\" is almost never true and is not a useful answer.\nDo NOT invent findings to pad the report. A clean audit is a real outcome and saying so plainly is more useful than manufacturing nits.",
   "review-open": "You are auditing finished, committed work \u2014 not a work-in-progress. Nobody is waiting to defend it, so judge it as it stands.",
   "review-rules": "Read the diff AND the whole post-image of every changed file in your remit, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.\n\nOpen a file with `Read`, whole, and do not open it again \u2014 it stays in your context. A file taken in eight `sed -n` slices costs eight model round-trips and yields what one `Read` yields; tool calls here are strictly sequential, so every extra one is time no parallelism gets back. Use `rg` to locate a file or symbol you cannot name, not to re-read one you already opened.\n\nDo NOT run the full test suite \u2014 it already passes, that is why this work is finished. Run a scoped command only to demonstrate a specific finding.",
@@ -51,7 +51,7 @@ const PROMPTS = {
   "verify-file-rule": "Open a file with `Read`, whole, and do not reopen it \u2014 tool calls here run one at a time, so a file taken in `sed -n` slices costs a model round-trip per slice. Editing a file to mutate it and restoring it afterwards is a different thing and stays.",
   "verify-open": "Establish whether this claim about finished code is REAL. You are independent of whoever raised it and they ran nothing \u2014 treat the claim as a hypothesis, not a report.",
   "verify-quality": "This is a QUALITY claim \u2014 there is nothing to execute, so it stands or falls on whether the rule it invokes actually exists and is actually violated here. Do NOT refute it merely for being unexecutable.\nFind the rule \u2014 in a guideline file, in CLAUDE.md, or in the consistent practice of the surrounding code \u2014 and check the specific line. Set `refuted` false and cite the rule and line in `basis` when the violation is real; set it true when the rule does not exist, does not apply here, or the code does not actually violate it.\nA vacuity claim about a test IS checkable without running the suite: break what the test names and see whether it still passes. If the claim is that a test cannot fail, prove or disprove it that way and put the result in `basis`.",
-  "verify-runtime": "Try to REFUTE it by execution. Write and run a failing test, a `-race` run, a benchmark, or a direct invocation that would demonstrate the defect. Test command for this project: `{{test_command}}`.\nSet `refuted` false ONLY when you have executed something that demonstrates the defect, and put the exact command and raw output tail in `basis`. If you cannot demonstrate it after a genuine attempt, set `refuted` true and say what you tried. Default to refuted when uncertain \u2014 an unreproduced claim is an assertion, not evidence.\nClean up: leave the tree exactly as you found it. Delete any scratch test you wrote.",
+  "verify-runtime": "Try to REFUTE it by execution. Write and run a failing test, a `-race` run, a benchmark, or a direct invocation that would demonstrate the defect. Test command for this project: `{{test_command}}`.\nSet `refuted` false ONLY when you have executed something that demonstrates the defect, and put the exact command and raw output tail in `basis`. If you ran something and it did not reproduce, set `refuted` true and say what you tried. Default to refuted when uncertain \u2014 an unreproduced claim is an assertion, not evidence.\n\nNot being able to run at all is a different answer. A missing dependency, a toolchain that is not installed, a service the test needs and cannot reach: set `blocked` true rather than `refuted`, and name in `basis` the command and what stopped it. Refuting on an environment failure reports a defect as disproved when nothing was ever checked, and a dropped finding leaves no trace to notice.\nClean up: leave the tree exactly as you found it. Delete any scratch test you wrote.",
 }
 
 // Substitute a fragment's {{name}} placeholders. An unfilled one becomes empty rather
@@ -280,7 +280,10 @@ const VERDICT_SCHEMA = {
   required: ['finding_id', 'refuted', 'basis'],
   properties: {
     finding_id: { type: 'string' },
-    refuted: { type: 'boolean', description: 'true when you could NOT establish the defect is real' },
+    refuted: { type: 'boolean', description: 'true when you ran something and it did NOT establish the defect is real' },
+    // Without this, "I could not run the suite" and "I ran it and nothing was wrong"
+    // arrive as the same boolean, and the finding is dropped either way.
+    blocked: { type: ['boolean', 'null'], description: 'true when you could not execute the check at all — a missing dependency, an absent toolchain, an unreachable service. Not a refutation: nothing was tested.' },
     basis: { type: 'string', description: 'for a runtime claim: the exact command run and the raw output tail. For a quality claim: the specific rule and the line it is violated at.' },
     severity_after: { type: ['string', 'null'], enum: ['low', 'medium', 'high', null], description: 'your own severity once you looked; null to keep the reviewer\'s' },
   },
@@ -430,6 +433,7 @@ const verifyPrompt = (scope, f, i, n) =>
   (f.failure_scenario ? `Claimed failure: ${f.failure_scenario}\n` : '') +
   `\nDiff under audit: \`git diff ${scope.base}...${scope.head}\`\n\n` +
   PROMPTS['verify-file-rule'] + '\n\n' +
+  `You have this checkout to yourself — a worktree of the repository at the same commit, not the tree the audit is reporting on. Mutate it freely to prove or disprove the claim. Restore it before you return anyway: a worktree left clean is reclaimed automatically, and one left dirty is not.\n\n` +
   (n > 1 ? `You are verifier ${i + 1} of ${n} working independently on this same claim; do not assume the others agree with you.\n\n` : '') +
   (f.nature === 'runtime'
     ? fill(PROMPTS['verify-runtime'], { test_command: testCmdFor(scope.languages?.[0]) })
@@ -437,7 +441,7 @@ const verifyPrompt = (scope, f, i, n) =>
 const synthPrompt = (scope, confirmed, refuted, lensNotes, gaps) =>
   PROMPTS['report-open'] + '\n\n' +
   `Change set: ${scope.summary}\nFiles: ${scope.files.length}\n\n` +
-  `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens}) — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
+  `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens})${c.blocked ? ' [NOT EXECUTED — the check could not run]' : ''} — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
   // These reached the audit only by being skipped: the same checker runs at commit time.
   // Nothing verifies them because a regex already decided, so they bypass the pipeline
   // and would vanish from the report unless carried in here.
@@ -657,13 +661,25 @@ phase('Verify')
 const verdicts = await parallel(
   candidates.map((f) => () =>
     parallel(Array.from({ length: verifiersFor(f) }, (_, i) => () =>
-      agent(verifyPrompt(scope, f, i, verifiersFor(f)), { label: `verify:${f.id}${verifiersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
+      // Every verifier mutates the tree to prove its claim — reverting a line, writing a
+      // probe, deleting it again — and they run concurrently. Sharing one tree, they read
+      // each other's experiments: measured over six runs, agents reported another's edit
+      // interfering twenty-two times, once refuting a claim on a probe file that was not
+      // theirs. A refutation is the outcome nothing downstream re-checks.
+      agent(verifyPrompt(scope, f, i, verifiersFor(f)), { label: `verify:${f.id}${verifiersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA, isolation: 'worktree' }),
     )).then((vs) => {
       const votes = vs.filter(Boolean)
       if (!votes.length) return { finding: f, survived: false, basis: 'no verifier returned a result' }
-      const kept = votes.filter((v) => !v.refuted)
-      const survived = kept.length > votes.length / 2
-      const best = (survived ? kept : votes)[0]
+      // A verifier that could not run has not refuted anything. Counting it as a vote
+      // would let a missing toolchain delete a real defect, silently and with a basis
+      // that reads like evidence.
+      const ran = votes.filter((v) => !v.blocked)
+      if (!ran.length) {
+        return { finding: f, survived: true, blocked: true, basis: votes[0].basis, votes: `0/${votes.length} could run` }
+      }
+      const kept = ran.filter((v) => !v.refuted)
+      const survived = kept.length > ran.length / 2
+      const best = (survived ? kept : ran)[0]
       return {
         finding: { ...f, severity: best.severity_after ?? f.severity },
         survived,

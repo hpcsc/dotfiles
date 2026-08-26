@@ -246,7 +246,10 @@ const VERDICT_SCHEMA = {
   required: ['finding_id', 'refuted', 'basis'],
   properties: {
     finding_id: { type: 'string' },
-    refuted: { type: 'boolean', description: 'true when you could NOT establish the defect is real' },
+    refuted: { type: 'boolean', description: 'true when you ran something and it did NOT establish the defect is real' },
+    // Without this, "I could not run the suite" and "I ran it and nothing was wrong"
+    // arrive as the same boolean, and the finding is dropped either way.
+    blocked: { type: ['boolean', 'null'], description: 'true when you could not execute the check at all — a missing dependency, an absent toolchain, an unreachable service. Not a refutation: nothing was tested.' },
     basis: { type: 'string', description: 'for a runtime claim: the exact command run and the raw output tail. For a quality claim: the specific rule and the line it is violated at.' },
     severity_after: { type: ['string', 'null'], enum: ['low', 'medium', 'high', null], description: 'your own severity once you looked; null to keep the reviewer\'s' },
   },
@@ -396,6 +399,7 @@ const verifyPrompt = (scope, f, i, n) =>
   (f.failure_scenario ? `Claimed failure: ${f.failure_scenario}\n` : '') +
   `\nDiff under audit: \`git diff ${scope.base}...${scope.head}\`\n\n` +
   PROMPTS['verify-file-rule'] + '\n\n' +
+  `You have this checkout to yourself — a worktree of the repository at the same commit, not the tree the audit is reporting on. Mutate it freely to prove or disprove the claim. Restore it before you return anyway: a worktree left clean is reclaimed automatically, and one left dirty is not.\n\n` +
   (n > 1 ? `You are verifier ${i + 1} of ${n} working independently on this same claim; do not assume the others agree with you.\n\n` : '') +
   (f.nature === 'runtime'
     ? fill(PROMPTS['verify-runtime'], { test_command: testCmdFor(scope.languages?.[0]) })
@@ -403,7 +407,7 @@ const verifyPrompt = (scope, f, i, n) =>
 const synthPrompt = (scope, confirmed, refuted, lensNotes, gaps) =>
   PROMPTS['report-open'] + '\n\n' +
   `Change set: ${scope.summary}\nFiles: ${scope.files.length}\n\n` +
-  `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens}) — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
+  `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens})${c.blocked ? ' [NOT EXECUTED — the check could not run]' : ''} — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
   // These reached the audit only by being skipped: the same checker runs at commit time.
   // Nothing verifies them because a regex already decided, so they bypass the pipeline
   // and would vanish from the report unless carried in here.
@@ -623,13 +627,25 @@ phase('Verify')
 const verdicts = await parallel(
   candidates.map((f) => () =>
     parallel(Array.from({ length: verifiersFor(f) }, (_, i) => () =>
-      agent(verifyPrompt(scope, f, i, verifiersFor(f)), { label: `verify:${f.id}${verifiersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA }),
+      // Every verifier mutates the tree to prove its claim — reverting a line, writing a
+      // probe, deleting it again — and they run concurrently. Sharing one tree, they read
+      // each other's experiments: measured over six runs, agents reported another's edit
+      // interfering twenty-two times, once refuting a claim on a probe file that was not
+      // theirs. A refutation is the outcome nothing downstream re-checks.
+      agent(verifyPrompt(scope, f, i, verifiersFor(f)), { label: `verify:${f.id}${verifiersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA, isolation: 'worktree' }),
     )).then((vs) => {
       const votes = vs.filter(Boolean)
       if (!votes.length) return { finding: f, survived: false, basis: 'no verifier returned a result' }
-      const kept = votes.filter((v) => !v.refuted)
-      const survived = kept.length > votes.length / 2
-      const best = (survived ? kept : votes)[0]
+      // A verifier that could not run has not refuted anything. Counting it as a vote
+      // would let a missing toolchain delete a real defect, silently and with a basis
+      // that reads like evidence.
+      const ran = votes.filter((v) => !v.blocked)
+      if (!ran.length) {
+        return { finding: f, survived: true, blocked: true, basis: votes[0].basis, votes: `0/${votes.length} could run` }
+      }
+      const kept = ran.filter((v) => !v.refuted)
+      const survived = kept.length > ran.length / 2
+      const best = (survived ? kept : ran)[0]
       return {
         finding: { ...f, severity: best.severity_after ?? f.severity },
         survived,

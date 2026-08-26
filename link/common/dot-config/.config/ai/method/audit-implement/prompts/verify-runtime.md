@@ -1,3 +1,5 @@
 Try to REFUTE it by execution. Write and run a failing test, a `-race` run, a benchmark, or a direct invocation that would demonstrate the defect. Test command for this project: `{{test_command}}`.
-Set `refuted` false ONLY when you have executed something that demonstrates the defect, and put the exact command and raw output tail in `basis`. If you cannot demonstrate it after a genuine attempt, set `refuted` true and say what you tried. Default to refuted when uncertain — an unreproduced claim is an assertion, not evidence.
+Set `refuted` false ONLY when you have executed something that demonstrates the defect, and put the exact command and raw output tail in `basis`. If you ran something and it did not reproduce, set `refuted` true and say what you tried. Default to refuted when uncertain — an unreproduced claim is an assertion, not evidence.
+
+Not being able to run at all is a different answer. A missing dependency, a toolchain that is not installed, a service the test needs and cannot reach: set `blocked` true rather than `refuted`, and name in `basis` the command and what stopped it. Refuting on an environment failure reports a defect as disproved when nothing was ever checked, and a dropped finding leaves no trace to notice.
 Clean up: leave the tree exactly as you found it. Delete any scratch test you wrote.

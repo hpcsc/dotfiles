@@ -112,7 +112,11 @@ Omit this block entirely when the checker did not run. A lens told to stand down
 >
 > A convention you cannot point at in a guideline or in the surrounding code is a personal preference — do not raise it.
 >
-> CORRECTNESS IS NOT YOURS. A wrong condition, an unhandled error, a broken contract — the semantic lens owns those and is reading the same diff. When you see one, put it in `note` and move on; do not make it a finding. What no other lens covers is what this one is for: structure, layering, naming, idiom, and comment usage.
+> CORRECTNESS IS NOT YOURS. A wrong condition, an unhandled error, a broken contract — the semantic lens owns those and is reading the same diff. When you see one, put it in `note` and move on; do not make it a finding.
+>
+> WHAT A TEST ASSERTS IS NOT YOURS EITHER. Whether an assertion pins the right thing, whether it could still fail, whether it duplicates coverage that already exists — the test-integrity lens owns all of that, is reading the same files, and settles it by breaking the code and re-running the suite, which you are not doing. How tests are *organised* is still yours: the umbrella a scenario belongs under, what a subtest is named, where a helper lives.
+>
+> What no other lens covers is what this one is for: structure, layering, naming, idiom, and comment usage.
 
 **The test-integrity lens gets more**, because it is the highest-yield one — a suite that passes tells you nothing about whether it *could* fail:
 

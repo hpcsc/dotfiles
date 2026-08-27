@@ -8,7 +8,7 @@
    cat "$root/tasks/test-commands.json" 2>/dev/null
    ```
    Pass the parsed object as `args.testCommands`. Verifiers use the entry for the diff's primary language when they need to run something. Absent the file, pass a single detected `args.testCommand`.
-4. **Confirm the cost.** This is a `Workflow` and needs the same explicit opt-in: 1 scoping agent + one per lens + 1 deduper + 1–3 verifiers per *distinct* finding + 1 report. A typical branch lands around 10–20 agents and 15–25 minutes wall-clock — an order of magnitude below a full `implement-flow` run, but not free. Lens count is the multiplier that surprises people: the panel is *per language*, so a diff touching Go, TypeScript and CUE runs three sets before either specialist. Verification is the half that scales with findings rather than files, which is why duplicates are collapsed before it.
+4. **Confirm the cost.** This is a `Workflow` and needs the same explicit opt-in: 1 scoping agent + one per lens + 1 deduper + 1–3 verifiers per *distinct* finding + 1 report. A typical branch lands around 10–20 agents and 15–25 minutes wall-clock — an order of magnitude below a full `implement-flow` run, but not free. Lens count is the multiplier that surprises people: the panel is *per language*, so a diff touching Go, TypeScript and CUE runs three sets before either specialist. A secondary language owning fewer than three changed files is folded rather than given a panel of its own — its files still reach every other lens as context, and `lenses_not_run` names them so you can read them yourself. The primary language always gets its panel, however little it owns. Verification is the half that scales with findings rather than files, which is why duplicates are collapsed before it.
 
 ---
 

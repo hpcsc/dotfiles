@@ -470,11 +470,27 @@ const remitFor = (lang) => {
   return owned.length ? owned : null
 }
 
+// A language panel costs two or three agents whatever it owns, while what it is worth
+// scales with what it owns. A secondary language holding one or two files is cheaper for
+// the caller to read than for a panel to review: one run spent a full semantic pass on
+// two serverless.yml files, in a language that has no conventions reviewer either.
+//
+// The primary language is never folded, however little it owns. The two high-severity
+// defects in the measured corpus both came out of a two-file diff.
+const MIN_REMIT = 3
+
 const notRun = []
 let lenses = []
 for (const lang of (scope.languages?.length ? scope.languages : ['Generic']).map(canonicalLang)) {
   const cfg = LANG[lang]
   const remit = remitFor(lang)
+  if (lang !== primary && remit && remit.length < MIN_REMIT) {
+    // Named, not silently dropped. These files still travel to every other lens as
+    // context, so something wrong in one can still come back in a `note` — but nothing
+    // reviewed them for their own sake, and the caller has to know which.
+    notRun.push(`every lens (${lang}) — ${lang} owns ${remit.length} changed file(s) here (${remit.join(', ')}), too few to earn a panel of its own; read them yourself`)
+    continue
+  }
   if (!remit) log(`${lang}: the scope pass filed no files under this language — its lenses review the whole change set`)
   lenses.push({ key: `semantic:${lang}`, agentType: cfg.semantic, prompt: semanticPrompt(scope, lang, remit) })
   if (cfg.guidelines) lenses.push({ key: `guidelines:${lang}`, agentType: cfg.guidelines, prompt: guidelinesPrompt(scope, lang, remit) })

@@ -64,7 +64,9 @@ This is also what keeps `clerk verify` meaningful rather than noisy. Its commit-
 
 Across nineteen measured rounds, rounds one and two returned every high-severity defect found and twenty of the thirty-one medium ones. Rounds three onward returned **forty-two more findings and not one of them high**: eleven medium and thirty-one low, for roughly **37% of the whole audit budget**. Two runs kept going to four and five rounds and bought low-severity quality findings at full price.
 
-So: `clerk audit plan --rounds 2`. Run a third only when round two returned a finding of **medium severity or higher** — that is the signal that the branch still has substance in it, and the absence of it is the signal that further rounds will return polish. Behaviour that is hard to see, such as anything rendered, is the one standing exception: plan three there from the start and say why.
+So: `clerk audit plan --rounds 2`. Run a third only when round two upheld a finding that is **`high` severity, or `medium` and `runtime` in nature** — a defect something executes, not a convention or a test-shape finding. Behaviour that is hard to see, such as anything rendered, is the one standing exception: plan three there from the start and say why.
+
+The nature clause is the whole of it. `medium` on its own is the modal severity — nearly every round produces one — so a gate at that level passes almost everything: measured over every round that had a successor, "medium or higher" let through **78%** of them, while requiring the medium to be `runtime` let through **33%**. One run's round two upheld two mediums, both of them test-shape findings, and bought a third round that returned a single further medium for the cost of the first two combined.
 
 Two failures sit either side of that gate, and neither is defensible: stopping because the last round felt quiet, and continuing because the budget allowed it. Name the last round as the last one and say what decided it — the severity gate, or a judgment you are making against it — so the user is reading a decision rather than a coincidence, and say what the next round would most likely have looked at.
 

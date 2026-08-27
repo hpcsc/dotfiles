@@ -83,12 +83,14 @@ Files changed is a **diagnostic**, not a rule of its own — it is the consequen
 |---|---|
 | Full | Modified files in existing logic. The reviewer has to reconstruct the surrounding behavior to judge the change; these are the expensive ones, and the only ones the band really bounds. |
 | Low | New files. Read once, with no surrounding context to hold. |
-| None | Mechanical wiring, checkable against a naming chain rather than reasoned about: infrastructure event registrations, message-filter policies, route and endpoint manifests, i18n entries. |
+| None | Mechanical wiring, checkable against a naming chain rather than reasoned about: infrastructure event registrations, message-filter policies, route and endpoint manifests, i18n entries. **Only when a test actually enforces that chain and its package is inside the deliverable's own verification command** — name both in the plan. A chain nothing executes at the gate that would catch it is not mechanical, it is unverified: weight it Low, and add the enforcing test's package to the verification of whichever task edits it. |
 | None | Generated artifacts: regenerated event catalogs, snapshot fixtures, lockfiles, API schema output. These dominate a diff while carrying no review load at all — one new domain event can regenerate thousands of catalog lines. Never let them push a correctly-cut deliverable out of band. |
 
 Against that weighted count, **12 or fewer is in band**; 13–15 warrants naming which structural rule slipped; above 15 the deliverable is re-cut. The band trades review effectiveness, which holds best around 250–450 lines of judgment-bearing diff, against the fixed cost of a deliverable — so it is a ceiling, never a target. A deliverable landing at three or four weighted files is evidence of an over-cut, not of a tidy one; check it against the cost rule above before keeping it.
 
 A high raw file count with a low weighted count is normal in a repo carrying a wiring or codegen tax, and is not a re-cut trigger. Call it out in the Step 6 summary so whoever reviews the plan knows the diff is mostly machine-written.
+
+**A known collision surface is a cut criterion, not a footnote.** When unmerged work elsewhere touches files this story also touches, enumerate those files first, then prefer the cut that confines all of them to one deliverable — so exactly one PR pays the careful rebase and the rest are clean. Files in that surface are never weight-None however mechanical they look: a route manifest two branches both edit is where the conflict lands, which is the opposite of unattended. Judge a candidate cut by which files the collision falls in, not by which layer the cut is named after.
 
 ### Assess each deliverable: certainty and blast radius
 
@@ -112,10 +114,12 @@ For each dependent deliverable choose its `base`:
 
 ### The merge pass
 
-Before writing anything, challenge your own cut. For each adjacent pair in the DAG, state in one sentence why they are not one deliverable. Then apply two tests:
+Before writing anything, challenge your own cut. For each adjacent pair in the DAG, state in one sentence why they are not one deliverable. Then apply these tests — the first three to a pair you are keeping apart, the last to any deliverable you are keeping whole:
 
 - **The reason has to be structural.** "The combined file count would be high" is not a reason — the band is a ceiling, and a merged pair inside it is one deliverable. Real reasons are: merging them would cross two aggregates or two new domain events; the pair would need two unrelated mental models to review; or one is substantial groundwork under the sizing rule above. An atomicity constraint — where splitting would ship a broken or harmful intermediate state — is a reason to *merge*, never to split.
-- **A deliverable that changes no observable behaviour when merged alone must survive this pass explicitly**, or be folded into its consumer.
+- **An atomicity claim must name the actor that reaches the broken state.** Name who or what triggers it — a caller, a page, a scheduled job, an operator. Then check where that actor ships: **if it ships in the same deliverable you are proposing to defer, the state is unreachable and the claim is void.** A route with no caller, a projection nothing queries, a command no surface can issue — none of these is broken, each is merely absent, which is the ordinary condition of groundwork. Only a state some *already-merged* actor can reach counts.
+- **A deliverable that changes no observable behaviour when merged alone must survive this pass explicitly**, or be folded into its consumer. Surviving it is a normal outcome, not a grudging exception — apply the same standard to every deliverable in the plan. Justifying one as substantial groundwork and then refusing a sibling the same split on the grounds that it would change no observable behaviour is the same condition reaching opposite verdicts; say which of the two is wrong.
+- **Declaring a deliverable unsplittable takes two candidate cut lines, not one.** Name at least two — by layer, by language or deployable, by read versus write, by aggregate, by acceptance criterion — and say what each would put in each half, judged against the collision surface above. Rejecting one candidate establishes nothing about the others; a deliverable is unsplittable only when every candidate you named fails.
 
 Deliverable count is a result, not a plan. If you have more deliverables than the story has acceptance criteria, the merge pass has almost certainly failed to run; go back through it.
 

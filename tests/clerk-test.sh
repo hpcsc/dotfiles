@@ -2311,6 +2311,74 @@ git -C "$R32" commit -qm "Task 1"
 eq "committed, the next task finishes" "true" "$(run "$R32" finish 2 -- b.go | jq -r '.done')"
 
 # --------------------------------------------------------------------------------
+printf '\nverify — the checks that cannot see far enough say so\n'
+
+# Two tasks working the same file in turn is the breakdown doing its job, and counting
+# every commit that touches a shared file called that a split: one measured run warned
+# on four of five tasks, every one of them incremental work on one file. Only a file the
+# task alone touched can answer the question.
+R34=$(new_repo)
+mkdir -p "$R34/tasks"
+printf -- '### Task 1: One\n### Task 2: Two\n' > "$R34/tasks/story.md"
+printf '{"tasks":[{"n":1,"title":"One","depends_on":[],"done":false},{"n":2,"title":"Two","depends_on":[],"done":false}]}\n' > "$R34/tasks/story.json"
+git -C "$R34" add -A && git -C "$R34" commit -qm "Plan"
+git -C "$R34" switch -qc story
+printf 'package a\n\nfunc One() {}\n' > "$R34/shared.go"
+printf 'package a\n\nfunc helperOne() {}\n' > "$R34/only1.go"
+run "$R34" finish 1 --tasks-file tasks/story.md -- shared.go only1.go >/dev/null 2>&1
+git -C "$R34" add -A && git -C "$R34" commit -qm "Task 1"
+printf 'package a\n\nfunc One() {}\nfunc Two() { One() }\n' > "$R34/shared.go"
+printf 'package a\n\nfunc helperTwo() {}\n' > "$R34/only2.go"
+run "$R34" finish 2 --tasks-file tasks/story.md -- shared.go only2.go >/dev/null 2>&1
+git -C "$R34" add -A && git -C "$R34" commit -qm "Task 2"
+
+eq "a file two tasks both recorded is not a split boundary" "0" \
+   "$(run "$R34" verify --tasks-file tasks/story.md | jq -r '[.findings[] | select(.check=="commit-boundary")] | length')"
+
+# A task whose every file is shared cannot be judged at all, and saying so is the point:
+# silence there reads exactly like a task that stayed inside one commit.
+R35=$(new_repo)
+mkdir -p "$R35/tasks"
+printf -- '### Task 1: One\n### Task 2: Two\n' > "$R35/tasks/story.md"
+printf '{"tasks":[{"n":1,"title":"One","depends_on":[],"done":false},{"n":2,"title":"Two","depends_on":[],"done":false}]}\n' > "$R35/tasks/story.json"
+git -C "$R35" add -A && git -C "$R35" commit -qm "Plan"
+git -C "$R35" switch -qc story
+printf 'package a\n\nfunc One() {}\n' > "$R35/shared.go"
+run "$R35" finish 1 --tasks-file tasks/story.md -- shared.go >/dev/null 2>&1
+git -C "$R35" add -A && git -C "$R35" commit -qm "Task 1"
+printf 'package a\n\nfunc One() {}\nfunc Two() { One() }\n' > "$R35/shared.go"
+run "$R35" finish 2 --tasks-file tasks/story.md -- shared.go >/dev/null 2>&1
+git -C "$R35" add -A && git -C "$R35" commit -qm "Task 2"
+eq "a task with no file of its own is reported as unjudgeable, not as clean" "2" \
+   "$(run "$R35" verify --tasks-file tasks/story.md | jq -r '[.not_checked[] | select(test("commit-boundary — every file task"))] | length')"
+
+# A binding is called from the language it is bound into and from no Go file anywhere.
+# Blocking there stops a correct run on a wrong finding, which is a block the reader
+# routes around rather than fixes.
+R36=$(new_repo)
+git -C "$R36" switch -qc feature
+printf 'package desktop\n\ntype S struct{}\n\nfunc (s *S) SetModified(v bool) {}\n' > "$R36/service.go"
+mkdir -p "$R36/frontend"
+printf 'export function mark(v) { return WindowService.SetModified(v); }\n' > "$R36/frontend/platform.js"
+git -C "$R36" add -A && git -C "$R36" commit -qm "Add the binding and its caller"
+V=$(run "$R36" verify --all-closed)
+eq "a symbol called only from another language does not block" "true" \
+   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code" and .severity=="block")] | length == 0')"
+eq "and it is reported as ground the check cannot cover" "1" \
+   "$(printf '%s' "$V" | jq -r '[.not_checked[] | select(test("SetModified"))] | length')"
+eq "the caller it found is named" "true" \
+   "$(printf '%s' "$V" | jq -r '[.not_checked[] | select(test("frontend/platform.js"))] | length == 1')"
+
+# Prose is not a caller: a symbol named only in docs or the breakdown still blocks.
+R37=$(new_repo)
+git -C "$R37" switch -qc feature
+printf 'package desktop\n\nfunc Orphan() {}\n' > "$R37/orphan.go"
+printf 'Orphan is described here but called nowhere.\n' > "$R37/README.md"
+git -C "$R37" add -A && git -C "$R37" commit -qm "Add an orphan and describe it"
+eq "a symbol named only in prose still blocks" "1" \
+   "$(run "$R37" verify --all-closed | jq -r '[.findings[] | select(.check=="dead-code" and .severity=="block")] | length')"
+
+# --------------------------------------------------------------------------------
 printf '\nbreakdown resolution from the ledger\n'
 
 # A repo that keeps several stories under tasks/ makes every command given no
@@ -2355,6 +2423,6 @@ eq "an archived breakdown falls through rather than resolving to a path that is 
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36" "$R37" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

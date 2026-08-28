@@ -1447,7 +1447,7 @@ cmd_verify() {
   # 3. dead-code — new exported symbols with no reference outside their own file and
   #    the tests. Sound-direction-only: zero textual matches proves no reference.
   if [ -n "$base" ]; then
-    local gofiles sym deffile hits
+    local gofiles sym deffile hits foreign
     # Extract from production files only. The rule below asks a symbol to prove it has a
     # caller outside the tests, and a symbol *defined* in a _test.go file can never answer
     # it — a `Test…` function least of all, since `go test` discovers it by name and
@@ -1494,7 +1494,19 @@ cmd_verify() {
           # stored in an exported map type, or a struct named only as another struct's
           # field, both textually orphaned and both breaking the build if deleted. So a
           # type is reported and never gates on it — the check cannot see far enough.
-          if [ "$all_closed" = true ] && [ "$kind" = func ]; then
+          # A symbol whose only caller is in another language reads as dead to a grep
+          # that reads Go. Bindings are the common case: a method registered on a service
+          # and called as `WindowService.SetModified(...)` from JavaScript is spelled in
+          # no Go file anywhere. Blocking there stops a correct run on a wrong finding,
+          # and a block the reader knows is wrong is one they route around — one measured
+          # run did exactly that, landing without the step it had failed. So it is
+          # reported as ground this check cannot cover, which still asks for a judgment
+          # but does not pretend to have made one. Docs and the breakdown are excluded:
+          # naming a symbol in prose is not calling it.
+          foreign=$(git grep -l -w -- "$sym" HEAD -- ':!*.go' ':!*.md' ':!*.txt' ':!tasks/*' 2>/dev/null | head -1)
+          if [ -n "$foreign" ]; then
+            add_gap "dead-code — $sym has no Go caller but is named in ${foreign#*:}; a caller in another language is not something this check can follow"
+          elif [ "$all_closed" = true ] && [ "$kind" = func ]; then
             add_finding dead-code block "$sym is defined but referenced nowhere outside its own file and the tests (${deffile#*:})"
           elif [ "$kind" = type ]; then
             add_finding dead-code warn "type $sym is referenced nowhere outside its own file and the tests — check the constructors, wrapper types and struct fields that reach it before removing it (${deffile#*:})"
@@ -1520,14 +1532,28 @@ cmd_verify() {
   local records=
   [ -n "$tasks" ] && records=$(run_records_dir "$dir" "$tasks")
   if [ -n "$records" ] && [ -d "$records" ] && [ -n "$base" ]; then
-    local tf n files c count
+    local tf n files c count shared exclusive commits
+    # A file two tasks both recorded belongs to both: a later task editing an earlier
+    # one's file is the breakdown working as intended, not a split. Counting every
+    # commit that touches a shared file made the check fire on exactly that shape — one
+    # measured run warned on four of its five tasks, and all four were tasks building
+    # incrementally on one file. Only a file this task alone touched can say whether its
+    # work stayed in one commit.
+    shared=$(jq -r -s '[.[].files[]] | group_by(.) | map(select(length > 1) | .[0]) | .[]' "$records"/*.json 2>/dev/null)
+    commits=$(git log --format=%H "$base"..HEAD 2>/dev/null)
     for tf in "$records"/*.json; do
       [ -f "$tf" ] || continue
       n=$(jq -r '.n' "$tf")
       files=$(jq -r '.files[]' "$tf")
+      exclusive=$files
+      [ -n "$shared" ] && exclusive=$(printf '%s\n' "$files" | grep -vxF -f <(printf '%s\n' "$shared") 2>/dev/null)
+      if [ -z "$exclusive" ]; then
+        add_gap "commit-boundary — every file task $n recorded was also recorded by another task, so whether its work stayed in one commit cannot be told from the file lists"
+        continue
+      fi
       count=0
-      for c in $(git log --format=%H "$base"..HEAD 2>/dev/null); do
-        if git show --name-only --format= "$c" 2>/dev/null | grep -qxF "$(printf '%s' "$files" | head -1)"; then
+      for c in $commits; do
+        if git show --name-only --format= "$c" 2>/dev/null | grep -qxF -f <(printf '%s\n' "$exclusive"); then
           count=$((count + 1))
         fi
       done

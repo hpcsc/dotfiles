@@ -14,9 +14,11 @@ cd "$(clerk worktree <kebab-feature-name> | jq -r .path)"
 
 It puts the tree under `.worktrees/` beside the git dir, branches from HEAD (`--base <ref>` to branch from elsewhere), and adds `.worktrees/` to the repo's `info/exclude` so the directory it just made does not read as a dirty tree to the next `clerk prepare`. It reports whether it `created` the worktree or `adopted` one that was already there.
 
-Once inside, `git` and file operations run against the worktree naturally — no `-C` prefix needed. Re-run `clerk prepare` after `cd`: it reports `repo_root` and `work_tree` separately, and the learnings file and `tasks/test-commands.json` live under the former, not under your cwd.
+Once inside, `git` and file operations run against the worktree naturally — no `-C` prefix needed. Re-run `clerk prepare` after `cd`: it reports `repo_root` and `work_tree` separately, and the learnings file and `tasks/test-commands.json` live under the former, not under your cwd. A relative path resolved in the wrong checkout is how a file looks deleted while still sitting in the other one.
 
 **A repo that keeps `tasks/` out of history is not a reason to skip the worktree.** A fresh checkout only ever materialises tracked files, so an excluded breakdown will not be in the new worktree — but `clerk` resolves it at the main repo root in that case and every command finds it there. `prepare` says which regime you are in: `tasks_tracked` and `tasks_home`. Building in the main checkout to stay near the breakdown trades the isolation for nothing, and it is the isolation that keeps the audit's verifiers from writing probe files into a tree you are also running a suite in.
+
+**When the isolation cannot be had, fall back rather than improvise.** `clerk worktree` failing, or refusing because the branch is already checked out in the main tree, ends the same way: build `--in-place` on a feature branch, and say which you used, because it changes where the user finds the code. Switching the main checkout off that branch is the other way out of the second case — but do not create a second tree for one feature.
 
 With `in_place` on: no worktree, but still a branch.
 

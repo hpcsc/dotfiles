@@ -4,6 +4,8 @@
 
 ### Read the guidelines — yourself
 
+Nothing else hands you the project's rules. Left to yourself you follow the code you can see and miss the rules you cannot, then find out at review — so this is not throat-clearing. Loading them is the price of writing the code yourself, and it is much cheaper than the findings it prevents.
+
 ```
 clerk guidelines
 ```

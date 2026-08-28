@@ -24,6 +24,8 @@ It does the codebase exploration and dependency analysis that makes the task lis
 
 **Pass the guidelines** as `Required Reading` — the text `clerk guidelines` printed you, not a list of paths to go and fetch. Add: "The unit-of-behavior section is the one to decide each task against: whether it delivers independently testable behaviour, or is only meaningful through a downstream consumer."
 
+**If it fails or returns nothing, retry once.** Then decompose yourself and show the user the list you wrote, flagging that it skipped the codebase-exploration pass.
+
 **One judgment call.** Decomposition costs a full agent (~15 minutes measured). Work that is obviously a single slice does not need it — say so and go straight to building. Anything with more than one deliverable, real dependencies, or an unclear surface gets decomposed.
 
 ### Check the plan's evidence
@@ -37,6 +39,8 @@ Seconds, no agent, and it settles the one thing about an assessment that is not 
 Pass the sidecar's path; the rule reads the plan rather than the diff, so it is not in what `--staged` would find. Fix a finding by correcting the assessment, not by deleting the reference: a precedent you cannot produce is a task that is `low`.
 
 Run it on an adopted breakdown too, which costs the same and tells you whether the plan you are about to build was checked when it was written.
+
+**A breakdown planned before these fields existed carries neither**, and `clerk status` lists those under `gears.unassessed`. Read them as medium certainty and low blast radius — but **say that you did**, because "not assessed" and "assessed as routine" are otherwise the same silence. Do not re-decompose a run in progress to acquire them.
 
 **Then bind it to the run:** `clerk step --done plan --tasks-file <the breakdown>`. It runs this lint itself and refuses on a finding, and on success it prints the task table — certainty and blast radius included — which is the plan presented, with the first task under `next`.
 

@@ -27,6 +27,8 @@ Two consequences to hold onto:
 - **The main repo root is not your cwd.** Re-run `clerk prepare` after entering: it reports `repo_root` and `work_tree` separately for exactly this reason, and the learnings file and `tasks/test-commands.json` live under the former. So does the breakdown itself when `tasks_tracked` is false.
 - **The worktree branches from the current HEAD** unless you pass `--base` — so by default the feature sits on whatever the main checkout had checked out, unpushed local commits included. The `worktree.baseRef` setting governs the tool's `name` mode only and has no say here.
 
+**When the isolation cannot be had, fall back rather than improvise.** `clerk worktree` failing, `EnterWorktree` being unavailable, or the branch already being checked out in the main tree all end the same way: build `--in-place` on a feature branch in the main checkout, and say which you used, because it changes where the user finds the code. Switching the main checkout off that branch is the other way out of the third case — but do not create a second tree for one feature. And if `EnterWorktree` refuses the path, check that `clerk worktree` actually reported one and that you have not already switched trees: it takes a path already in `git worktree list` for this repo, entered from the launch directory.
+
 With `in_place` on: no worktree, but still a branch.
 
 ```

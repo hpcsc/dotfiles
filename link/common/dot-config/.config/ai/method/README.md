@@ -10,7 +10,7 @@ lives in `clerk`, a shell tool both harnesses call.
 └── method/
     ├── clerk-step.md           the design note for clerk step
     ├── implement/
-    │   ├── body.md             the skill: the loop, the background, the errors
+    │   ├── body.md             the skill: the shape, the loop, the flags
     │   ├── steps/<id>.md       the method, one step per file — ground, isolate,
     │   │                       plan, task, suite, audit, validate, theory,
     │   │                       verify, land, learn
@@ -23,7 +23,7 @@ lives in `clerk`, a shell tool both harnesses call.
     │       ├── commit.md
     │       ├── audit.md
     │       ├── verify.md
-    │       └── error-handling-extra.md
+    │       └── harness-notes.md
     └── agents/
         ├── decompose-to-tasks/{body.md,seams/*/frontmatter.md}
         ├── commit/

@@ -10,6 +10,8 @@ Announce which task you are starting, **with its `certainty` and `blast_radius`*
 
 If a task turns out to be unnecessary or wrong once you are in the code, **stop and say so**. The plan is the shared contract; revise it with the user rather than quietly building something else.
 
+If its *assessment* is obviously wrong once you are in the code, drive on what you found rather than on what the plan said — a `high` that is plainly `low` is a reason to slow down even with `gears` off. Record it in step 7; it is a fact about how this repo gets planned wrong.
+
 ### 1. Tests first, where they apply
 
 Derive scenarios from the acceptance criteria and the caller pattern you loaded. Write the tests, watch them fail for the reason they name, then implement until they pass.
@@ -38,6 +40,8 @@ Four checks earlier runs paid for, each of which shipped a defect that a passing
 - **An absence assertion needs a positive partner.** `expect(x).toBeNull()` on an attribute nothing sets passes when the whole feature is deleted.
 - **Moving code can silently invert a source-scanning test.** A test that locates code with `readFileSync` plus `indexOf`/`substring` bounds starts scanning nothing when the bounds cross, and passes forever.
 - **Look at UI in a browser.** CSS and layout defects are invisible to a green suite. Run the app, open the page, look at it.
+
+**If the tests will not go green, report the real failure output.** Do not weaken the test to pass, and do not commit red.
 
 ### 4. Commit the task
 
@@ -80,6 +84,8 @@ Say what landed in one or two lines and act on finish's `after_commit`. **Write 
 **With `gears` on, either one downshifts the run**: every task from here pauses after its tests, the way a low-certainty task does, regardless of what the plan assessed it as. It upshifts again after two consecutive tasks go green first try with a clean lint — say so when it does. `clerk step` computes the gear from the record and reports it as `gear`; announcing it is yours.
 
 The upshift is not a courtesy. A run that only ever slows down finishes every story at its slowest, and a pause that arrives on every task carries no information — which is how a gate becomes a keystroke someone acknowledges without reading, and how the flag stops buying anything at all.
+
+**When `gears` is on and nobody answers a pause, the run stops there**, which is what the flag was turned on for. Leave the branch as it is; do not turn `gears` off mid-run to get past your own gate.
 
 Stop and ask only when something genuinely needs a decision, and when you do, **state the decision and stop** rather than asking and waiting. Leave the branch where it is and say what you would need to continue. Either way, do not guess your way past a decision to keep the run moving.
 

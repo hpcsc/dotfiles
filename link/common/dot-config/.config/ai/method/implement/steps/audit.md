@@ -28,6 +28,8 @@ It fans the applicable lenses over the diff in parallel, reproduces every runtim
 
 Fix findings **directly**. Do not launch a workflow to apply them — you have the context and they are usually small.
 
+**Where you disagree with one, say which and why.** The audit refutes when uncertain, so a survivor is usually real — but you have context the lenses do not.
+
 **Fold each fix into the commit that introduced the defect.** A finding is almost always a defect in one task's work, and the honest place for the correction is that task's commit. Collecting every fix into one trailing "address audit findings" commit leaves the branch reading as though each task was right when it landed and something unnamed happened afterwards, which is the opposite of what occurred.
 
 Mark each fix for the commit it corrects:

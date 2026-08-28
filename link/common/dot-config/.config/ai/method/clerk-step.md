@@ -213,9 +213,10 @@ variable means opencode, else claude. `--harness` overrides one call.
 
 ## The method files
 
-`implement/body.md` holds the skill's own text: the request, the flags, "The loop", "Why
-this shape", "Certainty", the injection defense and the error table. The step text lives
-one step per file under `implement/steps/<id>.md`, with the seams inside them. Two
+`implement/body.md` holds only what is true before any step runs: the shape of the run,
+"The loop", the flags, and the injection defense. Everything step-local — including how
+each command refuses — lives one step per file under `implement/steps/<id>.md`, with the
+seams inside them, so it arrives when it is usable rather than ten steps early. Two
 readers use those files:
 
 - `gen-skills.sh` resolves seam and include markers inside an included file, one level
@@ -223,8 +224,8 @@ readers use those files:
 - `clerk step` prints one step file, with the seams resolved at run time.
   `CLERK_METHOD_DIR` points it at another method directory, which the tests use.
 
-The generated `SKILL.md` is the loop, the field reference, the background and the error
-table. The step text arrives only from `clerk step`.
+The generated `SKILL.md` is the shape, the loop and the flags. The step text, and each
+step's own refusals, arrive only from `clerk step`.
 
 ## Tests
 

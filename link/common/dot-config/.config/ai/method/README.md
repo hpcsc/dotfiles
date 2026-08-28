@@ -30,9 +30,10 @@ lives in `clerk`, a shell tool both harnesses call.
         └── run-verifier/
 ```
 
-Edit `body.md`, a step or a seam, then run `task common:gen:skills`. Never edit a generated
-`SKILL.md` or agent file — each carries a header saying so, and
-`task common:gen:skills:check` fails when one is stale.
+Edit `body.md`, a step or a seam, then run `task common:gen` — **not `common:gen:skills`
+alone**, which rewrites each agent file from its body and so drops the `model:` line that
+`gen-agent-models.sh` stamps in afterwards. Never edit a generated `SKILL.md` or agent
+file — each carries a header saying so, and `task common:check` fails when one is stale.
 
 ---
 
@@ -585,8 +586,8 @@ request to the audit unsummarized — and all three work the same way on both to
 ## Operating it
 
 ```
-task common:gen:skills         regenerate both trees from the shared method
-task common:gen:skills:check   fail if a generated file is stale
+task common:gen                regenerate both trees, generators in the order they require
+task common:check              fail if a generated file or an agent's model is stale
 task common:test:clerk         the clerk fixture tests
 clerk help                     the command surface
 ```

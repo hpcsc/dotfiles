@@ -2,6 +2,8 @@
 
 `clerk step` runs `clerk verify --all-closed` when it reaches this step and hands you the result in `verify`: staged-but-uncommitted tails, a vacuous or stale receipt, new exported symbols with no non-test caller, and commit-boundary arithmetic against the file lists `clerk finish` recorded. It reports what it could **not** check in `not_checked` rather than passing over it silently. A block holds the step until it is fixed.
 
+**Do not run it yourself.** Measured over ten runs it was invoked 53 times, and 33 of those landed before the audit had even been accepted — where a stale receipt is the expected answer rather than a finding. Each call greps the whole diff, so an early one buys a block you already knew about at the price of the real check. Let the step run it at the point its answer can mean something.
+
 {{seam:verify}}
 
 When that residue is reviewed: `clerk step --done verify-residue`.

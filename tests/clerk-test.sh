@@ -2311,9 +2311,50 @@ git -C "$R32" commit -qm "Task 1"
 eq "committed, the next task finishes" "true" "$(run "$R32" finish 2 -- b.go | jq -r '.done')"
 
 # --------------------------------------------------------------------------------
+printf '\nbreakdown resolution from the ledger\n'
+
+# A repo that keeps several stories under tasks/ makes every command given no
+# --tasks-file ambiguous. Measured over ten runs, a third of `clerk verify` calls
+# arrived without it and silently skipped commit-boundary — the one check verify alone
+# can do. The ledger has known which breakdown the run is building since `--done plan`.
+R33=$(new_repo)
+mkdir -p "$R33/tasks"
+for s in alpha beta; do
+  printf -- '### Task 1: Only task\n' > "$R33/tasks/$s.md"
+  printf '{"tasks":[{"n":1,"title":"Only task","depends_on":[],"done":false}]}\n' > "$R33/tasks/$s.json"
+done
+git -C "$R33" add -A && git -C "$R33" commit -qm "Plan two stories"
+git -C "$R33" switch -qc alpha
+
+run "$R33" status >/dev/null 2>&1; RC=$?
+eq "several breakdowns and no ledger: status still cannot resolve one" "2" "$RC"
+eq "and verify reports the commit-boundary gap rather than running it" "1" \
+   "$(run "$R33" verify | jq -r '[.not_checked[]? | select(test("no single breakdown"))] | length')"
+
+R33RUNS="$(git -C "$R33" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/alpha"
+mkdir -p "$R33RUNS"
+printf '{"slug":"alpha","request":"x","started_at":"2026-01-01T00:00:00Z","finished":false}\n' > "$R33RUNS/run.json"
+printf '{"tasks_file":"%s","sidecar":"%s"}\n' "$R33/tasks/alpha.md" "$R33/tasks/alpha.json" > "$R33RUNS/breakdown.json"
+
+eq "with the run's ledger, the bound breakdown resolves it" "alpha.md" \
+   "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
+eq "and verify runs commit-boundary instead of reporting a gap" "0" \
+   "$(run "$R33" verify | jq -r '[.not_checked[]? | select(test("no single breakdown"))] | length')"
+eq "an explicit --tasks-file still outranks the ledger" "beta.md" \
+   "$(run "$R33" status --tasks-file tasks/beta.md | jq -r '.tasks_file | split("/") | last')"
+
+# An archived run's bound path no longer exists, so the ledger must not answer with it
+# and shadow the completed/ lookup its caller does.
+mkdir -p "$R33/tasks/completed" && git -C "$R33" mv tasks/alpha.md tasks/completed/alpha.md
+git -C "$R33" mv tasks/alpha.json tasks/completed/alpha.json
+git -C "$R33" commit -qm "Archive alpha"
+eq "an archived breakdown falls through rather than resolving to a path that is gone" "beta.md" \
+   "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
+
+# --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

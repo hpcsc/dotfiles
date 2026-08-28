@@ -590,10 +590,30 @@ EOF
 # and verify carry on with a predicate to fail or a gap to report; land dies on several
 # and accepts none, because an archived run has no breakdown left to find.
 breakdown_for() {  # <--tasks-file value or empty>
-  local th
+  local th found rc
   if [ -n "$1" ]; then resolve_tasks_arg "$1"; return 0; fi
   th=$(tasks_home) || return 1
-  find_tasks_file "$th"
+  found=$(find_tasks_file "$th"); rc=$?
+  [ "$rc" -eq 0 ] && { printf '%s' "$found"; return 0; }
+  ledger_breakdown && return 0
+  return "$rc"
+}
+
+# The breakdown the open run bound, for a command that was given none and could not
+# resolve one by looking. A repo holding several stories under tasks/ makes every
+# hand-typed command ambiguous, and the checks that carry on regardless then report a
+# gap rather than run: across ten measured runs a third of `clerk verify` calls arrived
+# without --tasks-file and silently skipped the commit-boundary check, which is the one
+# thing verify alone can do. The ledger has known the answer since `--done plan` bound
+# it. Only a file still on disk counts, so an archived run falls through to the
+# completed/ lookup its caller does rather than resolving to a path that is gone.
+ledger_breakdown() {
+  local dir tf
+  dir=$(ledger_dir) || return 1
+  [ -f "$dir/breakdown.json" ] || return 1
+  tf=$(jq -r '.tasks_file // empty' "$dir/breakdown.json" 2>/dev/null) || return 1
+  [ -n "$tf" ] && [ -f "$tf" ] && { printf '%s' "$tf"; return 0; }
+  return 1
 }
 
 # --------------------------------------------------------------------------------

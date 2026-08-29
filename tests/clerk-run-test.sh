@@ -280,7 +280,54 @@ eq "a step clerk did itself is in the stream too, not a gap" "true" \
 eq "--quiet and --raw together are refused" "2" \
    "$(rc "$RR" run --quiet --raw)"
 
+# --------------------------------------------------------------------------------
+printf '\nthe opencode path — written to the documented contract, not to a binary\n'
+
+# No `opencode` is installed here, so what is checked is the invocation this would make
+# and the scoping it would write. A run under it stays unverified until one happens.
+OC=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$OC/opencode" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_LOG"
+printf 'OPENCODE_CONFIG=%s\n' "${OPENCODE_CONFIG:-none}" >> "$STUB_LOG"
+p=$(cat)
+case "$p" in *'"step": "ground"'*) clerk step --done ground --caller exported >/dev/null ;; esac
+printf '{"sessionID":"ses_abc","text":"named the caller pattern"}\n'
+STUB
+chmod +x "$OC/opencode"
+
+ROC=$(new_repo); seed "$ROC" story
+run "$ROC" run --slug story --request "a story" --dry-run >/dev/null
+P=$(run "$ROC" run --dry-run --harness-cmd opencode | jq -c '.permission')
+eq "the allowlist is written as a permission block, since there is no flag for it" "deny" \
+   "$(printf '%s' "$P" | jq -r '.bash["*"]')"
+eq "a read-only step is denied edit" "deny" "$(printf '%s' "$P" | jq -r '.edit')"
+eq "and clerk is allowed both bare and with arguments" "allow|allow" \
+   "$(printf '%s' "$P" | jq -r '[.bash["clerk"], .bash["clerk *"]] | join("|")')"
+eq "nothing grants the network" "deny" "$(printf '%s' "$P" | jq -r '.webfetch')"
+eq "the step text it would be handed is opencode's, not Claude's" "true" \
+   "$(run "$ROC" step --harness opencode --run story --full | jq -r '.instructions | contains("EnterWorktree") | not')"
+
+: > "$STUB_LOG"
+OCOUT=$(cd "$ROC" && PATH="$OC:$PATH" "$CLERK" run --max-steps 1 --harness-cmd opencode --quiet 2>/dev/null)
+eq "it is invoked as documented — run, json, and approval that is not manual" "true" \
+   "$(head -1 "$STUB_LOG" | grep -q -- '--format json' && head -1 "$STUB_LOG" | grep -q -- '--auto' && echo true || echo false)"
+eq "no --allowedTools, which that command does not take" "0" \
+   "$(grep -c -- '--allowedTools' "$STUB_LOG")"
+eq "the scoping reaches it through the environment instead" "true" \
+   "$(grep -q 'OPENCODE_CONFIG=.*/opencode.json' "$STUB_LOG" && echo true || echo false)"
+eq "and the config it was pointed at is readable after the run" "deny" \
+   "$(jq -r '.permission.bash["*"]' "$(git -C "$ROC" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/story/opencode.json")"
+eq "the first turn names no session, because opencode names its own" "0" \
+   "$(grep -c -- '--session' "$STUB_LOG")"
+# Its events are not reduced into tool lines, but the envelope reader still finds the
+# reply — a turn whose reply could not be read comes back marked failed.
+eq "its reply is read even though its events are not reduced" "ground|opencode" \
+   "$(printf '%s' "$OCOUT" | jq -r '[.steps[0].step, .steps[0].by] | join("|")')"
+eq "so the run moved on from the step it did" "isolate" \
+   "$(run "$ROC" step --run story | jq -r '.step')"
+
 unset CLERK_AUDIT_PROMPTS STUB_LOG
-rm -rf "$R" "$RG" "$RP" "$RD" "$RW" "$RS" "$RI" "$RV" "$RQ" "$RR" "$FAKE" "$IDLE" "$SEE" "$PR" 2>/dev/null
+rm -rf "$R" "$RG" "$RP" "$RD" "$RW" "$RS" "$RI" "$RV" "$RQ" "$RR" "$FAKE" "$IDLE" "$SEE" "$OC" "$ROC" "$PR" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

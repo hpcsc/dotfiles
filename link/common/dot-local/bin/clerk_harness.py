@@ -30,6 +30,22 @@ OPENCODE = ["opencode", "run"]
 
 DEFAULT_PERMISSION_MODE = "acceptEdits"
 
+# Claude Code takes a session id the caller chose; opencode names its own and hands it
+# back, so the first turn of a conversation there cannot be told what to call it.
+NAMES_OWN_SESSIONS = {"opencode"}
+# Whose event stream this module knows how to reduce into tool calls and text. opencode's
+# `--format json` is an event stream too, but its shape is documented rather than
+# exercised here, so its lines pass through raw and its reply is read from the envelope.
+REDUCIBLE = {"claude"}
+
+
+def names_own_sessions(harness):
+    return harness in NAMES_OWN_SESSIONS
+
+
+def reducible(harness):
+    return harness in REDUCIBLE
+
 MAX_ATTEMPTS = 3
 # A lens reads a whole diff and may run a suite; a scope pass is seconds. The ceiling is
 # a runaway guard, not a schedule.
@@ -69,9 +85,11 @@ def _argv(harness, job, model=None, *, session=None, resume=False, stream=False)
             av += ["--agent", job["agent"]]
         if model:
             av += ["--model", model]
-        if session:
-            # opencode names sessions itself and `--session` continues one; there is no
-            # separate "create with this id", so the same flag serves both turns.
+        if session and resume:
+            # `--session` continues a session opencode already named. There is no
+            # create-with-this-id, so the first turn passes nothing and the id comes back
+            # in the reply. Not `--fork`: forking would keep each task separately
+            # inspectable at the cost of the shared context that is the point.
             av += ["--session", session]
         if (job.get("permission_mode") or DEFAULT_PERMISSION_MODE) != "manual":
             av += ["--auto"]
@@ -152,7 +170,7 @@ def _reduce(ev):
     return None
 
 
-def _run_streamed(argv, ask, cwd, on_event, timeout):
+def _run_streamed(harness, argv, ask, cwd, on_event, timeout, env=None):
     """(text, cost, session_id, error) — the turn read line by line as it runs.
 
     Every event is handed to `on_event` before the turn ends, which is what makes a run
@@ -160,8 +178,10 @@ def _run_streamed(argv, ask, cwd, on_event, timeout):
     know whether the turn was streamed or waited for.
     """
     text, sid, err, cost = None, None, None, 0.0
+    lines = []
     proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL, text=True, cwd=cwd, bufsize=1)
+                            stderr=subprocess.DEVNULL, text=True, cwd=cwd, bufsize=1,
+                            env=env)
     try:
         proc.stdin.write(ask)
         proc.stdin.close()
@@ -169,6 +189,7 @@ def _run_streamed(argv, ask, cwd, on_event, timeout):
             line = line.strip()
             if not line:
                 continue
+            lines.append(line)
             if on_event:
                 on_event({"kind": "raw", "line": line})
             try:
@@ -190,7 +211,11 @@ def _run_streamed(argv, ask, cwd, on_event, timeout):
         proc.kill()
         return None, cost, sid, f"the agent did not finish within {timeout}s"
     if text is None and err is None:
-        err = "the harness produced no result event"
+        # No event this module recognised as the result. The lines are still the harness's
+        # own reply, so they go through the envelope reader rather than being thrown away
+        # — which is what lets a harness whose event shape is not reduced here still work.
+        text, cost, got, err = _envelope(harness, "\n".join(lines))
+        sid = got or sid
     return text, cost, sid, err
 
 
@@ -251,7 +276,7 @@ SCHEMA_NOTE = (
 )
 
 
-def run_job(job, schema, *, harness, cwd, model=None, log=None,
+def run_job(job, schema, *, harness, cwd, model=None, log=None, env=None,
             session=None, resume=False, on_event=None, attempts=MAX_ATTEMPTS):
     """One agent, retried while its reply does not parse or does not fit the schema.
 
@@ -277,10 +302,11 @@ def run_job(job, schema, *, harness, cwd, model=None, log=None,
                          f"Return only the JSON, matching the schema exactly.")
             argv = _argv(harness, job, model, session=sid, resume=resume, stream=bool(on_event))
             if on_event:
-                text, cost, got, err = _run_streamed(argv, ask, work, on_event, TIMEOUT_S)
+                text, cost, got, err = _run_streamed(harness, argv, ask, work, on_event,
+                                                     TIMEOUT_S, env)
             else:
                 try:
-                    proc = subprocess.run(argv, input=ask, cwd=work,
+                    proc = subprocess.run(argv, input=ask, cwd=work, env=env,
                                           capture_output=True, text=True, timeout=TIMEOUT_S)
                 except subprocess.TimeoutExpired:
                     return {"id": job["id"], "ok": False, "cost_usd": spent, "session_id": sid,

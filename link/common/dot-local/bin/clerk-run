@@ -98,6 +98,33 @@ def tools_for(step_id, facts):
     return look + WRITE + SPAWN + GIT_WRITE + suite_tools(facts)
 
 
+def opencode_permissions(tools):
+    """The same allowlist, said the way opencode says it.
+
+    Claude scopes tools per invocation and opencode does not — there it is configuration,
+    so the block is written per step and pointed at through OPENCODE_CONFIG. The shape is
+    from its documentation and has not been exercised: no `opencode` binary was on the
+    machine this was written on. Treat a run under it as unverified until one is.
+    """
+    bash = {"*": "deny"}
+    for tool in tools:
+        if not (tool.startswith("Bash(") and tool.endswith(")")):
+            continue
+        head, _, tail = tool[5:-1].partition(":")
+        head = head.strip()
+        # Claude's `Bash(git add:*)` is a command prefix; opencode matches a glob. Both
+        # the bare command and the prefix are listed, so `clerk` with no arguments is not
+        # denied by a pattern that only covers `clerk <something>`.
+        bash[head] = "allow"
+        if tail:
+            bash[f"{head} {tail}"] = "allow"
+    return {"edit": "allow" if ("Edit" in tools or "Write" in tools) else "deny",
+            "bash": bash,
+            # Nothing in the allowlist grants it, and an unattended run has no business
+            # reaching the network on its own account.
+            "webfetch": "deny"}
+
+
 # --------------------------------------------------------------------------------
 # The prompt for one step
 # --------------------------------------------------------------------------------
@@ -181,7 +208,11 @@ def ledger_dir(cwd, slug):
 class Out:
     """default — a line per tool call, the step, its result and its cost
        quiet   — steps and results only, for a cron entry with a log to write
-       raw     — the harness's own JSONL on stdout, summary last, for piping onward"""
+       raw     — the harness's own JSONL on stdout, summary last, for piping onward
+
+    Per-tool lines need the event stream reduced, which is done for Claude Code's shapes
+    only. Under a harness whose events are not reduced, `raw` still carries every line and
+    the other two levels fall back to steps and results — fewer lines, not wrong ones."""
 
     def __init__(self, level):
         self.level = level
@@ -309,6 +340,18 @@ class State:
 
     def tools(self, step_id, facts):
         return tools_for(step_id, facts) + self.extra_tools
+
+    def env_for(self, step_id, facts):
+        """The environment one turn runs in, or None where the invocation carries its own
+        scoping. The config is written into the ledger rather than a temp dir so what a
+        step was allowed to do is still readable after the run."""
+        if self.cmd != "opencode" or not self.dir.exists():
+            return None
+        cfg = self.dir / "opencode.json"
+        cfg.write_text(json.dumps(
+            {"$schema": "https://opencode.ai/config.json",
+             "permission": opencode_permissions(self.tools(step_id, facts))}, indent=2) + "\n")
+        return {**os.environ, "OPENCODE_CONFIG": str(cfg)}
 
 
 
@@ -460,10 +503,11 @@ def one_turn(st, row, note):
     step_id = row["step"]
     facts = row.get("facts") or {}
     build = step_id in BUILD_STEPS
-    if build and not st.session:
+    if build and not st.session and not hx.names_own_sessions(st.cmd):
         # Named before the first task rather than taken from what the harness happens to
         # return, so a run that dies before its first reply still resumes into the same
-        # conversation instead of starting a second one beside it.
+        # conversation instead of starting a second one beside it. Where the harness names
+        # its own, there is nothing to choose: the id arrives with the first reply.
         st.session, st.resume = hx.new_session_id(), False
     # The task text is ten kilobytes and comes back once per task. The build session was
     # sent it on the first one and still has it; every other step is a fresh session.
@@ -472,6 +516,7 @@ def one_turn(st, row, note):
            "allowed_tools": st.tools(step_id, facts)}
     started = time.time()
     res = hx.run_job(job, None, harness=st.cmd, cwd=st.cwd, model=st.model,
+                     env=st.env_for(step_id, facts),
                      session=(st.session if build else None),
                      resume=(st.resume if build else False),
                      attempts=2, log=st.out.note,
@@ -526,6 +571,8 @@ def dry(st, row):
     return {"dry_run": True, "run": st.slug, "step": step, "headline": headline(row),
             "would": "clerk does this itself" if step in MECHANICAL else f"one {st.cmd} turn",
             "allowed_tools": None if step in MECHANICAL else st.tools(step, row.get("facts") or {}),
+            "permission": (None if step in MECHANICAL or st.cmd != "opencode"
+                           else opencode_permissions(st.tools(step, row.get("facts") or {}))),
             "prompt_chars": None if step in MECHANICAL else len(build_prompt(row, st.request, False)),
             "note": "nothing was spawned, so the step is still open"}
 

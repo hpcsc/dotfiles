@@ -66,7 +66,12 @@ GIT_READ = [f"Bash(git {v}:*)" for v in
 GIT_WRITE = GIT_READ + [f"Bash(git {v}:*)" for v in
                         ("add", "commit", "mv", "rm", "restore", "checkout", "stash", "switch")]
 CLERK = ["Bash(clerk:*)"]
-LOOK = [f"Bash({c}:*)" for c in ("ls", "cat", "head", "tail", "wc", "rg", "fd", "find", "jq")]
+# The shell a turn reaches for while reading. Every one of these only reports; the ones
+# that can write a file — awk, sed, tee — are deliberately not here, so a step that has
+# no business editing cannot edit through a pipe.
+LOOK = [f"Bash({c}:*)" for c in (
+    "ls", "cat", "head", "tail", "wc", "rg", "grep", "fd", "find", "jq", "diff",
+    "sort", "uniq", "echo", "printf", "pwd", "basename", "dirname", "test", "true")]
 
 
 def suite_tools(facts):

@@ -40,6 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clerk_lib import NAME, clerk, die, emit, git, gitout  # noqa: E402
+import clerk_audit_panel as panel  # noqa: E402
 
 CALLERS = ("ui", "inbound", "outbound", "async", "exported")
 
@@ -1181,19 +1182,221 @@ def audit_accept(ctx, aud, o):
     return {"accepted": True, "rounds": len(rounds), "early": o["--early"], "next": next_step(ctx)}
 
 
-AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept, "status": audit_status}
+
+# ---------------------------------------------------------------------------------
+# The audit as a phase machine. `next` hands the caller one phase's batch of agents to
+# spawn; `record` takes their results and advances. Every decision between the two —
+# which lenses, what remit, what a later round's fixes still reach, how many verifiers a
+# claim earns and whether one needs a tree — is made here, so the two harnesses differ
+# only in how they spawn an agent. Before this, that judgment was JavaScript on one side
+# and prose on the other and nothing checked they agreed.
+# ---------------------------------------------------------------------------------
+
+PHASES = ("scope", "review", "dedupe", "verify", "report", "done")
+
+
+def live_of(aud):
+    return aud.get("live")
+
+
+def audit_begin(ctx, aud, o):
+    if live_of(aud) and not o["--restart"]:
+        lv = aud["live"]
+        emit({"began": False, "phase": lv["phase"], "round": lv["round"],
+              "reason": "a round is already in flight here — continue it with `clerk audit next`, "
+                        "or start it over with --restart"}, 3)
+    args = {
+        "target": o["--target"] or "branch",
+        "base_ref": o["--base"],
+        "brief": o["--brief"] or "",
+        "story": o["--story"] or "",
+        "depth": o["--depth"] or "standard",
+        "fixed_files": o["--fixed-file"] or [],
+        "lenses": o["--lens"] or [],
+        "recheck": json.loads(o["--recheck"]) if o["--recheck"] else [],
+        "test_commands": json.loads(o["--test-commands"]) if o["--test-commands"] else
+                         (ctx.prepare.get("test_commands") or {}),
+    }
+    prior = None
+    if aud.get("rounds"):
+        prior = (aud.get("last_scope") or None)
+    aud["live"] = {"round": len(aud.get("rounds", [])) + 1, "phase": "scope", "args": args,
+                   "scope": None, "reviews": [], "candidates": [], "verdicts": [],
+                   "not_run": [], "lens_notes": [], "report": None, "prior_scope": prior,
+                   "started_at": now()}
+    ctx.run.write("audit.json", aud)
+    return {"began": True, "round": aud["live"]["round"], "phase": "scope",
+            "next": audit_next(ctx, aud, o)}
+
+
+def _spawn(job_id, prompt, schema, agent=None, isolation="none"):
+    return {"id": job_id, "prompt": prompt, "schema_name": schema,
+            "agent": agent, "isolation": isolation}
+
+
+def audit_next(ctx, aud, o):
+    lv = live_of(aud)
+    if not lv:
+        emit({"phase": None, "reason": "no round is in flight — `clerk audit begin` first"}, 3)
+    a = lv["args"]
+    prompts = panel.load_prompts()
+    if not prompts:
+        die(f"no audit prompt fragments under {panel.prompts_dir()} — set CLERK_AUDIT_PROMPTS "
+            f"or CLERK_METHOD_DIR to the method directory")
+    phase = lv["phase"]
+
+    if phase == "scope":
+        return {"phase": "scope", "round": lv["round"], "concurrent": False,
+                "spawn": [_spawn("scope", panel.scope_prompt(
+                    prompts, target=a["target"], base_ref=a["base_ref"],
+                    prior_scope=lv.get("prior_scope")), "SCOPE_SCHEMA")],
+                "record_with": "clerk audit record --phase scope --results <file>"}
+
+    if phase == "review":
+        lenses, not_run = panel.build_panel(
+            lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],
+            story=a["story"], brief=a["brief"], recheck=a["recheck"],
+            test_commands=a["test_commands"])
+        lv["not_run"] = not_run
+        ctx.run.write("audit.json", aud)
+        return {"phase": "review", "round": lv["round"], "concurrent": True,
+                "spawn": [_spawn(f"review:{l['key']}", l["prompt"], "REVIEW_SCHEMA", l["agent"])
+                          for l in lenses],
+                "held_back": not_run,
+                "record_with": "clerk audit record --phase review --results <file>"}
+
+    if phase == "dedupe":
+        ctxb = panel._PromptCtx(lv["scope"], prompts, a["story"], a["brief"], (), a["test_commands"])
+        return {"phase": "dedupe", "round": lv["round"], "concurrent": False,
+                "spawn": [_spawn("dedupe", ctxb.dedupe(lv["candidates"]), "DEDUP_SCHEMA")],
+                "record_with": "clerk audit record --phase dedupe --results <file>"}
+
+    if phase == "verify":
+        jobs = panel.verify_jobs(lv["scope"], prompts, lv["candidates"], a["depth"],
+                                 story=a["story"], brief=a["brief"],
+                                 test_commands=a["test_commands"])
+        return {"phase": "verify", "round": lv["round"], "concurrent": True,
+                "spawn": [_spawn(f"verify:{j['id']}", j["prompt"], "VERDICT_SCHEMA",
+                                 isolation=j["isolation"]) for j in jobs],
+                "record_with": "clerk audit record --phase verify --results <file>"}
+
+    if phase == "report":
+        confirmed, refuted = _tally(lv)
+        ctxb = panel._PromptCtx(lv["scope"], prompts, a["story"], a["brief"], (), a["test_commands"])
+        return {"phase": "report", "round": lv["round"], "concurrent": False,
+                "spawn": [_spawn("report", ctxb.synth(confirmed, refuted, lv["lens_notes"],
+                                                      lv["not_run"]), "SYNTH_SCHEMA")],
+                "record_with": "clerk audit record --phase report --results <file>"}
+
+    return {"phase": "done", "round": lv["round"],
+            "report": lv.get("report"),
+            "record_with": "clerk audit round --report <the report you were handed>"}
+
+
+def _tally(lv):
+    """Majority over the verifiers on each claim. A verifier that could not run has not
+    refuted anything: counting it as a vote would let a missing toolchain delete a real
+    defect, silently."""
+    by_finding = {}
+    for v in lv["verdicts"]:
+        by_finding.setdefault(v.get("finding_id") or v.get("id"), []).append(v)
+    confirmed, refuted = [], []
+    for f in lv["candidates"]:
+        votes = by_finding.get(f["id"], [])
+        usable = [v for v in votes if not v.get("blocked")]
+        blocked = bool(votes) and not usable
+        against = [v for v in usable if v.get("refuted")]
+        basis = (votes[0].get("basis") if votes else "no verifier returned a result")
+        if usable and len(against) * 2 > len(usable):
+            refuted.append({"finding": f, "basis": (against[0].get("basis") or basis)})
+        else:
+            confirmed.append({"finding": f, "basis": basis, "blocked": blocked})
+    return confirmed, refuted
+
+
+def _read_results(pathish):
+    raw = sys.stdin.read() if pathish == "-" else Path(pathish).read_text(encoding="utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        die(f"--results is not JSON: {e}")
+
+
+def audit_record(ctx, aud, o):
+    lv = live_of(aud)
+    if not lv:
+        emit({"recorded": False, "reason": "no round is in flight — `clerk audit begin` first"}, 3)
+    if not o["--phase"]:
+        die("record needs --phase <scope|review|dedupe|verify|report>")
+    if o["--phase"] != lv["phase"]:
+        emit({"recorded": False, "phase": lv["phase"],
+              "reason": f"this round is on '{lv['phase']}', not '{o['--phase']}' — "
+                        f"`clerk audit next` says what it wants"}, 3)
+    if not o["--results"]:
+        die("record needs --results <file|-> ")
+    data = _read_results(o["--results"])
+    ph = lv["phase"]
+
+    if ph == "scope":
+        lv["scope"] = data if isinstance(data, dict) else (data[0] if data else {})
+        aud["last_scope"] = lv["scope"]
+        lv["phase"] = "review"
+    elif ph == "review":
+        rows = data if isinstance(data, list) else [data]
+        lv["reviews"] = rows
+        cands, notes = [], []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            if r.get("note"):
+                notes.append(f"{r.get('lens', r.get('id', 'lens'))}: {r['note']}")
+            for f in r.get("findings") or []:
+                f.setdefault("lens", r.get("lens") or r.get("id"))
+                cands.append(f)
+        lv["candidates"], lv["lens_notes"] = cands, notes
+        # One finding needs no grouping pass, and none needs no verification either.
+        lv["phase"] = "dedupe" if len(cands) > 1 else ("verify" if cands else "report")
+    elif ph == "dedupe":
+        clusters = data.get("clusters") if isinstance(data, dict) else None
+        merged, collapsed, why = panel.merge_clusters(lv["candidates"], clusters)
+        lv["candidates"] = merged
+        if why:
+            lv["not_run"].append(f"dedupe — {why}")
+        lv["dedupe_collapsed"] = collapsed
+        lv["phase"] = "verify" if lv["candidates"] else "report"
+    elif ph == "verify":
+        lv["verdicts"] = data if isinstance(data, list) else [data]
+        lv["phase"] = "report"
+    elif ph == "report":
+        lv["report"] = data if isinstance(data, dict) else (data[0] if data else {})
+        lv["phase"] = "done"
+    else:
+        die(f"unknown phase '{ph}'")
+
+    ctx.run.write("audit.json", aud)
+    return {"recorded": True, "phase": ph, "next": audit_next(ctx, aud, o)}
+
+
+AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept,
+         "status": audit_status, "begin": audit_begin, "next": audit_next,
+         "record": audit_record}
 
 
 def main_audit(argv):
     """As main_step: every branch ends in emit()."""
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>] | accept [--early <why>] | status")
+        print("usage: clerk audit plan --rounds <n> | begin [--base <ref>] [--brief <s>] [--story <s>] [--fixed-file <p>]... | next | record --phase <p> --results <json|-> | round --report <json|-> [--replan <n>] | accept [--early <why>] | status")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
     handler = AUDIT.get(verb)
     if handler is None:
         die(f"unknown verb '{verb}' — {', '.join(AUDIT)}")
-    o, _ = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value", "--early": "value", "--run": "value"})
+    o, _ = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value",
+                    "--early": "value", "--run": "value", "--phase": "value",
+                    "--results": "value", "--target": "value", "--base": "value",
+                    "--brief": "value", "--story": "value", "--depth": "value",
+                    "--recheck": "value", "--test-commands": "value",
+                    "--fixed-file": "list", "--lens": "list", "--restart": "bool"})
     ctx = build_ctx(o["--run"])
     if ctx.run is None:
         die("no run is open here — `clerk step --start` first", 3)

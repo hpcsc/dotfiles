@@ -471,6 +471,139 @@ eq "and it downshifts again, naming the lint" "tests|5|low|true" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.last_task_signals.lint_findings|tostring)] | join("|")')"
 
 # --------------------------------------------------------------------------------
-rm -rf "$R" "$RI" "$RP" "$RC" "$RL" "$RM" "$RE" "$RJ" "$RG" "$RS" "$GD" "$MD" "$REP" 2>/dev/null
+printf '\naudit oracle — clerk decides the phase, the harness only spawns\n'
+
+# The panel and its narrowing used to be JavaScript on one side and prose on the other.
+# These cases are the contract both consumers now read.
+RA=$(new_repo)
+seed "$RA" story
+git -C "$RA" add -A && git -C "$RA" commit -qm "Plan"
+run "$RA" step --start story --request "a story" >/dev/null 2>&1
+git -C "$RA" switch -qc story 2>/dev/null
+PR=$(cd "$(mktemp -d)" && pwd -P); mkdir -p "$PR/audit-implement/prompts"
+for f in scope-open scope-rules review-open review-rules finding-contract lens-semantic \
+         lens-guidelines lens-tests lens-concurrency lens-performance dedupe-open \
+         dedupe-rules dedupe-output verify-open verify-file-rule verify-runtime \
+         verify-quality report-open report-rules report-tail regrade mechanical \
+         mechanical-tail; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
+export CLERK_AUDIT_PROMPTS="$PR/audit-implement/prompts"
+
+eq "next before begin is refused" "3" "$(rc "$RA" audit next)"
+
+B=$(run "$RA" audit begin --base main --brief "a brief" --story "the story")
+eq "begin opens a round and hands over the scope phase" "true|1|scope" \
+   "$(printf '%s' "$B" | jq -r '[(.began|tostring), (.round|tostring), .next.phase] | join("|")')"
+eq "and asks for exactly one scope agent" "1|scope|SCOPE_SCHEMA" \
+   "$(printf '%s' "$B" | jq -r '[(.next.spawn|length|tostring), .next.spawn[0].id, .next.spawn[0].schema_name] | join("|")')"
+eq "the scope prompt carries the base it was given" "true" \
+   "$(printf '%s' "$B" | jq -r '.next.spawn[0].prompt | contains("`main` resolves") | tostring')"
+eq "a second begin is refused rather than losing the round in flight" "3" \
+   "$(rc "$RA" audit begin --base main)"
+eq "recording the wrong phase is refused" "3" \
+   "$(printf '{}' > "$RA/r.json"; rc "$RA" audit record --phase review --results "$RA/r.json")"
+
+# A Go+JS diff where JS owns four files: both panels are earned.
+cat > "$RA/scope.json" <<'JSON'
+{"base":"abc","head":"def","summary":"adds a thing","files":["a.go","b.go","c.go","x.js","y.js","z.js","w.js"],
+ "languages":["Go","JavaScript/TypeScript"],
+ "by_language":[{"language":"Go","files":["a.go","b.go","c.go"]},
+                {"language":"JavaScript/TypeScript","files":["x.js","y.js","z.js","w.js"]}],
+ "signals":{"tests_changed":false,"concurrency":false,"performance":false}}
+JSON
+N=$(run "$RA" audit record --phase scope --results "$RA/scope.json")
+eq "scope advances to review and both language panels are earned" "review|semantic:Go,guidelines:Go,semantic:JavaScript/TypeScript,guidelines:JavaScript/TypeScript" \
+   "$(printf '%s' "$N" | jq -r '[.next.phase, ([.next.spawn[].id | sub("^review:";"")] | join(","))] | join("|")')"
+eq "each lens is told which agent it is" "go-semantic-reviewer" \
+   "$(printf '%s' "$N" | jq -r '.next.spawn[0].agent')"
+eq "the lenses that did not run are named, not dropped" "true" \
+   "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(test("test integrity"))] | length > 0 | tostring')"
+eq "a remit keeps a lens off the other language's files" "true" \
+   "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | contains("YOUR REMIT") | tostring')"
+eq "the brief and story reach the lens as data" "true" \
+   "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | (contains("<request>") and contains("a brief")) | tostring')"
+
+# One review round, two findings of different natures.
+cat > "$RA/rev.json" <<'JSON'
+[{"lens":"semantic:Go","verdict":"fail","note":"looked at the fixture",
+  "findings":[{"id":"f1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"},
+              {"id":"f2","severity":"low","nature":"quality","file":"b.go","claim":"naming"}]}]
+JSON
+N=$(run "$RA" audit record --phase review --results "$RA/rev.json")
+eq "two findings go to dedupe before anything is paid to verify them" "dedupe|1" \
+   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn|length|tostring)] | join("|")')"
+printf '{"clusters":[{"ids":["f1"]},{"ids":["f2"]}]}' > "$RA/dd.json"
+N=$(run "$RA" audit record --phase dedupe --results "$RA/dd.json")
+# The one failure this stage must not have: a grouping that loses an id would delete a
+# defect permanently, so an incomplete one is dropped rather than trusted.
+printf '{"clusters":[{"ids":["f1"]}]}' > "$RA/bad.json"
+eq "a grouping that drops a finding is refused, and both still get verified" "2|true" \
+   "$(run "$RA" audit begin --base main --restart >/dev/null 2>&1
+      run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
+      run "$RA" audit record --phase review --results "$RA/rev.json" >/dev/null 2>&1
+      run "$RA" audit record --phase dedupe --results "$RA/bad.json" \
+      | jq -r '[(.next.spawn|length|tostring), ([.next.spawn[].id]|join(",")|contains("f1")|tostring)] | join("|")')"
+# Rebuild the round the following cases continue from.
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
+run "$RA" audit record --phase review --results "$RA/rev.json" >/dev/null 2>&1
+N=$(run "$RA" audit record --phase dedupe --results "$RA/dd.json")
+eq "a runtime claim gets a tree, a non-test quality claim does not" "worktree|none" \
+   "$(printf '%s' "$N" | jq -r '[.next.spawn[0].isolation, .next.spawn[1].isolation] | join("|")')"
+eq "and verify runs them concurrently" "true|verify" \
+   "$(printf '%s' "$N" | jq -r '[(.next.concurrent|tostring), .next.phase] | join("|")')"
+
+# A blocked verifier has refuted nothing; a refuting one carries the claim out.
+cat > "$RA/vd.json" <<'JSON'
+[{"finding_id":"f1","refuted":false,"basis":"ran it, it broke"},
+ {"finding_id":"f2","refuted":true,"basis":"the rule does not exist"}]
+JSON
+N=$(run "$RA" audit record --phase verify --results "$RA/vd.json")
+eq "the report is handed what survived and what did not" "report|true|true" \
+   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED verification (1)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (1)") | tostring)] | join("|")')"
+eq "a lens note reaches the report rather than dying with the lens" "true" \
+   "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | contains("looked at the fixture") | tostring')"
+printf '{"findings":[],"summary":"done"}' > "$RA/rep.json"
+N=$(run "$RA" audit record --phase report --results "$RA/rep.json")
+eq "the round ends pointing at the command that records it" "done|true" \
+   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.record_with | contains("clerk audit round") | tostring)] | join("|")')"
+
+# Fix-scoped narrowing, the three cases that must not narrow.
+narrow() {  # <fixed-file args...> -> the lens keys that would run
+  run "$RA" audit begin --base main --restart >/dev/null 2>&1
+  run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
+  run "$RA" audit begin --base main --restart "$@" >/dev/null 2>&1
+  run "$RA" audit record --phase scope --results "$RA/scope.json" \
+    | jq -r '[.next.spawn[].id | sub("^review:";"")] | join(",")'
+}
+eq "fixes in one language drop the other language's panel" "semantic:Go,guidelines:Go" \
+   "$(narrow --fixed-file a.go)"
+eq "fixes spanning both languages narrow nothing" "semantic:Go,guidelines:Go,semantic:JavaScript/TypeScript,guidelines:JavaScript/TypeScript" \
+   "$(narrow --fixed-file a.go --fixed-file x.js)"
+eq "fixes touching a file no language owns narrow nothing" "semantic:Go,guidelines:Go,semantic:JavaScript/TypeScript,guidelines:JavaScript/TypeScript" \
+   "$(narrow --fixed-file docs/readme.md)"
+eq "and the held-back lens says why" "true" \
+   "$(run "$RA" audit begin --base main --restart --fixed-file a.go >/dev/null 2>&1
+      run "$RA" audit record --phase scope --results "$RA/scope.json" \
+      | jq -r '[.next.held_back[] | select(test("held back: nothing this round"))] | length > 0 | tostring')"
+
+# A secondary language with too little to own does not buy a panel.
+cat > "$RA/thin.json" <<'JSON'
+{"base":"abc","head":"def","summary":"mostly go","files":["a.go","b.go","c.go","x.js"],
+ "languages":["Go","JavaScript/TypeScript"],
+ "by_language":[{"language":"Go","files":["a.go","b.go","c.go"]},
+                {"language":"JavaScript/TypeScript","files":["x.js"]}],
+ "signals":{"tests_changed":false,"concurrency":false,"performance":false}}
+JSON
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+N=$(run "$RA" audit record --phase scope --results "$RA/thin.json")
+eq "one file in a secondary language is read by hand, not by a panel" "semantic:Go,guidelines:Go" \
+   "$(printf '%s' "$N" | jq -r '[.next.spawn[].id | sub("^review:";"")] | join(",")')"
+eq "and the reader is told which files nobody reviewed" "true" \
+   "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(test("too few to earn a panel"))] | length > 0 | tostring')"
+
+unset CLERK_AUDIT_PROMPTS
+
+# --------------------------------------------------------------------------------
+rm -rf "$R" "$RI" "$RP" "$RC" "$RL" "$RM" "$RE" "$RJ" "$RG" "$RS" "$GD" "$MD" "$REP" "$RA" "$PR" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

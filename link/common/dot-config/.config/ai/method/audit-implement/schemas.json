@@ -1,0 +1,401 @@
+{
+  "SCOPE_SCHEMA": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "base",
+      "head",
+      "files",
+      "languages",
+      "by_language",
+      "has_code",
+      "signals",
+      "summary"
+    ],
+    "properties": {
+      "base": {
+        "type": "string",
+        "description": "the resolved base ref the diff was taken from"
+      },
+      "head": {
+        "type": "string",
+        "description": "the resolved head ref/commit"
+      },
+      "files": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "every changed path, repo-relative"
+      },
+      "languages": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "canonical language names present in the changed CODE files, most-changed first"
+      },
+      "by_language": {
+        "type": "array",
+        "description": "the same changed files, grouped by the language each is WRITTEN IN. One entry per name in `languages`, spelled identically. A code file belongs to exactly one entry; a file no lens should own (docs, lockfiles) belongs to none.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "language",
+            "files"
+          ],
+          "properties": {
+            "language": {
+              "type": "string",
+              "description": "one of the names in `languages`, verbatim"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "changed paths written in this language, repo-relative, exactly as they appear in `files`"
+            }
+          }
+        }
+      },
+      "has_code": {
+        "type": "boolean",
+        "description": "false when every changed file is docs/config/build only"
+      },
+      "signals": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "concurrency",
+          "performance",
+          "tests_changed"
+        ],
+        "properties": {
+          "concurrency": {
+            "type": "boolean",
+            "description": "true only if the diff actually adds/changes goroutines, threads, async, locks, shared mutable state or transactions"
+          },
+          "performance": {
+            "type": "boolean",
+            "description": "true only if the diff actually adds/changes I/O, queries, loops over unbounded input, allocation in hot paths, or a benchmark exists to measure against"
+          },
+          "tests_changed": {
+            "type": "boolean",
+            "description": "true if any test file changed"
+          }
+        }
+      },
+      "summary": {
+        "type": "string",
+        "description": "two sentences on what this change set does, for the lenses"
+      },
+      "mechanical_ran": {
+        "type": "boolean",
+        "description": "true only if `clerk lint` actually executed; false when the command does not exist"
+      },
+      "mechanical": {
+        "type": "array",
+        "description": "findings from `clerk lint`, verbatim; empty when it ran and found nothing",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "file",
+            "rule",
+            "message"
+          ],
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "rule": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "REVIEW_SCHEMA": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "verdict",
+      "findings"
+    ],
+    "properties": {
+      "verdict": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "concerns"
+        ]
+      },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "severity",
+            "file",
+            "claim",
+            "nature"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "stable kebab-case id, unique within this review"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
+              "description": "honest impact, graded on what the defect COSTS and not on how central it is to your lens: high = a wrong or lost outcome for a user or caller in normal operation, or a security or data-integrity failure; medium = a real but bounded or conditional cost — degraded behaviour under load, a wrong result on an edge path, or a test that cannot fail for the behaviour it names; low = no runtime symptom and no operational cost — a convention, a name, a comment, a redundant test; never inflated to force attention"
+            },
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "claim": {
+              "type": "string",
+              "description": "one sentence stating the defect, precise enough to reproduce if runtime"
+            },
+            "nature": {
+              "type": "string",
+              "enum": [
+                "runtime",
+                "quality"
+              ],
+              "description": "runtime = an independent agent could demonstrate it by executing code; quality = a convention/structure/test defect with no runtime symptom"
+            },
+            "quality_kind": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "comment-usage",
+                "redundant-test",
+                "broken-test",
+                "naming",
+                "structure",
+                "other",
+                null
+              ]
+            },
+            "failure_scenario": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "concrete inputs/state -> wrong output, for runtime findings"
+            },
+            "suggested_fix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "note": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "what you deliberately did NOT flag and why, when that is the informative part"
+      }
+    }
+  },
+  "DEDUP_SCHEMA": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "clusters"
+    ],
+    "properties": {
+      "clusters": {
+        "type": "array",
+        "description": "every finding id exactly once across all clusters; a finding with no duplicate is a cluster of one",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ids"
+          ],
+          "properties": {
+            "ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "the finding ids that are all the SAME defect"
+            },
+            "why": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "for clusters of more than one: what the single underlying defect is"
+            }
+          }
+        }
+      }
+    }
+  },
+  "VERDICT_SCHEMA": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "finding_id",
+      "refuted",
+      "basis"
+    ],
+    "properties": {
+      "finding_id": {
+        "type": "string"
+      },
+      "refuted": {
+        "type": "boolean",
+        "description": "true when you ran something and it did NOT establish the defect is real"
+      },
+      "blocked": {
+        "type": [
+          "boolean",
+          "null"
+        ],
+        "description": "true when you could not execute the check at all — a missing dependency, an absent toolchain, an unreachable service. Not a refutation: nothing was tested."
+      },
+      "basis": {
+        "type": "string",
+        "description": "for a runtime claim: the exact command run and the raw output tail. For a quality claim: the specific rule and the line it is violated at."
+      },
+      "severity_after": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          null
+        ],
+        "description": "your own severity once you looked; null to keep the reviewer's"
+      }
+    }
+  },
+  "SYNTH_SCHEMA": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "findings",
+      "coverage_gaps",
+      "summary"
+    ],
+    "properties": {
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "severity",
+            "file",
+            "claim",
+            "nature",
+            "confidence",
+            "lens"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "severity": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "file": {
+              "type": "string"
+            },
+            "line": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "claim": {
+              "type": "string"
+            },
+            "nature": {
+              "type": "string",
+              "enum": [
+                "runtime",
+                "quality"
+              ]
+            },
+            "lens": {
+              "type": "string",
+              "description": "the lens key that raised this, verbatim from the survivor list; when deduplicating two lenses into one finding, join their keys with \" + \""
+            },
+            "confidence": {
+              "type": "string",
+              "enum": [
+                "confirmed",
+                "plausible"
+              ],
+              "description": "confirmed = reproduced by execution, or a quality rule cited at a specific line"
+            },
+            "evidence": {
+              "type": "string",
+              "description": "the command + output that reproduced it, or the rule + line"
+            },
+            "suggested_fix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      },
+      "coverage_gaps": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "what this audit could NOT judge and why — an unrun modality, a file nobody read, a claim nobody could test"
+      },
+      "summary": {
+        "type": "string"
+      }
+    }
+  }
+}

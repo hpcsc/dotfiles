@@ -129,6 +129,42 @@ PATTERNS = [
 
 TICKET = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-(\d+)\b")
 
+HEREDOC_SUFFIXES = {".sh", ".bash", ".zsh"}
+# (?<!<) and (?!<): a here-string `<<<word` is not a heredoc and must not open one.
+HEREDOC = re.compile(r"(?<!<)<<-?(?!<)\s*(?:'([A-Za-z_][A-Za-z0-9_]*)'"
+                     r"|\"([A-Za-z_][A-Za-z0-9_]*)\"|([A-Za-z_][A-Za-z0-9_]*))")
+
+
+def heredoc_lines(text):
+    """Line numbers of heredoc bodies. A `#` there is content the script writes out, not a
+    comment — a fixture breakdown with `### Task 1:` headings is the usual case."""
+    inside, term, strip_tabs = set(), None, False
+    for n, line in enumerate(text.splitlines(), 1):
+        if term is not None:
+            inside.add(n)
+            if (line.lstrip("\t") if strip_tabs else line) == term:
+                term = None
+            continue
+        quoted = [m.span() for m in STRINGS.finditer(line)]
+        blanked = STRINGS.sub(lambda m: " " * len(m.group(0)), line)
+        comment_at = blanked.find("#")
+        for m in HEREDOC.finditer(line):
+            if any(a <= m.start() < b for a, b in quoted):
+                continue
+            if 0 <= comment_at < m.start():
+                break
+            term = m.group(1) or m.group(2) or m.group(3)
+            strip_tabs = m.group(0).startswith("<<-")
+            break
+    return inside
+
+
+def new_side_text(root, path, rng):
+    """The file as the diff's new side has it: the index under --cached, else HEAD."""
+    spec = f":{path}" if rng == ["--cached"] else f"HEAD:{path}"
+    r = git("show", spec, cwd=root)
+    return r.stdout if r.returncode == 0 else ""
+
 
 def comment_text(line, marker):
     """The comment part of a line, or None. String literals are stripped first so a URL
@@ -147,7 +183,10 @@ def check_comments(root, path, rng):
     if not marker:
         return []
     out = []
+    skip = heredoc_lines(new_side_text(root, path, rng)) if Path(path).suffix in HEREDOC_SUFFIXES else set()
     for n, line in added_lines(root, path, rng):
+        if n in skip:
+            continue
         text = comment_text(line, marker)
         if not text or not text.strip():
             continue

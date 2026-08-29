@@ -8,7 +8,7 @@
 
 When that residue is reviewed: `clerk step --done verify-residue`.
 
-**Then finish the run before you do anything else with the branch.** What follows is two short steps — record the theory, land or hand over, write the learnings — and the reply to this one hands you the next. The failure they lose to is not difficulty: measured over six runs, two reached `land` and two reached `learn`, and the other four went straight from a green audit into pushing, PR review and iteration, and never came back. The branch is fine either way. What is lost is the record — and the four runs that skipped it were the four that hit the most mechanical friction, so the ledger under-reports exactly the problems that recur, and the next run in this repo re-learns them from scratch.
+**Then finish the run before you do anything else with the branch.** What follows is two short steps — land or hand over, then write the learnings — and the reply to this one hands you the next. The failure they lose to is not difficulty: measured over six runs, two reached `land` and two reached `learn`, and the other four went straight from a green audit into pushing, PR review and iteration, and never came back. The branch is fine either way. What is lost is the record — and the four runs that skipped it were the four that hit the most mechanical friction, so the ledger under-reports exactly the problems that recur, and the next run in this repo re-learns them from scratch.
 
 Push and open the PR **after** `clerk learn`, not before. Both take a couple of minutes from here and neither survives the context switch.
 

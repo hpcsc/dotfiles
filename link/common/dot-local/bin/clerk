@@ -366,7 +366,7 @@ resolve_learnings_path() {
 # had to be redone by hand every run also the one with no test behind it.
 # --------------------------------------------------------------------------------
 
-FLAG_KEYS='in_place integrate review_plan gears'
+FLAG_KEYS='in_place integrate review_breakdown gears'
 
 # Accepts what a hand-written config plausibly says. Anything unrecognised reads as
 # false rather than failing: a typo in this file must never be what turns integration
@@ -414,7 +414,7 @@ resolve_flag() {
   case "$key" in
     in_place)    on='--in-place';    off='--worktree' ;;
     integrate)   on='--integrate';   off='--no-integrate' ;;
-    review_plan) on='--review-plan'; off='--no-review-plan' ;;
+    review_breakdown) on='--review-breakdown'; off='--no-review-breakdown' ;;
     gears)       on='--gears';       off='--no-gears' ;;
   esac
   if [ -n "$request" ] && v=$(request_flag "$request" "$on" "$off"); then
@@ -459,13 +459,13 @@ request_learnings_path() {
 # a key the resolver does not read is worse than no scaffold, because the setting then
 # appears to have been made.
 cmd_init() {
-  local force=false in_place=false integrate=false review_plan=false gears=false root path tracked=true
+  local force=false in_place=false integrate=false review_breakdown=false gears=false root path tracked=true
   while [ $# -gt 0 ]; do
     case "$1" in
       --force)       force=true;       shift ;;
       --in-place)    in_place=true;    shift ;;
       --integrate)   integrate=true;   shift ;;
-      --review-plan) review_plan=true; shift ;;
+      --review-breakdown) review_breakdown=true; shift ;;
       --gears)       gears=true;       shift ;;
       *) die "init: unknown argument '$1'" ;;
     esac
@@ -480,8 +480,8 @@ cmd_init() {
   # listing them is the file's only way to tell a reader what it accepts — a scaffold
   # holding just the one key you asked for teaches nothing about the rest.
   jq -n --argjson in_place "$in_place" --argjson integrate "$integrate" \
-        --argjson review_plan "$review_plan" --argjson gears "$gears" \
-    '{in_place: $in_place, integrate: $integrate, review_plan: $review_plan, gears: $gears}' > "$path" \
+        --argjson review_breakdown "$review_breakdown" --argjson gears "$gears" \
+    '{in_place: $in_place, integrate: $integrate, review_breakdown: $review_breakdown, gears: $gears}' > "$path" \
     || die "init: could not write $path"
 
   # A repo that gitignores tasks/ cannot track this file, so the tracked tier is simply
@@ -1775,7 +1775,7 @@ A run is driven by `clerk step`: open it once with `clerk step --start <slug> --
 until it reports finished. The commands below are what those steps run.
 
 USAGE
-  clerk init [--force] [--in-place] [--integrate] [--review-plan] [--gears]
+  clerk init [--force] [--in-place] [--integrate] [--review-breakdown] [--gears]
                                      scaffold tasks/clerk.json with the flags named
                                      set on and the rest written out off
   clerk prepare [--request <text>]   resolve the repo's facts as JSON; the request is
@@ -1818,7 +1818,7 @@ does: per-task file records are filed under the breakdown they belong to, so nam
 wrong one, or none where several are in flight, reads another story's records or no
 records at all. land removes a breakdown's records when it archives it.
 
-Per-repo flag defaults — in_place, integrate, review_plan, gears — come from
+Per-repo flag defaults — in_place, integrate, review_breakdown, gears — come from
 tasks/clerk.json (tracked, a team decision) or tasks/.environment (gitignored,
 machine-local), in that order. `clerk init` scaffolds the first one. prepare reports the
 resolved values as `flags` and where each came from as `flag_sources`; land applies

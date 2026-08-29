@@ -107,7 +107,7 @@ printf '\nrun flags\n'
 RF=$(new_repo)
 J=$(run "$RF" prepare)
 eq "every flag is off with nothing set" "false false false" \
-   "$(printf '%s' "$J" | jq -r '[.flags.in_place, .flags.integrate, .flags.review_plan] | join(" ")')"
+   "$(printf '%s' "$J" | jq -r '[.flags.in_place, .flags.integrate, .flags.review_breakdown] | join(" ")')"
 eq "and the source says so" "default" "$(printf '%s' "$J" | jq -r '.flag_sources.integrate')"
 
 mkdir -p "$RF/tasks"
@@ -121,9 +121,9 @@ eq "the request turns off what the config turned on" \
    "false" "$(printf '%s' "$J" | jq -r '.flags.integrate')"
 eq "and takes the credit for it" "request" "$(printf '%s' "$J" | jq -r '.flag_sources.integrate')"
 
-J=$(run "$RF" prepare --request 'add a widget --in-place --review-plan')
+J=$(run "$RF" prepare --request 'add a widget --in-place --review-breakdown')
 eq "several flags resolve from one request" "true true" \
-   "$(printf '%s' "$J" | jq -r '[.flags.in_place, .flags.review_plan] | join(" ")')"
+   "$(printf '%s' "$J" | jq -r '[.flags.in_place, .flags.review_breakdown] | join(" ")')"
 eq "a flag the request omits still falls through to the config" \
    "tasks/clerk.json" "$(printf '%s' "$J" | jq -r '.flag_sources.integrate')"
 
@@ -174,10 +174,10 @@ eq "and the request still outranks it" "false" \
    "$(run "$RG" prepare --request 'x --no-gears' | jq -r '.flags.gears')"
 
 RI=$(new_repo)
-eq "init writes every flag key, not only the one named" "in_place integrate review_plan gears" \
+eq "init writes every flag key, not only the one named" "in_place integrate review_breakdown gears" \
    "$(run "$RI" init --gears | jq -r '.flags | keys_unsorted | join(" ")')"
 eq "with the named one on and the rest off" "false false false true" \
-   "$(jq -r '[.in_place, .integrate, .review_plan, .gears] | join(" ")' "$RI/tasks/clerk.json")"
+   "$(jq -r '[.in_place, .integrate, .review_breakdown, .gears] | join(" ")' "$RI/tasks/clerk.json")"
 
 # --------------------------------------------------------------------------------
 printf '\nlearnings path\n'

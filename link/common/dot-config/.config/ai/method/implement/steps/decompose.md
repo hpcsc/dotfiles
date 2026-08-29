@@ -52,7 +52,7 @@ Those two columns are the cheapest review the breakdown ever gets. A task the br
 
 That follows from what this skill is for. Its whole claim is that at minutes per feature, building a version and looking at it is a cheaper way to find out whether a requirement is right than arguing about a task breakdown; stopping to debate the breakdown spends the advantage the speed was bought for. The branch is disposable, the audit reads the finished code against the request rather than against the breakdown, and a breakdown that turns out wrong costs one short run rather than a negotiation.
 
-**With `review_plan` on, it is a pause:**
+**With `review_breakdown` on, it is a pause:**
 - Show the breakdown and ask the user to approve or request changes.
 - On changes, re-spawn the decompose agent with the feedback and present the revised plan. Repeat.
 - Do not write code until the breakdown is explicitly approved.

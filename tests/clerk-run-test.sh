@@ -74,8 +74,8 @@ eq "gears on refuses to start, naming the flag and where it came from" "false|ge
 eq "and says which flag waives it" "true" \
    "$(printf '%s' "$G" | jq -r '.reason | contains("--no-gears")')"
 RP=$(new_repo); seed "$RP" gated
-eq "review_plan is refused the same way" "review_plan" \
-   "$(run "$RP" run --slug gated --request "build it --review-plan" --dry-run | jq -r '.flag')"
+eq "review_breakdown is refused the same way" "review_breakdown" \
+   "$(run "$RP" run --slug gated --request "build it --review-breakdown" --dry-run | jq -r '.flag')"
 eq "waived, the run proceeds" "ground" \
    "$(run "$RG" run --no-gears --dry-run | jq -r '.step')"
 

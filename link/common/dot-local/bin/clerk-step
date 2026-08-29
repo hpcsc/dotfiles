@@ -548,9 +548,9 @@ def row_decompose(ctx):
             return row("decompose", False, tasks_file=bd["tasks_file"], findings=findings,
                        why_not_done="the sidecar changed and `lint certainty-unevidenced` now reports findings",
                        done_by="correct the assessments, then clerk step --done decompose --tasks-file again")
-    if ctx.flags.get("review_plan") and not bd.get("approved"):
+    if ctx.flags.get("review_breakdown") and not bd.get("approved"):
         return row("decompose", False, stop=True, tasks_file=bd["tasks_file"],
-                   why_not_done="review_plan is on and the plan is not approved",
+                   why_not_done="review_breakdown is on and the breakdown is not approved",
                    done_by=f"show the breakdown and wait for approval; then clerk step --done decompose --tasks-file {bd['tasks_file']} --approved")
     return row("decompose", True, tasks_file=bd["tasks_file"], sidecar=bd["sidecar"])
 

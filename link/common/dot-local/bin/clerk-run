@@ -624,7 +624,7 @@ def walk(st, max_steps, dry_run):
 # --------------------------------------------------------------------------------
 
 GATES = {"gears": ("--no-gears", "the pause after a hard task's tests"),
-         "review_plan": ("--no-review-plan", "the pause for the plan to be approved")}
+         "review_breakdown": ("--no-review-breakdown", "the pause for the breakdown to be approved")}
 
 
 def check_gates(out, cwd, request, waivers):
@@ -682,12 +682,12 @@ def open_run(cwd, slug, request, harness):
 SPEC = {"--slug": "value", "--request": "value", "--harness": "value",
         "--harness-cmd": "value", "--model": "value", "--rounds": "value",
         "--max-steps": "value", "--allow-tool": "list", "--no-gears": "bool",
-        "--no-review-plan": "bool", "--dry-run": "bool", "--quiet": "bool",
+        "--no-review-breakdown": "bool", "--dry-run": "bool", "--quiet": "bool",
         "--raw": "bool"}
 
 USAGE = """\
 usage: clerk run [--slug <kebab-slug> --request "<the request, verbatim>"]
-                 [--no-gears] [--no-review-plan] [--rounds <n>] [--model <m>]
+                 [--no-gears] [--no-review-breakdown] [--rounds <n>] [--model <m>]
                  [--allow-tool <spec>]... [--max-steps <n>] [--dry-run]
                  [--quiet | --raw]
 
@@ -739,7 +739,7 @@ def main(argv):
     slug, request = open_run(cwd, o["--slug"], o["--request"], harness)
     waived = check_gates(Out(o["level"]), cwd, request,
                          {k for k, on in (("gears", o["--no-gears"]),
-                                          ("review_plan", o["--no-review-plan"])) if on})
+                                          ("review_breakdown", o["--no-review-breakdown"])) if on})
     o["rounds"] = int(o["--rounds"]) if (o["--rounds"] or "").isdigit() else DEFAULT_ROUNDS
     st = State(cwd, slug, request, harness, cmd, o)
     st.waived = waived

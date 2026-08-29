@@ -56,7 +56,7 @@ Four flags steer a run, and **a flag not in the request may still be on**: each 
 |---|---|---|
 | `--in-place` | `in_place` | `--worktree` |
 | `--integrate` | `integrate` | `--no-integrate` |
-| `--review-plan` | `review_plan` | `--no-review-plan` |
+| `--review-breakdown` | `review_breakdown` | `--no-review-breakdown` |
 | `--gears` | `gears` | `--no-gears` |
 
 `clerk step` resolves both layers on every call and reports the answers in `facts.flags`, with `facts.flag_sources` naming what decided each — **read those, not the request**, wherever a step turns on a flag. The request always outranks the files, in both directions, which is what the third column is for and why a repo may safely default one on. Say in your opening summary which are on and what set them: a run that quietly builds in place because of a file the user forgot is a surprise they paid for with a dirty checkout.

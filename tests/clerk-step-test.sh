@@ -162,11 +162,11 @@ jq '.tasks[1].patterns_to_follow = ["task:1"]' "$WT/tasks/w1.json" > "$WT/tasks/
 commit_all "$WT" "Breakdown"
 
 RP=$(new_repo)
-mkdir -p "$RP/tasks" && printf '{"review_plan": true, "in_place": true}\n' > "$RP/tasks/clerk.json" && commit_all "$RP" "Config"
+mkdir -p "$RP/tasks" && printf '{"review_breakdown": true, "in_place": true}\n' > "$RP/tasks/clerk.json" && commit_all "$RP" "Config"
 run "$RP" step --start rp --request "Reviewed" >/dev/null; run "$RP" step --done ground --caller ui >/dev/null; run "$RP" branch rp >/dev/null
 seed "$RP" rp
 run "$RP" step --done decompose --tasks-file tasks/rp.md >/dev/null
-eq "with review_plan on the breakdown is a pause: bound but not approved" "decompose|true" \
+eq "with review_breakdown on the breakdown is a pause: bound but not approved" "decompose|true" \
    "$(run "$RP" step | jq -r '[.step, (.stop|tostring)] | join("|")')"
 run "$RP" step --done decompose --tasks-file tasks/rp.md --approved >/dev/null
 eq "--approved opens it" "build" "$(run "$RP" step | field .step)"

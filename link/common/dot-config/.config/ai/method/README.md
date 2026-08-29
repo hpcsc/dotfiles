@@ -306,7 +306,7 @@ records it once against the code tree it applies to, or the caller asserts it wi
 
 | Command | What it settles | Exit |
 |---|---|---|
-| `init [--force] [--in-place] [--integrate] [--review-plan] [--gears]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
+| `init [--force] [--in-place] [--integrate] [--review-breakdown] [--gears]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
 | `prepare [--request <text>]` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, which commit skill to invoke, resolved run flags with their sources, every existing worktree and breakdown with its progress, and `resume` — the part-built run to rejoin, paired with its worktree. Given the request, it applies the flags and `--learnings-path` typed in it as the top layer | 0 |
 | `guidelines [--language <L>]... [--caller <p>] [--file FILE]... [--section FILE:HEADING]... [--only]` | The required reading for those languages as text: short files whole, long ones cut to the sections a run must have loaded, plus any file or section named outright; `--only` narrows it to exactly what was named, for an agent that wants its own guideline rather than its language's. A "Not loaded" report for anything a reorganised guideline no longer satisfies | 0 · **2** no guidelines dir |
 | `worktree <kebab-name> [--base <ref>]` | This run's worktree under `.worktrees/`, with `.worktrees/` written to `info/exclude` so it does not read as a dirty tree. Adopts an existing worktree or orphaned branch of that name; refuses the main checkout's own branch | 0 · **2** refused |
@@ -343,7 +343,7 @@ string is free; producing one that names a file really on disk is not.
 
 ### Per-repo flag defaults
 
-`--in-place`, `--integrate`, `--review-plan` and `--gears` are as often properties of the
+`--in-place`, `--integrate`, `--review-breakdown` and `--gears` are as often properties of the
 repo as of the run — a repo whose build cannot work from a worktree wants `--in-place`
 every time, and one whose work is mostly in a blast radius wants `--gears` — so each is
 also a setting. Two files, highest first:
@@ -351,12 +351,12 @@ also a setting. Two files, highest first:
 ```console
 $ clerk init --in-place          # scaffolds the tracked file, in_place already on
 {"created": ".../tasks/clerk.json", "tracked": true,
- "flags": {"in_place": true, "integrate": false, "review_plan": false, "gears": false}, ...}
+ "flags": {"in_place": true, "integrate": false, "review_breakdown": false, "gears": false}, ...}
 ```
 
 ```jsonc
 // tasks/clerk.json — tracked, a team decision. `clerk init` writes it.
-{ "in_place": true, "integrate": false, "review_plan": false, "gears": false }
+{ "in_place": true, "integrate": false, "review_breakdown": false, "gears": false }
 
 // tasks/.environment — gitignored, machine-local. JSON, or key=value. Hand-written.
 integrate=true
@@ -371,7 +371,7 @@ without `--force`, and it tells you `tracked: false` in a repo that gitignores `
 Unrecognised values read as `false`: a typo must never be what turns integration on.
 
 **The request outranks both files, in both directions.** `--worktree`, `--no-integrate`,
-`--no-review-plan` and `--no-gears` turn off what a file switched on, which is what makes
+`--no-review-breakdown` and `--no-gears` turn off what a file switched on, which is what makes
 defaulting one on safe to begin with. `land` is the only command that consumes a flag
 itself, so it applies `integrate` in code; the other three are resolved by `prepare` and
 read by the prose, because they change what the model does rather than what a command

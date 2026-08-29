@@ -1511,7 +1511,15 @@ cmd_verify() {
           if [ -n "$foreign" ]; then
             add_gap "dead-code — $sym has no Go caller but is named in ${foreign#*:}; a caller in another language is not something this check can follow"
           elif [ "$all_closed" = true ] && [ "$kind" = func ]; then
-            add_finding dead-code block "$sym is defined but referenced nowhere outside its own file and the tests (${deffile#*:})"
+            # Reported, never gated on. `--all-closed` means this deliverable's tasks are
+            # done, not that the story is: a deliverable in a stack is finished with its
+            # first consumer still one PR away, which is a shape `decompose-to-deliverables`
+            # produces on purpose. The check cannot tell that from dead code. Measured over
+            # twelve runs it blocked 89% of the calls the step made — a fixture holding one
+            # exported function and a passing receipt was enough — and three of the six runs
+            # that landed did so over a block, because a gate that is usually wrong teaches
+            # a caller to route around all four checks rather than this one.
+            add_finding dead-code warn "$sym is defined but referenced nowhere outside its own file and the tests — dead, or waiting on a consumer this branch does not contain (${deffile#*:})"
           elif [ "$kind" = type ]; then
             add_finding dead-code warn "type $sym is referenced nowhere outside its own file and the tests — check the constructors, wrapper types and struct fields that reach it before removing it (${deffile#*:})"
           else

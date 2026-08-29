@@ -505,15 +505,15 @@ eq "and one where no package ran anything still is" "block" \
 rm -f "$R7/out.txt"
 run "$R7" receipt --command "go test ./..." --passed >/dev/null
 
-# A type is reached through values, fields, constructors and wrapper types, none of which
-# spell it with word boundaries, so a textual check cannot show it is unreferenced. It is
-# reported and never gated on; a function with no caller still blocks.
+# Neither a type nor a function gates the run. A type is reached through values, fields,
+# constructors and wrapper types, none of which spell it with word boundaries; a function
+# may simply be waiting on a consumer the next deliverable brings. Both are reported.
 printf 'package x\n\ntype Orphaned struct{}\n' > "$R7/t.go"
 git -C "$R7" add -A && git -C "$R7" commit -qm "Add a type"
 V=$(run "$R7" verify --all-closed)
 eq "an unreferenced type warns rather than blocking" "warn" \
    "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | select(.detail | test("Orphaned")) | .severity')"
-eq "while an unreferenced function still blocks" "block" \
+eq "and an unreferenced function is reported, not gated on" "warn" \
    "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | select(.detail | test("^Orphan ")) | .severity')"
 
 printf 'staged\n' > "$R7/tail.go"; git -C "$R7" add "$R7/tail.go"
@@ -2369,14 +2369,14 @@ eq "and it is reported as ground the check cannot cover" "1" \
 eq "the caller it found is named" "true" \
    "$(printf '%s' "$V" | jq -r '[.not_checked[] | select(test("frontend/platform.js"))] | length == 1')"
 
-# Prose is not a caller: a symbol named only in docs or the breakdown still blocks.
+# Prose is not a caller: a symbol named only in docs or the breakdown is still reported.
 R37=$(new_repo)
 git -C "$R37" switch -qc feature
 printf 'package desktop\n\nfunc Orphan() {}\n' > "$R37/orphan.go"
 printf 'Orphan is described here but called nowhere.\n' > "$R37/README.md"
 git -C "$R37" add -A && git -C "$R37" commit -qm "Add an orphan and describe it"
-eq "a symbol named only in prose still blocks" "1" \
-   "$(run "$R37" verify --all-closed | jq -r '[.findings[] | select(.check=="dead-code" and .severity=="block")] | length')"
+eq "a symbol named only in prose is still reported" "1" \
+   "$(run "$R37" verify --all-closed | jq -r '[.findings[] | select(.check=="dead-code") | select(.detail | test("Orphan"))] | length')"
 
 # --------------------------------------------------------------------------------
 printf '\nbreakdown resolution from the ledger\n'

@@ -91,7 +91,7 @@ The ledger lives in the common git dir, not in the git dir of the worktree:
   breakdown.json    {tasks_file, sidecar, approved, lint_hash}
   audit.json        {rounds_planned, rounds: [{n, code_tree, findings, refuted, coverage_gaps}],
                      accepted: {code_tree, reason}}
-  validate.json     {code_tree, mismatches, resolved}
+  match-request.json {code_tree, mismatches, resolved}
   land.json         {archived, integrate, integrate_source, landed}
 ```
 
@@ -189,7 +189,7 @@ category as well made a caller learn two words to reach the same line of the rep
 | 4a | `pause N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done pause N`. `step` prints `stop: true` before it | asserted, a pause |
 | 5 | `suite` | the receipt passed, and its code tree equals the HEAD code tree | `clerk receipt` | derived |
 | 6 | `audit` | `accepted` is present at this code tree | `clerk audit plan --rounds N`; for each round `clerk audit round --report <json>`, which refuses on a stale receipt, a dirty tree, or more rounds than planned without `--replan`; then `clerk audit accept [--early "<why>"]`. `step` prints the request from `run.json` as `request`, with `base` and `test_commands` | asserted for `accept`, derived for the rest |
-| 7 | `validate` | `validate.json` at this code tree, with no open mismatch | `clerk step --done validate [--mismatch "…"]…`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions. A recorded mismatch is **blocked** until `--resolved` | asserted |
+| 7 | `match-request` | `match-request.json` at this code tree, with no open mismatch | `clerk step --done match-request [--mismatch "…"]…`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions. A recorded mismatch is **blocked** until `--resolved` | asserted |
 | 8 | `theory` | the breakdown contains `## Theory`, and the file is committed when `tasks_tracked` is true | the model writes it. A `tasks/`-only commit does not disturb rows 5 to 7 | derived |
 | 9 | `verify` | `clerk verify --all-closed` is clean, and `not_checked` is empty or `--done verify-residue` is recorded | `step` runs verify itself when it reaches the row, and caches a pass in `done.json` at its code tree so the archive commit does not run it again | derived, then asserted |
 | 10 | `land` | `land.json` says `landed`, or `archived.json` exists and integration is off or done. From the main checkout: the slug is merged and its worktree and branch are gone | `clerk land`. `gate` reads the acceptance from `audit.json`, so `--audit-accepted` is not needed. The exit, fast-forward and remove sequence for a worktree becomes printed instructions from the main checkout | derived |

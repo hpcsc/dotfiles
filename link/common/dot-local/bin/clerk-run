@@ -11,7 +11,7 @@ told; what changes is who reads the answer.
 Three kinds of step:
 
   isolate, suite, audit, land   clerk does the whole thing — worktree, suite, rounds, archive
-  ground, plan, validate …      one headless turn each, scoped to the tools that step needs
+  ground, decompose, explain …  one headless turn each, scoped to the tools that step needs
   task × N                      one turn per task into ONE session, so context accumulates
 
 That last one is why this is not `implement-flow`: construction stays undelegated, and a
@@ -94,7 +94,7 @@ def tools_for(step_id, facts):
         return look + GIT_WRITE
     if step_id == "suite":
         return look + GIT_READ + suite_tools(facts)
-    if step_id == "validate":
+    if step_id == "match-request":
         # It is asked to make a headline test fail and put it back, so it writes.
         return look + WRITE + GIT_WRITE + suite_tools(facts)
     if step_id == "decompose":

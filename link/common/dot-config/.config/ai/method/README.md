@@ -12,8 +12,8 @@ lives in `clerk`, a shell tool both harnesses call.
     ├── implement/
     │   ├── body.md             the skill: the shape, the loop, the flags
     │   ├── steps/<id>.md       the method, one step per file — ground, isolate,
-    │   │                       plan, task, suite, audit, validate, theory,
-    │   │                       verify, land, learn
+    │   │                       decompose, build, suite, audit, match-request,
+    │   │                       theory, verify, land, learn
     │   └── seams/{claude,opencode}/
     │       ├── start.md        how the run is opened (opencode names the harness)
     │       ├── invocation.md   how the request arrives
@@ -128,7 +128,7 @@ flowchart TD
   BUILD -->|"none open"| SUITE
   SUITE["suite<br/>receipt green at this code tree"] --> AUDIT
   AUDIT["audit<br/>clerk audit plan · round · accept"] --> VALIDATE
-  VALIDATE["validate<br/>clerk step --done validate [--mismatch]<br/>blocked until --resolved"] --> THEORY
+  VALIDATE["match-request<br/>clerk step --done match-request [--mismatch]<br/>blocked until --resolved"] --> THEORY
   THEORY["theory<br/>## Theory in the breakdown, committed"] --> VERIFY
   VERIFY["verify<br/>clerk verify clean · residue reviewed"] --> LAND
   LAND["land<br/>clerk land · the gate reads the acceptance<br/>fast-forward from the main checkout"] --> LEARN
@@ -192,7 +192,7 @@ The message is judgment, so it goes to the commit agent. The four prove-it check
 guard shown to fail, an absence assertion with a positive partner, a source-scanning
 test re-verified after a move, and looking at UI in a browser — stay with the model.
 
-### Phase 3 — audit, validate, close
+### Phase 3 — audit, match, close
 
 Suite, then receipt. Audit, fix, then **receipt again** — this is the only point in the
 run where code lands after the last green. Re-audit narrowed to the lenses that raised
@@ -209,7 +209,7 @@ archives on the feature branch, and integrates only when asked.
 ### The order is clerk's
 
 The phases above are a table `clerk step` evaluates from the top — ground, isolate, plan,
-task, suite, audit, validate, theory, verify, land, learn — against the repository and a
+build, suite, audit, match-request, theory, verify, land, learn — against the repository and a
 ledger under `<git-common-dir>/clerk/runs/<slug>/`. It returns the first row that is not
 done with the method text for it, and the skill is one loop: `clerk step`, do that, `clerk
 step`. Position is recomputed on every call, so a stopped run continues with the same call
@@ -406,7 +406,7 @@ flowchart LR
     direction TB
     L1["run.json · the request, verbatim"]
     L2["events.jsonl · every logged clerk command"]
-    L3["done.json · breakdown.json · audit.json<br/>validate.json · land.json"]
+    L3["done.json · breakdown.json · audit.json<br/>match-request.json · land.json"]
   end
   W1["decompose-to-tasks · clerk finish · the model's ticks"] --> REPO
   W2["clerk receipt · clerk land · clerk finish"] --> GD
@@ -563,7 +563,7 @@ memory.
 The method therefore never depends on the token. It opens by naming the thing instead:
 **the request** is everything the caller handed over, recorded verbatim by
 `clerk step --start` before anything else happens, and every later step reads it from
-that record — the audit and validate steps get it back as `request`. Three steps need it — whether
+that record — the audit and match-request steps get it back as `request`. Three steps need it — whether
 `--in-place` was passed, whether an existing breakdown was named, and handing the
 request to the audit unsummarized — and all three work the same way on both tools.
 

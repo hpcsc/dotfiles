@@ -1,4 +1,4 @@
-## Phase 3: Audit, validate, close
+## Phase 3: Audit, match, close
 
 ### 1. Full suite
 

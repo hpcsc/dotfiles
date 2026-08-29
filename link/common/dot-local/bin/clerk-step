@@ -637,20 +637,20 @@ def row_audit(ctx):
                **fields)
 
 
-def row_validate(ctx):
-    rec = ctx.run.read("validate.json")
+def row_match_request(ctx):
+    rec = ctx.run.read("match-request.json")
     base = ctx.prepare.get("base")
     log = gitout("log", "--oneline", f"{base}..HEAD", cwd=ctx.cwd) if base else gitout("log", "--oneline", "-20", cwd=ctx.cwd)
     fields = dict(request=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=VALIDATE_QUESTIONS)
     if rec and rec.get("code_tree") == ctx.head_ct:
         if rec.get("mismatches") and not rec.get("resolved"):
-            return row("validate", False, blocked=True, stop=True,
-                       reason="mismatches were recorded; put them to the user and stop. After the decision: clerk step --done validate --resolved",
+            return row("match-request", False, blocked=True, stop=True,
+                       reason="mismatches were recorded; put them to the user and stop. After the decision: clerk step --done match-request --resolved",
                        mismatches=rec["mismatches"], why_not_done="unresolved mismatches", **fields)
-        return row("validate", True, mismatches=rec.get("mismatches", []))
+        return row("match-request", True, mismatches=rec.get("mismatches", []))
     why = "the request was not re-read against this code tree" if not rec else "validated at an earlier code tree — the code changed since"
-    return row("validate", False, why_not_done=why,
-               done_by="clerk step --done validate [--mismatch \"<quoted words>\"]...", **fields)
+    return row("match-request", False, why_not_done=why,
+               done_by="clerk step --done match-request [--mismatch \"<quoted words>\"]...", **fields)
 
 
 def row_theory(ctx):
@@ -764,7 +764,7 @@ def row_learn(ctx):
 
 
 ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("build", row_build),
-        ("suite", row_suite), ("audit", row_audit), ("validate", row_validate), ("theory", row_theory),
+        ("suite", row_suite), ("audit", row_audit), ("match-request", row_match_request), ("theory", row_theory),
         ("verify", row_verify), ("land", row_land), ("learn", row_learn)]
 
 
@@ -942,18 +942,18 @@ def done_pause(ctx, argv):
     return {"done": "pause", "n": int(rest[0])}
 
 
-def done_validate(ctx, argv):
+def done_match_request(ctx, argv):
     o, _ = parse(argv, {"--mismatch": "list", "--resolved": "bool"})
-    rec = ctx.run.read("validate.json") or {}
+    rec = ctx.run.read("match-request.json") or {}
     if o["--resolved"]:
         if rec.get("code_tree") != ctx.head_ct:
-            die("nothing to resolve: no validation is recorded at this code tree", 1)
+            die("nothing to resolve: nothing is recorded at this code tree", 1)
         rec["resolved"] = True
         rec["resolved_at"] = now()
     else:
         rec = {"code_tree": ctx.head_ct, "at": now(), "mismatches": o["--mismatch"], "resolved": False}
-    ctx.run.write("validate.json", rec)
-    return {"done": "validate", "mismatches": rec["mismatches"], "resolved": rec["resolved"]}
+    ctx.run.write("match-request.json", rec)
+    return {"done": "match-request", "mismatches": rec["mismatches"], "resolved": rec["resolved"]}
 
 
 def done_verify_residue(ctx, argv):
@@ -968,7 +968,7 @@ def done_learn(ctx, argv):
 
 
 # The steps whose completion is a judgment: recorded with `--done`, never derived.
-DONE = {"ground": done_ground, "decompose": done_decompose, "pause": done_pause, "validate": done_validate,
+DONE = {"ground": done_ground, "decompose": done_decompose, "pause": done_pause, "match-request": done_match_request,
         "verify-residue": done_verify_residue, "learn": done_learn}
 
 

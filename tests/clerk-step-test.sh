@@ -254,8 +254,8 @@ eq "--replan lets it through, on purpose" "2" "$(run "$WT" audit round --report 
 eq "status shows both rounds" "2|2" "$(run "$WT" audit status | jq -r '[(.rounds_planned|tostring), (.rounds|length|tostring)] | join("|")')"
 A=$(run "$WT" audit accept)
 eq "accept records the acceptance" "true|2" "$(printf '%s' "$A" | jq -r '[(.accepted|tostring), (.rounds|tostring)] | join("|")')"
-eq "and returns the step that follows under next" "validate" "$(printf '%s' "$A" | jq -r '.next.step')"
-eq "and the run moves to validate" "validate" "$(run "$WT" step | field .step)"
+eq "and returns the step that follows under next" "match-request" "$(printf '%s' "$A" | jq -r '.next.step')"
+eq "and the run moves to match-request" "match-request" "$(run "$WT" step | field .step)"
 printf 'e\n' > "$WT/e.go"; commit_all "$WT" "Fix after acceptance"
 run "$WT" receipt --command "go test ./..." --passed >/dev/null
 eq "code changed after acceptance reopens the audit" "audit|true" \
@@ -264,17 +264,17 @@ eq "accept with no round at this tree needs --early and a reason" "3" "$(rc "$WT
 eq "given one, it is recorded" "trivial fix" "$(run "$WT" audit accept --early "trivial fix" | field .early)"
 
 # --------------------------------------------------------------------------------
-printf '\nvalidate — the request is re-read against the branch; a mismatch parks the run\n'
+printf '\nmatch-request — the request is re-read against the branch; a mismatch parks the run\n'
 
 V=$(run "$WT" step)
-eq "validate hands over the request and the log" "Add a widget --gears|true" \
+eq "match-request hands over the request and the log" "Add a widget --gears|true" \
    "$(printf '%s' "$V" | jq -r '[.request, ((.log|length) > 3 | tostring)] | join("|")')"
 eq "and the four questions" "4" "$(printf '%s' "$V" | jq -r '.questions | length')"
-eq "--resolved with nothing recorded is refused" "1" "$(rc "$WT" step --done validate --resolved)"
-run "$WT" step --done validate --mismatch "no widget colour" >/dev/null
-eq "a recorded mismatch blocks the run until the user decides" "validate|true|true" \
+eq "--resolved with nothing recorded is refused" "1" "$(rc "$WT" step --done match-request --resolved)"
+run "$WT" step --done match-request --mismatch "no widget colour" >/dev/null
+eq "a recorded mismatch blocks the run until the user decides" "match-request|true|true" \
    "$(run "$WT" step | jq -r '[.step, (.blocked|tostring), (.stop|tostring)] | join("|")')"
-run "$WT" step --done validate --resolved >/dev/null
+run "$WT" step --done match-request --resolved >/dev/null
 eq "resolved, the run moves to theory" "theory" "$(run "$WT" step | field .step)"
 
 # --------------------------------------------------------------------------------
@@ -320,7 +320,7 @@ seed "$WL" lz; run "$WL" step --done decompose --tasks-file tasks/lz.md >/dev/nu
 build_tasks "$WL"
 run "$WL" receipt --command true --passed >/dev/null
 run "$WL" audit round --report "$REP" >/dev/null; run "$WL" audit accept >/dev/null
-run "$WL" step --done validate >/dev/null
+run "$WL" step --done match-request >/dev/null
 printf '## Theory\n\nX.\n\n' | cat - "$WL/tasks/lz.md" > "$WL/tasks/lz.tmp" && /bin/mv -f "$WL/tasks/lz.tmp" "$WL/tasks/lz.md"; commit_all "$WL" "Theory"
 run "$WL" receipt --command true --passed >/dev/null
 run "$WL" step --done verify-residue >/dev/null
@@ -404,7 +404,7 @@ seed "$RJ" ij; run "$RJ" step --done decompose --tasks-file tasks/ij.md >/dev/nu
 build_tasks "$RJ"
 run "$RJ" receipt --command true --passed >/dev/null
 run "$RJ" audit round --report "$REP" >/dev/null; run "$RJ" audit accept >/dev/null
-run "$RJ" step --done validate >/dev/null
+run "$RJ" step --done match-request >/dev/null
 printf '## Theory\n\nX.\n\n' | cat - "$RJ/tasks/ij.md" > "$RJ/tasks/ij.tmp" && /bin/mv -f "$RJ/tasks/ij.tmp" "$RJ/tasks/ij.md"; commit_all "$RJ" "Theory"
 run "$RJ" receipt --command true --passed >/dev/null
 run "$RJ" step --done verify-residue >/dev/null

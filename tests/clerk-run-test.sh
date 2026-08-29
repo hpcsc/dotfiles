@@ -146,7 +146,7 @@ case "$step" in
   build)    case "$n" in 1) f=a.go ;; *) f=b.go ;; esac
             printf 'package main\n' > "$f"
             clerk finish "$n" -- "$f" >/dev/null && git commit -qm "Task $n" ;;
-  validate) clerk step --done validate >/dev/null ;;
+  match-request) clerk step --done match-request >/dev/null ;;
   theory)   printf '\n## Theory\nIt is a fixture.\n' >> tasks/story.md
             git add tasks/story.md && git commit -qm "Theory" ;;
   verify)   clerk step --done verify-residue >/dev/null ;;

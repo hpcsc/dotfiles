@@ -367,9 +367,9 @@ def render_method(text, harness):
     return "\n".join(out).strip("\n")
 
 
-# The gears pause is a moment inside the task step, and the method text for it is the
-# task's; the built-in summary says what to show and where to stop.
-STEP_TEXT_ALIAS = {"tests": "task"}
+# The gears pause is a moment inside the build step, and the method text for it is the
+# build step's; the built-in summary says what to show and where to stop.
+STEP_TEXT_ALIAS = {"tests": "build"}
 
 # How long a printed text is taken to still be in the caller's view. Claude Code names
 # its session, so a new session is told apart outright; a harness that does not gets
@@ -555,10 +555,10 @@ def row_decompose(ctx):
     return row("decompose", True, tasks_file=bd["tasks_file"], sidecar=bd["sidecar"])
 
 
-def row_task(ctx):
+def row_build(ctx):
     tf, side, _ = breakdown_files(ctx)
     if tf is None or not side.exists():
-        return row("task", False, why_not_done="no sidecar to read tasks from")
+        return row("build", False, why_not_done="no sidecar to read tasks from")
     # `clerk next` owns which task is ready — the dependency rule is applied, not repeated.
     # --allow-dirty because a dirty tree is reported on the row, not a reason to stop asking.
     rc, nx, err = clerk("next", "--allow-dirty", "--tasks-file", str(tf), cwd=ctx.cwd)
@@ -567,10 +567,10 @@ def row_task(ctx):
     total, remaining = nx.get("total", 0), nx.get("remaining", 0)
     progress = {"done": total - remaining, "total": total, "remaining": remaining, "blocked": nx.get("blocked", 0)}
     if nx.get("done"):
-        return row("task", True, progress=progress)
+        return row("build", True, progress=progress)
     cur = nx.get("task")
     if cur is None:
-        return row("task", False, blocked=True, stop=True, progress=progress,
+        return row("build", False, blocked=True, stop=True, progress=progress,
                    reason="open tasks remain but none is unblocked — the dependency graph has a cycle or names a task that is not there",
                    why_not_done="no ready task")
     n = cur["n"]
@@ -593,7 +593,7 @@ def row_task(ctx):
                    why_not_done=f"task {n} pauses after its tests ({', '.join(reasons)}) and they were not shown",
                    done_by=f"write the tests, run them red, show the assertions, stop; then clerk step --done tests {n}",
                    **fields)
-    return row("task", False, pause_after_tests=pauses,
+    return row("build", False, pause_after_tests=pauses,
                why_not_done=f"task {n} is open",
                done_by=f"clerk finish {n} [--retried] -- <files> (it lints the staged set and returns the step after the commit as after_commit); commit with the {fields['commit_skill']} skill; then act on after_commit",
                **fields)
@@ -763,7 +763,7 @@ def row_learn(ctx):
                        f"or, for a run with nothing that generalises: clerk step --done learn --none")
 
 
-ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("task", row_task),
+ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("build", row_build),
         ("suite", row_suite), ("audit", row_audit), ("validate", row_validate), ("theory", row_theory),
         ("verify", row_verify), ("land", row_land), ("learn", row_learn)]
 

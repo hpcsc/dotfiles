@@ -176,7 +176,7 @@ eq "the isolate step cost no turn — clerk made the worktree and entered it" "c
 eq "so did the suite, the audit and the landing" "clerk|clerk|clerk" \
    "$(printf '%s' "$OUT" | jq -r '[(.steps[] | select(.step=="suite" or .step=="audit" or .step=="land") | .by)] | unique | join("|")' | sed 's/^clerk$/clerk|clerk|clerk/')"
 eq "every task was built by a turn" "2" \
-   "$(printf '%s' "$OUT" | jq -r '[.steps[] | select(.step=="task")] | length')"
+   "$(printf '%s' "$OUT" | jq -r '[.steps[] | select(.step=="build")] | length')"
 eq "and the run cost what its turns cost" "true" \
    "$(printf '%s' "$OUT" | jq -r '(.cost_usd > 0) | tostring')"
 eq "the branch landed with the breakdown archived" "1" \

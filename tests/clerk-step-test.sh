@@ -169,7 +169,7 @@ run "$RP" step --done decompose --tasks-file tasks/rp.md >/dev/null
 eq "with review_plan on the breakdown is a pause: bound but not approved" "decompose|true" \
    "$(run "$RP" step | jq -r '[.step, (.stop|tostring)] | join("|")')"
 run "$RP" step --done decompose --tasks-file tasks/rp.md --approved >/dev/null
-eq "--approved opens it" "task" "$(run "$RP" step | field .step)"
+eq "--approved opens it" "build" "$(run "$RP" step | field .step)"
 
 # --------------------------------------------------------------------------------
 printf '\ntask — the first unblocked task, until none is open; gears pauses a hard one after its tests\n'
@@ -181,13 +181,13 @@ eq "a gears run pauses a low-certainty task before any code" "tests|1|true" \
 eq "--done tests needs the task number" "2" "$(rc "$WT" step --done tests)"
 run "$WT" step --done tests 1 >/dev/null
 T=$(run "$WT" step)
-eq "shown, the same task is the step, and it says it paused" "task|1|true" \
+eq "shown, the same task is the step, and it says it paused" "build|1|true" \
    "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring), (.pause_after_tests|tostring)] | join("|")')"
 eq "with progress and its assessment on the task object" "0/2|low|low" \
    "$(printf '%s' "$T" | jq -r '[(.progress.done|tostring) + "/" + (.progress.total|tostring), .certainty, .blast_radius] | join("|")')"
 eq "task 2 is blocked behind 1" "1" "$(printf '%s' "$T" | field .progress.blocked)"
 printf 'a\n' > "$WT/a.go"
-eq "a dirty tree mid-task is the task in flight, not a block" "task|true|false" \
+eq "a dirty tree mid-task is the task in flight, not a block" "build|true|false" \
    "$(run "$WT" step | jq -r '[.step, (.tree_dirty|tostring), (.blocked|tostring)] | join("|")')"
 F=$(run "$WT" finish 1 -- a.go); commit_all "$WT" "Task 1"
 eq "finish returns the step after the commit as after_commit — task 2, pausing for its tests" "tests|2" \
@@ -201,7 +201,7 @@ eq "the last finish hands over the suite" "suite" "$(printf '%s' "$F" | jq -r '.
 eq "every task done moves the run to suite" "suite" "$(run "$WT" step | field .step)"
 
 # Without gears the assessments are reported and nothing pauses.
-eq "a run without gears never pauses, and says when a task was not assessed" "task|false|true" \
+eq "a run without gears never pauses, and says when a task was not assessed" "build|false|true" \
    "$(run "$RP" step | jq -r '[.step, (.pause_after_tests|tostring), (.unassessed|tostring)] | join("|")')"
 
 RC=$(new_repo)
@@ -209,7 +209,7 @@ run "$RC" step --start cyc --request "Cycle" >/dev/null; run "$RC" step --done g
 git -C "$RC" checkout -q -b cyc
 seed "$RC" cyc '{"depends_on": [2]}'
 run "$RC" step --done decompose --tasks-file tasks/cyc.md >/dev/null
-eq "a dependency cycle is a block with a reason, not a silent stall" "task|true" \
+eq "a dependency cycle is a block with a reason, not a silent stall" "build|true" \
    "$(run "$RC" step | jq -r '[.step, (.blocked|tostring)] | join("|")')"
 
 # --------------------------------------------------------------------------------
@@ -450,7 +450,7 @@ RS=$(new_repo)
 mkdir -p "$RS/tasks" && printf '{"in_place": true, "gears": true}\n' > "$RS/tasks/clerk.json" && commit_all "$RS" "Config"
 run "$RS" step --start sg --request "Shifting" >/dev/null; run "$RS" step --done ground --caller ui >/dev/null; run "$RS" branch sg >/dev/null
 seed_chain "$RS" sg 5; run "$RS" step --done decompose --tasks-file tasks/sg.md >/dev/null; commit_all "$RS" "Breakdown"
-eq "an unassessed task in a gears run builds straight through, gear normal" "task|1|normal|false" \
+eq "an unassessed task in a gears run builds straight through, gear normal" "build|1|normal|false" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"
 printf 'a\n' > "$RS/a.go"; run "$RS" finish 1 --retried -- a.go >/dev/null; commit_all "$RS" "T1"
 eq "a retried task downshifts the run: the next task pauses" "tests|2|low|true" \
@@ -462,7 +462,7 @@ printf 'b\n' > "$RS/b.go"; run "$RS" finish 2 -- b.go >/dev/null; commit_all "$R
 eq "one clean task is not enough to upshift" "tests|3|low" "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear] | join("|")')"
 run "$RS" step --done tests 3 >/dev/null
 printf 'c\n' > "$RS/c.go"; run "$RS" finish 3 -- c.go >/dev/null; commit_all "$RS" "T3"
-eq "two clean tasks in a row upshift: the next builds straight through" "task|4|normal|false" \
+eq "two clean tasks in a row upshift: the next builds straight through" "build|4|normal|false" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"
 printf 'package d\n\n// Fixes ABC-123\nvar D = 1\n' > "$RS/d.go"
 eq "a finish whose staged set has a lint finding is refused, and that refusal is on the record" "1" "$(rc "$RS" finish 4 -- d.go)"

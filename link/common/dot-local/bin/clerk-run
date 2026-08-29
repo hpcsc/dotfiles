@@ -99,7 +99,7 @@ def tools_for(step_id, facts):
         return look + WRITE + GIT_WRITE + suite_tools(facts)
     if step_id == "decompose":
         return look + WRITE + SPAWN + GIT_WRITE
-    # task, tests, audit, verify — the steps that change code and spawn helpers.
+    # build, tests, audit, verify — the steps that change code and spawn helpers.
     return look + WRITE + SPAWN + GIT_WRITE + suite_tools(facts)
 
 
@@ -501,7 +501,7 @@ MECHANICAL = {"isolate": do_isolate, "suite": do_suite, "audit": do_audit, "land
 # The build phase is one conversation. Every other step gets its own, because nothing
 # after the branch is built is helped by remembering how each task went, and several of
 # them — the audit, the validation — are better off reading the diff cold.
-BUILD_STEPS = ("task", "tests")
+BUILD_STEPS = ("build", "tests")
 
 
 def one_turn(st, row, note):
@@ -516,7 +516,7 @@ def one_turn(st, row, note):
         st.session, st.resume = hx.new_session_id(), False
     # The task text is ten kilobytes and comes back once per task. The build session was
     # sent it on the first one and still has it; every other step is a fresh session.
-    elide = build and "task" in st.sent
+    elide = build and "build" in st.sent
     job = {"id": step_id, "prompt": build_prompt(row, st.request, elide, note),
            "allowed_tools": st.tools(step_id, facts)}
     started = time.time()
@@ -531,7 +531,7 @@ def one_turn(st, row, note):
     if build:
         st.session = res.get("session_id") or st.session
         st.resume = bool(st.session)
-        st.sent.add("task")
+        st.sent.add("build")
     took = f"{int(time.time() - started)}s"
     if not res.get("ok"):
         st.out.result(f"  ✗ {res.get('error')}  ({took})")
@@ -549,7 +549,7 @@ def one_turn(st, row, note):
 
 def headline(row):
     step = row["step"]
-    if step in ("task", "tests"):
+    if step in ("build", "tests"):
         task = row.get("task") or {}
         prog = row.get("progress") or {}
         marks = [m for m in (row.get("certainty"), row.get("blast_radius")) if m]

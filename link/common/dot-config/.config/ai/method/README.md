@@ -122,7 +122,7 @@ flowchart TD
   ISOLATE["isolate<br/>branch == slug<br/>clerk worktree · clerk branch"] --> PLAN
   PLAN["decompose<br/>breakdown bound · sidecar present · lint clean<br/>clerk step --done decompose --tasks-file"] --> TASK
   TASK{"task N<br/>first open task with its<br/>dependencies done"} -->|"gears on, and low certainty /<br/>high blast radius / downshifted"| TESTS
-  TESTS["tests N · stop: true<br/>clerk step --done tests N"] --> BUILD
+  TESTS["pause N · stop: true<br/>clerk step --done pause N"] --> BUILD
   TASK --> BUILD["clerk finish N -- files<br/>stages · lints · marks done<br/>the commit leaves the tree clean"]
   BUILD -->|"tasks open"| TASK
   BUILD -->|"none open"| SUITE

@@ -99,7 +99,7 @@ def tools_for(step_id, facts):
         return look + WRITE + GIT_WRITE + suite_tools(facts)
     if step_id == "decompose":
         return look + WRITE + SPAWN + GIT_WRITE
-    # build, tests, audit, verify — the steps that change code and spawn helpers.
+    # build, pause, audit, verify — the steps that change code and spawn helpers.
     return look + WRITE + SPAWN + GIT_WRITE + suite_tools(facts)
 
 
@@ -501,7 +501,7 @@ MECHANICAL = {"isolate": do_isolate, "suite": do_suite, "audit": do_audit, "land
 # The build phase is one conversation. Every other step gets its own, because nothing
 # after the branch is built is helped by remembering how each task went, and several of
 # them — the audit, the validation — are better off reading the diff cold.
-BUILD_STEPS = ("build", "tests")
+BUILD_STEPS = ("build", "pause")
 
 
 def one_turn(st, row, note):
@@ -549,13 +549,13 @@ def one_turn(st, row, note):
 
 def headline(row):
     step = row["step"]
-    if step in ("build", "tests"):
+    if step in ("build", "pause"):
         task = row.get("task") or {}
         prog = row.get("progress") or {}
         marks = [m for m in (row.get("certainty"), row.get("blast_radius")) if m]
         tail = f"  [{' / '.join(marks)}]" if marks else ""
         return (f"task {row.get('n')}/{prog.get('total')} · {task.get('title') or ''}{tail}"
-                + ("  (tests only)" if step == "tests" else ""))
+                + ("  (tests only)" if step == "pause" else ""))
     return f"{step} · {row.get('why_not_done') or ''}"
 
 

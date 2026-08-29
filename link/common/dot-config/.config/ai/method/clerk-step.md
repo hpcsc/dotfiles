@@ -87,7 +87,7 @@ The ledger lives in the common git dir, not in the git dir of the worktree:
 <git-common-dir>/clerk/runs/<slug>/
   run.json          {slug, request, started_at, launch_cwd, launch_branch, harness, finished}
   events.jsonl      one line for each logged clerk command: {cmd, argv, exit, at, head}
-  done.json         the asserted completions: ground, tests, verify, verify-residue, learn
+  done.json         the asserted completions: ground, pause, verify, verify-residue, learn
   breakdown.json    {tasks_file, sidecar, approved, lint_hash}
   audit.json        {rounds_planned, rounds: [{n, code_tree, findings, refuted, coverage_gaps}],
                      accepted: {code_tree, reason}}
@@ -186,7 +186,7 @@ category as well made a caller learn two words to reach the same line of the rep
 | 2 | `isolate` | the current branch is the slug. `mode` says worktree or in-place; `fallback` says in-place without `in_place` on | `clerk worktree <slug>` or `clerk branch <slug>`. From the main checkout, `step` prints "enter `<path>`" until the cwd is the worktree | derived |
 | 3 | `decompose` | `breakdown.json` is bound, the sidecar exists, `lint certainty-unevidenced` is clean at the sidecar's present hash, and `approved` is set when `review_plan` is on | `clerk step --done decompose --tasks-file <md> [--approved]`. It runs the lint itself and refuses on findings. On success it prints the task table. An archived breakdown reads from `tasks/completed/` | asserted for the bind, derived for the lint |
 | 4 | `build N` (repeats) | `done` for N in the sidecar, and the tree is clean | `clerk finish N [--retried] -- <files>` lints the staged set before it sets `done` and refuses with exit 1 on findings. The commit makes the tree clean. The output carries `certainty`, `blast_radius`, `gear`, `pause_after_tests`, the last task's signals, and progress | derived |
-| 4a | `tests N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done tests N`. `step` prints `stop: true` before it | asserted, a pause |
+| 4a | `pause N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done pause N`. `step` prints `stop: true` before it | asserted, a pause |
 | 5 | `suite` | the receipt passed, and its code tree equals the HEAD code tree | `clerk receipt` | derived |
 | 6 | `audit` | `accepted` is present at this code tree | `clerk audit plan --rounds N`; for each round `clerk audit round --report <json>`, which refuses on a stale receipt, a dirty tree, or more rounds than planned without `--replan`; then `clerk audit accept [--early "<why>"]`. `step` prints the request from `run.json` as `request`, with `base` and `test_commands` | asserted for `accept`, derived for the rest |
 | 7 | `validate` | `validate.json` at this code tree, with no open mismatch | `clerk step --done validate [--mismatch "…"]…`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions. A recorded mismatch is **blocked** until `--resolved` | asserted |

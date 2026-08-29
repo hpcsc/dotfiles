@@ -146,7 +146,7 @@ eq "with the findings in the reply" "1" \
 eq "and the run stays at decompose" "decompose" "$(run "$WT" step | field .step)"
 seed "$WT" w1 '{"certainty": "low", "blast_radius": "low"}' '{"certainty": "high", "blast_radius": "high", "patterns_to_follow": ["task:1"]}'
 B=$(run "$WT" step --done decompose --tasks-file tasks/w1.md)
-eq "--done decompose returns the first task under next — here pausing for its tests" "tests|1" \
+eq "--done decompose returns the first task under next — here pausing for its tests" "pause|1" \
    "$(printf '%s' "$B" | jq -r '[.next.step, (.next.n|tostring)] | join("|")')"
 eq "a clean sidecar binds" "true|2" "$(printf '%s' "$B" | jq -r '[(.bound|tostring), (.plan|length|tostring)] | join("|")')"
 eq "and the reply is the plan table, certainty and blast radius included" "1:low/low 2:high/high" \
@@ -176,10 +176,10 @@ printf '\ntask — the first unblocked task, until none is open; gears pauses a 
 
 # w1 has --gears in its request and task 1 is low certainty.
 T=$(run "$WT" step)
-eq "a gears run pauses a low-certainty task before any code" "tests|1|true" \
+eq "a gears run pauses a low-certainty task before any code" "pause|1|true" \
    "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring), (.stop|tostring)] | join("|")')"
-eq "--done tests needs the task number" "2" "$(rc "$WT" step --done tests)"
-run "$WT" step --done tests 1 >/dev/null
+eq "--done pause needs the task number" "2" "$(rc "$WT" step --done pause)"
+run "$WT" step --done pause 1 >/dev/null
 T=$(run "$WT" step)
 eq "shown, the same task is the step, and it says it paused" "build|1|true" \
    "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring), (.pause_after_tests|tostring)] | join("|")')"
@@ -190,12 +190,12 @@ printf 'a\n' > "$WT/a.go"
 eq "a dirty tree mid-task is the task in flight, not a block" "build|true|false" \
    "$(run "$WT" step | jq -r '[.step, (.tree_dirty|tostring), (.blocked|tostring)] | join("|")')"
 F=$(run "$WT" finish 1 -- a.go); commit_all "$WT" "Task 1"
-eq "finish returns the step after the commit as after_commit — task 2, pausing for its tests" "tests|2" \
+eq "finish returns the step after the commit as after_commit — task 2, pausing for its tests" "pause|2" \
    "$(printf '%s' "$F" | jq -r '[.after_commit.step, (.after_commit.n|tostring)] | join("|")')"
 T=$(run "$WT" step)
-eq "once 1 is done and committed, 2 is next — and a high-blast task pauses too" "tests|2" \
+eq "once 1 is done and committed, 2 is next — and a high-blast task pauses too" "pause|2" \
    "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring)] | join("|")')"
-run "$WT" step --done tests 2 >/dev/null
+run "$WT" step --done pause 2 >/dev/null
 printf 'b\n' > "$WT/b.go"; F=$(run "$WT" finish 2 -- b.go); commit_all "$WT" "Task 2"
 eq "the last finish hands over the suite" "suite" "$(printf '%s' "$F" | jq -r '.after_commit.step')"
 eq "every task done moves the run to suite" "suite" "$(run "$WT" step | field .step)"
@@ -453,21 +453,21 @@ seed_chain "$RS" sg 5; run "$RS" step --done decompose --tasks-file tasks/sg.md 
 eq "an unassessed task in a gears run builds straight through, gear normal" "build|1|normal|false" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"
 printf 'a\n' > "$RS/a.go"; run "$RS" finish 1 --retried -- a.go >/dev/null; commit_all "$RS" "T1"
-eq "a retried task downshifts the run: the next task pauses" "tests|2|low|true" \
+eq "a retried task downshifts the run: the next task pauses" "pause|2|low|true" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.why_not_done | contains("downshifted") | tostring)] | join("|")')"
 eq "and the signal that did it is reported" "true|false" \
    "$(run "$RS" step | jq -r '[(.last_task_signals.retried|tostring), (.last_task_signals.lint_findings|tostring)] | join("|")')"
-run "$RS" step --done tests 2 >/dev/null
+run "$RS" step --done pause 2 >/dev/null
 printf 'b\n' > "$RS/b.go"; run "$RS" finish 2 -- b.go >/dev/null; commit_all "$RS" "T2"
-eq "one clean task is not enough to upshift" "tests|3|low" "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear] | join("|")')"
-run "$RS" step --done tests 3 >/dev/null
+eq "one clean task is not enough to upshift" "pause|3|low" "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear] | join("|")')"
+run "$RS" step --done pause 3 >/dev/null
 printf 'c\n' > "$RS/c.go"; run "$RS" finish 3 -- c.go >/dev/null; commit_all "$RS" "T3"
 eq "two clean tasks in a row upshift: the next builds straight through" "build|4|normal|false" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"
 printf 'package d\n\n// Fixes ABC-123\nvar D = 1\n' > "$RS/d.go"
 eq "a finish whose staged set has a lint finding is refused, and that refusal is on the record" "1" "$(rc "$RS" finish 4 -- d.go)"
 printf 'package d\n\nvar D = 1\n' > "$RS/d.go"; run "$RS" finish 4 -- d.go >/dev/null; commit_all "$RS" "T4"
-eq "and it downshifts again, naming the lint" "tests|5|low|true" \
+eq "and it downshifts again, naming the lint" "pause|5|low|true" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.last_task_signals.lint_findings|tostring)] | join("|")')"
 
 # --------------------------------------------------------------------------------

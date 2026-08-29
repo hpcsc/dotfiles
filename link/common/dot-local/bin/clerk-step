@@ -369,7 +369,7 @@ def render_method(text, harness):
 
 # The gears pause is a moment inside the build step, and the method text for it is the
 # build step's; the built-in summary says what to show and where to stop.
-STEP_TEXT_ALIAS = {"tests": "build"}
+STEP_TEXT_ALIAS = {"pause": "build"}
 
 # How long a printed text is taken to still be in the caller's view. Claude Code names
 # its session, so a new session is told apart outright; a harness that does not gets
@@ -582,16 +582,16 @@ def row_build(ctx):
     reasons = [r for r, hit in (("certainty low", certainty == "low"), ("blast radius high", blast == "high"),
                                 ("the run downshifted", g == "low")) if hit]
     pauses = gears and bool(reasons)
-    shown = str(n) in (ctx.run.done.get("tests") or {})
+    shown = str(n) in (ctx.run.done.get("pause") or {})
     fields = dict(n=n, task=cur, certainty=certainty, blast_radius=blast,
                   unassessed=(certainty is None and blast is None), gear=g,
                   last_task_signals=(signals.get(order[-1]) if order else None),
                   tree_dirty=not ctx.prepare.get("clean"), progress=progress,
                   commit_skill=ctx.prepare.get("commit_skill"))
     if pauses and not shown:
-        return row("tests", False, stop=True,
+        return row("pause", False, stop=True,
                    why_not_done=f"task {n} pauses after its tests ({', '.join(reasons)}) and they were not shown",
-                   done_by=f"write the tests, run them red, show the assertions, stop; then clerk step --done tests {n}",
+                   done_by=f"write the tests, run them red, show the assertions, stop; then clerk step --done pause {n}",
                    **fields)
     return row("build", False, pause_after_tests=pauses,
                why_not_done=f"task {n} is open",
@@ -932,14 +932,14 @@ def done_decompose(ctx, argv):
             "plan": (st or {}).get("progress"), "gears": (st or {}).get("gears")}
 
 
-def done_tests(ctx, argv):
+def done_pause(ctx, argv):
     _, rest = parse(argv, {})
     if len(rest) != 1 or not rest[0].isdigit():
-        die("--done tests <n>")
-    tests = ctx.run.done.get("tests") or {}
-    tests[rest[0]] = {"at": now(), "code_tree": ctx.head_ct}
-    ctx.run.mark("tests", tests)
-    return {"done": "tests", "n": int(rest[0])}
+        die("--done pause <n>")
+    taken = ctx.run.done.get("pause") or {}
+    taken[rest[0]] = {"at": now(), "code_tree": ctx.head_ct}
+    ctx.run.mark("pause", taken)
+    return {"done": "pause", "n": int(rest[0])}
 
 
 def done_validate(ctx, argv):
@@ -968,7 +968,7 @@ def done_learn(ctx, argv):
 
 
 # The steps whose completion is a judgment: recorded with `--done`, never derived.
-DONE = {"ground": done_ground, "decompose": done_decompose, "tests": done_tests, "validate": done_validate,
+DONE = {"ground": done_ground, "decompose": done_decompose, "pause": done_pause, "validate": done_validate,
         "verify-residue": done_verify_residue, "learn": done_learn}
 
 

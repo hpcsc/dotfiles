@@ -18,13 +18,13 @@ Derive scenarios from the acceptance criteria and the caller pattern you loaded.
 
 For a task whose evidence is "the existing suite still passes unchanged" — a pure move or rename — **do not add tests**. A new test there asserts behaviour the suite already covers.
 
-**With `gears` on, a hard task stops here** — tests written, run red, nothing implemented. A task qualifies when its `certainty` is `low`, when its `blast_radius` is `high`, or when the run has downshifted (step 5).
+**With `gears` on, a hard task stops here** — tests written, run red, nothing implemented. A task qualifies when its `certainty` is `low`, when its `blast_radius` is `high`, or when the run has downshifted (*Report and continue* below).
 
 Here, and not at the commit, because the tests are where the theory lives. Everything the task believes about the behaviour is in them before a line of implementation exists, so this is the last moment at which being wrong costs only the tests — and the first at which it is legible, since a red test states an expectation in one line where a diff makes a reader infer it. Show what each test asserts, one line each, not the file: someone checking whether you understood the requirement should not have to read scaffolding to find out.
 
 Name which of the two stopped you, because they ask for different reads. Low certainty asks *is this the right behaviour*. High blast radius asks *is this enough of it* — the tests may be right about everything they cover and the gap be what costs.
 
-Then follow the stopping convention in step 5: state what you would do next and stop, rather than asking and waiting. Someone watching answers and you carry on; nobody watching gets a window that ends on the question instead of a pane parked on it.
+Then follow the stopping convention in *Report and continue* below: state what you would do next and stop, rather than asking and waiting. Someone watching answers and you carry on; nobody watching gets a window that ends on the question instead of a pane parked on it.
 
 ### 2. Implement
 

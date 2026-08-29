@@ -238,6 +238,51 @@ the `finish` lint refusal and the code tree comparison.
 The step suite takes about two and a half minutes: most of its cases call `clerk step`,
 and each call runs `clerk prepare` once on a run branch and twice from the default branch.
 
+## Driving the audit from outside a session
+
+`clerk step` makes the order of a run a property of clerk. Inside the audit step, the
+order stayed a property of the model: the Workflow script owned the fan-out for one
+harness and prose owned it for the other, and a round advanced because something read
+instructions about advancing it.
+
+The audit is now a phase machine of its own, on the same shape as the step table.
+`clerk audit next` returns one phase's batch — the scope pass, then the lens panel, then
+dedupe, then the verifiers, then the report — with every prompt resolved and every job's
+schema named. `clerk audit record --phase <p> --results <file>` takes the replies and
+advances. What to run is decided in `clerk_audit_panel.py`: the language table, remits,
+the `MIN_REMIT` fold, fix-scoped narrowing, verifier counts, and whether a claim needs a
+tree. That was JavaScript in the Workflow script and prose in the opencode skill, and the
+two had already drifted.
+
+`clerk audit run` closes the loop. It walks the machine in-process and shells out to a
+headless agent only where a judgment is wanted:
+
+| Harness | Invocation |
+|---|---|
+| Claude Code | `claude -p --agent <name> --output-format json --permission-mode acceptEdits` |
+| opencode | `opencode run --agent <name> --format json` |
+
+Both resolve user-defined agents, so every lens the panel names is reachable. Two
+measured constraints are baked in. `--bare` is not used: it skips the discovery that
+finds user-defined agents and leaves five built-ins, so the panel silently cannot run.
+And a permission mode is passed, because a lens that reads the diff otherwise stops on a
+prompt nobody is there to answer.
+
+What the harness supplies to an in-session subagent and not to a headless one is supplied
+here: a reply is parsed out of whatever prose surrounds it and validated against
+`schemas.json` — the same contracts the Workflow script uses — with three attempts and
+the reason fed back each time; and a git worktree is created for any job whose claim can
+only be settled by mutating a checkout. A job that never returns a usable reply is
+reported failed by name, because a lens missing from a panel reads exactly like a lens
+that found nothing.
+
+`--dry-run` prints the phase it would spawn, with each job's agent, isolation and schema,
+and spawns nothing.
+
+The `implement` skill is unchanged and still drives the audit through the harness. This
+is a second entry point, for a round run from outside a session — a terminal, a cron
+entry, a machine with no interactive harness open.
+
 ## Harness hooks, not built
 
 Hooks are a second layer for what clerk cannot see, and each harness has its own:

@@ -588,6 +588,8 @@ request to the audit unsummarized — and all three work the same way on both to
 ```
 task common:gen                regenerate both trees, generators in the order they require
 task common:check              fail if a generated file or an agent's model is stale
+clerk audit run --dry-run      the audit's plan for this branch, spawning nothing
+clerk audit run                a whole round, driven by clerk rather than by a session
 task common:test:clerk         the clerk fixture tests
 clerk help                     the command surface
 ```

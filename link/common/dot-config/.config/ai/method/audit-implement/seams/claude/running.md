@@ -25,7 +25,7 @@ Workflow({
     target: "branch",
     testCommands: { ... },
     brief: "<what you were trying to build, in a sentence — optional>",
-    story: "<the original request, verbatim — optional but worth more than the brief>",
+    request: "<the original request, verbatim — optional but worth more than the brief>",
     depth: "standard"
   }
 })
@@ -34,7 +34,7 @@ Workflow({
 - `args.target` — `"branch"` (default: this branch's own commits, base resolved via merge-base with `main`/`master`), `"staged"` (the staged changes), or a ref range / path filter you describe.
 - `args.baseRef` — override the resolved base for `target: "branch"`.
 - `args.brief` — one sentence on what the change set was *meant* to do. Cheap and worth it: correctness findings sharpen when a lens can compare the code against its intent rather than inferring intent from the code.
-- `args.story` — the original request **verbatim**, unsummarized. Worth more than the brief, because the brief is *your* paraphrase: if you misread the request, the brief encodes the misreading and every lens downstream inherits it. With the story present, the correctness lens is told to raise a second class of finding — code that satisfies the change set's own summary while substituting a proxy for what was actually asked. Without it, every lens judges intent from the diff, which is judging the code against itself. Pass both: the brief compresses, the story is the ground truth.
+- `args.request` — the original request **verbatim**, unsummarized. Worth more than the brief, because the brief is *your* paraphrase: if you misread the request, the brief encodes the misreading and every lens downstream inherits it. With the request present, the correctness lens is told to raise a second class of finding — code that satisfies the change set's own summary while substituting a proxy for what was actually asked. Without it, every lens judges intent from the diff, which is judging the code against itself. Pass both: the brief compresses, the request is the ground truth.
 - `args.lenses` — restrict the Review phase to named lenses, for **re-auditing after fixes** instead of paying for a whole pass. Keys are `semantic:<Lang>`, `guidelines:<Lang>`, `tests:<Lang>`, `concurrency`, `performance`; every returned finding carries the `lens` that raised it, so you feed those keys straight back. Held-back lenses are reported in `coverage_gaps` — a narrowed run must never read as full coverage — and if none of the named lenses is in this diff's recomputed panel, the **full panel runs instead**: the panel is derived from the current scope, so a lens can legitimately drop out (`tests:Go` goes once no test file changes), and narrowing to nothing would return a clean audit nobody performed.
 
   **Only narrow when the fixes could not have changed behaviour** — a comment removed, a redundant test folded, a name changed. A fix that touches a code path can break something a *different* lens owns, and the lens that raised the original finding is not watching for it. Same rule `implement-flow` applies when it narrows its per-task review panel.

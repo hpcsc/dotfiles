@@ -563,7 +563,7 @@ memory.
 The method therefore never depends on the token. It opens by naming the thing instead:
 **the request** is everything the caller handed over, recorded verbatim by
 `clerk step --start` before anything else happens, and every later step reads it from
-that record — the audit and validate steps get it back as `story`. Three steps need it — whether
+that record — the audit and validate steps get it back as `request`. Three steps need it — whether
 `--in-place` was passed, whether an existing breakdown was named, and handing the
 request to the audit unsummarized — and all three work the same way on both tools.
 

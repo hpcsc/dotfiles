@@ -1,0 +1,12 @@
+local initiative=$@
+if [ -z "${initiative}" ]; then
+  echo "usage: $0 initiative"
+  return
+fi
+
+local selected=$(git log --pretty=format:"%h" | fzf --preview 'git log --format=%B -n1 {}')
+if [ -z "${selected}" ]; then
+  return
+fi
+
+git rebase "${selected}^" --exec "git commit --amend -m \"\$(git log --format=%B -n1 | awk -v init='Initiative: ${initiative}' '/^Initiative:/{found=1; print init; next} {print} END{if(!found) printf \"\\n\" init}')\""

@@ -1,0 +1,21 @@
+# fzf-pick a git worktree (incl. implement task worktrees), preview its change, open gitui
+# Display: <name>  <sha>  <branch/detached>; full path is a hidden last field used by preview/cd.
+# Preview shows the committed diff (show HEAD), or the staged/working delta (diff HEAD) when the
+# worktree has not committed yet — otherwise every uncommitted worktree previews an identical BASE.
+local selected=$(
+  git worktree list | awk '{
+    n = split($1, a, "/"); name = a[n]
+    rest = ""; for (i = 3; i <= NF; i++) rest = rest (i > 3 ? " " : "") $i
+    printf "%s\t%s\t%s\t%s\n", name, $2, rest, $1
+  }' | fzf --ansi --delimiter='\t' --with-nth=1,2,3 \
+    --header='worktrees — enter: gitui · diff preview →' \
+    --preview='if git -C {4} diff --quiet HEAD 2>/dev/null; then git -C {4} show HEAD; else git -C {4} diff HEAD; fi | delta --paging=never' \
+    --preview-window=right,68%
+)
+
+if [ -z "${selected}" ]; then
+  return
+fi
+
+local worktree=${selected##*$'\t'}
+( cd -- "${worktree}" && gitui )

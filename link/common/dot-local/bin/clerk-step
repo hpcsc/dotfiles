@@ -620,7 +620,7 @@ def row_audit(ctx):
     aud = ctx.run.read("audit.json", {})
     rounds = aud.get("rounds", [])
     accepted = aud.get("accepted")
-    fields = dict(story=ctx.run.meta.get("request"), base=ctx.prepare.get("base"),
+    fields = dict(request=ctx.run.meta.get("request"), base=ctx.prepare.get("base"),
                   test_commands=ctx.prepare.get("test_commands"),
                   rounds_planned=aud.get("rounds_planned"), rounds_done=len(rounds),
                   last_round_fresh=bool(rounds) and rounds[-1].get("code_tree") == ctx.head_ct)
@@ -641,7 +641,7 @@ def row_validate(ctx):
     rec = ctx.run.read("validate.json")
     base = ctx.prepare.get("base")
     log = gitout("log", "--oneline", f"{base}..HEAD", cwd=ctx.cwd) if base else gitout("log", "--oneline", "-20", cwd=ctx.cwd)
-    fields = dict(story=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=VALIDATE_QUESTIONS)
+    fields = dict(request=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=VALIDATE_QUESTIONS)
     if rec and rec.get("code_tree") == ctx.head_ct:
         if rec.get("mismatches") and not rec.get("resolved"):
             return row("validate", False, blocked=True, stop=True, kind="asserted",
@@ -1210,7 +1210,7 @@ def audit_begin(ctx, aud, o):
         "target": o["--target"] or "branch",
         "base_ref": o["--base"],
         "brief": o["--brief"] or "",
-        "story": o["--story"] or "",
+        "request": o["--request"] or "",
         "depth": o["--depth"] or "standard",
         "fixed_files": o["--fixed-file"] or [],
         "lenses": o["--lens"] or [],
@@ -1256,7 +1256,7 @@ def audit_next(ctx, aud, o):
     if phase == "review":
         lenses, not_run = panel.build_panel(
             lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],
-            story=a["story"], brief=a["brief"], recheck=a["recheck"],
+            request=a["request"], brief=a["brief"], recheck=a["recheck"],
             test_commands=a["test_commands"])
         lv["not_run"] = not_run
         ctx.run.write("audit.json", aud)
@@ -1267,14 +1267,14 @@ def audit_next(ctx, aud, o):
                 "record_with": "clerk audit record --phase review --results <file>"}
 
     if phase == "dedupe":
-        ctxb = panel._PromptCtx(lv["scope"], prompts, a["story"], a["brief"], (), a["test_commands"])
+        ctxb = panel._PromptCtx(lv["scope"], prompts, a["request"], a["brief"], (), a["test_commands"])
         return {"phase": "dedupe", "round": lv["round"], "concurrent": False,
                 "spawn": [_spawn("dedupe", ctxb.dedupe(lv["candidates"]), "DEDUP_SCHEMA")],
                 "record_with": "clerk audit record --phase dedupe --results <file>"}
 
     if phase == "verify":
         jobs = panel.verify_jobs(lv["scope"], prompts, lv["candidates"], a["depth"],
-                                 story=a["story"], brief=a["brief"],
+                                 request=a["request"], brief=a["brief"],
                                  test_commands=a["test_commands"])
         return {"phase": "verify", "round": lv["round"], "concurrent": True,
                 "spawn": [_spawn(f"verify:{j['id']}", j["prompt"], "VERDICT_SCHEMA",
@@ -1283,7 +1283,7 @@ def audit_next(ctx, aud, o):
 
     if phase == "report":
         confirmed, refuted = _tally(lv)
-        ctxb = panel._PromptCtx(lv["scope"], prompts, a["story"], a["brief"], (), a["test_commands"])
+        ctxb = panel._PromptCtx(lv["scope"], prompts, a["request"], a["brief"], (), a["test_commands"])
         return {"phase": "report", "round": lv["round"], "concurrent": False,
                 "spawn": [_spawn("report", ctxb.synth(confirmed, refuted, lv["lens_notes"],
                                                       lv["not_run"]), "SYNTH_SCHEMA")],
@@ -1477,7 +1477,7 @@ AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept,
 def main_audit(argv):
     """As main_step: every branch ends in emit()."""
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--story <s>]\n            [--fixed-file <p>]... [--model <m>] [--dry-run]   drive a round from here\n       clerk audit begin … | next | record --phase <p> --results <json|->  drive it by hand\n       clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>]\n       clerk audit accept [--early <why>] | status")
+        print("usage: clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n            [--fixed-file <p>]... [--model <m>] [--dry-run]   drive a round from here\n       clerk audit begin … | next | record --phase <p> --results <json|->  drive it by hand\n       clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>]\n       clerk audit accept [--early <why>] | status")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
     handler = AUDIT.get(verb)
@@ -1486,7 +1486,7 @@ def main_audit(argv):
     o, _ = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value",
                     "--early": "value", "--run": "value", "--phase": "value",
                     "--results": "value", "--target": "value", "--base": "value",
-                    "--brief": "value", "--story": "value", "--depth": "value",
+                    "--brief": "value", "--request": "value", "--depth": "value",
                     "--recheck": "value", "--test-commands": "value",
                     "--fixed-file": "list", "--lens": "list", "--restart": "bool",
                     "--dry-run": "bool", "--model": "value",

@@ -30,7 +30,7 @@ Hand the request to `--start` **verbatim, before you do anything else**, and nev
 
 `clerk step` evaluates a fixed table — ground, isolate, plan, task (once per task), suite, audit, validate, theory, verify, land, learn — against the repository and the run's ledger, and returns the **first step that is not done**, with the method for it in `instructions`. Do exactly what `instructions` says, then call `clerk step` again. Nothing else: the next step appears when this one's evidence exists, and not before. The order is clerk's; the work inside each step is yours.
 
-Four fields change what you do. The rest the reply explains itself — `step` and `why_not_done`, `done_by`, `story`, `code_tree`, `progress`, and `facts`, which is the whole of `clerk prepare` for this request and is there to be read rather than re-derived:
+Four fields change what you do. The rest the reply explains itself — `step` and `why_not_done`, `done_by`, `request`, `code_tree`, `progress`, and `facts`, which is the whole of `clerk prepare` for this request and is there to be read rather than re-derived:
 
 - **`instructions`** — the method for this step, in full the first time this session reaches it. While the step is unchanged — every task of the task loop, a pause for tests — it is a one-line pointer and `instructions_elided` is `true`, because the text is already in your context. After a compaction, or whenever it is no longer in view, `clerk step --full` prints it again.
 - **`kind`** — `derived` means clerk checks the world: run the commands and call `clerk step` again. `asserted` means completion is a judgment of yours: record it with `clerk step --done <step> …` as `done_by` says.

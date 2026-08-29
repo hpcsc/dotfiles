@@ -430,7 +430,7 @@ def do_audit(st, row):
     if planned is None:
         clerk_json("audit", "plan", "--rounds", str(st.rounds), cwd=st.cwd)
         planned = st.rounds
-    args = ["audit", "run", "--story", st.request]
+    args = ["audit", "run", "--request", st.request]
     if row.get("base"):
         args += ["--base", row["base"]]
     if row.get("test_commands"):

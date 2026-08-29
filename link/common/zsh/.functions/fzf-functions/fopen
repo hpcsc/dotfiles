@@ -1,0 +1,3 @@
+rg -l '*' --files . | \
+  fzf | \
+  xargs open

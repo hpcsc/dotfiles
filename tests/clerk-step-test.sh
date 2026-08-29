@@ -234,7 +234,7 @@ run "$WT" receipt --command "go test ./..." --passed >/dev/null
 printf '\naudit — rounds are recorded against a fresh receipt and a clean tree; acceptance is asserted\n'
 
 A=$(run "$WT" step)
-eq "the audit step hands over the request verbatim as the story" "Add a widget --gears" "$(printf '%s' "$A" | field .story)"
+eq "the audit step hands over the request verbatim" "Add a widget --gears" "$(printf '%s' "$A" | field .request)"
 eq "and the base ref the work started from" "$(git -C "$WT" merge-base HEAD main)" "$(printf '%s' "$A" | field .base)"
 REP=$(mktemp); printf '{"findings": [1, 2], "refuted": [3], "coverage_gaps": ["docs"], "lenses": ["semantic:Go"]}' > "$REP"
 eq "a round needs a report" "2" "$(rc "$WT" audit round)"
@@ -267,8 +267,8 @@ eq "given one, it is recorded" "trivial fix" "$(run "$WT" audit accept --early "
 printf '\nvalidate — the request is re-read against the branch; a mismatch parks the run\n'
 
 V=$(run "$WT" step)
-eq "validate hands over the story and the log" "Add a widget --gears|true" \
-   "$(printf '%s' "$V" | jq -r '[.story, ((.log|length) > 3 | tostring)] | join("|")')"
+eq "validate hands over the request and the log" "Add a widget --gears|true" \
+   "$(printf '%s' "$V" | jq -r '[.request, ((.log|length) > 3 | tostring)] | join("|")')"
 eq "and the four questions" "4" "$(printf '%s' "$V" | jq -r '.questions | length')"
 eq "--resolved with nothing recorded is refused" "1" "$(rc "$WT" step --done validate --resolved)"
 run "$WT" step --done validate --mismatch "no widget colour" >/dev/null
@@ -492,7 +492,7 @@ export CLERK_AUDIT_PROMPTS="$PR/audit-implement/prompts"
 
 eq "next before begin is refused" "3" "$(rc "$RA" audit next)"
 
-B=$(run "$RA" audit begin --base main --brief "a brief" --story "the story")
+B=$(run "$RA" audit begin --base main --brief "a brief" --request "the request")
 eq "begin opens a round and hands over the scope phase" "true|1|scope" \
    "$(printf '%s' "$B" | jq -r '[(.began|tostring), (.round|tostring), .next.phase] | join("|")')"
 eq "and asks for exactly one scope agent" "1|scope|SCOPE_SCHEMA" \

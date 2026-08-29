@@ -131,6 +131,17 @@ const LENSES = Array.isArray(ARGS?.lenses) && ARGS.lenses.length
   ? [...new Set(ARGS.lenses.flatMap((k) => String(k).split('+').map((s) => s.trim()).filter(Boolean)))]
   : null
 const RECHECK = Array.isArray(ARGS?.recheck) ? ARGS.recheck : []
+// The files a later round's fixes touched. A regression a fix introduces is in the file
+// the fix touched, so the lens owning that file is the one that can see it: measured
+// over four runs and 47 later-round findings, every one landed in a file some fix had
+// touched, and both later-round high-severity defects were in files fixed before that
+// round ran — including the one a previous round's own fix introduced. What a fix-scoped
+// panel gives up is a lens re-reading code nothing changed, which is where none of them
+// came from. Pass it only on a re-audit; on a first round there are no fixes and the
+// whole diff is the new risk.
+const FIXED_FILES = Array.isArray(ARGS?.fixedFiles)
+  ? [...new Set(ARGS.fixedFiles.map((f) => String(f).trim()).filter(Boolean))]
+  : null
 const PRIOR_SCOPE = (typeof ARGS?.priorScope === 'object' && ARGS.priorScope) || null
 const DEPTH = ARGS?.depth ?? 'standard'
 // `deep` buys redundancy where a wrong verdict costs something, not everywhere. Applied
@@ -560,6 +571,45 @@ if (LENSES) {
     lenses = narrowed
   } else {
     log(`narrowed re-audit asked for ${LENSES.join(', ')} but none is in this diff's panel — running the full panel instead`)
+  }
+}
+
+// Fix-scoped narrowing, when the caller named no lenses itself. Same two guards as the
+// explicit narrowing above: never narrow to nothing, and report every lens held back, so
+// a narrowed round can never read as full coverage. The saving is uneven by construction
+// — one measured run had 5 of 49 changed files touched by fixes and could drop a whole
+// language panel, another had 11 of 19 spanning both its languages and could drop none.
+if (!LENSES && FIXED_FILES && FIXED_FILES.length) {
+  // Paths arrive from `clerk fixup` repo-relative and from the scope pass however it
+  // resolved them. Compare by suffix so one form does not silently match nothing, which
+  // would narrow the panel to the specialists and call it a re-audit.
+  const isFixed = (f) => FIXED_FILES.some((p) => f === p || f.endsWith(`/${p}`) || p.endsWith(`/${f}`))
+  const langTouched = (lang) => {
+    const remit = remitFor(lang)
+    // A language the scope pass filed no files under reviews the whole change set, so
+    // it cannot be excluded on ownership it was never given.
+    return !remit || remit.some(isFixed)
+  }
+  const keep = (l) => {
+    const m = /^(?:semantic|guidelines|tests):(.+)$/.exec(l.key)
+    // concurrency and performance read the whole diff rather than one language's remit,
+    // and are one agent each against a language panel's three.
+    return m ? langTouched(m[1]) : true
+  }
+  // Counted over the language panels alone. concurrency and performance survive every
+  // narrowing by construction, so a run whose fixes touched only a file no language owns
+  // — a doc, a lockfile — would otherwise keep those two, drop every panel, and return a
+  // near-empty audit that reads like a performed one.
+  const panels = (ls) => ls.filter((l) => /^(?:semantic|guidelines|tests):/.test(l.key))
+  const narrowed = lenses.filter(keep)
+  if (panels(narrowed).length && narrowed.length < lenses.length) {
+    for (const l of lenses.filter((x) => !narrowed.includes(x))) {
+      notRun.push(`${l.key} — held back: nothing this round's fixes touched is owned by it (fixes touched ${FIXED_FILES.length} file(s))`)
+    }
+    log(`fix-scoped re-audit: ${narrowed.length} of ${lenses.length} lens(es) own a file the fixes touched`)
+    lenses = narrowed
+  } else if (!panels(narrowed).length) {
+    log(`fix-scoped re-audit: no language panel owns any of the ${FIXED_FILES.length} fixed file(s) — running the full panel instead`)
   }
 }
 

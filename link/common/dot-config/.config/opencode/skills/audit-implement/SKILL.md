@@ -8,13 +8,6 @@ Audit finished work: $ARGUMENTS
 
 **You orchestrate this yourself.** There is no workflow engine here: you resolve the scope with your own shell, spawn the review agents, spawn the verifiers, and assemble the report. Only the lenses and the verifiers are subagents, because only they need to be *independent* of the person who wrote the code.
 
-<!-- GENERATED from ~/.config/ai/method/audit-implement/. Edit the body, a seam or a file
-     under prompts/, then run `task gen:skills` — edits made here are overwritten. The
-     prompts/ fragments are shared with the other harness, so a change to one of them
-     changes both. -->
-
----
-
 ## When to use
 
 After a feature is built and green, to have it genuinely challenged. Pairs with `implement`, which builds directly and hands the branch here.
@@ -63,6 +56,8 @@ Spawn these via the `task` tool. **If your runtime can run several tasks concurr
 | Performance | `<lang>-performance-reviewer` / `performance-reviewer` | signal is true |
 
 Run one set per language present in the diff.
+
+**On a re-audit, run only the sets that own a file your fixes touched**, and name every set you held back in the coverage gaps. A regression a fix introduces is in the file the fix touched, so the lens owning it is the one that can see it; a lens re-reading code nothing changed is what you are giving up. Keep the whole panel when the fixes reach every language, or when they touched only files no language owns.
 
 **Only Go, JS/TS and Elixir have a conventions reviewer.** A diff of SQL, CUE, shell or Terraform therefore gets no conventions pass at all — name that in the coverage gaps every time it happens. "Language has one" is a condition the reader cannot see the other half of, and a lens that quietly does not run is indistinguishable from one that found nothing.
 

@@ -12,6 +12,8 @@ Spawn these via the `task` tool. **If your runtime can run several tasks concurr
 
 Run one set per language present in the diff.
 
+**On a re-audit, run only the sets that own a file your fixes touched**, and name every set you held back in the coverage gaps. A regression a fix introduces is in the file the fix touched, so the lens owning it is the one that can see it; a lens re-reading code nothing changed is what you are giving up. Keep the whole panel when the fixes reach every language, or when they touched only files no language owns.
+
 **Only Go, JS/TS and Elixir have a conventions reviewer.** A diff of SQL, CUE, shell or Terraform therefore gets no conventions pass at all — name that in the coverage gaps every time it happens. "Language has one" is a condition the reader cannot see the other half of, and a lens that quietly does not run is indistinguishable from one that found nothing.
 
 **Give each lens a remit, not the whole diff.** Group the changed files by the language each is *written in* — a `.go` file is Go even when it implements a JavaScript-facing feature, and "generic" means written in something with no lens of its own (CUE, SQL, a grammar corpus), never "everything left over". A lens reviews the files under its own language and raises findings only about those. Without this a three-language change set buys three passes over the same code rather than three complementary reviews, and the copies all get verified separately.

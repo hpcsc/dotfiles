@@ -60,7 +60,9 @@ This is also what keeps `clerk verify` meaningful rather than noisy. Its commit-
 
 **Then re-audit, and always pass `recheck`.** Every finding carries the `lens` that raised it. Re-invoke `audit-implement` with `recheck` set to the findings you fixed, plus the same `brief` and `story`. Narrow `lenses` to the raising keys only when every fix was a quality fix — a comment removed, a redundant test folded, a name changed — since those cannot break what another lens owns. That costs the scope pass and those lenses, and skips Verify and Report altogether when nothing is raised.
 
-**A fix that changes a code path needs the whole panel**, because the lens that raised the original finding is not watching for what the fix broke. Expect this to be the common case rather than the exception: most rounds you will pay for the full fan-out, and a round is roughly as expensive as the one before it.
+**And pass `fixedFiles` — every path your fixups touched.** The panel then scopes itself to the lenses that own those files and reports the rest under `lenses_not_run`. This is not a guess about where the risk is: over four measured runs, all 47 later-round findings landed in a file some fix had touched, and both later-round `high` defects — including the one a previous round's own fix introduced — were in files fixed before that round ran. What a fix-scoped panel gives up is a lens re-reading code nothing changed, which is where none of them came from.
+
+**What it saves is uneven, so do not plan on it.** One run had 5 of 49 changed files touched by fixes, all in one language, and could drop a whole language panel; another had 11 of 19 spanning both its languages and dropped nothing. Where the fixes reach every language in the diff, a round costs what the one before it cost.
 
 **So plan two rounds, and earn the third.** Nothing in a round's output tells you whether another would find more, and the rounds do not converge on their own — which cuts both ways, and the count is the largest lever you have over what a run costs.
 

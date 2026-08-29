@@ -9,3 +9,8 @@ bin
 !link/common/dot-local/bin/
 *.alfredworkflow
 .task
+
+# Working documents — proposals, notes, diagram sources. clerk treats a dirty tree as a
+# blocker at ground, verify and land, so an untracked scratch directory would stop every
+# run in this repo until it was cleared.
+.scratches/

@@ -221,7 +221,66 @@ eq "and says nothing changed between the attempts" "true" \
    "$(printf '%s' "$I" | jq -r '.reason | contains("attempts")')"
 eq "three attempts, not more" "3" "$(printf '%s' "$I" | jq -r '.turns')"
 
+# --------------------------------------------------------------------------------
+printf '\noutput — the same walk at three volumes\n'
+
+# A stub that answers in whichever format it was asked for, so all three levels are
+# exercised against one story rather than three.
+SEE=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$SEE/claude" <<'STUB'
+#!/usr/bin/env bash
+p=$(cat)
+case "$p" in *'"step": "ground"'*) clerk step --done ground --caller exported >/dev/null ;; esac
+case "$*" in
+  *stream-json*)
+    cat <<'EV'
+{"type":"system","subtype":"init","session_id":"s1","model":"m"}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"README.md"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"clerk guidelines --caller exported"}}]}}
+EV
+    printf '{"type":"result","subtype":"success","is_error":false,"result":"named the caller pattern","total_cost_usd":0.02,"session_id":"s1"}\n' ;;
+  *) printf '{"is_error":false,"total_cost_usd":0.02,"session_id":"s1","result":"named the caller pattern"}\n' ;;
+esac
+STUB
+chmod +x "$SEE/claude"
+
+show() {  # repo extra-flag  -> prints stderr
+  (cd "$1" && shift && PATH="$SEE:$PATH" "$CLERK" run --max-steps 1 "$@" 2>&1 >/dev/null)
+}
+
+RV=$(new_repo); seed "$RV" story
+run "$RV" run --slug story --request "a story" --dry-run >/dev/null
+E=$(show "$RV")
+eq "by default every tool call the turn made is a line" "2" \
+   "$(printf '%s\n' "$E" | grep -c '⋯')"
+eq "and each says which call it was" "true" \
+   "$(printf '%s\n' "$E" | grep -q 'Read.*README.md' && printf '%s\n' "$E" | grep -q 'Bash.*clerk guidelines' && echo true || echo false)"
+eq "the step and what it cost bracket them" "true" \
+   "$(printf '%s\n' "$E" | grep -q '^ground ·' && printf '%s\n' "$E" | grep -q '✓.*\$0.02' && echo true || echo false)"
+
+RQ=$(new_repo); seed "$RQ" story
+run "$RQ" run --slug story --request "a story" --dry-run >/dev/null
+Q=$(show "$RQ" --quiet)
+eq "--quiet keeps the step and the result and drops the rest" "0|true" \
+   "$(printf '%s\n' "$Q" | grep -c '⋯' | tr -d ' ')|$(printf '%s\n' "$Q" | grep -q '✓' && echo true || echo false)"
+eq "and the model's own words with them" "0" \
+   "$(printf '%s\n' "$Q" | grep -c 'named the caller pattern')"
+
+RR=$(new_repo); seed "$RR" story
+run "$RR" run --slug story --request "a story" --dry-run >/dev/null
+RAW=$(cd "$RR" && PATH="$SEE:$PATH" "$CLERK" run --max-steps 1 --raw 2>/dev/null)
+eq "--raw passes the harness's own events through" "true" \
+   "$(printf '%s\n' "$RAW" | jq -sr '[.[] | select(.type == "tool_use" or .type == "assistant")] | length > 0')"
+eq "every line is one JSON value, so it pipes" "true" \
+   "$(printf '%s\n' "$RAW" | jq -e . >/dev/null 2>&1 && echo true || echo false)"
+eq "and the run's summary is the last of them" "summary" \
+   "$(printf '%s\n' "$RAW" | tail -1 | jq -r '.kind')"
+eq "a step clerk did itself is in the stream too, not a gap" "true" \
+   "$(printf '%s\n' "$RAW" | jq -sr '[.[] | select(.kind == "step")] | length > 0')"
+eq "--quiet and --raw together are refused" "2" \
+   "$(rc "$RR" run --quiet --raw)"
+
 unset CLERK_AUDIT_PROMPTS STUB_LOG
-rm -rf "$R" "$RG" "$RP" "$RD" "$RW" "$RS" "$RI" "$FAKE" "$IDLE" "$PR" 2>/dev/null
+rm -rf "$R" "$RG" "$RP" "$RD" "$RW" "$RS" "$RI" "$RV" "$RQ" "$RR" "$FAKE" "$IDLE" "$SEE" "$PR" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

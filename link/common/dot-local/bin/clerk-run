@@ -170,6 +170,98 @@ def ledger_dir(cwd, slug):
 
 
 # --------------------------------------------------------------------------------
+# Output — the same walk at three volumes
+#
+# The stream is being read anyway to know when a turn ends, so what it carries is worth
+# showing: a run driven from a program is otherwise a wait with a number at the end, and
+# the thing most worth knowing about an unattended build is what it is touching. Progress
+# goes to stderr and the run's summary to stdout, so `clerk run | jq` still works.
+# --------------------------------------------------------------------------------
+
+class Out:
+    """default — a line per tool call, the step, its result and its cost
+       quiet   — steps and results only, for a cron entry with a log to write
+       raw     — the harness's own JSONL on stdout, summary last, for piping onward"""
+
+    def __init__(self, level):
+        self.level = level
+
+    def _emit_raw(self, obj):
+        print(json.dumps(obj, separators=(",", ":")), flush=True)
+
+    def step(self, text):
+        self._say(text, "step")
+
+    def result(self, text):
+        self._say(text, "result")
+
+    def note(self, text):
+        self._say(text, "note")
+
+    def reply(self, text):
+        self._say(text, "reply")
+
+    def _say(self, text, kind):
+        if self.level == "raw":
+            # A mechanical step spawns nothing, so without this the JSONL would have gaps
+            # exactly where clerk did the work itself.
+            self._emit_raw({"kind": kind, "text": text})
+            return
+        if self.level == "quiet" and kind not in ("step", "result"):
+            return
+        print(text, file=sys.stderr, flush=True)
+
+    def event(self, e):
+        if self.level == "raw":
+            if e.get("kind") == "raw":
+                print(e["line"], flush=True)
+            return
+        if e.get("kind") == "tool":
+            print(f"   \u22ef {describe(e.get('name'), e.get('input'))}",
+                  file=sys.stderr, flush=True)
+
+    def final(self, obj, code=0):
+        if self.level == "raw":
+            self._emit_raw({"kind": "summary", **obj})
+            sys.exit(code)
+        emit(obj, code)
+
+
+def _short(path):
+    try:
+        rel = os.path.relpath(str(path), os.getcwd())
+    except ValueError:
+        return str(path)
+    return rel if not rel.startswith("../..") else str(path)
+
+
+def _oneline(text, width=68):
+    line = " ".join(str(text).split())
+    return line if len(line) <= width else line[:width - 1] + "\u2026"
+
+
+def describe(name, inp):
+    """One tool call in one line. What identifies a call differs by tool — a path, a
+    command, a pattern — so the first field that says which call this was, wins."""
+    name = name or "?"
+    if not isinstance(inp, dict):
+        return name
+    path = next((inp[k] for k in ("file_path", "path", "notebook_path") if inp.get(k)), None)
+    if path:
+        size = ""
+        if "old_string" in inp or "new_string" in inp:
+            size = (f"  (+{len((inp.get('new_string') or '').splitlines())}"
+                    f" \u2212{len((inp.get('old_string') or '').splitlines())})")
+        elif "content" in inp:
+            size = f"  (+{len((inp.get('content') or '').splitlines())})"
+        return f"{name:<6} {_short(path)}{size}"
+    for key in ("command", "pattern", "query", "description", "prompt", "skill"):
+        if inp.get(key):
+            return f"{name:<6} {_oneline(inp[key])}"
+    return name
+
+
+# --------------------------------------------------------------------------------
 # The runner's own state — what it decided, kept where the rest of the run is kept
 # --------------------------------------------------------------------------------
 
@@ -183,7 +275,7 @@ class State:
         self.model = opts["--model"]
         self.rounds = opts["rounds"]
         self.extra_tools = list(opts["--allow-tool"])
-        self.quiet = opts["--quiet"]
+        self.out = Out(opts["level"])
         self.waived = {}
         self.session = None             # the build phase's one conversation
         self.resume = False
@@ -218,9 +310,6 @@ class State:
     def tools(self, step_id, facts):
         return tools_for(step_id, facts) + self.extra_tools
 
-    def say(self, line):
-        if not self.quiet:
-            print(line, file=sys.stderr, flush=True)
 
 
 # --------------------------------------------------------------------------------
@@ -239,7 +328,7 @@ def do_isolate(st, row):
     if action == "enter":
         os.chdir(row["path"])
         st.cwd = row["path"]
-        st.say(f"  · entered {row['path']}")
+        st.out.note(f"  · entered {row['path']}")
         return True
     if action == "worktree":
         out, err = clerk_json("worktree", st.slug, cwd=st.cwd)
@@ -247,13 +336,13 @@ def do_isolate(st, row):
             return f"`clerk worktree {st.slug}` failed: {err}"
         os.chdir(out["path"])
         st.cwd = out["path"]
-        st.say(f"  · {'adopted' if out.get('adopted') else 'created'} {out['path']}")
+        st.out.note(f"  · {'adopted' if out.get('adopted') else 'created'} {out['path']}")
         return True
     if action in ("branch", "switch"):
         out, err = clerk_json("branch", st.slug, cwd=st.cwd)
         if err:
             return f"`clerk branch {st.slug}` failed: {err}"
-        st.say(f"  · on branch {(out or {}).get('branch', st.slug)}")
+        st.out.note(f"  · on branch {(out or {}).get('branch', st.slug)}")
         return True
     return f"the isolate row asked for '{action}', which the runner does not know how to do"
 
@@ -263,13 +352,13 @@ def do_suite(st, row):
     work = row.get("work_tree") or st.cwd
     if not cmd:
         return "the repo declares no test command, so the runner could not run the suite"
-    st.say(f"  · {cmd}")
+    st.out.note(f"  · {cmd}")
     log = Path(tempfile.mkdtemp(prefix="clerk-run-")) / "suite.log"
     with log.open("w") as fh:
         rc = subprocess.run(cmd, shell=True, cwd=work, stdout=fh,
                             stderr=subprocess.STDOUT).returncode
     if rc != 0:
-        st.say(f"  · suite failed (exit {rc})")
+        st.out.note(f"  · suite failed (exit {rc})")
         tail = log.read_text()[-4000:]
         return (f"The runner ran `{cmd}` in {work} and it exited {rc}. No receipt was "
                 f"recorded. Fix what is broken, get it green, and record the receipt "
@@ -278,7 +367,7 @@ def do_suite(st, row):
                           "--output-file", str(log), cwd=work)
     if err:
         return f"the suite passed but `clerk receipt` failed: {err}"
-    st.say("  · green, receipt recorded")
+    st.out.note("  · green, receipt recorded")
     return True
 
 
@@ -300,7 +389,7 @@ def do_audit(st, row):
         args += ["--test-commands", json.dumps(row["test_commands"])]
     if st.model:
         args += ["--model", st.model]
-    st.say(f"  · audit round {len(aud.get('rounds') or []) + 1} of {planned}")
+    st.out.note(f"  · audit round {len(aud.get('rounds') or []) + 1} of {planned}")
     out, err = clerk_json(*args, cwd=st.cwd, allow=(0, 3))
     if out is None:
         return f"`clerk audit run` failed: {err}"
@@ -314,13 +403,13 @@ def do_audit(st, row):
     if not rec or not rec.get("recorded"):
         return f"the round was not recorded: {(rec or {}).get('reason') or err}"
     r = rec["round"]
-    st.say(f"  · {r.get('findings')} finding(s), {r.get('coverage_gaps')} coverage gap(s)")
+    st.out.note(f"  · {r.get('findings')} finding(s), {r.get('coverage_gaps')} coverage gap(s)")
     if not r.get("findings") and not r.get("coverage_gaps"):
         # Nothing found and nothing left unlooked-at: there is no judgment left in
         # accepting that, so it does not cost a turn.
         acc, _ = clerk_json("audit", "accept", cwd=st.cwd, allow=(0, 3))
         if acc and acc.get("accepted"):
-            st.say("  · accepted; the round found nothing and left nothing uncovered")
+            st.out.note("  · accepted; the round found nothing and left nothing uncovered")
             return True
     note = (f"The runner drove audit round {r['n']} and recorded it. The report it was "
             f"given:\n\n```json\n{json.dumps(report, indent=2)[:12000]}\n```\n\n"
@@ -339,15 +428,15 @@ def do_land(st, row):
             return "integration has to finish outside the worktree and no repo_root was reported"
         os.chdir(root)
         st.cwd = root
-        st.say(f"  · left the worktree for {root}")
+        st.out.note(f"  · left the worktree for {root}")
         return True
     out, err = clerk_json("land", cwd=st.cwd, allow=(0, 1))
     if out is None:
         return f"`clerk land` failed: {err}"
     if out.get("landed"):
-        st.say(f"  · landed on {out.get('default_branch')}")
+        st.out.note(f"  · landed on {out.get('default_branch')}")
     elif out.get("archived"):
-        st.say(f"  · archived {out['archived']}; integration {out.get('integrate_source') or 'off'}")
+        st.out.note(f"  · archived {out['archived']}; integration {out.get('integrate_source') or 'off'}")
     else:
         return (f"`clerk land` did not close the step: {out.get('reason')}\n\n"
                 f"```json\n{json.dumps(out, indent=2)[:4000]}\n```")
@@ -385,7 +474,8 @@ def one_turn(st, row, note):
     res = hx.run_job(job, None, harness=st.cmd, cwd=st.cwd, model=st.model,
                      session=(st.session if build else None),
                      resume=(st.resume if build else False),
-                     attempts=2, log=st.say)
+                     attempts=2, log=st.out.note,
+                     on_event=(None if st.out.level == "quiet" else st.out.event))
     st.turns += 1
     st.spent += float(res.get("cost_usd") or 0)
     if build:
@@ -394,12 +484,12 @@ def one_turn(st, row, note):
         st.sent.add("task")
     took = f"{int(time.time() - started)}s"
     if not res.get("ok"):
-        st.say(f"  ✗ {res.get('error')}  ({took})")
+        st.out.result(f"  ✗ {res.get('error')}  ({took})")
         return res.get("error")
     for line in str(res.get("data") or "").strip().splitlines()[:3]:
         if line.strip():
-            st.say(f"    {line.strip()}")
-    st.say(f"  ✓ {took} · ${res.get('cost_usd') or 0:.2f}")
+            st.out.reply(f"    {line.strip()}")
+    st.out.result(f"  ✓ {took} · ${res.get('cost_usd') or 0:.2f}")
     return None
 
 
@@ -425,7 +515,7 @@ def signature(row):
 
 def refuse(st, row, reason):
     st.save()
-    emit({"ran": False, "run": st.slug, "step": row["step"], "reason": reason,
+    st.out.final({"ran": False, "run": st.slug, "step": row["step"], "reason": reason,
           "turns": st.turns, "cost_usd": round(st.spent, 4), "steps": st.trace,
           "row": {k: v for k, v in row.items()
                   if k not in ("instructions", "instructions_elided", "facts")}}, 3)
@@ -460,7 +550,7 @@ def walk(st, max_steps, dry_run):
                             f"nothing changed between them")
         if dry_run:
             return dry(st, row)
-        st.say(headline(row))
+        st.out.step(headline(row))
         handler = MECHANICAL.get(step)
         note = handler(st, row) if handler else None
         by = "clerk"
@@ -472,9 +562,9 @@ def walk(st, max_steps, dry_run):
         st.trace.append({"step": step, "n": row.get("n"), "by": by})
         st.save()
     st.save()
-    emit({"ran": False, "run": st.slug, "turns": st.turns, "cost_usd": round(st.spent, 4),
-          "steps": st.trace,
-          "reason": f"stopped after {max_steps} steps without reaching the end"}, 3)
+    st.out.final({"ran": False, "run": st.slug, "turns": st.turns,
+                  "cost_usd": round(st.spent, 4), "steps": st.trace,
+                  "reason": f"stopped after {max_steps} steps without reaching the end"}, 3)
 
 
 # --------------------------------------------------------------------------------
@@ -485,7 +575,7 @@ GATES = {"gears": ("--no-gears", "the pause after a hard task's tests"),
          "review_plan": ("--no-review-plan", "the pause for the plan to be approved")}
 
 
-def check_gates(cwd, request, waivers):
+def check_gates(out, cwd, request, waivers):
     """Refuse a gate rather than approximate it.
 
     Both flags exist to stop the run and wait for a person, and unattended there is nobody
@@ -503,10 +593,10 @@ def check_gates(cwd, request, waivers):
         if not flags.get(key):
             continue
         if key not in waivers:
-            emit({"ran": False, "flag": key, "source": src.get(key),
-                  "reason": f"{key} is on (from {src.get(key)}) and this run is unattended — "
-                            f"{what} has nobody to wait for. Pass {off} to waive it for this "
-                            f"run, or turn it off in {src.get(key)}."}, 3)
+            out.final({"ran": False, "flag": key, "source": src.get(key),
+                       "reason": f"{key} is on (from {src.get(key)}) and this run is unattended — "
+                                 f"{what} has nobody to wait for. Pass {off} to waive it for "
+                                 f"this run, or turn it off in {src.get(key)}."}, 3)
         waived[key] = f"waived at launch with {off}; the flag is set in {src.get(key)}"
     return waived
 
@@ -540,16 +630,22 @@ def open_run(cwd, slug, request, harness):
 SPEC = {"--slug": "value", "--request": "value", "--harness": "value",
         "--harness-cmd": "value", "--model": "value", "--rounds": "value",
         "--max-steps": "value", "--allow-tool": "list", "--no-gears": "bool",
-        "--no-review-plan": "bool", "--dry-run": "bool", "--quiet": "bool"}
+        "--no-review-plan": "bool", "--dry-run": "bool", "--quiet": "bool",
+        "--raw": "bool"}
 
 USAGE = """\
 usage: clerk run [--slug <kebab-slug> --request "<the request, verbatim>"]
                  [--no-gears] [--no-review-plan] [--rounds <n>] [--model <m>]
-                 [--allow-tool <spec>]... [--max-steps <n>] [--dry-run] [--quiet]
+                 [--allow-tool <spec>]... [--max-steps <n>] [--dry-run]
+                 [--quiet | --raw]
 
 Walks this repository's open run to the end, spawning a headless turn per step. With no
 run open here, --slug and --request open one. --dry-run reports the step it would take
-next and spawns nothing."""
+next and spawns nothing.
+
+Progress goes to stderr and the run's summary to stdout. --quiet drops everything but
+the steps and their results; --raw puts the harness's own JSONL on stdout instead, with
+the summary as its last line."""
 
 
 def parse(argv):
@@ -579,6 +675,9 @@ def parse(argv):
 
 def main(argv):
     o = parse(list(argv))
+    if o["--quiet"] and o["--raw"]:
+        die("--quiet and --raw ask for different things; pass one")
+    o["level"] = "raw" if o["--raw"] else ("quiet" if o["--quiet"] else "default")
     cwd = os.getcwd()
     cmd = o["--harness-cmd"] or hx.detect_harness()
     if not cmd and not o["--dry-run"]:
@@ -586,8 +685,9 @@ def main(argv):
             "--harness-cmd, or use --dry-run to see the step without spawning anything", 3)
     harness = o["--harness"] or (cmd if cmd in ("claude", "opencode") else "claude")
     slug, request = open_run(cwd, o["--slug"], o["--request"], harness)
-    waived = check_gates(cwd, request, {k for k, on in (("gears", o["--no-gears"]),
-                                                        ("review_plan", o["--no-review-plan"])) if on})
+    waived = check_gates(Out(o["level"]), cwd, request,
+                         {k for k, on in (("gears", o["--no-gears"]),
+                                          ("review_plan", o["--no-review-plan"])) if on})
     o["rounds"] = int(o["--rounds"]) if (o["--rounds"] or "").isdigit() else DEFAULT_ROUNDS
     st = State(cwd, slug, request, harness, cmd, o)
     st.waived = waived
@@ -596,7 +696,7 @@ def main(argv):
                o["--dry-run"])
     if waived:
         out["waived"] = waived
-    emit(out)
+    st.out.final(out)
 
 
 if __name__ == "__main__":

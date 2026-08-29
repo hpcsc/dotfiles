@@ -1384,7 +1384,7 @@ def audit_run(ctx, aud, o):
     what to spawn. The loop is this function; the model is called only where a judgment is
     actually wanted, and `clerk audit next` still describes each phase for a reader or for
     a harness that would rather drive it by hand."""
-    import clerk_audit_exec as ex
+    import clerk_harness as ex
     harness = o["--harness-cmd"] or ex.detect_harness()
     if not harness and not o["--dry-run"]:
         die("no coding harness found on PATH — install `claude` or `opencode`, or pass "

@@ -613,7 +613,7 @@ eq "a dry run reports the phase it would spawn and spawns nothing" "true|review|
 eq "and names the agent behind each job" "go-semantic-reviewer" \
    "$(printf '%s' "$DR" | jq -r '.plan[0].jobs[0].agent')"
 eq "with no harness on PATH a real run refuses rather than hanging" "3" \
-   "$(CLERK_AUDIT_HARNESS= PATH=/usr/bin:/bin rc "$RA" audit run)"
+   "$(CLERK_HARNESS_CMD= PATH=/usr/bin:/bin rc "$RA" audit run)"
 
 # A whole round driven end to end. The harness is a stub that answers from the prompt it
 # is handed, so the loop, the retry and every phase hand-off are exercised for nothing.

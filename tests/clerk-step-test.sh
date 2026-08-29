@@ -483,8 +483,8 @@ git -C "$RA" switch -qc story 2>/dev/null
 PR=$(cd "$(mktemp -d)" && pwd -P); mkdir -p "$PR/audit-implement/prompts"
 for f in scope-open scope-rules review-open review-rules finding-contract lens-semantic \
          lens-guidelines lens-tests lens-concurrency lens-performance dedupe-open \
-         dedupe-rules dedupe-output verify-open verify-file-rule verify-runtime \
-         verify-quality report-open report-rules report-tail regrade mechanical \
+         dedupe-rules dedupe-output refute-open refute-file-rule refute-runtime \
+         refute-quality report-open report-rules report-tail regrade mechanical \
          mechanical-tail; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
 cp "$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-config/.config/ai/method/audit-implement/schemas.json" \
    "$PR/audit-implement/schemas.json"
@@ -551,17 +551,17 @@ run "$RA" audit record --phase review --results "$RA/rev.json" >/dev/null 2>&1
 N=$(run "$RA" audit record --phase dedupe --results "$RA/dd.json")
 eq "a runtime claim gets a tree, a non-test quality claim does not" "worktree|none" \
    "$(printf '%s' "$N" | jq -r '[.next.spawn[0].isolation, .next.spawn[1].isolation] | join("|")')"
-eq "and verify runs them concurrently" "true|verify" \
+eq "and refute runs them concurrently" "true|refute" \
    "$(printf '%s' "$N" | jq -r '[(.next.concurrent|tostring), .next.phase] | join("|")')"
 
-# A blocked verifier has refuted nothing; a refuting one carries the claim out.
+# A blocked refuter has refuted nothing; a refuting one carries the claim out.
 cat > "$RA/vd.json" <<'JSON'
 [{"finding_id":"f1","refuted":false,"basis":"ran it, it broke"},
  {"finding_id":"f2","refuted":true,"basis":"the rule does not exist"}]
 JSON
-N=$(run "$RA" audit record --phase verify --results "$RA/vd.json")
+N=$(run "$RA" audit record --phase refute --results "$RA/vd.json")
 eq "the report is handed what survived and what did not" "report|true|true" \
-   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED verification (1)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (1)") | tostring)] | join("|")')"
+   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED refutation (1)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (1)") | tostring)] | join("|")')"
 eq "a lens note reaches the report rather than dying with the lens" "true" \
    "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | contains("looked at the fixture") | tostring')"
 printf '{"findings":[],"summary":"done"}' > "$RA/rep.json"
@@ -630,7 +630,7 @@ case "$p" in
 ```json
 {"verdict":"fail","findings":[{"id":"g1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"}],"note":null}
 ```' ;;
-  *"FRAGMENT verify-open"*) emit '{"finding_id":"g1","refuted":false,"blocked":false,"basis":"ran it"}' ;;
+  *"FRAGMENT refute-open"*) emit '{"finding_id":"g1","refuted":false,"blocked":false,"basis":"ran it"}' ;;
   *"FRAGMENT report-open"*) emit '{"findings":[{"id":"g1"}],"coverage_gaps":[],"summary":"one real defect"}' ;;
   *"FRAGMENT lens-guidelines"*) emit 'not json at all' ;;
   *) emit '{"verdict":"pass","findings":[],"note":null}' ;;
@@ -640,7 +640,7 @@ chmod +x "$FAKE/claude"
 
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 RR=$(PATH="$FAKE:$PATH" run "$RA" audit run --restart)
-eq "the runner walks every phase without a model driving it" "true|scope,review,verify,report" \
+eq "the runner walks every phase without a model driving it" "true|scope,review,refute,report" \
    "$(printf '%s' "$RR" | jq -r '[(.ran|tostring), ([.phases[].phase]|join(","))] | join(",")' | sed 's/^true,/true|/')"
 eq "it reports what the round cost" "true" \
    "$(printf '%s' "$RR" | jq -r '(.cost_usd > 0) | tostring')"

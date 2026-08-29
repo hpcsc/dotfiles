@@ -247,10 +247,10 @@ instructions about advancing it.
 
 The audit is now a phase machine of its own, on the same shape as the step table.
 `clerk audit next` returns one phase's batch — the scope pass, then the lens panel, then
-dedupe, then the verifiers, then the report — with every prompt resolved and every job's
+dedupe, then the refuters, then the report — with every prompt resolved and every job's
 schema named. `clerk audit record --phase <p> --results <file>` takes the replies and
 advances. What to run is decided in `clerk_audit_panel.py`: the language table, remits,
-the `MIN_REMIT` fold, fix-scoped narrowing, verifier counts, and whether a claim needs a
+the `MIN_REMIT` fold, fix-scoped narrowing, refuter counts, and whether a claim needs a
 tree. That was JavaScript in the Workflow script and prose in the opencode skill, and the
 two had already drifted.
 

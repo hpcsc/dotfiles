@@ -41,7 +41,7 @@ Omit this block entirely when the checker did not run. A lens told to stand down
 
 {{quote:audit-implement/prompts/lens-semantic.md}}
 
-**The conventions lens gets a boundary**, because without one it drifts into correctness and duplicates the lens already reading the same diff. Measured over 19 audit rounds, every runtime defect the conventions lens raised had already been raised by correctness or test integrity — each one bought a second verifier and no new information:
+**The conventions lens gets a boundary**, because without one it drifts into correctness and duplicates the lens already reading the same diff. Measured over 19 audit rounds, every runtime defect the conventions lens raised had already been raised by correctness or test integrity — each one bought a second refuter and no new information:
 
 {{quote:audit-implement/prompts/lens-guidelines.md}}
 
@@ -51,31 +51,31 @@ Omit this block entirely when the checker did not run. A lens told to stand down
 
 ---
 
-## Phase 2: Collapse duplicates before you pay to verify them
+## Phase 2: Collapse duplicates before you pay to refute them
 
 You hold every lens's findings, so do this yourself — it is reading and judgment, not a subagent's job.
 
 {{include:audit-implement/prompts/dedupe-rules.md}}
 
-Merging rules: keep the **highest** severity in the cluster (never the representative's alone), prefer the `runtime` report as the survivor when the cluster mixes natures, since it carries the reproduction, and record every lens that raised it. Verify the survivor once.
+Merging rules: keep the **highest** severity in the cluster (never the representative's alone), prefer the `runtime` report as the survivor when the cluster mixes natures, since it carries the reproduction, and record every lens that raised it. Refute the survivor once.
 
 ---
 
-## Phase 3: Verify every claim
+## Phase 3: Refute every claim
 
-Nothing reaches the report unverified. Spawn one verifier per **distinct** finding (again, concurrently if your runtime allows). Use the language's semantic reviewer, or `general` — the verifier's job is execution and rule-checking, not taste.
+Nothing reaches the report unrefuted. Spawn one refuter per **distinct** finding (again, concurrently if your runtime allows). Use the language's semantic reviewer, or `general` — the refuter's job is execution and rule-checking, not taste.
 
-{{quote:audit-implement/prompts/verify-open.md}}
+{{quote:audit-implement/prompts/refute-open.md}}
 >
-{{quote:audit-implement/prompts/verify-file-rule.md}}
+{{quote:audit-implement/prompts/refute-file-rule.md}}
 
 **For a `runtime` claim** — try to *refute* it by execution:
 
-{{quote:audit-implement/prompts/verify-runtime.md}}
+{{quote:audit-implement/prompts/refute-runtime.md}}
 
 **For a `quality` claim** — there is nothing to execute, so check it rather than discarding it:
 
-{{quote:audit-implement/prompts/verify-quality.md}}
+{{quote:audit-implement/prompts/refute-quality.md}}
 
 ---
 
@@ -88,8 +88,8 @@ You hold every finding and verdict — no synthesis agent needed.
 
 {{include:audit-implement/prompts/regrade.md}}
 
-   Then mark each `confirmed` (reproduced by execution, or a rule cited at a specific line) or `plausible`. They are already deduplicated; do not merge further here, or you discard one verifier's evidence for a claim that was judged on its own.
+   Then mark each `confirmed` (reproduced by execution, or a rule cited at a specific line) or `plausible`. They are already deduplicated; do not merge further here, or you discard one refuter's evidence for a claim that was judged on its own.
 3. **State the coverage gaps** — the lenses that did not run and why, a changed file no language claimed, a claim nobody could test. Be concrete: "nothing was missed" is almost never true and is not a useful answer.
-4. **Confirm the tree is clean**: `git status --porcelain`. Verifiers write scratch files to prove things; if any survived, say so and remove them. The audit must not leave the repo dirtier than it found it.
+4. **Confirm the tree is clean**: `git status --porcelain`. Refuters write scratch files to prove things; if any survived, say so and remove them. The audit must not leave the repo dirtier than it found it.
 
 Do not invent findings to pad the report. A clean audit is a real outcome, and saying so plainly beats manufacturing nits.

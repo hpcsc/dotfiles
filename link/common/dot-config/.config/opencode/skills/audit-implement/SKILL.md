@@ -88,7 +88,7 @@ Omit this block entirely when the checker did not run. A lens told to stand down
 
 > Return a verdict and findings. Every finding needs a stable kebab-case `id`, an HONEST `severity`, `file`, and a one-sentence `claim`.
 > Set `nature` to "runtime" when an independent agent could demonstrate the defect by executing code — then make the `claim` precise enough to reproduce and give a `failure_scenario` (concrete inputs/state -> wrong output). Set it to "quality" for a convention, structure or test defect with no runtime symptom, and set `quality_kind`.
-> Do NOT inflate severity to be taken seriously: everything you raise is verified and reported, and severity is used only to rank. Do NOT pad — a lens that finds nothing real should return verdict "pass" with an empty findings array and, if useful, say in `note` what it looked at and deliberately did not flag. An empty result from a lens is a real result here, not a failure.
+> Do NOT inflate severity to be taken seriously: everything you raise goes to a refuter and is reported, and severity is used only to rank. Do NOT pad — a lens that finds nothing real should return verdict "pass" with an empty findings array and, if useful, say in `note` what it looked at and deliberately did not flag. An empty result from a lens is a real result here, not a failure.
 
 **The correctness lens gets more**, because scope breaches and narrowed contracts are invisible to a diff — code delivering a declared non-goal looks like extra work rather than the breach it is:
 
@@ -98,7 +98,7 @@ Omit this block entirely when the checker did not run. A lens told to stand down
 >
 > If the request names a breakdown, open it and read its Boundaries — the out-of-scope and deferred lists. Code that delivers something declared out of scope is a finding, however well written it is; so is a boundary the change set contradicts. Judge the same way in the other direction: a contract the breakdown pinned and the code narrowed — a list that became a single value, a field that gained a caller-supplied input the breakdown said would be resolved server-side — is a finding even when every test passes.
 
-**The conventions lens gets a boundary**, because without one it drifts into correctness and duplicates the lens already reading the same diff. Measured over 19 audit rounds, every runtime defect the conventions lens raised had already been raised by correctness or test integrity — each one bought a second verifier and no new information:
+**The conventions lens gets a boundary**, because without one it drifts into correctness and duplicates the lens already reading the same diff. Measured over 19 audit rounds, every runtime defect the conventions lens raised had already been raised by correctness or test integrity — each one bought a second refuter and no new information:
 
 > Your lens is this project's OWN conventions — naming, structure, layering, idiom — as its guideline files define them, not as you would prefer them. Read the repo's CLAUDE.md and any guideline it points at.
 >
@@ -131,7 +131,7 @@ Omit this block entirely when the checker did not run. A lens told to stand down
 
 ---
 
-## Phase 2: Collapse duplicates before you pay to verify them
+## Phase 2: Collapse duplicates before you pay to refute them
 
 You hold every lens's findings, so do this yourself — it is reading and judgment, not a subagent's job.
 
@@ -139,13 +139,13 @@ Two findings are the same defect when ONE fix resolves both — the same line do
 
 They are NOT the same defect when they merely share a file, a theme or a category. Two unrelated comments violating the same rule in one file are two findings. A missing test for X and a missing test for Y are two findings. When you are unsure, LEAVE THEM SEPARATE — a wrong merge silently deletes a real defect, while a missed merge only costs one more verification.
 
-Merging rules: keep the **highest** severity in the cluster (never the representative's alone), prefer the `runtime` report as the survivor when the cluster mixes natures, since it carries the reproduction, and record every lens that raised it. Verify the survivor once.
+Merging rules: keep the **highest** severity in the cluster (never the representative's alone), prefer the `runtime` report as the survivor when the cluster mixes natures, since it carries the reproduction, and record every lens that raised it. Refute the survivor once.
 
 ---
 
-## Phase 3: Verify every claim
+## Phase 3: Refute every claim
 
-Nothing reaches the report unverified. Spawn one verifier per **distinct** finding (again, concurrently if your runtime allows). Use the language's semantic reviewer, or `general` — the verifier's job is execution and rule-checking, not taste.
+Nothing reaches the report unrefuted. Spawn one refuter per **distinct** finding (again, concurrently if your runtime allows). Use the language's semantic reviewer, or `general` — the refuter's job is execution and rule-checking, not taste.
 
 > Establish whether this claim about finished code is REAL. You are independent of whoever raised it and they ran nothing — treat the claim as a hypothesis, not a report.
 >
@@ -176,9 +176,9 @@ You hold every finding and verdict — no synthesis agent needed.
 
 RE-GRADE SEVERITY ACROSS THE WHOLE SET before you rank. Each lens graded its own findings without seeing the others, so the scales do not line up — a performance lens calling a per-request live-service read `low` and a guidelines lens calling a doc-comment convention `low` cannot both be right. Apply one rubric: high = a wrong or lost outcome for a user or caller in normal operation, or a security or data-integrity failure; medium = a real but bounded or conditional cost — degraded behaviour under load, a wrong result on an edge path, or a test that cannot fail for the behaviour it names; low = no runtime symptom and no operational cost. Where you change a grade, say so in that finding's evidence with one clause naming the cost you graded on. Do not touch `nature`, `lens` or the claim itself.
 
-   Then mark each `confirmed` (reproduced by execution, or a rule cited at a specific line) or `plausible`. They are already deduplicated; do not merge further here, or you discard one verifier's evidence for a claim that was judged on its own.
+   Then mark each `confirmed` (reproduced by execution, or a rule cited at a specific line) or `plausible`. They are already deduplicated; do not merge further here, or you discard one refuter's evidence for a claim that was judged on its own.
 3. **State the coverage gaps** — the lenses that did not run and why, a changed file no language claimed, a claim nobody could test. Be concrete: "nothing was missed" is almost never true and is not a useful answer.
-4. **Confirm the tree is clean**: `git status --porcelain`. Verifiers write scratch files to prove things; if any survived, say so and remove them. The audit must not leave the repo dirtier than it found it.
+4. **Confirm the tree is clean**: `git status --porcelain`. Refuters write scratch files to prove things; if any survived, say so and remove them. The audit must not leave the repo dirtier than it found it.
 
 Do not invent findings to pad the report. A clean audit is a real outcome, and saying so plainly beats manufacturing nits.
 
@@ -201,6 +201,6 @@ Do not invent findings to pad the report. A clean audit is a real outcome, and s
 | A lens returns malformed output | Re-spawn once with the schema restated. If it fails again, record it as a coverage gap rather than dropping it silently. |
 | A lens returns nothing at all (it errored, not "found nothing") | Re-spawn it. If it still returns nothing, name it in the coverage gaps. A lens that vanished and a lens that looked and found nothing produce the same empty result and mean opposite things. |
 | Every lens returns nothing | Say the audit did not run. Do not report a clean audit — nothing was reviewed. |
-| A verifier cannot run the test command | Treat the finding as `plausible`, not refuted, and say the verification could not be executed. |
-| Verifier left scratch files behind | Remove them and note it. Never commit them. |
+| A refuter cannot run the test command | Treat the finding as `plausible`, not refuted, and say the refutation could not be executed. |
+| Refuter left scratch files behind | Remove them and note it. Never commit them. |
 | Every lens returns empty | Report that plainly, with the lens list and the coverage gaps. That is a result. |

@@ -1144,7 +1144,7 @@ def audit_round(ctx, aud, o):
     if not fresh:
         emit({"recorded": False, "reason": f"the suite must be green at this code tree before an audit round counts: {why}"}, 3)
     if not ctx.prepare.get("clean"):
-        emit({"recorded": False, "reason": "the tree is dirty — a verifier left residue or work is in flight; restore the branch tip first"}, 3)
+        emit({"recorded": False, "reason": "the tree is dirty — a refuter left residue or work is in flight; restore the branch tip first"}, 3)
     planned = aud.get("rounds_planned")
     if o["--replan"]:
         if not o["--replan"].isdigit():
@@ -1187,13 +1187,13 @@ def audit_accept(ctx, aud, o):
 # ---------------------------------------------------------------------------------
 # The audit as a phase machine. `next` hands the caller one phase's batch of agents to
 # spawn; `record` takes their results and advances. Every decision between the two —
-# which lenses, what remit, what a later round's fixes still reach, how many verifiers a
+# which lenses, what remit, what a later round's fixes still reach, how many refuters a
 # claim earns and whether one needs a tree — is made here, so the two harnesses differ
 # only in how they spawn an agent. Before this, that judgment was JavaScript on one side
 # and prose on the other and nothing checked they agreed.
 # ---------------------------------------------------------------------------------
 
-PHASES = ("scope", "review", "dedupe", "verify", "report", "done")
+PHASES = ("scope", "review", "dedupe", "refute", "report", "done")
 
 
 def live_of(aud):
@@ -1272,14 +1272,14 @@ def audit_next(ctx, aud, o):
                 "spawn": [_spawn("dedupe", ctxb.dedupe(lv["candidates"]), "DEDUP_SCHEMA")],
                 "record_with": "clerk audit record --phase dedupe --results <file>"}
 
-    if phase == "verify":
-        jobs = panel.verify_jobs(lv["scope"], prompts, lv["candidates"], a["depth"],
+    if phase == "refute":
+        jobs = panel.refute_jobs(lv["scope"], prompts, lv["candidates"], a["depth"],
                                  request=a["request"], brief=a["brief"],
                                  test_commands=a["test_commands"])
-        return {"phase": "verify", "round": lv["round"], "concurrent": True,
-                "spawn": [_spawn(f"verify:{j['id']}", j["prompt"], "VERDICT_SCHEMA",
+        return {"phase": "refute", "round": lv["round"], "concurrent": True,
+                "spawn": [_spawn(f"refute:{j['id']}", j["prompt"], "VERDICT_SCHEMA",
                                  isolation=j["isolation"]) for j in jobs],
-                "record_with": "clerk audit record --phase verify --results <file>"}
+                "record_with": "clerk audit record --phase refute --results <file>"}
 
     if phase == "report":
         confirmed, refuted = _tally(lv)
@@ -1295,7 +1295,7 @@ def audit_next(ctx, aud, o):
 
 
 def _tally(lv):
-    """Majority over the verifiers on each claim. A verifier that could not run has not
+    """Majority over the refuters on each claim. A refuter that could not run has not
     refuted anything: counting it as a vote would let a missing toolchain delete a real
     defect, silently."""
     by_finding = {}
@@ -1307,7 +1307,7 @@ def _tally(lv):
         usable = [v for v in votes if not v.get("blocked")]
         blocked = bool(votes) and not usable
         against = [v for v in usable if v.get("refuted")]
-        basis = (votes[0].get("basis") if votes else "no verifier returned a result")
+        basis = (votes[0].get("basis") if votes else "no refuter returned a result")
         if usable and len(against) * 2 > len(usable):
             refuted.append({"finding": f, "basis": (against[0].get("basis") or basis)})
         else:
@@ -1355,8 +1355,8 @@ def audit_record(ctx, aud, o):
                 f.setdefault("lens", r.get("lens") or r.get("id"))
                 cands.append(f)
         lv["candidates"], lv["lens_notes"] = cands, notes
-        # One finding needs no grouping pass, and none needs no verification either.
-        lv["phase"] = "dedupe" if len(cands) > 1 else ("verify" if cands else "report")
+        # One finding needs no grouping pass, and none needs no refutation either.
+        lv["phase"] = "dedupe" if len(cands) > 1 else ("refute" if cands else "report")
     elif ph == "dedupe":
         clusters = data.get("clusters") if isinstance(data, dict) else None
         merged, collapsed, why = panel.merge_clusters(lv["candidates"], clusters)
@@ -1364,8 +1364,8 @@ def audit_record(ctx, aud, o):
         if why:
             lv["not_run"].append(f"dedupe — {why}")
         lv["dedupe_collapsed"] = collapsed
-        lv["phase"] = "verify" if lv["candidates"] else "report"
-    elif ph == "verify":
+        lv["phase"] = "refute" if lv["candidates"] else "report"
+    elif ph == "refute":
         lv["verdicts"] = data if isinstance(data, list) else [data]
         lv["phase"] = "report"
     elif ph == "report":
@@ -1452,19 +1452,19 @@ def _payload_for(phase, jobs, results):
                 d.setdefault("lens", j["id"].split("review:", 1)[-1])
                 rows.append(d)
         return rows
-    if phase == "verify":
+    if phase == "refute":
         rows = []
         for j in jobs:
             d = ok.get(j["id"])
             if isinstance(d, dict):
-                d.setdefault("finding_id", j["id"].split("verify:", 1)[-1].split("#", 1)[0])
+                d.setdefault("finding_id", j["id"].split("refute:", 1)[-1].split("#", 1)[0])
                 rows.append(d)
             else:
-                # A verifier that could not run has refuted nothing, and saying so is what
+                # A refuter that could not run has refuted nothing, and saying so is what
                 # keeps a missing toolchain from deleting a real defect.
-                rows.append({"finding_id": j["id"].split("verify:", 1)[-1].split("#", 1)[0],
+                rows.append({"finding_id": j["id"].split("refute:", 1)[-1].split("#", 1)[0],
                              "refuted": False, "blocked": True,
-                             "basis": "the verifier returned nothing usable"})
+                             "basis": "the refuter returned nothing usable"})
         return rows
     return []
 

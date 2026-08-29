@@ -6,7 +6,7 @@ export const meta = {
     { title: 'Scope', detail: 'resolve the diff, its languages, and which lenses apply' },
     { title: 'Review', detail: 'each lens reviews the files written in its own language, in parallel' },
     { title: 'Dedupe', detail: 'collapse findings that name one defect, before paying to verify each copy' },
-    { title: 'Verify', detail: 'reproduce each runtime claim independently; quality claims stand on judgment' },
+    { title: 'Refute', detail: 'try to break each claim: reproduce a runtime one independently, check a quality one against the rule it invokes' },
     { title: 'Report', detail: 'dedup, rank, and hand back what survived' },
   ],
 }
@@ -32,7 +32,7 @@ const PROMPTS = {
   "dedupe-open": "Independent review lenses examined one change set without seeing each other's work. Group their findings so that ONE DEFECT IS ONE CLUSTER.",
   "dedupe-output": "Return `clusters` covering every id above EXACTLY ONCE. A finding with no duplicate is a cluster containing just itself. Do not invent ids, do not drop ids, do not rename them.",
   "dedupe-rules": "Two findings are the same defect when ONE fix resolves both \u2014 the same line doing the same wrong thing, described twice. Differently worded claims, different severities and different files can all still be one defect: a regression is often reported once against the code that causes it and once against the test that fails to catch it, and the fix is the same edit. Lenses cannot see each other, so this happens on every multi-lens run.\n\nThey are NOT the same defect when they merely share a file, a theme or a category. Two unrelated comments violating the same rule in one file are two findings. A missing test for X and a missing test for Y are two findings. When you are unsure, LEAVE THEM SEPARATE \u2014 a wrong merge silently deletes a real defect, while a missed merge only costs one more verification.",
-  "finding-contract": "Return a verdict and findings. Every finding needs a stable kebab-case `id`, an HONEST `severity`, `file`, and a one-sentence `claim`.\nSet `nature` to \"runtime\" when an independent agent could demonstrate the defect by executing code \u2014 then make the `claim` precise enough to reproduce and give a `failure_scenario` (concrete inputs/state -> wrong output). Set it to \"quality\" for a convention, structure or test defect with no runtime symptom, and set `quality_kind`.\nDo NOT inflate severity to be taken seriously: everything you raise is verified and reported, and severity is used only to rank. Do NOT pad \u2014 a lens that finds nothing real should return verdict \"pass\" with an empty findings array and, if useful, say in `note` what it looked at and deliberately did not flag. An empty result from a lens is a real result here, not a failure.",
+  "finding-contract": "Return a verdict and findings. Every finding needs a stable kebab-case `id`, an HONEST `severity`, `file`, and a one-sentence `claim`.\nSet `nature` to \"runtime\" when an independent agent could demonstrate the defect by executing code \u2014 then make the `claim` precise enough to reproduce and give a `failure_scenario` (concrete inputs/state -> wrong output). Set it to \"quality\" for a convention, structure or test defect with no runtime symptom, and set `quality_kind`.\nDo NOT inflate severity to be taken seriously: everything you raise goes to a refuter and is reported, and severity is used only to rank. Do NOT pad \u2014 a lens that finds nothing real should return verdict \"pass\" with an empty findings array and, if useful, say in `note` what it looked at and deliberately did not flag. An empty result from a lens is a real result here, not a failure.",
   "lens-concurrency": "Your lens is CONCURRENCY. The scoping pass found this diff actually touches concurrent code, so there is something here to judge: unsynchronised shared state, a non-atomic read-modify-write, a lock ordering that can deadlock, a goroutine/task that outlives its context, an operation that is not idempotent under retry or redelivery.",
   "lens-guidelines": "Your lens is this project's OWN conventions \u2014 naming, structure, layering, idiom \u2014 as its guideline files define them, not as you would prefer them. Read the repo's CLAUDE.md and any guideline it points at.\n\nAlso weigh every new or changed comment against {{comments_guide}}: a comment that only restates what the code says, or names code by its plan position (\"task N\", \"step 2\", \"the new helper\") rather than its domain role, is a violation \u2014 `quality_kind: \"comment-usage\"`.\n\nRequired reading: {{reading}}. {{disclosure}}\n\nA convention you cannot point at in a guideline or in the surrounding code is a personal preference \u2014 do not raise it.\n\nCORRECTNESS IS NOT YOURS. A wrong condition, an unhandled error, a broken contract \u2014 the semantic lens owns those and is reading the same diff. When you see one, put it in `note` and move on; do not make it a finding.\n\nWHAT A TEST ASSERTS IS NOT YOURS EITHER. Whether an assertion pins the right thing, whether it could still fail, whether it duplicates coverage that already exists \u2014 the test-integrity lens owns all of that, is reading the same files, and settles it by breaking the code and re-running the suite, which you are not doing. How tests are *organised* is still yours: the umbrella a scenario belongs under, what a subtest is named, where a helper lives.\n\nWhat no other lens covers is what this one is for: structure, layering, naming, idiom, and comment usage.",
   "lens-performance": "Your lens is PERFORMANCE. The scoping pass found this diff actually touches I/O, queries, unbounded loops or hot-path allocation. Judge only what you can point at concretely \u2014 an N+1 query, an unbounded read, an allocation inside a loop, a missing timeout or limit. Do not raise speculative micro-optimisation; if you can measure it, measure it.",
@@ -40,6 +40,10 @@ const PROMPTS = {
   "lens-tests": "Your lens is TEST INTEGRITY, and it is the one most likely to find something here, because a suite that passes tells you nothing about whether it *could* fail.\n\nRequired reading: {{reading}}. {{disclosure}}\n\nFor every test the diff adds or changes \u2014 and every test in the changed area that the diff could have invalidated \u2014 ask whether it can still fail for the reason its name gives. Specifically hunt:\n- **Source-scanning guards.** A test that locates code by reading a source file (`readFileSync` plus `indexOf`/`substring` bounds, a regex over a file) inverts silently when the code moves: the bounds cross, the window becomes empty, and it passes forever. For each one, work out what it scans NOW, and say so.\n- **Absence assertions.** `expect(x).toBeNull()` / `assertNil` on an attribute no production path ever sets passes when the whole feature is deleted. It needs a positive assertion tying it to the feature being present.\n- **Tautologies and vacuous passthroughs.** Expected value derived from the code under test at runtime; a test that still passes if the code under test is replaced by a stub returning a constant or forwarding a collaborator's value verbatim (apply the substitution test); call-count-only assertions; no behavioural assertion at all.\n- **Redundant tests.** A new data point (enum value, field, config entry) exercising behaviour an existing test already covers belongs folded into that test, not cloned. A change-detector already covered behaviourally should go.\n- **Missing coverage that matters.** A behaviour the change set introduces that no test would catch the loss of. Name the behaviour, not \"add more tests\".\n\nClassify each as `nature: \"quality\"` with `quality_kind` \"broken-test\" (asserts nothing real) or \"redundant-test\" (duplicates existing coverage). Where you can, PROVE a vacuity claim: break the thing the test names, show it still passes, and put that in the claim. A proven vacuous test is the highest-value finding this audit produces.",
   "mechanical-tail": "Every other convention in the guidelines is still yours to judge.",
   "mechanical": "ALREADY CHECKED MECHANICALLY. `clerk lint` ran over this whole diff before you started, so do not re-report what it covers:\n- Comments naming code by plan position or citing a ticket id \u2014 covered completely. Do not hunt for them.\n- Sibling scenario tests that belong under one umbrella, and a method living apart from the file declaring its type \u2014 covered only for the shapes it can see. It matches lines rather than declarations, so a type inside a grouped `type ( ... )` block or a generic `type Box[T any]` is invisible to it. Report one of those yourself; it will not have been.",
+  "refute-file-rule": "Open a file with `Read`, whole, and do not reopen it \u2014 tool calls here run one at a time, so a file taken in `sed -n` slices costs a model round-trip per slice. Editing a file to mutate it and restoring it afterwards is a different thing and stays.",
+  "refute-open": "Establish whether this claim about finished code is REAL. You are independent of whoever raised it and they ran nothing \u2014 treat the claim as a hypothesis, not a report.",
+  "refute-quality": "This is a QUALITY claim \u2014 there is nothing to execute, so it stands or falls on whether the rule it invokes actually exists and is actually violated here. Do NOT refute it merely for being unexecutable.\nFind the rule \u2014 in a guideline file, in CLAUDE.md, or in the consistent practice of the surrounding code \u2014 and check the specific line. Set `refuted` false and cite the rule and line in `basis` when the violation is real; set it true when the rule does not exist, does not apply here, or the code does not actually violate it.\nA vacuity claim about a test IS checkable without running the suite: break what the test names and see whether it still passes. If the claim is that a test cannot fail, prove or disprove it that way and put the result in `basis`.",
+  "refute-runtime": "Try to REFUTE it by execution. Write and run a failing test, a `-race` run, a benchmark, or a direct invocation that would demonstrate the defect. Test command for this project: `{{test_command}}`.\nSet `refuted` false ONLY when you have executed something that demonstrates the defect, and put the exact command and raw output tail in `basis`. If you ran something and it did not reproduce, set `refuted` true and say what you tried. Default to refuted when uncertain \u2014 an unreproduced claim is an assertion, not evidence.\n\nNot being able to run at all is a different answer. A missing dependency, a toolchain that is not installed, a service the test needs and cannot reach: set `blocked` true rather than `refuted`, and name in `basis` the command and what stopped it. Refuting on an environment failure reports a defect as disproved when nothing was ever checked, and a dropped finding leaves no trace to notice.\nClean up: leave the tree exactly as you found it. Delete any scratch test you wrote.",
   "regrade": "RE-GRADE SEVERITY ACROSS THE WHOLE SET before you rank. Each lens graded its own findings without seeing the others, so the scales do not line up \u2014 a performance lens calling a per-request live-service read `low` and a guidelines lens calling a doc-comment convention `low` cannot both be right. Apply one rubric: high = a wrong or lost outcome for a user or caller in normal operation, or a security or data-integrity failure; medium = a real but bounded or conditional cost \u2014 degraded behaviour under load, a wrong result on an edge path, or a test that cannot fail for the behaviour it names; low = no runtime symptom and no operational cost. Where you change a grade, say so in that finding's evidence with one clause naming the cost you graded on. Do not touch `nature`, `lens` or the claim itself.",
   "report-open": "Assemble the final audit report from verified material only.",
   "report-rules": "Produce `findings`: every survivor, ranked most severe first, each with `confidence` \"confirmed\" when execution reproduced it or a quality rule was cited at a specific line, \"plausible\" otherwise.\nA survivor marked NOT EXECUTED reached you because nobody could run the check, not because anyone established it: give it `confidence: \"plausible\"` and carry the reason into its evidence, so the caller can see the difference between a defect proved and a defect nobody could test.",
@@ -48,10 +52,6 @@ const PROMPTS = {
   "review-rules": "Read the diff AND the whole post-image of every changed file in your remit, before judging anything. You are weighing new code against the code already there, which a diff alone never shows.\n\nOpen a file with `Read`, whole, and do not open it again \u2014 it stays in your context. A file taken in eight `sed -n` slices costs eight model round-trips and yields what one `Read` yields; tool calls here are strictly sequential, so every extra one is time no parallelism gets back. Use `rg` to locate a file or symbol you cannot name, not to re-read one you already opened.\n\nDo NOT run the full test suite \u2014 it already passes, that is why this work is finished. Run a scoped command only to demonstrate a specific finding.",
   "scope-open": "Establish exactly what this audit is looking at. Run the commands; do not guess.",
   "scope-rules": "List every changed path. Then decide, FROM THE DIFF ITSELF rather than from the file names:\n- `languages`: the canonical language of the changed CODE files \u2014 one of \"Go\", \"JavaScript/TypeScript\", \"Elixir\", \"Generic\" \u2014 ordered by how much of the diff each accounts for.\n- `by_language`: those same files, grouped under the language each is actually WRITTEN IN. This decides which lens reviews which file, so put every file where a reader of that language would expect it: a `.go` file is Go even when it implements a JavaScript-facing feature, and \"Generic\" means the file is written in something with no lens of its own (CUE, a grammar corpus, SQL, a shell script) \u2014 NOT \"everything left over\" and NOT a second pass over another language's files. Leave a file out entirely when no code lens should own it, such as prose documentation or a lockfile.\n- `has_code`: false only when EVERY changed file is documentation, config, or build plumbing (.md/.txt/.rst, .json/.yaml/.toml/.ini/.lock, Makefile/Taskfile/*.mk, images). An extension-less file that might carry logic counts as code.\n- `signals.concurrency`: true ONLY if the diff itself adds or changes concurrent code \u2014 goroutines, threads, async/await over shared state, channels, locks, transactions, shared mutable state. A file that merely sits in a concurrent codebase is not a signal.\n- `signals.performance`: true ONLY if the diff itself adds or changes I/O, database queries, loops over unbounded input, allocation in a hot path, or if a benchmark exists that could measure the change. Absent that, false \u2014 a performance lens with nothing to measure returns nothing, every time.\nBe strict with both signals. Each true costs a full specialist pass; each false one that should have been true is a gap you will report at the end instead.\n\nThen run `clerk lint --json` over the same range \u2014 `--staged` when the target is the staged changes, otherwise `--base <the base you resolved>`. It exits 1 when it finds anything, which is a result and not a failure; copy its findings into `mechanical` verbatim and set `mechanical_ran` true. Set it false ONLY when the command does not exist: a lens stands down on the strength of that flag, so a false true means nobody looks.\n\nFinally write `summary`: two sentences on what this change set actually does, which every lens reads before it starts.",
-  "verify-file-rule": "Open a file with `Read`, whole, and do not reopen it \u2014 tool calls here run one at a time, so a file taken in `sed -n` slices costs a model round-trip per slice. Editing a file to mutate it and restoring it afterwards is a different thing and stays.",
-  "verify-open": "Establish whether this claim about finished code is REAL. You are independent of whoever raised it and they ran nothing \u2014 treat the claim as a hypothesis, not a report.",
-  "verify-quality": "This is a QUALITY claim \u2014 there is nothing to execute, so it stands or falls on whether the rule it invokes actually exists and is actually violated here. Do NOT refute it merely for being unexecutable.\nFind the rule \u2014 in a guideline file, in CLAUDE.md, or in the consistent practice of the surrounding code \u2014 and check the specific line. Set `refuted` false and cite the rule and line in `basis` when the violation is real; set it true when the rule does not exist, does not apply here, or the code does not actually violate it.\nA vacuity claim about a test IS checkable without running the suite: break what the test names and see whether it still passes. If the claim is that a test cannot fail, prove or disprove it that way and put the result in `basis`.",
-  "verify-runtime": "Try to REFUTE it by execution. Write and run a failing test, a `-race` run, a benchmark, or a direct invocation that would demonstrate the defect. Test command for this project: `{{test_command}}`.\nSet `refuted` false ONLY when you have executed something that demonstrates the defect, and put the exact command and raw output tail in `basis`. If you ran something and it did not reproduce, set `refuted` true and say what you tried. Default to refuted when uncertain \u2014 an unreproduced claim is an assertion, not evidence.\n\nNot being able to run at all is a different answer. A missing dependency, a toolchain that is not installed, a service the test needs and cannot reach: set `blocked` true rather than `refuted`, and name in `basis` the command and what stopped it. Refuting on an environment failure reports a defect as disproved when nothing was ever checked, and a dropped finding leaves no trace to notice.\nClean up: leave the tree exactly as you found it. Delete any scratch test you wrote.",
 }
 
 // Substitute a fragment's {{name}} placeholders. An unfilled one becomes empty rather
@@ -149,11 +149,11 @@ const FIXED_FILES = Array.isArray(ARGS?.fixedFiles)
 const PRIOR_SCOPE = (typeof ARGS?.priorScope === 'object' && ARGS.priorScope) || null
 const DEPTH = ARGS?.depth ?? 'standard'
 // `deep` buys redundancy where a wrong verdict costs something, not everywhere. Applied
-// to every claim it triples the largest line item in the audit — verification is already
+// to every claim it triples the largest line item in the audit — refutation is already
 // more of a run than all the lenses feeding it — to re-establish comment and naming
-// findings nobody would act on urgently. Low-severity claims get one verifier at any
+// findings nobody would act on urgently. Low-severity claims get one refuter at any
 // depth; the severity here is the lens's, which is all that is known before verifying.
-const verifiersFor = (f) => (DEPTH === 'deep' && (f.severity === 'high' || f.severity === 'medium') ? 3 : 1)
+const refutersFor = (f) => (DEPTH === 'deep' && (f.severity === 'high' || f.severity === 'medium') ? 3 : 1)
 const TEST_CMDS = (typeof ARGS === 'object' && ARGS?.testCommands) || {}
 const FULL_TEST_CMD = TEST_CMDS.default ?? ARGS?.testCommand ?? '(detect the project test command: Makefile, package.json scripts, or framework convention)'
 const testCmdFor = (language) => {
@@ -398,7 +398,7 @@ const fileBlock = (scope, remit) => {
 
 // Three guideline rules are now settled by `clerk lint` over the whole diff before any
 // lens starts. Telling the lenses that is worth real money — a rule re-derived here costs
-// a lens to find and a verifier to confirm what a regex already decided — but it is only
+// a lens to find and a refuter to confirm what a regex already decided — but it is only
 // safe to the exact extent the checker is complete, so the two Go rules are handed over
 // with their blind spots named rather than as a blanket stand-down.
 const mechanicalBlock = (scope) => {
@@ -442,7 +442,7 @@ const testsPrompt = (scope, lang, remit) =>
 const guidelinesPrompt = (scope, lang, remit) =>
   reviewPreamble(scope, remit) +
   // Measured over 19 rounds: every runtime defect this lens raised was independently
-  // raised by semantic or tests, so each one bought a second verifier and no new
+  // raised by semantic or tests, so each one bought a second refuter and no new
   // information. `note` keeps the observation without paying to re-establish it.
   fill(PROMPTS['lens-guidelines'], { comments_guide: COMMENTS_GUIDE, reading: LANG[lang].reading.join(', '), disclosure: DISCLOSURE }) +
   findingContract
@@ -456,27 +456,27 @@ const dedupePrompt = (scope, findings) =>
   `Findings:\n${findings.map((f) => `- [${f.id}] ${f.severity} ${f.nature} ${f.file}${f.line ? `:${f.line}` : ''} (lens: ${f.lens})\n    ${f.claim}`).join('\n')}\n\n` +
   PROMPTS['dedupe-rules'] + '\n\n' +
   PROMPTS['dedupe-output']
-const verifyPrompt = (scope, f, i, n) =>
-  PROMPTS['verify-open'] + '\n\n' +
+const refutePrompt = (scope, f, i, n) =>
+  PROMPTS['refute-open'] + '\n\n' +
   `Finding ${f.id} [${f.severity}, ${f.nature}] in ${f.file}${f.line ? `:${f.line}` : ''}\n` +
   `Claim: ${f.claim}\n` +
   (f.failure_scenario ? `Claimed failure: ${f.failure_scenario}\n` : '') +
   `\nDiff under audit: \`git diff ${scope.base}...${scope.head}\`\n\n` +
-  PROMPTS['verify-file-rule'] + '\n\n' +
+  PROMPTS['refute-file-rule'] + '\n\n' +
   `You have this checkout to yourself — a worktree of the repository at the same commit, not the tree the audit is reporting on. Mutate it freely to prove or disprove the claim. Restore it before you return anyway: a worktree left clean is reclaimed automatically, and one left dirty is not.\n\n` +
-  (n > 1 ? `You are verifier ${i + 1} of ${n} working independently on this same claim; do not assume the others agree with you.\n\n` : '') +
+  (n > 1 ? `You are refuter ${i + 1} of ${n} working independently on this same claim; do not assume the others agree with you.\n\n` : '') +
   (f.nature === 'runtime'
-    ? fill(PROMPTS['verify-runtime'], { test_command: testCmdFor(scope.languages?.[0]) })
-    : PROMPTS['verify-quality'])
+    ? fill(PROMPTS['refute-runtime'], { test_command: testCmdFor(scope.languages?.[0]) })
+    : PROMPTS['refute-quality'])
 const synthPrompt = (scope, confirmed, refuted, lensNotes, gaps) =>
   PROMPTS['report-open'] + '\n\n' +
   `Change set: ${scope.summary}\nFiles: ${scope.files.length}\n\n` +
-  `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens})${c.blocked ? ' [NOT EXECUTED — the check could not run]' : ''} — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
+  `SURVIVED refutation (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens})${c.blocked ? ' [NOT EXECUTED — the check could not run]' : ''} — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
   // These reached the audit only by being skipped: the same checker runs at commit time.
   // Nothing verifies them because a regex already decided, so they bypass the pipeline
   // and would vanish from the report unless carried in here.
   ((scope.mechanical ?? []).length
-    ? `REPORTED MECHANICALLY by \`clerk lint\` (${scope.mechanical.length}) — deterministic, already established, and NOT verified because there is nothing to verify. Include each one as a finding with \`confidence: "confirmed"\`, \`lens: "clerk-lint"\` and the rule name as its evidence. Do not reword the message, and do not merge them with a lens finding:\n${scope.mechanical.map((m) => `- ${m.file}${m.line ? `:${m.line}` : ''} [${m.rule}] ${m.message}`).join('\n')}\n\n`
+    ? `REPORTED MECHANICALLY by \`clerk lint\` (${scope.mechanical.length}) — deterministic, already established, and NOT sent to a refuter because there is nothing to disprove. Include each one as a finding with \`confidence: "confirmed"\`, \`lens: "clerk-lint"\` and the rule name as its evidence. Do not reword the message, and do not merge them with a lens finding:\n${scope.mechanical.map((m) => `- ${m.file}${m.line ? `:${m.line}` : ''} [${m.rule}] ${m.message}`).join('\n')}\n\n`
     : '') +
   `REFUTED and dropped (${refuted.length}) — for your judgment of coverage only, do NOT reinstate:\n${refuted.map((r) => `- [${r.finding.id}] ${r.finding.claim} — ${r.basis}`).join('\n') || '  (none)'}\n\n` +
   (lensNotes.length ? `What the lenses deliberately did not flag:\n${lensNotes.map((n) => `- ${n}`).join('\n')}\n\n` : '') +
@@ -678,9 +678,9 @@ if (!raw.length) {
 }
 
 phase('Dedupe')
-// Verification is the expensive half, so duplicates are collapsed BEFORE it rather than
+// Refutation is the expensive half, so duplicates are collapsed BEFORE it rather than
 // in the report. Two lenses naming one defect used to be verified twice over: measured
-// once at three lenses reporting a single parser regression, each verifier separately
+// once at three lenses reporting a single parser regression, each refuter separately
 // building a binary from the base commit to reproduce the same thing. One grouping agent
 // pays for itself the first time it collapses a pair.
 const severityRank = (s) => ({ high: 0, medium: 1, low: 2 })[s] ?? 3
@@ -720,14 +720,14 @@ if (candidates.length > 1) {
   const flat = proposed.flat()
   // Accept the grouping only if it accounts for every finding exactly once. An agent that
   // drops an id would delete a defect here, silently and permanently — the one failure
-  // this stage must not have. A rejected grouping costs the redundant verifications the
+  // this stage must not have. A rejected grouping costs the redundant refutations the
   // stage meant to save; losing a finding costs the audit its point.
   const complete = flat.length === candidates.length && new Set(flat).size === candidates.length && flat.every((id) => byIdent.has(id))
   if (complete) {
     const merged = proposed.map((ids) => mergeCluster(ids.flatMap((id) => byId.get(id) ?? [byIdent.get(id)])))
     const collapsed = candidates.length - merged.length
     if (collapsed) {
-      log(`dedupe: ${collapsed} duplicate(s) collapsed — ${merged.length} distinct defect(s) go to Verify instead of ${raw.length}`)
+      log(`dedupe: ${collapsed} duplicate(s) collapsed — ${merged.length} distinct defect(s) go to Refute instead of ${raw.length}`)
       for (const c of (grouping.clusters ?? []).filter((x) => (x.ids ?? []).length > 1)) log(`  merged ${c.ids.join(' + ')}${c.why ? ` — ${c.why}` : ''}`)
     } else {
       log('dedupe: no duplicates found beyond the exact id collisions')
@@ -738,24 +738,24 @@ if (candidates.length > 1) {
   }
 }
 
-phase('Verify')
+phase('Refute')
 // Every claim is verified before it reaches the caller — a review that hands back
-// unverified assertions is exactly the noise this shape exists to avoid. Runtime
+// unrefuted assertions is exactly the noise this shape exists to avoid. Runtime
 // claims must be reproduced by execution; quality claims must cite a rule and a
-// line. `deep` puts several independent verifiers on each claim and takes majority.
+// line. `deep` puts several independent refuters on each claim and takes majority.
 const verdicts = await parallel(
   candidates.map((f) => () =>
-    parallel(Array.from({ length: verifiersFor(f) }, (_, i) => () =>
-      // Every verifier mutates the tree to prove its claim — reverting a line, writing a
+    parallel(Array.from({ length: refutersFor(f) }, (_, i) => () =>
+      // Every refuter mutates the tree to prove its claim — reverting a line, writing a
       // probe, deleting it again — and they run concurrently. Sharing one tree, they read
       // each other's experiments: measured over six runs, agents reported another's edit
       // interfering twenty-two times, once refuting a claim on a probe file that was not
       // theirs. A refutation is the outcome nothing downstream re-checks.
-      agent(verifyPrompt(scope, f, i, verifiersFor(f)), { label: `verify:${f.id}${verifiersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA, isolation: 'worktree' }),
+      agent(refutePrompt(scope, f, i, refutersFor(f)), { label: `refute:${f.id}${refutersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Refute', schema: VERDICT_SCHEMA, isolation: 'worktree' }),
     )).then((vs) => {
       const votes = vs.filter(Boolean)
-      if (!votes.length) return { finding: f, survived: false, basis: 'no verifier returned a result' }
-      // A verifier that could not run has not refuted anything. Counting it as a vote
+      if (!votes.length) return { finding: f, survived: false, basis: 'no refuter returned a result' }
+      // A refuter that could not run has not refuted anything. Counting it as a vote
       // would let a missing toolchain delete a real defect, silently and with a basis
       // that reads like evidence.
       const ran = votes.filter((v) => !v.blocked)
@@ -777,7 +777,7 @@ const verdicts = await parallel(
 const settled = verdicts.filter(Boolean)
 const confirmed = settled.filter((v) => v.survived)
 const refuted = settled.filter((v) => !v.survived)
-log(`verification: ${confirmed.length} upheld, ${refuted.length} refuted`)
+log(`refutation: ${confirmed.length} upheld, ${refuted.length} refuted`)
 
 phase('Report')
 const report = await agentOrRetry(synthPrompt(scope, confirmed, refuted, lensNotes, notRun), { label: 'report', phase: 'Report', schema: SYNTH_SCHEMA }, 'report')

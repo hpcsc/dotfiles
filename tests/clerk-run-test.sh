@@ -159,8 +159,8 @@ chmod +x "$FAKE/claude"
 PR=$(cd "$(mktemp -d)" && pwd -P); mkdir -p "$PR/audit-implement/prompts"
 for f in scope-open scope-rules review-open review-rules finding-contract lens-semantic \
          lens-guidelines lens-tests lens-concurrency lens-performance dedupe-open \
-         dedupe-rules dedupe-output verify-open verify-file-rule verify-runtime \
-         verify-quality report-open report-rules report-tail regrade mechanical \
+         dedupe-rules dedupe-output refute-open refute-file-rule refute-runtime \
+         refute-quality report-open report-rules report-tail regrade mechanical \
          mechanical-tail; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
 cp "$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-config/.config/ai/method/audit-implement/schemas.json" \
    "$PR/audit-implement/schemas.json"

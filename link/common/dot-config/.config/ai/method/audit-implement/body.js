@@ -6,7 +6,7 @@ export const meta = {
     { title: 'Scope', detail: 'resolve the diff, its languages, and which lenses apply' },
     { title: 'Review', detail: 'each lens reviews the files written in its own language, in parallel' },
     { title: 'Dedupe', detail: 'collapse findings that name one defect, before paying to verify each copy' },
-    { title: 'Verify', detail: 'reproduce each runtime claim independently; quality claims stand on judgment' },
+    { title: 'Refute', detail: 'try to break each claim: reproduce a runtime one independently, check a quality one against the rule it invokes' },
     { title: 'Report', detail: 'dedup, rank, and hand back what survived' },
   ],
 }
@@ -115,11 +115,11 @@ const FIXED_FILES = Array.isArray(ARGS?.fixedFiles)
 const PRIOR_SCOPE = (typeof ARGS?.priorScope === 'object' && ARGS.priorScope) || null
 const DEPTH = ARGS?.depth ?? 'standard'
 // `deep` buys redundancy where a wrong verdict costs something, not everywhere. Applied
-// to every claim it triples the largest line item in the audit — verification is already
+// to every claim it triples the largest line item in the audit — refutation is already
 // more of a run than all the lenses feeding it — to re-establish comment and naming
-// findings nobody would act on urgently. Low-severity claims get one verifier at any
+// findings nobody would act on urgently. Low-severity claims get one refuter at any
 // depth; the severity here is the lens's, which is all that is known before verifying.
-const verifiersFor = (f) => (DEPTH === 'deep' && (f.severity === 'high' || f.severity === 'medium') ? 3 : 1)
+const refutersFor = (f) => (DEPTH === 'deep' && (f.severity === 'high' || f.severity === 'medium') ? 3 : 1)
 const TEST_CMDS = (typeof ARGS === 'object' && ARGS?.testCommands) || {}
 const FULL_TEST_CMD = TEST_CMDS.default ?? ARGS?.testCommand ?? '(detect the project test command: Makefile, package.json scripts, or framework convention)'
 const testCmdFor = (language) => {
@@ -364,7 +364,7 @@ const fileBlock = (scope, remit) => {
 
 // Three guideline rules are now settled by `clerk lint` over the whole diff before any
 // lens starts. Telling the lenses that is worth real money — a rule re-derived here costs
-// a lens to find and a verifier to confirm what a regex already decided — but it is only
+// a lens to find and a refuter to confirm what a regex already decided — but it is only
 // safe to the exact extent the checker is complete, so the two Go rules are handed over
 // with their blind spots named rather than as a blanket stand-down.
 const mechanicalBlock = (scope) => {
@@ -408,7 +408,7 @@ const testsPrompt = (scope, lang, remit) =>
 const guidelinesPrompt = (scope, lang, remit) =>
   reviewPreamble(scope, remit) +
   // Measured over 19 rounds: every runtime defect this lens raised was independently
-  // raised by semantic or tests, so each one bought a second verifier and no new
+  // raised by semantic or tests, so each one bought a second refuter and no new
   // information. `note` keeps the observation without paying to re-establish it.
   fill(PROMPTS['lens-guidelines'], { comments_guide: COMMENTS_GUIDE, reading: LANG[lang].reading.join(', '), disclosure: DISCLOSURE }) +
   findingContract
@@ -422,27 +422,27 @@ const dedupePrompt = (scope, findings) =>
   `Findings:\n${findings.map((f) => `- [${f.id}] ${f.severity} ${f.nature} ${f.file}${f.line ? `:${f.line}` : ''} (lens: ${f.lens})\n    ${f.claim}`).join('\n')}\n\n` +
   PROMPTS['dedupe-rules'] + '\n\n' +
   PROMPTS['dedupe-output']
-const verifyPrompt = (scope, f, i, n) =>
-  PROMPTS['verify-open'] + '\n\n' +
+const refutePrompt = (scope, f, i, n) =>
+  PROMPTS['refute-open'] + '\n\n' +
   `Finding ${f.id} [${f.severity}, ${f.nature}] in ${f.file}${f.line ? `:${f.line}` : ''}\n` +
   `Claim: ${f.claim}\n` +
   (f.failure_scenario ? `Claimed failure: ${f.failure_scenario}\n` : '') +
   `\nDiff under audit: \`git diff ${scope.base}...${scope.head}\`\n\n` +
-  PROMPTS['verify-file-rule'] + '\n\n' +
+  PROMPTS['refute-file-rule'] + '\n\n' +
   `You have this checkout to yourself — a worktree of the repository at the same commit, not the tree the audit is reporting on. Mutate it freely to prove or disprove the claim. Restore it before you return anyway: a worktree left clean is reclaimed automatically, and one left dirty is not.\n\n` +
-  (n > 1 ? `You are verifier ${i + 1} of ${n} working independently on this same claim; do not assume the others agree with you.\n\n` : '') +
+  (n > 1 ? `You are refuter ${i + 1} of ${n} working independently on this same claim; do not assume the others agree with you.\n\n` : '') +
   (f.nature === 'runtime'
-    ? fill(PROMPTS['verify-runtime'], { test_command: testCmdFor(scope.languages?.[0]) })
-    : PROMPTS['verify-quality'])
+    ? fill(PROMPTS['refute-runtime'], { test_command: testCmdFor(scope.languages?.[0]) })
+    : PROMPTS['refute-quality'])
 const synthPrompt = (scope, confirmed, refuted, lensNotes, gaps) =>
   PROMPTS['report-open'] + '\n\n' +
   `Change set: ${scope.summary}\nFiles: ${scope.files.length}\n\n` +
-  `SURVIVED verification (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens})${c.blocked ? ' [NOT EXECUTED — the check could not run]' : ''} — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
+  `SURVIVED refutation (${confirmed.length}):\n${confirmed.map((c) => `- [${c.finding.id}] ${c.finding.severity} ${c.finding.nature} ${c.finding.file} (lens: ${c.finding.lens})${c.blocked ? ' [NOT EXECUTED — the check could not run]' : ''} — ${c.finding.claim}\n  evidence: ${c.basis}`).join('\n') || '  (none)'}\n\n` +
   // These reached the audit only by being skipped: the same checker runs at commit time.
   // Nothing verifies them because a regex already decided, so they bypass the pipeline
   // and would vanish from the report unless carried in here.
   ((scope.mechanical ?? []).length
-    ? `REPORTED MECHANICALLY by \`clerk lint\` (${scope.mechanical.length}) — deterministic, already established, and NOT verified because there is nothing to verify. Include each one as a finding with \`confidence: "confirmed"\`, \`lens: "clerk-lint"\` and the rule name as its evidence. Do not reword the message, and do not merge them with a lens finding:\n${scope.mechanical.map((m) => `- ${m.file}${m.line ? `:${m.line}` : ''} [${m.rule}] ${m.message}`).join('\n')}\n\n`
+    ? `REPORTED MECHANICALLY by \`clerk lint\` (${scope.mechanical.length}) — deterministic, already established, and NOT sent to a refuter because there is nothing to disprove. Include each one as a finding with \`confidence: "confirmed"\`, \`lens: "clerk-lint"\` and the rule name as its evidence. Do not reword the message, and do not merge them with a lens finding:\n${scope.mechanical.map((m) => `- ${m.file}${m.line ? `:${m.line}` : ''} [${m.rule}] ${m.message}`).join('\n')}\n\n`
     : '') +
   `REFUTED and dropped (${refuted.length}) — for your judgment of coverage only, do NOT reinstate:\n${refuted.map((r) => `- [${r.finding.id}] ${r.finding.claim} — ${r.basis}`).join('\n') || '  (none)'}\n\n` +
   (lensNotes.length ? `What the lenses deliberately did not flag:\n${lensNotes.map((n) => `- ${n}`).join('\n')}\n\n` : '') +
@@ -644,9 +644,9 @@ if (!raw.length) {
 }
 
 phase('Dedupe')
-// Verification is the expensive half, so duplicates are collapsed BEFORE it rather than
+// Refutation is the expensive half, so duplicates are collapsed BEFORE it rather than
 // in the report. Two lenses naming one defect used to be verified twice over: measured
-// once at three lenses reporting a single parser regression, each verifier separately
+// once at three lenses reporting a single parser regression, each refuter separately
 // building a binary from the base commit to reproduce the same thing. One grouping agent
 // pays for itself the first time it collapses a pair.
 const severityRank = (s) => ({ high: 0, medium: 1, low: 2 })[s] ?? 3
@@ -686,14 +686,14 @@ if (candidates.length > 1) {
   const flat = proposed.flat()
   // Accept the grouping only if it accounts for every finding exactly once. An agent that
   // drops an id would delete a defect here, silently and permanently — the one failure
-  // this stage must not have. A rejected grouping costs the redundant verifications the
+  // this stage must not have. A rejected grouping costs the redundant refutations the
   // stage meant to save; losing a finding costs the audit its point.
   const complete = flat.length === candidates.length && new Set(flat).size === candidates.length && flat.every((id) => byIdent.has(id))
   if (complete) {
     const merged = proposed.map((ids) => mergeCluster(ids.flatMap((id) => byId.get(id) ?? [byIdent.get(id)])))
     const collapsed = candidates.length - merged.length
     if (collapsed) {
-      log(`dedupe: ${collapsed} duplicate(s) collapsed — ${merged.length} distinct defect(s) go to Verify instead of ${raw.length}`)
+      log(`dedupe: ${collapsed} duplicate(s) collapsed — ${merged.length} distinct defect(s) go to Refute instead of ${raw.length}`)
       for (const c of (grouping.clusters ?? []).filter((x) => (x.ids ?? []).length > 1)) log(`  merged ${c.ids.join(' + ')}${c.why ? ` — ${c.why}` : ''}`)
     } else {
       log('dedupe: no duplicates found beyond the exact id collisions')
@@ -704,24 +704,24 @@ if (candidates.length > 1) {
   }
 }
 
-phase('Verify')
+phase('Refute')
 // Every claim is verified before it reaches the caller — a review that hands back
-// unverified assertions is exactly the noise this shape exists to avoid. Runtime
+// unrefuted assertions is exactly the noise this shape exists to avoid. Runtime
 // claims must be reproduced by execution; quality claims must cite a rule and a
-// line. `deep` puts several independent verifiers on each claim and takes majority.
+// line. `deep` puts several independent refuters on each claim and takes majority.
 const verdicts = await parallel(
   candidates.map((f) => () =>
-    parallel(Array.from({ length: verifiersFor(f) }, (_, i) => () =>
-      // Every verifier mutates the tree to prove its claim — reverting a line, writing a
+    parallel(Array.from({ length: refutersFor(f) }, (_, i) => () =>
+      // Every refuter mutates the tree to prove its claim — reverting a line, writing a
       // probe, deleting it again — and they run concurrently. Sharing one tree, they read
       // each other's experiments: measured over six runs, agents reported another's edit
       // interfering twenty-two times, once refuting a claim on a probe file that was not
       // theirs. A refutation is the outcome nothing downstream re-checks.
-      agent(verifyPrompt(scope, f, i, verifiersFor(f)), { label: `verify:${f.id}${verifiersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Verify', schema: VERDICT_SCHEMA, isolation: 'worktree' }),
+      agent(refutePrompt(scope, f, i, refutersFor(f)), { label: `refute:${f.id}${refutersFor(f) > 1 ? `#${i + 1}` : ''}`, phase: 'Refute', schema: VERDICT_SCHEMA, isolation: 'worktree' }),
     )).then((vs) => {
       const votes = vs.filter(Boolean)
-      if (!votes.length) return { finding: f, survived: false, basis: 'no verifier returned a result' }
-      // A verifier that could not run has not refuted anything. Counting it as a vote
+      if (!votes.length) return { finding: f, survived: false, basis: 'no refuter returned a result' }
+      // A refuter that could not run has not refuted anything. Counting it as a vote
       // would let a missing toolchain delete a real defect, silently and with a basis
       // that reads like evidence.
       const ran = votes.filter((v) => !v.blocked)
@@ -743,7 +743,7 @@ const verdicts = await parallel(
 const settled = verdicts.filter(Boolean)
 const confirmed = settled.filter((v) => v.survived)
 const refuted = settled.filter((v) => !v.survived)
-log(`verification: ${confirmed.length} upheld, ${refuted.length} refuted`)
+log(`refutation: ${confirmed.length} upheld, ${refuted.length} refuted`)
 
 phase('Report')
 const report = await agentOrRetry(synthPrompt(scope, confirmed, refuted, lensNotes, notRun), { label: 'report', phase: 'Report', schema: SYNTH_SCHEMA }, 'report')

@@ -2,7 +2,7 @@
 
 Every decision the audit makes about *what to run* lives here: which lenses the diff
 earns, what each one's remit is, which of them a later round's fixes still reach, how
-many verifiers a finding gets and whether one needs a tree of its own. None of it needs
+many refuters a finding gets and whether one needs a tree of its own. None of it needs
 a model, and all of it was previously written twice — as JavaScript in the Workflow
 script for one harness and as prose for the other, with nothing checking the two agreed.
 
@@ -279,7 +279,7 @@ def merge_clusters(candidates, clusters):
     """(merged, collapsed, reason). The grouping is accepted only when it accounts for
     every finding exactly once. An agent that drops an id would delete a defect here,
     silently and permanently — the one failure this stage must not have. Rejecting a
-    grouping costs the redundant verifications it meant to save; losing a finding costs
+    grouping costs the redundant refutations it meant to save; losing a finding costs
     the audit its point."""
     by_id = {f["id"]: f for f in candidates}
     proposed = [c.get("ids") or [] for c in (clusters or [])]
@@ -307,32 +307,32 @@ def merge_clusters(candidates, clusters):
     return merged, len(candidates) - len(merged), None
 
 
-def verifiers_for(finding, depth):
-    """How many independent verifiers a claim gets. `deep` puts three on anything that
+def refuters_for(finding, depth):
+    """How many independent refuters a claim gets. `deep` puts three on anything that
     would matter and takes the majority."""
     return 3 if depth == "deep" and finding.get("severity") in ("high", "medium") else 1
 
 
 def needs_tree(finding):
-    """Whether a verifier has to mutate a checkout to settle the claim. Runtime claims
+    """Whether a refuter has to mutate a checkout to settle the claim. Runtime claims
     are proved by execution; a quality claim about a test is proved by breaking what the
     test names; every other quality claim cites a rule and a line."""
     return finding.get("nature") == "runtime" or bool(
         TEST_PATH_RE.search(str(finding.get("file") or "")))
 
 
-def verify_jobs(scope, prompts, findings, depth, *, request="", brief="", test_commands=None):
+def refute_jobs(scope, prompts, findings, depth, *, request="", brief="", test_commands=None):
     ctxb = _PromptCtx(scope, prompts, request, brief, (), test_commands or {})
     jobs = []
     for f in findings:
-        n = verifiers_for(f, depth)
+        n = refuters_for(f, depth)
         for i in range(n):
             jobs.append({
                 "id": f["id"] if n == 1 else f"{f['id']}#{i + 1}",
                 "finding_id": f["id"],
                 "agent": None,
                 "isolation": "worktree" if needs_tree(f) else "none",
-                "prompt": ctxb.verify(f, i, n),
+                "prompt": ctxb.refute(f, i, n),
             })
     return jobs
 
@@ -455,15 +455,15 @@ class _PromptCtx:
                 + f"Findings:\n{rows}\n\n"
                 + self._p("dedupe-rules") + "\n\n" + self._p("dedupe-output"))
 
-    def verify(self, f, i, n):
+    def refute(self, f, i, n):
         line = f":{f['line']}" if f.get("line") else ""
-        out = (self._p("verify-open") + "\n\n"
+        out = (self._p("refute-open") + "\n\n"
                + f"Finding {f.get('id')} [{f.get('severity')}, {f.get('nature')}] in {f.get('file')}{line}\n"
                + f"Claim: {f.get('claim')}\n")
         if f.get("failure_scenario"):
             out += f"Claimed failure: {f['failure_scenario']}\n"
         out += f"\nDiff under audit: `git diff {self.scope.get('base')}...{self.scope.get('head')}`\n\n"
-        out += self._p("verify-file-rule") + "\n\n"
+        out += self._p("refute-file-rule") + "\n\n"
         if needs_tree(f):
             out += ("You have this checkout to yourself — a worktree of the repository at the same commit, not "
                     "the tree the audit is reporting on. Mutate it freely to prove or disprove the claim. "
@@ -474,11 +474,11 @@ class _PromptCtx:
                     "it: a claim settled by naming a rule and a line needs no experiment, and a tree left dirty "
                     "stops the run.\n\n")
         if n > 1:
-            out += (f"You are verifier {i + 1} of {n} working independently on this same claim; do not assume "
+            out += (f"You are refuter {i + 1} of {n} working independently on this same claim; do not assume "
                     f"the others agree with you.\n\n")
         langs = self.scope.get("languages") or []
-        out += (fill(self._p("verify-runtime"), {"test_command": self.test_cmd(langs[0] if langs else None)})
-                if f.get("nature") == "runtime" else self._p("verify-quality"))
+        out += (fill(self._p("refute-runtime"), {"test_command": self.test_cmd(langs[0] if langs else None)})
+                if f.get("nature") == "runtime" else self._p("refute-quality"))
         return out
 
     def synth(self, confirmed, refuted, lens_notes, gaps):
@@ -491,14 +491,14 @@ class _PromptCtx:
             for c in confirmed) or "  (none)"
         out = (self._p("report-open") + "\n\n"
                + f"Change set: {self.scope.get('summary')}\nFiles: {len(files)}\n\n"
-               + f"SURVIVED verification ({len(confirmed)}):\n{conf}\n\n")
+               + f"SURVIVED refutation ({len(confirmed)}):\n{conf}\n\n")
         mech = self.scope.get("mechanical") or []
         if mech:
             rows = "\n".join(
                 f"- {m.get('file')}" + (f":{m['line']}" if m.get("line") else "")
                 + f" [{m.get('rule')}] {m.get('message')}" for m in mech)
             out += (f"REPORTED MECHANICALLY by `clerk lint` ({len(mech)}) — deterministic, already established, "
-                    f"and NOT verified because there is nothing to verify. Include each one as a finding with "
+                    f"and NOT sent to a refuter because there is nothing to disprove. Include each one as a finding with "
                     f"`confidence: \"confirmed\"`, `lens: \"clerk-lint\"` and the rule name as its evidence. Do "
                     f"not reword the message, and do not merge them with a lens finding:\n{rows}\n\n")
         ref = "\n".join(f"- [{r['finding'].get('id')}] {r['finding'].get('claim')} — {r.get('basis')}"

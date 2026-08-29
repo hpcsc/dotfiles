@@ -188,7 +188,7 @@ run that left its branch when it landed evaluates only `land` and `learn`.
 | 8 | `theory` | the breakdown contains `## Theory`, and the file is committed when `tasks_tracked` is true | the model writes it. A `tasks/`-only commit does not disturb rows 5 to 7 | derived |
 | 9 | `verify` | `clerk verify --all-closed` is clean, and `not_checked` is empty or `--done verify-residue` is recorded | `step` runs verify itself when it reaches the row, and caches a pass in `done.json` at its code tree so the archive commit does not run it again | derived, then asserted |
 | 10 | `land` | `land.json` says `landed`, or `archived.json` exists and integration is off or done. From the main checkout: the slug is merged and its worktree and branch are gone | `clerk land`. `gate` reads the acceptance from `audit.json`, so `--audit-accepted` is not needed. The exit, fast-forward and remove sequence for a worktree becomes printed instructions from the main checkout | derived |
-| 11 | `learn` | a `learn` run wrote an entry, or `--done learn --none` | `clerk learn … --feature <slug>`. `step` prints `plan_signals` computed from the log | derived, or asserted |
+| 11 | `learn` | a `learn` run wrote an entry, or `--done learn --none` | `clerk learn … --feature <slug>`. `step` prints `breakdown_signals` computed from the log | derived, or asserted |
 | end | `finished` | every row above | `step` writes `finished: true` into `run.json` | |
 
 ## Output

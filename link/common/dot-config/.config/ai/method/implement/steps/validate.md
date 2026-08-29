@@ -1,6 +1,6 @@
 ### 3. Validate against the story
 
-The audit checked whether the code is correct and whether it matches the brief. Neither it nor the verifier checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a decomposition written from the request rather than from the request itself. This is the only step that reads the request, so it is the only place a decomposition that quietly narrowed the story is caught.
+The audit checked whether the code is correct and whether it matches the brief. Neither it nor the verifier checked whether the branch delivers **what you were asked for** — every criterion it was judged against came from a breakdown written from the request rather than from the request itself. This is the only step that reads the request, so it is the only place a breakdown that quietly narrowed the story is caught.
 
 This costs a read, not an agent, because you are already here. Re-read the request **verbatim, from the record you made in Phase 0** — not your memory of it, and not the brief you wrote from it — then read `git log --oneline` and the branch diff, and answer four questions:
 

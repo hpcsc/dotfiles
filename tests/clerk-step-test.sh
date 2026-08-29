@@ -418,7 +418,7 @@ eq "the land event is logged to the run although it ended on main" "land|0" \
    "$(tail -1 "$RJ/.git/clerk/runs/ij/events.jsonl" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
 eq "and step, from main, moves the run to learn" "learn" "$(run "$RJ" step | field .step)"
 eq "the learn step carries what the run observed about the plan" "0|0" \
-   "$(run "$RJ" step | jq -r '[(.plan_signals.fixup_ambiguous|tostring), (.plan_signals.high_certainty_but_hard|length|tostring)] | join("|")')"
+   "$(run "$RJ" step | jq -r '[(.breakdown_signals.fixup_ambiguous|tostring), (.breakdown_signals.high_certainty_but_hard|length|tostring)] | join("|")')"
 LN=$(run "$RJ" learn --type convention --title "Keep it" --learning "A fact." --apply-when "Always." --feature ij --path "$RJ/learned.md")
 eq "a clerk learn write is the evidence: no --done needed, and learn hands over the end" "finished" \
    "$(printf '%s' "$LN" | jq -r '.next.step')"

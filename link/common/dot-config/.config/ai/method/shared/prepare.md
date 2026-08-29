@@ -23,7 +23,7 @@ If `clerk` is not installed, its resolutions are documented in `~/.config/ai/met
 
 ### Check whether this run already exists
 
-Stopping and restarting is the normal case, not an edge one, and the two ways of getting it wrong are both expensive: a second worktree strands the first one's commits somewhere nobody looks, and a second decomposition produces a different task list against code the first run already changed, so the sidecar recording what was built no longer describes the plan.
+Stopping and restarting is the normal case, not an edge one, and the two ways of getting it wrong are both expensive: a second worktree strands the first one's commits somewhere nobody looks, and decomposing again produces a different breakdown against code the first run already changed, so the sidecar recording what was built no longer describes it.
 
 `clerk prepare` settles it in **`resume`**, which is either null or the run you are rejoining:
 

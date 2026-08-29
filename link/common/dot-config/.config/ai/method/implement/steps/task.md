@@ -8,9 +8,9 @@
 
 Announce which task you are starting, **with its `certainty` and `blast_radius`** — both come back on the task object — so the queue's progress is visible in the transcript rather than only in the file, and so a reader can tell a task built fast because it was routine from one built fast because nobody looked.
 
-If a task turns out to be unnecessary or wrong once you are in the code, **stop and say so**. The plan is the shared contract; revise it with the user rather than quietly building something else.
+If a task turns out to be unnecessary or wrong once you are in the code, **stop and say so**. The breakdown is the shared contract; revise it with the user rather than quietly building something else.
 
-If its *assessment* is obviously wrong once you are in the code, drive on what you found rather than on what the plan said — a `high` that is plainly `low` is a reason to slow down even with `gears` off. Record it in step 7; it is a fact about how this repo gets planned wrong.
+If its *assessment* is obviously wrong once you are in the code, drive on what you found rather than on what the breakdown said — a `high` that is plainly `low` is a reason to slow down even with `gears` off. Record it in step 7; it is a fact about how this repo gets planned wrong.
 
 ### 1. Tests first, where they apply
 
@@ -49,7 +49,7 @@ Four checks earlier runs paid for, each of which shipped a defect that a passing
 clerk finish <n> [--retried] -- <every file this task changed>
 ```
 
-It stages exactly those paths, lints the staged set, and only then sets `done: true` on the task in the sidecar and stages it alongside, so the progress record and the change it stands for land in one commit. **A lint finding refuses the whole step** — exit 1, the findings in the reply, the paths still staged. Each is a rule from the guidelines you already read: a comment that names code by its plan position or cites a ticket, sibling tests that belong under one umbrella, a method living apart from the file declaring its type. Each is settled by looking rather than weighing, so a finding is a defect, not an opinion to argue with: fix it and run the same `clerk finish` again. If a finding is genuinely wrong, that is a bug in the rule — say so, and fix the rule rather than working around it.
+It stages exactly those paths, lints the staged set, and only then sets `done: true` on the task in the sidecar and stages it alongside, so the progress record and the change it stands for land in one commit. **A lint finding refuses the whole step** — exit 1, the findings in the reply, the paths still staged. Each is a rule from the guidelines you already read: a comment that names code by its position in the breakdown or cites a ticket, sibling tests that belong under one umbrella, a method living apart from the file declaring its type. Each is settled by looking rather than weighing, so a finding is a defect, not an opinion to argue with: fix it and run the same `clerk finish` again. If a finding is genuinely wrong, that is a bug in the rule — say so, and fix the rule rather than working around it.
 
 Run into it here rather than at review: the audit would raise the same defects, and there each costs a lens to find, a verifier to confirm and a `--fixup` rebase to fold back into the commit that introduced it — against seconds now, while you are still holding the code in mind.
 
@@ -74,14 +74,14 @@ Tick the acceptance criteria you actually walked in this task's section of the b
 
 Say what landed in one or two lines and act on finish's `after_commit`. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
 
-**Then read the task back for the two signals that the plan was wrong about it.** Both are things you have just observed, and both mean the same thing — the theory is not landing where the plan said it would:
+**Then read the task back for the two signals that the breakdown was wrong about it.** Both are things you have just observed, and both mean the same thing — the theory is not landing where the breakdown said it would:
 
 - **The implementation needed more than one attempt to go green**, for a reason other than a typo or a missing import. Not the count itself: the fact that the first shape you reached for was the wrong one.
 - **`clerk lint --staged` returned a finding.** The guidelines were loaded and still not followed, which is them not landing rather than a rule being obscure.
 
 **Report either in the task's line whatever `gears` says.** It is a fact about the run, and it is exactly what someone deciding whether to trust the branch wants and cannot recover from the diff. Say the first with `--retried` on `clerk finish` as well; the second is a `clerk finish` refusal and is already on the record.
 
-**With `gears` on, either one downshifts the run**: every task from here pauses after its tests, the way a low-certainty task does, regardless of what the plan assessed it as. It upshifts again after two consecutive tasks go green first try with a clean lint — say so when it does. `clerk step` computes the gear from the record and reports it as `gear`; announcing it is yours.
+**With `gears` on, either one downshifts the run**: every task from here pauses after its tests, the way a low-certainty task does, regardless of what the breakdown assessed it as. It upshifts again after two consecutive tasks go green first try with a clean lint — say so when it does. `clerk step` computes the gear from the record and reports it as `gear`; announcing it is yours.
 
 The upshift is not a courtesy. A run that only ever slows down finishes every story at its slowest, and a pause that arrives on every task carries no information — which is how a gate becomes a keystroke someone acknowledges without reading, and how the flag stops buying anything at all.
 

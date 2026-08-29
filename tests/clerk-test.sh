@@ -220,7 +220,7 @@ WT="$R3/../wt-$(basename "$R3")"
 git -C "$R3" worktree add -q -b feature "$WT" >/dev/null 2>&1
 J=$(run "$WT" prepare)
 eq "knows it is in a worktree"                "true"  "$(printf '%s' "$J" | jq -r '.in_worktree')"
-eq "resolves the work tree it stands in"      "$(cd "$WT" && pwd -P)" "$(printf '%s' "$J" | jq -r '.work_tree')"
+eq "resolves the work tree it stands in"      "$(cd "$WT" && pwd -P)" "$(printf '%s' "$J" | jq -r '.build_tree')"
 eq "resolves the main repo root separately"   "$(cd "$R3" && pwd -P)" "$(printf '%s' "$J" | jq -r '.repo_root')"
 eq "reports the worktree's own branch"        "feature" "$(printf '%s' "$J" | jq -r '.branch')"
 
@@ -1213,7 +1213,7 @@ eq "a worktree does not contain the excluded breakdown" "" "$(ls "$WT2/tasks" 2>
 J=$(run "$WT2" prepare)
 eq "yet prepare inside it resolves the breakdown anyway" "$R19/tasks/story.md" \
    "$(printf '%s' "$J" | jq -r '.tasks_file')"
-eq "reporting the work tree it is standing in"          "$WT2" "$(printf '%s' "$J" | jq -r '.work_tree')"
+eq "reporting the work tree it is standing in"          "$WT2" "$(printf '%s' "$J" | jq -r '.build_tree')"
 eq "next picks up where the plan says"                  "1"    "$(run "$WT2" next | jq -r '.task.n')"
 
 printf 'package a2\n' > "$WT2/a.go"

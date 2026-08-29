@@ -78,7 +78,7 @@ eq "the first step is ground" "ground|derived" "$(run "$R" step | jq -r '[.step,
 eq "and its facts are clerk prepare, with the request's flags applied" "true|request" \
    "$(run "$R" step | jq -r '[(.facts.flags.gears|tostring), .facts.flag_sources.gears] | join("|")')"
 eq "facts carry what the caller reads, not what clerk keeps for itself" "true|true|false|false|false" \
-   "$(run "$R" step | jq -r '[(.facts | has("work_tree")), (.facts | has("commit_skill")), (.facts | has("receipt")), (.facts | has("worktrees")), (.facts | has("runs_open"))] | map(tostring) | join("|")')"
+   "$(run "$R" step | jq -r '[(.facts | has("build_tree")), (.facts | has("commit_skill")), (.facts | has("receipt")), (.facts | has("worktrees")), (.facts | has("runs_open"))] | map(tostring) | join("|")')"
 eq "without a method step file the instructions say so and defer to done_by" "true|true" \
    "$(CLERK_METHOD_DIR="$R/no-method" run "$R" step --full | jq -r '[(.instructions | contains("no method text")), (.done_by | contains("clerk guidelines"))] | map(tostring) | join("|")')"
 

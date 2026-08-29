@@ -257,7 +257,7 @@ class Ctx:
     run: Run = None
     prepare: dict = field(default_factory=dict)
     flags: dict = field(default_factory=dict)
-    work_tree: str = None
+    build_tree: str = None
     repo_root: str = None
     in_worktree: bool = False
     harness: str = None
@@ -287,7 +287,7 @@ def build_ctx(explicit_run=None, harness=None, read_only=False, full=False):
         ctx.prepare = prep
     ctx.head_ct = prep.get("code_tree")
     ctx.flags = prep.get("flags", {})
-    ctx.work_tree = prep.get("work_tree")
+    ctx.build_tree = prep.get("build_tree")
     ctx.repo_root = prep.get("repo_root")
     ctx.in_worktree = bool(prep.get("in_worktree"))
     ctx.harness = harness or (ctx.run.meta.get("harness") if ctx.run else None) or detect_harness()
@@ -495,7 +495,7 @@ def row_isolate(ctx):
         in_place = bool(ctx.flags.get("in_place"))
         mode = "worktree" if ctx.in_worktree else "in-place"
         fallback = (not ctx.in_worktree) and (not in_place)
-        return row("isolate", True, mode=mode, fallback=fallback, path=ctx.work_tree)
+        return row("isolate", True, mode=mode, fallback=fallback, path=ctx.build_tree)
     if landed_elsewhere(ctx):
         return row("isolate", True, mode="landed", note="the run has left its branch; it landed")
     if ref_exists(slug, ctx.cwd):
@@ -612,8 +612,8 @@ def row_suite(ctx):
     if fresh:
         return row("suite", True, receipt={"sha": rec["sha"], "command": rec["command"], "at": rec.get("at")})
     cmd = ctx.prepare.get("test_command")
-    return row("suite", False, kind="derived", why_not_done=why, test_command=cmd, work_tree=ctx.work_tree,
-               done_by=f"run `{cmd}` in {ctx.work_tree}; clerk receipt --command \"{cmd}\" --passed --output-file <file>")
+    return row("suite", False, kind="derived", why_not_done=why, test_command=cmd, build_tree=ctx.build_tree,
+               done_by=f"run `{cmd}` in {ctx.build_tree}; clerk receipt --command \"{cmd}\" --passed --output-file <file>")
 
 
 def row_audit(ctx):
@@ -803,7 +803,7 @@ def next_step(ctx):
 # keeps for itself — the receipt, the run, the worktrees, the breakdown list, the code
 # tree (its own field). Every row already carries the fact it turns on, so the rest is
 # orientation; the rest was also a third of every reply, repeated on every call.
-FACTS_KEYS = ("repo_root", "work_tree", "in_worktree", "branch", "default_branch", "base", "clean",
+FACTS_KEYS = ("repo_root", "build_tree", "in_worktree", "branch", "default_branch", "base", "clean",
               "languages", "test_commands", "test_command", "go_tool_prefix",
               "learnings_path", "learnings_path_source", "commit_skill",
               "tasks_file", "tasks_home", "tasks_tracked", "flags", "flag_sources", "resume")

@@ -65,6 +65,10 @@ need_value() {
 # on another branch entirely, and a suite or verifier pointed there tests code that
 # does not contain the feature. This is the resolution the skill prose kept getting
 # wrong by saying "the main tree".
+#
+# The helper keeps git's name because git's is what it returns; `prepare` reports it as
+# `build_tree`, because a reader who sees `work_tree` beside `in_worktree` reads it as
+# "the worktree" and it is the main checkout whenever there is not one.
 work_tree() { git rev-parse --show-toplevel 2>/dev/null; }
 
 # The main repo root, which is NOT the work tree inside a worktree. tasks/ and the
@@ -730,7 +734,7 @@ cmd_prepare() {
     --argjson runs_open "$runs_open" \
     --argjson receipt "$receipt" \
     --arg repo_root "$root" \
-    --arg work_tree "$wt" \
+    --arg build_tree "$wt" \
     --arg branch "$branch" \
     --arg default_branch "$def" \
     --arg base "$base" \
@@ -751,8 +755,8 @@ cmd_prepare() {
     '{
       version: $version,
       repo_root: $repo_root,
-      work_tree: $work_tree,
-      in_worktree: ($repo_root != $work_tree),
+      build_tree: $build_tree,
+      in_worktree: ($repo_root != $build_tree),
       branch: $branch,
       default_branch: (if $default_branch == "" then null else $default_branch end),
       base: (if $base == "" then null else $base end),
@@ -1681,7 +1685,7 @@ cmd_land() {
   if [ "$integrate" != true ]; then
     jq -n --arg b "$branch" --arg d "$def" --arg wt "$wt" --arg src "$integrate_src" \
       --argjson archived "$archived" \
-      '{landed: false, archived: $archived, branch: $b, default_branch: $d, work_tree: $wt,
+      '{landed: false, archived: $archived, branch: $b, default_branch: $d, build_tree: $wt,
         integrate: false, integrate_source: $src,
         note: (if $src == "request" or $src == "default"
                then "integration is opt-in and was not requested"

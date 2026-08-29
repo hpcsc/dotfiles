@@ -397,7 +397,7 @@ def do_isolate(st, row):
 
 def do_suite(st, row):
     cmd = row.get("test_command")
-    work = row.get("work_tree") or st.cwd
+    work = row.get("build_tree") or st.cwd
     if not cmd:
         return "the repo declares no test command, so the runner could not run the suite"
     st.out.note(f"  · {cmd}")

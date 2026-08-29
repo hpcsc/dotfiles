@@ -151,7 +151,7 @@ its retries, while a comparable feature built directly took 7 minutes.
 One `clerk prepare` call replaces the resolution recipes that would otherwise be shell
 pasted into the skill for the reader to execute. It returns the language inventory
 (every marker matched, not just the first), the test-command map, the Go tool prefix,
-the learnings path, and — separately — `repo_root` and `work_tree`, because inside a
+the learnings path, and — separately — `repo_root` and `build_tree`, because inside a
 worktree those differ and confusing them is how a suite ends up testing the wrong
 checkout.
 

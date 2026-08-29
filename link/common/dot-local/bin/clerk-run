@@ -88,7 +88,7 @@ def tools_for(step_id, facts):
     look = READ + LOOK + CLERK
     if step_id in ("ground", "learn"):
         return look + GIT_READ
-    if step_id == "theory":
+    if step_id == "explain":
         return look + WRITE + GIT_WRITE
     if step_id == "land":
         return look + GIT_WRITE

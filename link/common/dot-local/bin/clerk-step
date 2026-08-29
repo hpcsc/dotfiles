@@ -653,22 +653,22 @@ def row_match_request(ctx):
                done_by="clerk step --done match-request [--mismatch \"<quoted words>\"]...", **fields)
 
 
-def row_theory(ctx):
+def row_explain(ctx):
     tf, _, archived = breakdown_files(ctx)
     if tf is None:
-        return row("theory", False, why_not_done="no breakdown is bound to this run")
+        return row("explain", False, why_not_done="no breakdown is bound to this run")
     text = tf.read_text() if tf.exists() else ""
     if not re.search(r"^## Theory\b", text, re.M):
-        return row("theory", False, tasks_file=str(tf),
+        return row("explain", False, tasks_file=str(tf),
                    why_not_done=f"no `## Theory` section in {tf}",
                    done_by="write the section; commit it when the breakdown is tracked; then clerk step")
     if ctx.prepare.get("tasks_tracked") and not archived:
         dirty = git("status", "--porcelain", "--", str(tf), cwd=ctx.cwd).stdout.strip()
         if dirty:
-            return row("theory", False, tasks_file=str(tf),
+            return row("explain", False, tasks_file=str(tf),
                        why_not_done="the Theory is written but not committed",
                        done_by="commit the breakdown as its own commit; then clerk step")
-    return row("theory", True, tasks_file=str(tf))
+    return row("explain", True, tasks_file=str(tf))
 
 
 def row_verify(ctx):
@@ -764,7 +764,7 @@ def row_learn(ctx):
 
 
 ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("build", row_build),
-        ("suite", row_suite), ("audit", row_audit), ("match-request", row_match_request), ("theory", row_theory),
+        ("suite", row_suite), ("audit", row_audit), ("match-request", row_match_request), ("explain", row_explain),
         ("verify", row_verify), ("land", row_land), ("learn", row_learn)]
 
 

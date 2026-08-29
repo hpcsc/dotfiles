@@ -275,10 +275,10 @@ run "$WT" step --done match-request --mismatch "no widget colour" >/dev/null
 eq "a recorded mismatch blocks the run until the user decides" "match-request|true|true" \
    "$(run "$WT" step | jq -r '[.step, (.blocked|tostring), (.stop|tostring)] | join("|")')"
 run "$WT" step --done match-request --resolved >/dev/null
-eq "resolved, the run moves to theory" "theory" "$(run "$WT" step | field .step)"
+eq "resolved, the run moves to explain" "explain" "$(run "$WT" step | field .step)"
 
 # --------------------------------------------------------------------------------
-printf '\ntheory — the breakdown carries a Theory section, committed when tracked\n'
+printf '\nexplain — the breakdown carries a Theory section, committed when tracked\n'
 
 eq "no section: the reason names the file" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("## Theory")')"
 printf '## Theory\n\nOne abstraction.\n\n' | cat - "$WT/tasks/w1.md" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.md"

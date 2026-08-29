@@ -486,6 +486,8 @@ for f in scope-open scope-rules review-open review-rules finding-contract lens-s
          dedupe-rules dedupe-output verify-open verify-file-rule verify-runtime \
          verify-quality report-open report-rules report-tail regrade mechanical \
          mechanical-tail; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
+cp "$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-config/.config/ai/method/audit-implement/schemas.json" \
+   "$PR/audit-implement/schemas.json"
 export CLERK_AUDIT_PROMPTS="$PR/audit-implement/prompts"
 
 eq "next before begin is refused" "3" "$(rc "$RA" audit next)"
@@ -600,6 +602,56 @@ eq "one file in a secondary language is read by hand, not by a panel" "semantic:
    "$(printf '%s' "$N" | jq -r '[.next.spawn[].id | sub("^review:";"")] | join(",")')"
 eq "and the reader is told which files nobody reviewed" "true" \
    "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(test("too few to earn a panel"))] | length > 0 | tostring')"
+
+# The runner: the loop is a program, so the plan can be inspected without spending
+# anything, and the executor's parsing is tested against replies rather than agents.
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
+DR=$(run "$RA" audit run --dry-run)
+eq "a dry run reports the phase it would spawn and spawns nothing" "true|review|4" \
+   "$(printf '%s' "$DR" | jq -r '[(.dry_run|tostring), .phase, (.plan[0].jobs|length|tostring)] | join("|")')"
+eq "and names the agent behind each job" "go-semantic-reviewer" \
+   "$(printf '%s' "$DR" | jq -r '.plan[0].jobs[0].agent')"
+eq "with no harness on PATH a real run refuses rather than hanging" "3" \
+   "$(CLERK_AUDIT_HARNESS= PATH=/usr/bin:/bin rc "$RA" audit run)"
+
+# A whole round driven end to end. The harness is a stub that answers from the prompt it
+# is handed, so the loop, the retry and every phase hand-off are exercised for nothing.
+FAKE=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$FAKE/claude" <<'STUB'
+#!/usr/bin/env bash
+p=$(cat)
+emit() { printf '{"is_error":false,"total_cost_usd":0.01,"result":%s}\n' "$(jq -Rs . <<< "$1")"; }
+case "$p" in
+  *"FRAGMENT scope-open"*)
+    emit '{"base":"abc","head":"def","summary":"s","files":["a.go","b.go","c.go"],"languages":["Go"],"by_language":[{"language":"Go","files":["a.go","b.go","c.go"]}],"signals":{"tests_changed":false,"concurrency":false,"performance":false},"has_code":true}' ;;
+  *"FRAGMENT lens-semantic"*)
+    emit 'Here you go:
+```json
+{"verdict":"fail","findings":[{"id":"g1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"}],"note":null}
+```' ;;
+  *"FRAGMENT verify-open"*) emit '{"finding_id":"g1","refuted":false,"blocked":false,"basis":"ran it"}' ;;
+  *"FRAGMENT report-open"*) emit '{"findings":[{"id":"g1"}],"coverage_gaps":[],"summary":"one real defect"}' ;;
+  *"FRAGMENT lens-guidelines"*) emit 'not json at all' ;;
+  *) emit '{"verdict":"pass","findings":[],"note":null}' ;;
+esac
+STUB
+chmod +x "$FAKE/claude"
+
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+RR=$(PATH="$FAKE:$PATH" run "$RA" audit run --restart)
+eq "the runner walks every phase without a model driving it" "true|scope,review,verify,report" \
+   "$(printf '%s' "$RR" | jq -r '[(.ran|tostring), ([.phases[].phase]|join(","))] | join(",")' | sed 's/^true,/true|/')"
+eq "it reports what the round cost" "true" \
+   "$(printf '%s' "$RR" | jq -r '(.cost_usd > 0) | tostring')"
+eq "the report it ends on is the agent's, not a summary of one" "one real defect" \
+   "$(printf '%s' "$RR" | jq -r '.report.summary')"
+eq "one finding needs no dedupe pass, so none is paid for" "false" \
+   "$(printf '%s' "$RR" | jq -r '[.phases[].phase] | contains(["dedupe"]) | tostring')"
+# The guidelines lens in the stub never returns JSON: it must exhaust its retries and be
+# named, not quietly drop out of a panel the reader thinks ran whole.
+eq "a lens that never returns usable JSON is reported as failed" "review:guidelines:Go" \
+   "$(printf '%s' "$RR" | jq -r '[.phases[] | select(.phase=="review") | .failed[]] | join(",")')"
 
 unset CLERK_AUDIT_PROMPTS
 

@@ -96,6 +96,16 @@ def load_prompts():
     return out
 
 
+def load_schemas():
+    """The output contracts, shared with the Workflow script rather than restated. The
+    harness enforces a schema for an in-session subagent; a headless one does not, so the
+    runner validates against these itself."""
+    d = prompts_dir().parent / "schemas.json"
+    if d.is_file():
+        return json.loads(d.read_text(encoding="utf-8"))
+    return {}
+
+
 def fill(text, values):
     for k, v in values.items():
         text = text.replace("{{%s}}" % k, str(v))

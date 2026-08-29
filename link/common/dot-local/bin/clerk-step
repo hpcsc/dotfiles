@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 import os
 import re
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1377,9 +1378,100 @@ def audit_record(ctx, aud, o):
     return {"recorded": True, "phase": ph, "next": audit_next(ctx, aud, o)}
 
 
+
+def audit_run(ctx, aud, o):
+    """Drive a whole round from here: no model reads the phase table, walks it, or decides
+    what to spawn. The loop is this function; the model is called only where a judgment is
+    actually wanted, and `clerk audit next` still describes each phase for a reader or for
+    a harness that would rather drive it by hand."""
+    import clerk_audit_exec as ex
+    harness = o["--harness-cmd"] or ex.detect_harness()
+    if not harness and not o["--dry-run"]:
+        die("no coding harness found on PATH — install `claude` or `opencode`, or pass "
+            "--harness-cmd, or use --dry-run to see the plan without spawning anything", 3)
+    schemas = panel.load_schemas()
+    if not schemas and not o["--dry-run"]:
+        die(f"no schemas.json beside {panel.prompts_dir()} — a headless agent has no schema "
+            f"enforced for it, so the runner cannot validate what comes back")
+
+    if not live_of(aud) or o["--restart"]:
+        o2 = dict(o); o2["--restart"] = True
+        audit_begin(ctx, aud, o2)
+        aud = ctx.run.read("audit.json", aud)
+
+    trace, spent = [], 0.0
+    while True:
+        nxt = audit_next(ctx, aud, o)
+        if nxt["phase"] == "done":
+            break
+        jobs = nxt.get("spawn") or []
+        if o["--dry-run"]:
+            trace.append({"phase": nxt["phase"], "jobs": [
+                {"id": j["id"], "agent": j.get("agent"), "isolation": j.get("isolation"),
+                 "schema": j.get("schema_name"), "prompt_chars": len(j["prompt"])} for j in jobs],
+                "held_back": nxt.get("held_back") or []})
+            # Nothing came back, so nothing can advance; a dry run reports the first phase
+            # and stops rather than inventing results for the ones after it.
+            return {"dry_run": True, "phase": nxt["phase"], "plan": trace,
+                    "note": "no agent was spawned; record a phase to advance"}
+        results = ex.run_batch(jobs, schemas, harness=harness, cwd=ctx.cwd,
+                               concurrent=bool(nxt.get("concurrent")), model=o["--model"],
+                               log=lambda m: None)
+        spent += sum(r.get("cost_usd") or 0 for r in results)
+        failed = [r for r in results if not r.get("ok")]
+        if failed and nxt["phase"] in ("scope", "report"):
+            # These phases are one agent and everything after depends on it.
+            emit({"ran": False, "phase": nxt["phase"], "cost_usd": round(spent, 4),
+                  "reason": failed[0].get("error")}, 3)
+        payload = _payload_for(nxt["phase"], jobs, results)
+        trace.append({"phase": nxt["phase"], "jobs": len(jobs),
+                      "failed": [r["id"] for r in failed],
+                      "cost_usd": round(sum(r.get("cost_usd") or 0 for r in results), 4)})
+        tmp = Path(tempfile.mkdtemp(prefix="clerk-audit-")) / "results.json"
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        o3 = dict(o); o3["--phase"] = nxt["phase"]; o3["--results"] = str(tmp)
+        audit_record(ctx, aud, o3)
+        aud = ctx.run.read("audit.json", aud)
+
+    lv = live_of(aud)
+    return {"ran": True, "round": lv["round"], "cost_usd": round(spent, 4),
+            "phases": trace, "held_back": lv.get("not_run") or [], "report": lv.get("report"),
+            "next": "clerk audit round --report <write the report above to a file>"}
+
+
+def _payload_for(phase, jobs, results):
+    """Shape each phase's replies the way `record` reads them."""
+    ok = {r["id"]: r.get("data") for r in results if r.get("ok")}
+    if phase in ("scope", "dedupe", "report"):
+        return next(iter(ok.values()), {})
+    if phase == "review":
+        rows = []
+        for j in jobs:
+            d = ok.get(j["id"])
+            if isinstance(d, dict):
+                d.setdefault("lens", j["id"].split("review:", 1)[-1])
+                rows.append(d)
+        return rows
+    if phase == "verify":
+        rows = []
+        for j in jobs:
+            d = ok.get(j["id"])
+            if isinstance(d, dict):
+                d.setdefault("finding_id", j["id"].split("verify:", 1)[-1].split("#", 1)[0])
+                rows.append(d)
+            else:
+                # A verifier that could not run has refuted nothing, and saying so is what
+                # keeps a missing toolchain from deleting a real defect.
+                rows.append({"finding_id": j["id"].split("verify:", 1)[-1].split("#", 1)[0],
+                             "refuted": False, "blocked": True,
+                             "basis": "the verifier returned nothing usable"})
+        return rows
+    return []
+
+
 AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept,
          "status": audit_status, "begin": audit_begin, "next": audit_next,
-         "record": audit_record}
+         "record": audit_record, "run": audit_run}
 
 
 def main_audit(argv):
@@ -1396,7 +1488,9 @@ def main_audit(argv):
                     "--results": "value", "--target": "value", "--base": "value",
                     "--brief": "value", "--story": "value", "--depth": "value",
                     "--recheck": "value", "--test-commands": "value",
-                    "--fixed-file": "list", "--lens": "list", "--restart": "bool"})
+                    "--fixed-file": "list", "--lens": "list", "--restart": "bool",
+                    "--dry-run": "bool", "--model": "value",
+                    "--harness-cmd": "value"})
     ctx = build_ctx(o["--run"])
     if ctx.run is None:
         die("no run is open here — `clerk step --start` first", 3)

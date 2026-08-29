@@ -20,7 +20,7 @@ You emit:
 - `tasks/<story-slug>/plan.yaml` — the machine-readable delivery manifest (`deliver-story` reads this to scaffold worktrees and launch a run per deliverable).
 - `tasks/<story-slug>/<deliverable-slug>/tasks.md` — one task breakdown per deliverable, in the exact format of `decompose-to-tasks`, so `implement-flow` can adopt it verbatim.
 
-This is the layer **above** `decompose-to-tasks`: that agent turns one story into tasks for one PR; you turn one story into several pull requests, each with its own task list.
+This is the layer **above** `decompose-to-tasks`: that agent turns one story into tasks for one PR; you turn one story into several pull requests, each with its own breakdown.
 
 ---
 

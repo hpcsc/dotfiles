@@ -1,5 +1,5 @@
 ---
-description: Decomposes a user story into ordered, codebase-aware implementation tasks. Explores affected files, patterns, and domain types, then produces a task list saved to tasks/[story-name].md.
+description: Decomposes a user story into ordered, codebase-aware implementation tasks. Explores affected files, patterns, and domain types, then produces a breakdown saved to tasks/[story-name].md.
 mode: all
 model: opencode-go/kimi-k3
 ---
@@ -129,7 +129,7 @@ A table of contents, one numbered line per task:
 **Numbered, not checkboxes.** Progress lives in the sidecar and nowhere else, so this section is a way to see the shape of the breakdown without scrolling it, and nothing ever updates it. A checklist here would be a second copy of the one fact a resumed run depends on — and two copies can disagree while the stale one still reads as the answer to whoever opens the file.
 
 ### 2. Story Reference
-Which user story this task list is derived from (file path or inline summary).
+Which user story this breakdown is derived from (file path or inline summary).
 
 ### 3. Boundaries
 
@@ -265,7 +265,7 @@ it from here.
 
 ### Return to caller
 After saving, return a structured summary containing:
-1. The file path where the task list was saved
+1. The file path where the breakdown was saved
 2. The total number of tasks
 3. A brief ordered list of task titles (e.g., "Task 1: Add event type, Task 2: Create command handler, ...")
 4. Key codebase findings that informed the decomposition

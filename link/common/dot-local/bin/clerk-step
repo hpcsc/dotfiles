@@ -527,32 +527,32 @@ def file_hash(path):
     return hashlib.sha1(Path(path).read_bytes()).hexdigest()
 
 
-def row_plan(ctx):
+def row_decompose(ctx):
     bd = ctx.run.read("breakdown.json")
     resume = ctx.prepare.get("resume")
     if not bd:
-        return row("plan", False,
+        return row("decompose", False,
                    why_not_done="no breakdown is bound to this run",
                    resume=resume, breakdowns=ctx.prepare.get("breakdowns"),
-                   done_by="clerk step --done plan --tasks-file <tasks/<story>.md> [--approved]")
+                   done_by="clerk step --done decompose --tasks-file <tasks/<story>.md> [--approved]")
     tf, side, archived = breakdown_files(ctx)
     if archived:
-        return row("plan", True, tasks_file=str(tf), sidecar=str(side), archived=True)
+        return row("decompose", True, tasks_file=str(tf), sidecar=str(side), archived=True)
     if not side.exists():
-        return row("plan", False, tasks_file=bd["tasks_file"],
+        return row("decompose", False, tasks_file=bd["tasks_file"],
                    why_not_done=f"no sidecar at {side} — run `clerk sidecar` to recover one, then bind again",
-                   done_by=f"clerk sidecar; clerk step --done plan --tasks-file {bd['tasks_file']}")
+                   done_by=f"clerk sidecar; clerk step --done decompose --tasks-file {bd['tasks_file']}")
     if file_hash(side) != bd.get("lint_hash"):
         findings = lint_sidecar(side, ctx.cwd)
         if findings:
-            return row("plan", False, tasks_file=bd["tasks_file"], findings=findings,
+            return row("decompose", False, tasks_file=bd["tasks_file"], findings=findings,
                        why_not_done="the sidecar changed and `lint certainty-unevidenced` now reports findings",
-                       done_by="correct the assessments, then clerk step --done plan --tasks-file again")
+                       done_by="correct the assessments, then clerk step --done decompose --tasks-file again")
     if ctx.flags.get("review_plan") and not bd.get("approved"):
-        return row("plan", False, stop=True, tasks_file=bd["tasks_file"],
+        return row("decompose", False, stop=True, tasks_file=bd["tasks_file"],
                    why_not_done="review_plan is on and the plan is not approved",
-                   done_by=f"show the plan and wait for approval; then clerk step --done plan --tasks-file {bd['tasks_file']} --approved")
-    return row("plan", True, tasks_file=bd["tasks_file"], sidecar=bd["sidecar"])
+                   done_by=f"show the breakdown and wait for approval; then clerk step --done decompose --tasks-file {bd['tasks_file']} --approved")
+    return row("decompose", True, tasks_file=bd["tasks_file"], sidecar=bd["sidecar"])
 
 
 def row_task(ctx):
@@ -763,7 +763,7 @@ def row_learn(ctx):
                        f"or, for a run with nothing that generalises: clerk step --done learn --none")
 
 
-ROWS = [("ground", row_ground), ("isolate", row_isolate), ("plan", row_plan), ("task", row_task),
+ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("task", row_task),
         ("suite", row_suite), ("audit", row_audit), ("validate", row_validate), ("theory", row_theory),
         ("verify", row_verify), ("land", row_land), ("learn", row_learn)]
 
@@ -911,10 +911,10 @@ def done_ground(ctx, argv):
     return {"done": "ground", "caller": o["--caller"]}
 
 
-def done_plan(ctx, argv):
+def done_decompose(ctx, argv):
     o, _ = parse(argv, {"--tasks-file": "value", "--approved": "bool"})
     if not o["--tasks-file"]:
-        die("--done plan needs --tasks-file <tasks/<story>.md>")
+        die("--done decompose needs --tasks-file <tasks/<story>.md>")
     tf = resolve_tasks_path(ctx, o["--tasks-file"])
     side = tf.with_suffix(".json")
     if not side.exists():
@@ -968,7 +968,7 @@ def done_learn(ctx, argv):
 
 
 # The steps whose completion is a judgment: recorded with `--done`, never derived.
-DONE = {"ground": done_ground, "plan": done_plan, "tests": done_tests, "validate": done_validate,
+DONE = {"ground": done_ground, "decompose": done_decompose, "tests": done_tests, "validate": done_validate,
         "verify-residue": done_verify_residue, "learn": done_learn}
 
 

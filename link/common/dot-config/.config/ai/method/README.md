@@ -120,7 +120,7 @@ flowchart TD
   START["start<br/>run.json holds the request verbatim"] --> GROUND
   GROUND["ground<br/>a clerk guidelines --caller run exited 0<br/>blocked while the tree is dirty"] --> ISOLATE
   ISOLATE["isolate<br/>branch == slug<br/>clerk worktree · clerk branch"] --> PLAN
-  PLAN["plan<br/>breakdown bound · sidecar present · lint clean<br/>clerk step --done plan --tasks-file"] --> TASK
+  PLAN["decompose<br/>breakdown bound · sidecar present · lint clean<br/>clerk step --done decompose --tasks-file"] --> TASK
   TASK{"task N<br/>first open task with its<br/>dependencies done"} -->|"gears on, and low certainty /<br/>high blast radius / downshifted"| TESTS
   TESTS["tests N · stop: true<br/>clerk step --done tests N"] --> BUILD
   TASK --> BUILD["clerk finish N -- files<br/>stages · lints · marks done<br/>the commit leaves the tree clean"]
@@ -168,7 +168,7 @@ The markdown describes the tasks in prose
 and the sidecar carries the dependency graph and the run's progress. Nothing rewrites
 the markdown afterwards. Then the only gate before code.
 
-A breakdown that predates the sidecar has none, and `clerk step --done plan` refuses to
+A breakdown that predates the sidecar has none, and `clerk step --done decompose` refuses to
 bind it rather than guessing. `clerk sidecar` recovers one by reading the `### Task N:` sections and their
 `**Depends on:**` lines, and prints what it extracted so the edges can be checked. It is
 a recovery path, not a source of truth — a misread edge reorders work silently — so it

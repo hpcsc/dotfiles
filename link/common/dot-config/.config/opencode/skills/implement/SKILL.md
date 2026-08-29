@@ -28,7 +28,7 @@ It opens the run and returns the first step under `next`.
 
 Hand the request to `--start` **verbatim, before you do anything else**, and never retype it from memory: the audit is given it unsummarized and the validation step re-reads it against the finished branch, and both take it from that record. The slug becomes the branch name, so choose it as you would a feature branch.
 
-`clerk step` evaluates a fixed table — ground, isolate, plan, task (once per task), suite, audit, validate, theory, verify, land, learn — against the repository and the run's ledger, and returns the **first step that is not done**, with the method for it in `instructions`. Do exactly what `instructions` says, then call `clerk step` again. Nothing else: the next step appears when this one's evidence exists, and not before. The order is clerk's; the work inside each step is yours.
+`clerk step` evaluates a fixed table — ground, isolate, decompose, task (once per task), suite, audit, validate, theory, verify, land, learn — against the repository and the run's ledger, and returns the **first step that is not done**, with the method for it in `instructions`. Do exactly what `instructions` says, then call `clerk step` again. Nothing else: the next step appears when this one's evidence exists, and not before. The order is clerk's; the work inside each step is yours.
 
 Three fields change what you do. The rest the reply explains itself — `step` and `why_not_done`, `done_by`, `request`, `code_tree`, `progress`, and `facts`, which is the whole of `clerk prepare` for this request and is there to be read rather than re-derived:
 

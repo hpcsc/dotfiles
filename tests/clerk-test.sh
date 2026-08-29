@@ -2384,7 +2384,7 @@ printf '\nbreakdown resolution from the ledger\n'
 # A repo that keeps several stories under tasks/ makes every command given no
 # --tasks-file ambiguous. Measured over ten runs, a third of `clerk verify` calls
 # arrived without it and silently skipped commit-boundary — the one check verify alone
-# can do. The ledger has known which breakdown the run is building since `--done plan`.
+# can do. The ledger has known which breakdown the run is building since `--done decompose`.
 R33=$(new_repo)
 mkdir -p "$R33/tasks"
 for s in alpha beta; do

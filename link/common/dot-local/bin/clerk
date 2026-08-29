@@ -608,7 +608,7 @@ breakdown_for() {  # <--tasks-file value or empty>
 # hand-typed command ambiguous, and the checks that carry on regardless then report a
 # gap rather than run: across ten measured runs a third of `clerk verify` calls arrived
 # without --tasks-file and silently skipped the commit-boundary check, which is the one
-# thing verify alone can do. The ledger has known the answer since `--done plan` bound
+# thing verify alone can do. The ledger has known the answer since `--done decompose` bound
 # it. Only a file still on disk counts, so an archived run falls through to the
 # completed/ lookup its caller does rather than resolving to a path that is gone.
 ledger_breakdown() {

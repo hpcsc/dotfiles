@@ -107,7 +107,7 @@ WT=$(run "$R" worktree w1 | field .path)
 I=$(run "$R" step)
 eq "once the worktree exists, step from the main checkout says enter it" "enter|$WT" \
    "$(printf '%s' "$I" | jq -r '[.action, .path] | join("|")')"
-eq "inside the worktree the run is found by its branch" "w1|plan" \
+eq "inside the worktree the run is found by its branch" "w1|decompose" \
    "$(run "$WT" step | jq -r '[.run, .step] | join("|")')"
 eq "--status reports isolate as a worktree" "true|worktree" \
    "$(run "$WT" step --status | jq -r '.rows[] | select(.step == "isolate") | [(.done|tostring), .mode] | join("|")')"
@@ -134,29 +134,29 @@ eq "on that branch isolate is done in place" "true|in-place|false" \
 # --------------------------------------------------------------------------------
 printf '\nplan — a breakdown is bound, and its assessments are linted before it counts\n'
 
-eq "--done plan needs --tasks-file" "2" "$(rc "$WT" step --done plan)"
+eq "--done decompose needs --tasks-file" "2" "$(rc "$WT" step --done decompose)"
 mkdir -p "$WT/tasks" && printf '### Task 1: Only\n' > "$WT/tasks/w1.md"
-eq "a breakdown without a sidecar is refused" "1" "$(rc "$WT" step --done plan --tasks-file tasks/w1.md)"
+eq "a breakdown without a sidecar is refused" "1" "$(rc "$WT" step --done decompose --tasks-file tasks/w1.md)"
 eq "and says what recovers one" "true" \
-   "$(run "$WT" step --done plan --tasks-file tasks/w1.md 2>/dev/null | jq -r '.reason | contains("clerk sidecar")')"
+   "$(run "$WT" step --done decompose --tasks-file tasks/w1.md 2>/dev/null | jq -r '.reason | contains("clerk sidecar")')"
 seed "$WT" w1 '{"certainty": "high", "blast_radius": "low", "patterns_to_follow": []}'
-eq "a high certainty with no precedent is refused by the lint" "1" "$(rc "$WT" step --done plan --tasks-file tasks/w1.md)"
+eq "a high certainty with no precedent is refused by the lint" "1" "$(rc "$WT" step --done decompose --tasks-file tasks/w1.md)"
 eq "with the findings in the reply" "1" \
-   "$(run "$WT" step --done plan --tasks-file tasks/w1.md 2>/dev/null | jq -r '.findings | length')"
-eq "and the run stays at plan" "plan" "$(run "$WT" step | field .step)"
+   "$(run "$WT" step --done decompose --tasks-file tasks/w1.md 2>/dev/null | jq -r '.findings | length')"
+eq "and the run stays at decompose" "decompose" "$(run "$WT" step | field .step)"
 seed "$WT" w1 '{"certainty": "low", "blast_radius": "low"}' '{"certainty": "high", "blast_radius": "high", "patterns_to_follow": ["task:1"]}'
-B=$(run "$WT" step --done plan --tasks-file tasks/w1.md)
-eq "--done plan returns the first task under next — here pausing for its tests" "tests|1" \
+B=$(run "$WT" step --done decompose --tasks-file tasks/w1.md)
+eq "--done decompose returns the first task under next — here pausing for its tests" "tests|1" \
    "$(printf '%s' "$B" | jq -r '[.next.step, (.next.n|tostring)] | join("|")')"
 eq "a clean sidecar binds" "true|2" "$(printf '%s' "$B" | jq -r '[(.bound|tostring), (.plan|length|tostring)] | join("|")')"
 eq "and the reply is the plan table, certainty and blast radius included" "1:low/low 2:high/high" \
    "$(printf '%s' "$B" | jq -r '[.plan[] | "\(.n):\(.certainty)/\(.blast_radius)"] | join(" ")')"
 eq "the bound path is absolute" "$WT/tasks/w1.md" "$(jq -r .tasks_file "$R/.git/clerk/runs/w1/breakdown.json")"
-eq "--status shows plan done" "true" "$(run "$WT" step --status | jq -r '.rows[] | select(.step == "plan") | .done')"
+eq "--status shows decompose done" "true" "$(run "$WT" step --status | jq -r '.rows[] | select(.step == "decompose") | .done')"
 
 # The lint is re-run when the sidecar changes under the binding.
 jq '.tasks[1].patterns_to_follow = []' "$WT/tasks/w1.json" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.json"
-eq "a sidecar edited into a finding reopens plan" "plan|1" \
+eq "a sidecar edited into a finding reopens decompose" "decompose|1" \
    "$(run "$WT" step | jq -r '[.step, (.findings|length|tostring)] | join("|")')"
 jq '.tasks[1].patterns_to_follow = ["task:1"]' "$WT/tasks/w1.json" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.json"
 commit_all "$WT" "Breakdown"
@@ -165,10 +165,10 @@ RP=$(new_repo)
 mkdir -p "$RP/tasks" && printf '{"review_plan": true, "in_place": true}\n' > "$RP/tasks/clerk.json" && commit_all "$RP" "Config"
 run "$RP" step --start rp --request "Reviewed" >/dev/null; run "$RP" step --done ground --caller ui >/dev/null; run "$RP" branch rp >/dev/null
 seed "$RP" rp
-run "$RP" step --done plan --tasks-file tasks/rp.md >/dev/null
-eq "with review_plan on the plan is a gate: bound but not approved" "plan|true" \
+run "$RP" step --done decompose --tasks-file tasks/rp.md >/dev/null
+eq "with review_plan on the breakdown is a pause: bound but not approved" "decompose|true" \
    "$(run "$RP" step | jq -r '[.step, (.stop|tostring)] | join("|")')"
-run "$RP" step --done plan --tasks-file tasks/rp.md --approved >/dev/null
+run "$RP" step --done decompose --tasks-file tasks/rp.md --approved >/dev/null
 eq "--approved opens it" "task" "$(run "$RP" step | field .step)"
 
 # --------------------------------------------------------------------------------
@@ -208,7 +208,7 @@ RC=$(new_repo)
 run "$RC" step --start cyc --request "Cycle" >/dev/null; run "$RC" step --done ground --caller ui >/dev/null
 git -C "$RC" checkout -q -b cyc
 seed "$RC" cyc '{"depends_on": [2]}'
-run "$RC" step --done plan --tasks-file tasks/cyc.md >/dev/null
+run "$RC" step --done decompose --tasks-file tasks/cyc.md >/dev/null
 eq "a dependency cycle is a block with a reason, not a silent stall" "task|true" \
    "$(run "$RC" step | jq -r '[.step, (.blocked|tostring)] | join("|")')"
 
@@ -316,7 +316,7 @@ run "$WT" step --rm w1 >/dev/null
 RL=$(new_repo)
 run "$RL" step --start lz --request "Land it" >/dev/null; run "$RL" step --done ground --caller ui >/dev/null
 WL=$(run "$RL" worktree lz | field .path)
-seed "$WL" lz; run "$WL" step --done plan --tasks-file tasks/lz.md >/dev/null; commit_all "$WL" "Breakdown"
+seed "$WL" lz; run "$WL" step --done decompose --tasks-file tasks/lz.md >/dev/null; commit_all "$WL" "Breakdown"
 build_tasks "$WL"
 run "$WL" receipt --command true --passed >/dev/null
 run "$WL" audit round --report "$REP" >/dev/null; run "$WL" audit accept >/dev/null
@@ -400,7 +400,7 @@ RJ=$(new_repo)
 mkdir -p "$RJ/tasks" && printf '{"in_place": true, "integrate": true}\n' > "$RJ/tasks/clerk.json" && commit_all "$RJ" "Config"
 run "$RJ" step --start ij --request "In place, integrated" >/dev/null; run "$RJ" step --done ground --caller ui >/dev/null
 run "$RJ" branch ij >/dev/null
-seed "$RJ" ij; run "$RJ" step --done plan --tasks-file tasks/ij.md >/dev/null; commit_all "$RJ" "Breakdown"
+seed "$RJ" ij; run "$RJ" step --done decompose --tasks-file tasks/ij.md >/dev/null; commit_all "$RJ" "Breakdown"
 build_tasks "$RJ"
 run "$RJ" receipt --command true --passed >/dev/null
 run "$RJ" audit round --report "$REP" >/dev/null; run "$RJ" audit accept >/dev/null
@@ -449,7 +449,7 @@ seed_chain() {  # repo slug n
 RS=$(new_repo)
 mkdir -p "$RS/tasks" && printf '{"in_place": true, "gears": true}\n' > "$RS/tasks/clerk.json" && commit_all "$RS" "Config"
 run "$RS" step --start sg --request "Shifting" >/dev/null; run "$RS" step --done ground --caller ui >/dev/null; run "$RS" branch sg >/dev/null
-seed_chain "$RS" sg 5; run "$RS" step --done plan --tasks-file tasks/sg.md >/dev/null; commit_all "$RS" "Breakdown"
+seed_chain "$RS" sg 5; run "$RS" step --done decompose --tasks-file tasks/sg.md >/dev/null; commit_all "$RS" "Breakdown"
 eq "an unassessed task in a gears run builds straight through, gear normal" "task|1|normal|false" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"
 printf 'a\n' > "$RS/a.go"; run "$RS" finish 1 --retried -- a.go >/dev/null; commit_all "$RS" "T1"

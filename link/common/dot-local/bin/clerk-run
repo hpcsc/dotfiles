@@ -97,7 +97,7 @@ def tools_for(step_id, facts):
     if step_id == "validate":
         # It is asked to make a headline test fail and put it back, so it writes.
         return look + WRITE + GIT_WRITE + suite_tools(facts)
-    if step_id == "plan":
+    if step_id == "decompose":
         return look + WRITE + SPAWN + GIT_WRITE
     # task, tests, audit, verify — the steps that change code and spawn helpers.
     return look + WRITE + SPAWN + GIT_WRITE + suite_tools(facts)

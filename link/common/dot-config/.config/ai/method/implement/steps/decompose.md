@@ -1,4 +1,4 @@
-## Phase 1: Plan
+## Phase 1: Decompose
 
 ### Adopt an existing breakdown if there is one
 
@@ -42,7 +42,7 @@ Run it on an adopted breakdown too, which costs the same and tells you whether t
 
 **A breakdown planned before these fields existed carries neither**, and `clerk status` lists those under `gears.unassessed`. Read them as medium certainty and low blast radius — but **say that you did**, because "not assessed" and "assessed as routine" are otherwise the same silence. Do not re-decompose a run in progress to acquire them.
 
-**Then bind it to the run:** `clerk step --done plan --tasks-file <the breakdown>`. It runs this lint itself and refuses on a finding, and on success it prints the task table — certainty and blast radius included — which is the breakdown presented, with the first task under `next`.
+**Then bind it to the run:** `clerk step --done decompose --tasks-file <the breakdown>`. It runs this lint itself and refuses on a finding, and on success it prints the task table — certainty and blast radius included — which is the breakdown presented, with the first task under `next`.
 
 ### Present the breakdown, then build
 

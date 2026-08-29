@@ -74,7 +74,7 @@ eq "the request is kept verbatim" "Add a widget --gears" "$(jq -r .request "$R/.
 eq "a second --start on an open run is refused" "3" "$(rc "$R" step --start w1 --request again)"
 eq "and names the run it would have clobbered" "w1" \
    "$(run "$R" step --start w1 --request again 2>/dev/null | field .run.slug)"
-eq "the first step is ground" "ground|derived" "$(run "$R" step | jq -r '[.step, .kind] | join("|")')"
+eq "the first step is ground" "ground" "$(run "$R" step | field .step)"
 eq "and its facts are clerk prepare, with the request's flags applied" "true|request" \
    "$(run "$R" step | jq -r '[(.facts.flags.gears|tostring), .facts.flag_sources.gears] | join("|")')"
 eq "facts carry what the caller reads, not what clerk keeps for itself" "true|true|false|false|false" \
@@ -176,8 +176,8 @@ printf '\ntask — the first unblocked task, until none is open; gears pauses a 
 
 # w1 has --gears in its request and task 1 is low certainty.
 T=$(run "$WT" step)
-eq "a gears run pauses a low-certainty task before any code" "tests|1|true|asserted" \
-   "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring), (.stop|tostring), .kind] | join("|")')"
+eq "a gears run pauses a low-certainty task before any code" "tests|1|true" \
+   "$(printf '%s' "$T" | jq -r '[.step, (.n|tostring), (.stop|tostring)] | join("|")')"
 eq "--done tests needs the task number" "2" "$(rc "$WT" step --done tests)"
 run "$WT" step --done tests 1 >/dev/null
 T=$(run "$WT" step)
@@ -292,8 +292,8 @@ printf '\nverify — clerk verify runs; blocks hold, residue is asserted reviewe
 eq "verify is reached with the receipt still fresh — the Theory commit touched only tasks/" "verify|true" \
    "$(run "$WT" step | jq -r '[.step, (.verify.clean | tostring)] | join("|")')"
 Y=$(run "$WT" step)
-eq "clean with residue is asserted: not_checked is non-empty" "verify|asserted|true" \
-   "$(printf '%s' "$Y" | jq -r '[.step, .kind, ((.verify.not_checked|length) > 0 | tostring)] | join("|")')"
+eq "clean with residue holds the step: not_checked is non-empty" "verify|true" \
+   "$(printf '%s' "$Y" | jq -r '[.step, ((.verify.not_checked|length) > 0 | tostring)] | join("|")')"
 run "$WT" step --done verify-residue >/dev/null
 eq "--done verify-residue opens it" "land" "$(run "$WT" step | field .step)"
 

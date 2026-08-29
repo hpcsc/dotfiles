@@ -174,6 +174,11 @@ ready: `prepare` names the run, `clerk next` names the task, and step applies th
 `clerk step` reads the rows from the top and returns the first row that is not done. A
 run that left its branch when it landed evaluates only `land` and `learn`.
 
+The last column is documentation of how each row closes, not a field: a `derived` row
+opens when clerk observes the world change and an `asserted` one when the caller records
+a judgment, and either way `done_by` on the reply names the command to run. Shipping the
+category as well made a caller learn two words to reach the same line of the reply.
+
 | # | Step | Done when | How the evidence arrives | Kind |
 |---|---|---|---|---|
 | 0 | `start` | `run.json` exists | `clerk step --start <slug> --request "…"`. Refuses when an unfinished ledger exists for the slug | input |
@@ -181,7 +186,7 @@ run that left its branch when it landed evaluates only `land` and `learn`.
 | 2 | `isolate` | the current branch is the slug. `mode` says worktree or in-place; `fallback` says in-place without `in_place` on | `clerk worktree <slug>` or `clerk branch <slug>`. From the main checkout, `step` prints "enter `<path>`" until the cwd is the worktree | derived |
 | 3 | `plan` | `breakdown.json` is bound, the sidecar exists, `lint certainty-unevidenced` is clean at the sidecar's present hash, and `approved` is set when `review_plan` is on | `clerk step --done plan --tasks-file <md> [--approved]`. It runs the lint itself and refuses on findings. On success it prints the task table. An archived breakdown reads from `tasks/completed/` | asserted for the bind, derived for the lint |
 | 4 | `task N` (repeats) | `done` for N in the sidecar, and the tree is clean | `clerk finish N [--retried] -- <files>` lints the staged set before it sets `done` and refuses with exit 1 on findings. The commit makes the tree clean. The output carries `certainty`, `blast_radius`, `gear`, `pause_after_tests`, the last task's signals, and progress | derived |
-| 4a | `tests N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done tests N`. `step` prints `stop: true` before it | asserted, human gate |
+| 4a | `tests N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done tests N`. `step` prints `stop: true` before it | asserted, a pause |
 | 5 | `suite` | the receipt passed, and its code tree equals the HEAD code tree | `clerk receipt` | derived |
 | 6 | `audit` | `accepted` is present at this code tree | `clerk audit plan --rounds N`; for each round `clerk audit round --report <json>`, which refuses on a stale receipt, a dirty tree, or more rounds than planned without `--replan`; then `clerk audit accept [--early "<why>"]`. `step` prints the request from `run.json` as `request`, with `base` and `test_commands` | asserted for `accept`, derived for the rest |
 | 7 | `validate` | `validate.json` at this code tree, with no open mismatch | `clerk step --done validate [--mismatch "…"]…`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions. A recorded mismatch is **blocked** until `--resolved` | asserted |

@@ -462,10 +462,10 @@ def row_ground(ctx):
     if rec and rec.get("caller"):
         return row("ground", True, caller=rec["caller"], source=rec.get("source", "asserted"))
     if not ctx.prepare.get("clean"):
-        return row("ground", False, blocked=True, stop=True, kind="derived",
+        return row("ground", False, blocked=True, stop=True,
                    reason="the tree is dirty — never build on top of someone else's loose work; stop and ask",
                    why_not_done="tree dirty")
-    return row("ground", False, kind="derived",
+    return row("ground", False,
                why_not_done="no `clerk guidelines --caller <pattern>` has run for this run",
                done_by="clerk guidelines; then clerk guidelines --caller <pattern> [--dom] [--state]; then clerk step. "
                        "(A repo with no guidelines directory: clerk step --done ground --caller <pattern>)")
@@ -501,17 +501,17 @@ def row_isolate(ctx):
     if ref_exists(slug, ctx.cwd):
         wt = worktree_of(ctx, slug)
         if wt:
-            return row("isolate", False, kind="derived", action="enter", path=wt,
+            return row("isolate", False, action="enter", path=wt,
                        why_not_done=f"the run's worktree is {wt} and this call is not in it",
                        done_by=f"enter {wt} (EnterWorktree with that path on Claude Code; cd elsewhere), then clerk step")
-        return row("isolate", False, kind="derived", action="switch",
+        return row("isolate", False, action="switch",
                    why_not_done=f"branch {slug} exists with no worktree; this run builds in place",
                    done_by=f"clerk branch {slug} — it returns the step that follows as next")
     if ctx.flags.get("in_place"):
-        return row("isolate", False, kind="derived", action="branch",
+        return row("isolate", False, action="branch",
                    why_not_done="in_place is on and the run has no branch yet",
                    done_by=f"clerk branch {slug} — it returns the step that follows as next")
-    return row("isolate", False, kind="derived", action="worktree",
+    return row("isolate", False, action="worktree",
                why_not_done="the run has no worktree yet",
                done_by=f"clerk worktree {slug}; enter the path it reports; then clerk step")
 
@@ -531,7 +531,7 @@ def row_plan(ctx):
     bd = ctx.run.read("breakdown.json")
     resume = ctx.prepare.get("resume")
     if not bd:
-        return row("plan", False, kind="asserted",
+        return row("plan", False,
                    why_not_done="no breakdown is bound to this run",
                    resume=resume, breakdowns=ctx.prepare.get("breakdowns"),
                    done_by="clerk step --done plan --tasks-file <tasks/<story>.md> [--approved]")
@@ -539,17 +539,17 @@ def row_plan(ctx):
     if archived:
         return row("plan", True, tasks_file=str(tf), sidecar=str(side), archived=True)
     if not side.exists():
-        return row("plan", False, kind="derived", tasks_file=bd["tasks_file"],
+        return row("plan", False, tasks_file=bd["tasks_file"],
                    why_not_done=f"no sidecar at {side} — run `clerk sidecar` to recover one, then bind again",
                    done_by=f"clerk sidecar; clerk step --done plan --tasks-file {bd['tasks_file']}")
     if file_hash(side) != bd.get("lint_hash"):
         findings = lint_sidecar(side, ctx.cwd)
         if findings:
-            return row("plan", False, kind="derived", tasks_file=bd["tasks_file"], findings=findings,
+            return row("plan", False, tasks_file=bd["tasks_file"], findings=findings,
                        why_not_done="the sidecar changed and `lint certainty-unevidenced` now reports findings",
                        done_by="correct the assessments, then clerk step --done plan --tasks-file again")
     if ctx.flags.get("review_plan") and not bd.get("approved"):
-        return row("plan", False, kind="asserted", stop=True, tasks_file=bd["tasks_file"],
+        return row("plan", False, stop=True, tasks_file=bd["tasks_file"],
                    why_not_done="review_plan is on and the plan is not approved",
                    done_by=f"show the plan and wait for approval; then clerk step --done plan --tasks-file {bd['tasks_file']} --approved")
     return row("plan", True, tasks_file=bd["tasks_file"], sidecar=bd["sidecar"])
@@ -558,7 +558,7 @@ def row_plan(ctx):
 def row_task(ctx):
     tf, side, _ = breakdown_files(ctx)
     if tf is None or not side.exists():
-        return row("task", False, kind="derived", why_not_done="no sidecar to read tasks from")
+        return row("task", False, why_not_done="no sidecar to read tasks from")
     # `clerk next` owns which task is ready — the dependency rule is applied, not repeated.
     # --allow-dirty because a dirty tree is reported on the row, not a reason to stop asking.
     rc, nx, err = clerk("next", "--allow-dirty", "--tasks-file", str(tf), cwd=ctx.cwd)
@@ -570,7 +570,7 @@ def row_task(ctx):
         return row("task", True, progress=progress)
     cur = nx.get("task")
     if cur is None:
-        return row("task", False, blocked=True, stop=True, kind="derived", progress=progress,
+        return row("task", False, blocked=True, stop=True, progress=progress,
                    reason="open tasks remain but none is unblocked — the dependency graph has a cycle or names a task that is not there",
                    why_not_done="no ready task")
     n = cur["n"]
@@ -589,11 +589,11 @@ def row_task(ctx):
                   tree_dirty=not ctx.prepare.get("clean"), progress=progress,
                   commit_skill=ctx.prepare.get("commit_skill"))
     if pauses and not shown:
-        return row("tests", False, kind="asserted", stop=True,
+        return row("tests", False, stop=True,
                    why_not_done=f"task {n} pauses after its tests ({', '.join(reasons)}) and they were not shown",
                    done_by=f"write the tests, run them red, show the assertions, stop; then clerk step --done tests {n}",
                    **fields)
-    return row("task", False, kind="derived", pause_after_tests=pauses,
+    return row("task", False, pause_after_tests=pauses,
                why_not_done=f"task {n} is open",
                done_by=f"clerk finish {n} [--retried] -- <files> (it lints the staged set and returns the step after the commit as after_commit); commit with the {fields['commit_skill']} skill; then act on after_commit",
                **fields)
@@ -612,7 +612,7 @@ def row_suite(ctx):
     if fresh:
         return row("suite", True, receipt={"sha": rec["sha"], "command": rec["command"], "at": rec.get("at")})
     cmd = ctx.prepare.get("test_command")
-    return row("suite", False, kind="derived", why_not_done=why, test_command=cmd, build_tree=ctx.build_tree,
+    return row("suite", False, why_not_done=why, test_command=cmd, build_tree=ctx.build_tree,
                done_by=f"run `{cmd}` in {ctx.build_tree}; clerk receipt --command \"{cmd}\" --passed --output-file <file>")
 
 
@@ -632,7 +632,7 @@ def row_audit(ctx):
         why = f"{len(rounds)} round(s) recorded, findings not yet accepted"
     else:
         why = "the acceptance describes an earlier code tree — the code changed since"
-    return row("audit", False, kind="asserted", why_not_done=why,
+    return row("audit", False, why_not_done=why,
                done_by="clerk audit plan --rounds <n>; audit-implement; clerk audit round --report <json>; fix + clerk fixup + suite + clerk receipt; ...; clerk audit accept",
                **fields)
 
@@ -644,28 +644,28 @@ def row_validate(ctx):
     fields = dict(request=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=VALIDATE_QUESTIONS)
     if rec and rec.get("code_tree") == ctx.head_ct:
         if rec.get("mismatches") and not rec.get("resolved"):
-            return row("validate", False, blocked=True, stop=True, kind="asserted",
+            return row("validate", False, blocked=True, stop=True,
                        reason="mismatches were recorded; put them to the user and stop. After the decision: clerk step --done validate --resolved",
                        mismatches=rec["mismatches"], why_not_done="unresolved mismatches", **fields)
         return row("validate", True, mismatches=rec.get("mismatches", []))
     why = "the request was not re-read against this code tree" if not rec else "validated at an earlier code tree — the code changed since"
-    return row("validate", False, kind="asserted", why_not_done=why,
+    return row("validate", False, why_not_done=why,
                done_by="clerk step --done validate [--mismatch \"<quoted words>\"]...", **fields)
 
 
 def row_theory(ctx):
     tf, _, archived = breakdown_files(ctx)
     if tf is None:
-        return row("theory", False, kind="derived", why_not_done="no breakdown is bound to this run")
+        return row("theory", False, why_not_done="no breakdown is bound to this run")
     text = tf.read_text() if tf.exists() else ""
     if not re.search(r"^## Theory\b", text, re.M):
-        return row("theory", False, kind="derived", tasks_file=str(tf),
+        return row("theory", False, tasks_file=str(tf),
                    why_not_done=f"no `## Theory` section in {tf}",
                    done_by="write the section; commit it when the breakdown is tracked; then clerk step")
     if ctx.prepare.get("tasks_tracked") and not archived:
         dirty = git("status", "--porcelain", "--", str(tf), cwd=ctx.cwd).stdout.strip()
         if dirty:
-            return row("theory", False, kind="derived", tasks_file=str(tf),
+            return row("theory", False, tasks_file=str(tf),
                        why_not_done="the Theory is written but not committed",
                        done_by="commit the breakdown as its own commit; then clerk step")
     return row("theory", True, tasks_file=str(tf))
@@ -699,7 +699,7 @@ def row_verify(ctx):
     else:
         why = "clerk verify left checks in not_checked that need judgment"
         done_by = "spawn run-verifier for the residue only; then clerk step --done verify-residue"
-    return row("verify", False, kind="derived" if not clean else "asserted", why_not_done=why,
+    return row("verify", False, why_not_done=why,
                verify=data, done_by=done_by)
 
 
@@ -711,12 +711,12 @@ def row_land(ctx):
     if ctx.branch == slug:
         archived = bool(stamp) or (Path(ctx.git_dir) / "clerk" / "archived.json").exists()
         if not archived:
-            return row("land", False, kind="derived", why_not_done="the breakdown is not archived",
+            return row("land", False, why_not_done="the breakdown is not archived",
                        integrate=ctx.flags.get("integrate"),
                        done_by="clerk land [--integrate|--no-integrate] — it returns the step that follows as next")
         integrate = stamp.get("integrate") if stamp else ctx.flags.get("integrate")
         if integrate and ctx.in_worktree:
-            return row("land", False, kind="derived",
+            return row("land", False,
                        why_not_done="archived; integration is on and cannot finish from inside the worktree",
                        done_by=f"leave the worktree keeping the branch (ExitWorktree keep on Claude Code), run the command `clerk land` printed in {ctx.repo_root}, then clerk step there")
         return row("land", True, archived=True, integrated=False)
@@ -725,15 +725,15 @@ def row_land(ctx):
     wt = worktree_of(ctx, slug)
     if ctx.default and is_ancestor(slug, ctx.default, ctx.cwd):
         if wt:
-            return row("land", False, kind="derived", why_not_done=f"merged; the worktree at {wt} remains",
+            return row("land", False, why_not_done=f"merged; the worktree at {wt} remains",
                        done_by=f"git worktree remove {wt} && git branch -d {slug}; then clerk step")
-        return row("land", False, kind="derived", why_not_done=f"merged; branch {slug} remains",
+        return row("land", False, why_not_done=f"merged; branch {slug} remains",
                    done_by=f"git branch -d {slug}; then clerk step")
     cmd = f"git -C {ctx.repo_root} merge --ff-only {slug}"
     if wt:
         cmd += f" && git -C {ctx.repo_root} worktree remove {wt}"
     cmd += f" && git -C {ctx.repo_root} branch -d {slug}"
-    return row("land", False, kind="derived", why_not_done=f"archived on {slug}, not yet on {ctx.default}",
+    return row("land", False, why_not_done=f"archived on {slug}, not yet on {ctx.default}",
                done_by=f"{cmd}; then clerk step")
 
 
@@ -757,7 +757,7 @@ def row_learn(ctx):
     rec = learn_written(ctx.run) or ctx.run.done.get("learn")
     if rec:
         return row("learn", True, none=bool(rec.get("none")), source=rec.get("source", "asserted"))
-    return row("learn", False, kind="derived", why_not_done="no learning was written for this run",
+    return row("learn", False, why_not_done="no learning was written for this run",
                learnings_path=ctx.prepare.get("learnings_path"), breakdown_signals=breakdown_signals(ctx),
                done_by=f"clerk learn --list; clerk learn --type ... --title ... --learning ... --apply-when ... --feature {ctx.run.slug}; "
                        f"or, for a run with nothing that generalises: clerk step --done learn --none")

@@ -143,7 +143,7 @@ n=$(printf '%s' "$p" | grep -m1 -o '"n": [0-9]*' | sed 's/.*: //')
 case "$step" in
   ground)   clerk step --done ground --caller exported >/dev/null ;;
   decompose) clerk step --done decompose --tasks-file "tasks/story.md" >/dev/null ;;
-  task)     case "$n" in 1) f=a.go ;; *) f=b.go ;; esac
+  build)    case "$n" in 1) f=a.go ;; *) f=b.go ;; esac
             printf 'package main\n' > "$f"
             clerk finish "$n" -- "$f" >/dev/null && git commit -qm "Task $n" ;;
   validate) clerk step --done validate >/dev/null ;;

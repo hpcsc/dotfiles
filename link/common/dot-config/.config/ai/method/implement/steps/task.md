@@ -83,9 +83,9 @@ Say what landed in one or two lines and act on finish's `after_commit`. **Write 
 
 **With `gears` on, either one downshifts the run**: every task from here pauses after its tests, the way a low-certainty task does, regardless of what the breakdown assessed it as. It upshifts again after two consecutive tasks go green first try with a clean lint — say so when it does. `clerk step` computes the gear from the record and reports it as `gear`; announcing it is yours.
 
-The upshift is not a courtesy. A run that only ever slows down finishes every story at its slowest, and a pause that arrives on every task carries no information — which is how a gate becomes a keystroke someone acknowledges without reading, and how the flag stops buying anything at all.
+The upshift is not a courtesy. A run that only ever slows down finishes every story at its slowest, and a pause that arrives on every task carries no information — which is how a pause becomes a keystroke someone acknowledges without reading, and how the flag stops buying anything at all.
 
-**When `gears` is on and nobody answers a pause, the run stops there**, which is what the flag was turned on for. Leave the branch as it is; do not turn `gears` off mid-run to get past your own gate.
+**When `gears` is on and nobody answers a pause, the run stops there**, which is what the flag was turned on for. Leave the branch as it is; do not turn `gears` off mid-run to get past your own pause.
 
 Stop and ask only when something genuinely needs a decision, and when you do, **state the decision and stop** rather than asking and waiting. Leave the branch where it is and say what you would need to continue. Either way, do not guess your way past a decision to keep the run moving.
 

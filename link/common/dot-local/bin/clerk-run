@@ -99,7 +99,7 @@ def tools_for(step_id, facts):
         return look + WRITE + GIT_WRITE + suite_tools(facts)
     if step_id == "decompose":
         return look + WRITE + SPAWN + GIT_WRITE
-    # build, pause, audit, verify — the steps that change code and spawn helpers.
+    # build, pause, audit, verify-run — the steps that change code and spawn helpers.
     return look + WRITE + SPAWN + GIT_WRITE + suite_tools(facts)
 
 

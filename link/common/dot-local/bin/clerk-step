@@ -671,13 +671,13 @@ def row_explain(ctx):
     return row("explain", True, tasks_file=str(tf))
 
 
-def row_verify(ctx):
+def row_verify_run(ctx):
     # A pass is recorded at its code tree, so the tasks/-only commits that follow — the
     # Theory, the archive — do not send the run back through git grep, and a run that has
     # landed is not re-verified against a receipt `clerk verify` still compares by SHA.
-    passed = ctx.run.done.get("verify")
+    passed = ctx.run.done.get("verify-run")
     if passed and passed.get("code_tree") == ctx.head_ct:
-        return row("verify", True, cached=True)
+        return row("verify-run", True, cached=True)
     tf, _, archived = breakdown_files(ctx)
     args = ["verify", "--all-closed"]
     if tf is not None and not archived:
@@ -691,15 +691,15 @@ def row_verify(ctx):
     residue_ok = bool(residue) and residue.get("code_tree") == ctx.head_ct
     if clean and (not not_checked or residue_ok):
         if not ctx.read_only:
-            ctx.run.mark("verify", {"at": now(), "code_tree": ctx.head_ct, "not_checked": not_checked})
-        return row("verify", True, findings=data.get("findings", []), not_checked=not_checked)
+            ctx.run.mark("verify-run", {"at": now(), "code_tree": ctx.head_ct, "not_checked": not_checked})
+        return row("verify-run", True, findings=data.get("findings", []), not_checked=not_checked)
     if not clean:
         why = "clerk verify reports a block"
         done_by = "fix the block; then clerk step"
     else:
         why = "clerk verify left checks in not_checked that need judgment"
         done_by = "spawn run-verifier for the residue only; then clerk step --done verify-residue"
-    return row("verify", False, why_not_done=why,
+    return row("verify-run", False, why_not_done=why,
                verify=data, done_by=done_by)
 
 
@@ -765,7 +765,7 @@ def row_learn(ctx):
 
 ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("build", row_build),
         ("suite", row_suite), ("audit", row_audit), ("match-request", row_match_request), ("explain", row_explain),
-        ("verify", row_verify), ("land", row_land), ("learn", row_learn)]
+        ("verify-run", row_verify_run), ("land", row_land), ("learn", row_learn)]
 
 
 def active_rows(ctx):

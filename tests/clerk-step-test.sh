@@ -284,15 +284,15 @@ eq "no section: the reason names the file" "true" "$(run "$WT" step | jq -r '.wh
 printf '## Theory\n\nOne abstraction.\n\n' | cat - "$WT/tasks/w1.md" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.md"
 eq "written but not committed is not done" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("not committed")')"
 commit_all "$WT" "Theory"
-eq "committed, the run moves on" "verify" "$(run "$WT" step | field .step)"
+eq "committed, the run moves on" "verify-run" "$(run "$WT" step | field .step)"
 
 # --------------------------------------------------------------------------------
-printf '\nverify — clerk verify runs; blocks hold, residue is asserted reviewed\n'
+printf '\nverify-run — clerk verify runs; blocks hold, residue is asserted reviewed\n'
 
-eq "verify is reached with the receipt still fresh — the Theory commit touched only tasks/" "verify|true" \
+eq "verify-run is reached with the receipt still fresh — the Theory commit touched only tasks/" "verify-run|true" \
    "$(run "$WT" step | jq -r '[.step, (.verify.clean | tostring)] | join("|")')"
 Y=$(run "$WT" step)
-eq "clean with residue holds the step: not_checked is non-empty" "verify|true" \
+eq "clean with residue holds the step: not_checked is non-empty" "verify-run|true" \
    "$(printf '%s' "$Y" | jq -r '[.step, ((.verify.not_checked|length) > 0 | tostring)] | join("|")')"
 run "$WT" step --done verify-residue >/dev/null
 eq "--done verify-residue opens it" "land" "$(run "$WT" step | field .step)"

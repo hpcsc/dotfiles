@@ -149,7 +149,7 @@ case "$step" in
   match-request) clerk step --done match-request >/dev/null ;;
   explain)  printf '\n## Theory\nIt is a fixture.\n' >> tasks/story.md
             git add tasks/story.md && git commit -qm "Theory" ;;
-  verify)   clerk step --done verify-residue >/dev/null ;;
+  verify-run) clerk step --done verify-residue >/dev/null ;;
   learn)    clerk step --done learn --none >/dev/null ;;
 esac
 emit "did the $step step"

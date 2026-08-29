@@ -13,7 +13,7 @@ lives in `clerk`, a shell tool both harnesses call.
     │   ├── body.md             the skill: the shape, the loop, the flags
     │   ├── steps/<id>.md       the method, one step per file — ground, isolate,
     │   │                       decompose, build, suite, audit, match-request,
-    │   │                       explain, verify, land, learn
+    │   │                       explain, verify-run, land, learn
     │   └── seams/{claude,opencode}/
     │       ├── start.md        how the run is opened (opencode names the harness)
     │       ├── invocation.md   how the request arrives
@@ -130,7 +130,7 @@ flowchart TD
   AUDIT["audit<br/>clerk audit plan · round · accept"] --> VALIDATE
   VALIDATE["match-request<br/>clerk step --done match-request [--mismatch]<br/>blocked until --resolved"] --> THEORY
   THEORY["explain<br/>## Theory in the breakdown, committed"] --> VERIFY
-  VERIFY["verify<br/>clerk verify clean · residue reviewed"] --> LAND
+  VERIFY["verify-run<br/>clerk verify clean · residue reviewed"] --> LAND
   LAND["land<br/>clerk land · the gate reads the acceptance<br/>fast-forward from the main checkout"] --> LEARN
   LEARN["learn<br/>a clerk learn write, or --done learn --none"] --> FIN["finished"]
   classDef derived fill:#D8E6E0,stroke:#2F5D50,stroke-width:2px,color:#132520
@@ -209,7 +209,7 @@ archives on the feature branch, and integrates only when asked.
 ### The order is clerk's
 
 The phases above are a table `clerk step` evaluates from the top — ground, isolate, plan,
-build, suite, audit, match-request, explain, verify, land, learn — against the repository and a
+build, suite, audit, match-request, explain, verify-run, land, learn — against the repository and a
 ledger under `<git-common-dir>/clerk/runs/<slug>/`. It returns the first row that is not
 done with the method text for it, and the skill is one loop: `clerk step`, do that, `clerk
 step`. Position is recomputed on every call, so a stopped run continues with the same call

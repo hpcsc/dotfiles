@@ -22,10 +22,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 METHOD = ROOT / "link/common/dot-config/.config/ai/method"
 
-# method-dir  ->  output path
-TARGETS = {
-    "audit-implement": ROOT / "link/common/claude/.claude/skills/audit-implement/audit-implement.workflow.js",
-}
+# method-dir  ->  output path. Empty since the audit's orchestration moved into
+# `clerk audit run`, which both harnesses now launch; a method that wants a Workflow
+# script again adds its entry here.
+TARGETS = {}
 
 BANNER = """// GENERATED from ~/.config/ai/method/{name}/ — edit body.js or a file under
 // prompts/, then run `task gen:skills`. Edits made here are overwritten.

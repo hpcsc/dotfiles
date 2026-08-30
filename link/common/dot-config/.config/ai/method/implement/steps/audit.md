@@ -12,13 +12,13 @@ When the diff is that shape, do not launch. Check it by hand — that the change
 
 When it returns, check `git status --porcelain` before running anything. A refuter that died mid-probe leaves residue behind; restore the tree to the branch tip before you trust another run.
 
-Before the first round, say how many you will run: `clerk audit plan --rounds <n>`. When a round returns and the tree is restored, record it: `clerk audit round --report <the findings JSON>` — it refuses while the suite is not green at this code tree or the tree is dirty, which is the order this step exists to keep. When the findings are fixed or the user has accepted them: `clerk audit accept`. `clerk land` reads that acceptance.
+Before the first round, say how many you will run: `clerk audit plan --rounds <n>` — or pass `--rounds <n>` on the first `clerk audit run`, which records it. When a round returns and the tree is restored, record it: `clerk audit round --report <the findings JSON>` — it refuses while the suite is not green at this code tree or the tree is dirty, which is the order this step exists to keep. When the findings are fixed or the user has accepted them: `clerk audit accept`. `clerk land` reads that acceptance.
 
-Pass it the base ref the work started from, the `test_commands` map, a one-or-two-sentence `brief` on what the feature was meant to do, and `request` — the request, **verbatim and unsummarized**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The request is the only thing the audit sees that did not come from you.
+Pass it the base ref the work started from as `--base`, a one-or-two-sentence `--brief` on what the feature was meant to do, and `--request` — the request, **verbatim and unsummarized**. Do the last one even though you also wrote the brief: the brief is your paraphrase, and if you misread the request the brief encodes the misreading and every lens inherits it. The request is the only thing the audit sees that did not come from you.
 
 **When the request names a breakdown, that is not the story.** A run given `tasks/<story>.md` is being handed a breakdown, and a breakdown came from you — pass the user story it was written from instead, and the breakdown only as well. Handing over the breakdown alone defeats the whole point of the field: a breakdown that quietly narrowed a criterion is checked against itself, and every lens agrees it is covered. One run passed its breakdown as the story and three adversarial rounds confirmed a set of eight constructs that the story stated as a category of nine.
 
-It fans the applicable lenses over the diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings plus `coverage_gaps`.
+It fans the applicable lenses over the diff in parallel, reproduces every runtime claim before it counts, and returns ranked findings plus `coverage_gaps`. It prints each phase and each agent's verdict as they land, so a round is watchable rather than a wait.
 
 **Read `coverage_gaps` and `lenses_not_run` first** — what the audit could not judge is more actionable than what it could. Then work the findings; each carries evidence you can re-run. Skim the refuted list: a wrongly-refuted finding is this shape's failure mode, and the refuter is instructed to refute when uncertain.
 
@@ -26,7 +26,7 @@ It fans the applicable lenses over the diff in parallel, reproduces every runtim
 
 **A gap that survives a round is yours to close, and `clerk audit round` tells you which.** It keeps each round's gap texts and reports the ones an earlier round already named under `gaps_repeated` — matched on content words, so the same ground retold in different words still counts. Each lens owns changed source files under a language it knows, so a diff's documentation, its fixtures and its breakdown are owned by nobody and come back unreviewed however many rounds you run. The second time you read the same gap, the audit is telling you it will never cover that ground: open those files yourself and run whatever they document, or say in your summary that they went unreviewed. One run had three rounds return an identical `lenses_not_run` naming a README, two docs pages and the breakdown — five files, a third of the branch — and landed without a lens ever reading them.
 
-Fix findings **directly**. Do not launch a workflow to apply them — you have the context and they are usually small.
+Fix findings **directly**. Do not delegate them — you have the context and they are usually small.
 
 **Where you disagree with one, say which and why.** The audit refutes when uncertain, so a survivor is usually real — but you have context the lenses do not.
 
@@ -58,7 +58,7 @@ This is also what keeps `clerk verify` meaningful rather than noisy. Its commit-
 
 **Then re-run the suite and record a new receipt.** Step 1's receipt describes a tree that no longer exists. This is the one place in the skill where code changes land after the last green, which is exactly the vacuous-receipt shape the audit itself hunts for. If you changed nothing, say so and keep the existing receipt.
 
-**Then re-audit, and always pass `recheck`.** Every finding carries the `lens` that raised it. Re-invoke `audit-implement` with `recheck` set to the findings you fixed, plus the same `brief` and `request`. Narrow `lenses` to the raising keys only when every fix was a quality fix — a comment removed, a redundant test folded, a name changed — since those cannot break what another lens owns. That costs the scope pass and those lenses, and skips Verify and Report altogether when nothing is raised.
+**Then re-audit, and always pass `recheck`.** Every finding carries the `lens` that raised it. Run another round with `--recheck` set to the findings you fixed, plus the same `--brief` and `--request`. Narrow with `--lens` to the raising keys only when every fix was a quality fix — a comment removed, a redundant test folded, a name changed — since those cannot break what another lens owns. That costs the scope pass and those lenses, and skips Verify and Report altogether when nothing is raised.
 
 **And pass `fixedFiles` — every path your fixups touched.** The panel then scopes itself to the lenses that own those files and reports the rest under `lenses_not_run`. This is not a guess about where the risk is: over four measured runs, all 47 later-round findings landed in a file some fix had touched, and both later-round `high` defects — including the one a previous round's own fix introduced — were in files fixed before that round ran. What a fix-scoped panel gives up is a lens re-reading code nothing changed, which is where none of them came from.
 

@@ -1,1 +1,3 @@
-**You orchestrate this yourself.** There is no workflow engine here: you resolve the scope with your own shell, spawn the review agents, spawn the verifiers, and assemble the report. Only the lenses and the verifiers are subagents, because only they need to be *independent* of the person who wrote the code.
+This is the **review half** of construct-directly-then-audit. You implement, committing as you go; this audits what you built, from the outside, with lenses that never saw you write it.
+
+**clerk drives it, not you.** `clerk audit run` holds the phase order, decides which lenses this diff earns, spawns each agent, validates the reply against its schema and asks again when it does not fit. Your part is the launch, and the findings when they come back.

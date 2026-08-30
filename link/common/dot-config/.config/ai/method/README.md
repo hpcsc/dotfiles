@@ -548,7 +548,7 @@ partially by design — so they stay referenced.
 | worktree | `EnterWorktree` / `ExitWorktree` | `git worktree add` + `cd` |
 | decompose | Agent tool | `task` tool, self-contained prompt |
 | commit | Skill tool → `commit` / `pcommit` | `task` tool → the `commit` subagent |
-| audit | a Workflow: deterministic fan-out, schema-validated findings; `clerk audit round --report <json>` | orchestrated in prose by the model; the findings piped to `clerk audit round --report -` |
+| audit | `clerk audit run` in the background; `clerk audit round --report <json>` | `clerk audit run` where a tool timeout cannot kill it; the report piped to `clerk audit round --report -` |
 
 Agent definitions add one more seam — frontmatter — and their bodies render
 byte-identical across both trees.
@@ -573,10 +573,6 @@ request to the audit unsummarized — and all three work the same way on both to
   shell alone: Claude Code sets `CLAUDECODE`, opencode sets nothing clerk relies on. So
   the opencode skill names it once, `--harness opencode` at `--start`, and the run
   records it for every later step. Without that the seams would render for Claude Code.
-- **The audit's orchestration.** Claude runs it as a Workflow with schema-validated
-  findings and deterministic fan-out; opencode drives the same lenses from prose. Same
-  shape of result, weaker guarantee. This is the candidate for a shared JS runner, left
-  unbuilt until the difference demonstrably hurts.
 - **Tool restriction.** `run-verifier` is structurally read-only on Claude, because no
   write tool appears in its `tools` allowlist. On opencode the same guarantee rests on
   the prose in its body, since no agent there restricts tools.

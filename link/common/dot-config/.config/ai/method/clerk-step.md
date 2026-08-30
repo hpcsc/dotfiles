@@ -247,22 +247,18 @@ and each call runs `clerk prepare` once on a run branch and twice from the defau
 
 ## Driving the audit from outside a session
 
-`clerk step` makes the order of a run a property of clerk. Inside the audit step, the
-order stayed a property of the model: the Workflow script owned the fan-out for one
-harness and prose owned it for the other, and a round advanced because something read
-instructions about advancing it.
-
-The audit is now a phase machine of its own, on the same shape as the step table.
+`clerk step` makes the order of a run a property of clerk, and the audit is a phase
+machine of its own on the same shape as the step table.
 `clerk audit next` returns one phase's batch — the scope pass, then the lens panel, then
 dedupe, then the refuters, then the report — with every prompt resolved and every job's
 schema named. `clerk audit record --phase <p> --results <file>` takes the replies and
 advances. What to run is decided in `clerk_audit_panel.py`: the language table, remits,
 the `MIN_REMIT` fold, fix-scoped narrowing, refuter counts, and whether a claim needs a
-tree. That was JavaScript in the Workflow script and prose in the opencode skill, and the
-two had already drifted.
+tree — one file, read by both harnesses, so a change to what a lens is owed cannot reach
+one of them and not the other.
 
-`clerk audit run` closes the loop. It walks the machine in-process and shells out to a
-headless agent only where a judgment is wanted:
+`clerk audit run` closes the loop, and it is what both skills launch. It walks the
+machine in-process and shells out to a headless agent only where a judgment is wanted:
 
 | Harness | Invocation |
 |---|---|
@@ -277,8 +273,7 @@ prompt nobody is there to answer.
 
 What the harness supplies to an in-session subagent and not to a headless one is supplied
 here: a reply is parsed out of whatever prose surrounds it and validated against
-`schemas.json` — the same contracts the Workflow script uses — with three attempts and
-the reason fed back each time; and a git worktree is created for any job whose claim can
+`schemas.json` with three attempts and the reason fed back each time; and a git worktree is created for any job whose claim can
 only be settled by mutating a checkout. A job that never returns a usable reply is
 reported failed by name, because a lens missing from a panel reads exactly like a lens
 that found nothing.

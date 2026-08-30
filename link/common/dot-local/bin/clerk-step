@@ -269,6 +269,7 @@ class Ctx:
     in_worktree: bool = False
     harness: str = None
     read_only: bool = False  # --status: look without recording anything
+    adhoc: bool = False  # an audit of a branch with no implement run behind it
     full: bool = False  # --full: print the step's text even if this session has seen it
 
 
@@ -1505,7 +1506,9 @@ def audit_run(ctx, aud, o):
     # the summary is its last line rather than a second, differently-shaped document.
     out.final({"ran": True, "round": lv["round"], "cost_usd": round(spent, 4),
                "phases": trace, "held_back": lv.get("not_run") or [], "report": lv.get("report"),
-               "next": "clerk audit round --report <write the report above to a file>"})
+               "next": ("work the findings; there is no run here to record a round against"
+                        if ctx.adhoc
+                        else "clerk audit round --report <write the report above to a file>")})
 
 
 def _payload_for(phase, jobs, results):
@@ -1538,6 +1541,23 @@ def _payload_for(phase, jobs, results):
     return []
 
 
+# Verbs that only need somewhere to keep a round. The rest record evidence the step
+# table reads, so they need the run that evidence describes.
+ADHOC_VERBS = ("run", "begin", "next", "record", "status")
+
+
+def adhoc_ledger(ctx):
+    """Somewhere to keep a round for a branch with no implement run behind it.
+
+    This skill is for work already built — a colleague's branch, or something done by
+    hand — as often as for a run clerk drove, and those have no ledger. The round lives
+    beside the runs rather than among them, so `clerk step` never mistakes one for a run
+    in flight.
+    """
+    name = (ctx.branch or "HEAD").replace("/", "-")
+    return Run(Path(ctx.common) / "clerk" / "audits" / name)
+
+
 AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept,
          "status": audit_status, "begin": audit_begin, "next": audit_next,
          "record": audit_record, "run": audit_run}
@@ -1563,7 +1583,11 @@ def main_audit(argv):
                     "--harness-cmd": "value"})
     ctx = build_ctx(o["--run"])
     if ctx.run is None:
-        die("no run is open here — `clerk step --start` first", 3)
+        if verb not in ADHOC_VERBS:
+            die(f"`clerk audit {verb}` records evidence against a run, and none is open "
+                f"here — `clerk step --start` first", 3)
+        ctx.run = adhoc_ledger(ctx)
+        ctx.adhoc = True
     aud = ctx.run.read("audit.json", {"rounds_planned": None, "rounds": [], "accepted": None})
     emit(handler(ctx, aud, o))
 

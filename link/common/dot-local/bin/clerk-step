@@ -702,7 +702,7 @@ def row_verify_run(ctx):
             "at": now(), "code_tree": ctx.head_ct, "clean": clean,
             "blocks": sorted({f.get("check") for f in findings if f.get("severity") == "block"}),
             "warns": sorted({f.get("check") for f in findings if f.get("severity") != "block"}),
-            "not_checked": len(not_checked)})
+            "not_checked": len(not_checked), "hints": len(data.get("hints") or [])})
     residue = ctx.run.done.get("verify-residue")
     residue_ok = bool(residue) and residue.get("code_tree") == ctx.head_ct
     if clean and (not not_checked or residue_ok):
@@ -714,7 +714,8 @@ def row_verify_run(ctx):
         done_by = "fix the block; then clerk step"
     else:
         why = "clerk verify left checks in not_checked that need judgment"
-        done_by = "spawn run-verifier for the residue only; then clerk step --done verify-residue"
+        done_by = ("spawn run-verifier, passing it the `not_checked` list verbatim so it works "
+                   "those gaps rather than the whole branch; then clerk step --done verify-residue")
     return row("verify-run", False, why_not_done=why,
                verify=data, done_by=done_by)
 

@@ -2389,6 +2389,31 @@ eq "and it is reported as ground the check cannot cover" "1" \
 eq "the caller it found is named" "true" \
    "$(printf '%s' "$V" | jq -r '[.not_checked[] | select(test("frontend/platform.js"))] | length == 1')"
 
+# The residue is what a reader has to judge; a flag this call was not given is not that.
+# Every gap that spawned the verifier over twelve measured runs was the second kind.
+eq "a branch that changed JS says so, so the sweep has something to read" "1" \
+   "$(printf '%s' "$V" | jq -r '[.not_checked[] | select(test("JavaScript/TypeScript symbols this branch adds"))] | length')"
+R36B=$(new_repo)
+mkdir -p "$R36B/frontend" && printf 'export function untouched() {}\n' > "$R36B/frontend/app.js"
+printf 'module main\n' > "$R36B/go.mod"
+git -C "$R36B" add -A && git -C "$R36B" commit -qm "A repo that holds JS"
+git -C "$R36B" switch -qc feature
+printf 'package p\n\nfunc Thing() {}\n' > "$R36B/thing.go"
+git -C "$R36B" add -A && git -C "$R36B" commit -qm "Change only Go"
+eq "a branch that changed none is not asked to sweep the language anyway" "0" \
+   "$(run "$R36B" verify --all-closed | jq -r '[.not_checked[]? | select(test("JavaScript/TypeScript"))] | length')"
+
+# A receipt recorded without --output-file: the check could not run, and the fix is the
+# flag. Nothing there for a reader to judge, so it must not hold the verify-run row.
+R36C=$(new_repo)
+git -C "$R36C" switch -qc feature
+printf 'package p\n' > "$R36C/a.go"
+git -C "$R36C" add -A && git -C "$R36C" commit -qm "One commit"
+run "$R36C" receipt --command "go test ./..." --passed >/dev/null
+H=$(run "$R36C" verify)
+eq "an uncaptured receipt is a hint, not residue" "1|0" \
+   "$(printf '%s' "$H" | jq -r '[([.hints[]? | select(test("no output tail"))] | length), ([.not_checked[]? | select(test("no output tail"))] | length)] | map(tostring) | join("|")')"
+
 # Prose is not a caller: a symbol named only in docs or the breakdown is still reported.
 R37=$(new_repo)
 git -C "$R37" switch -qc feature
@@ -2416,7 +2441,9 @@ git -C "$R33" switch -qc alpha
 
 run "$R33" status >/dev/null 2>&1; RC=$?
 eq "several breakdowns and no ledger: status still cannot resolve one" "2" "$RC"
-eq "and verify reports the commit-boundary gap rather than running it" "1" \
+eq "and verify hints at the breakdown it could not identify" "1" \
+   "$(run "$R33" verify | jq -r '[.hints[]? | select(test("no single breakdown"))] | length')"
+eq "which is a missing flag, not judgment, so it never reaches the residue" "0" \
    "$(run "$R33" verify | jq -r '[.not_checked[]? | select(test("no single breakdown"))] | length')"
 
 R33RUNS="$(git -C "$R33" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/alpha"
@@ -2426,8 +2453,8 @@ printf '{"tasks_file":"%s","sidecar":"%s"}\n' "$R33/tasks/alpha.md" "$R33/tasks/
 
 eq "with the run's ledger, the bound breakdown resolves it" "alpha.md" \
    "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
-eq "and verify runs commit-boundary instead of reporting a gap" "0" \
-   "$(run "$R33" verify | jq -r '[.not_checked[]? | select(test("no single breakdown"))] | length')"
+eq "and verify runs commit-boundary instead of hinting" "0" \
+   "$(run "$R33" verify | jq -r '[.hints[]? | select(test("no single breakdown"))] | length')"
 eq "an explicit --tasks-file still outranks the ledger" "beta.md" \
    "$(run "$R33" status --tasks-file tasks/beta.md | jq -r '.tasks_file | split("/") | last')"
 

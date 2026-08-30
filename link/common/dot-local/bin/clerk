@@ -1419,12 +1419,19 @@ cmd_verify() {
   [ -n "$def" ] && base=$(git merge-base HEAD "$def" 2>/dev/null)
   findings="[]"
   notchecked="[]"
+  hints="[]"
 
   add_finding() {
     findings=$(printf '%s' "$findings" | jq -c \
       --arg c "$1" --arg s "$2" --arg d "$3" '. + [{check: $c, severity: $s, detail: $d}]')
   }
-  add_gap() { notchecked=$(printf '%s' "$notchecked" | jq -c --arg g "$1" '. + [$g]'); }
+  # Two different answers, and conflating them cost a full agent. `not_checked` is ground
+  # this check could not JUDGE — a caller has to look. A hint is ground it could not RUN,
+  # because it was not given what it needed; the fix is a flag, and there is nothing for a
+  # reader to judge. Measured over twelve runs, every residue that spawned the verifier
+  # was one of the four hints below.
+  add_gap()  { notchecked=$(printf '%s' "$notchecked" | jq -c --arg g "$1" '. + [$g]'); }
+  add_hint() { hints=$(printf '%s' "$hints" | jq -c --arg g "$1" '. + [$g]'); }
 
   # 1. staged-tail — a task that did not close leaves its work staged, so a plain
   #    `git diff` looks empty and the run reads as finished.
@@ -1468,7 +1475,7 @@ cmd_verify() {
     if [ -n "$vac" ]; then
       add_finding vacuous-receipt block "the receipt's output shows nothing ran: $vac"
     elif [ -z "$rtail" ]; then
-      add_gap "vacuous-receipt — the receipt carries no output tail, so it could not be checked for vacuity; record it with --output-file"
+      add_hint "vacuous-receipt — the receipt carries no output tail, so it could not be checked for vacuity; record it with --output-file"
     fi
   fi
 
@@ -1552,13 +1559,25 @@ cmd_verify() {
         fi
       done
     fi
-    for lang in JavaScript/TypeScript Elixir; do
-      case "$(detect_languages "$root")" in
-        *"$lang"*) add_gap "dead-code — $lang symbols were not checked; only Go exported funcs and types are extracted mechanically" ;;
-      esac
+    # Keyed on what this branch changed, not on what the repository contains. Keyed on the
+    # repo it fired on every run of a polyglot one, so the residue was never empty and the
+    # verifier was spawned to sweep languages the diff had not touched.
+    local changed_ext
+    # Space-separated, because the case below matches on " $ext " — left newline-separated
+    # by `sort -u`, every extension but the first is preceded by a newline and matches
+    # nothing, which reads exactly like a branch that changed no such file.
+    changed_ext=$(git diff --name-only "$base"..HEAD 2>/dev/null | sed 's/.*\.//' | sort -u | tr '\n' ' ')
+    for pair in "JavaScript/TypeScript:js jsx ts tsx mjs cjs" "Elixir:ex exs"; do
+      lang=${pair%%:*}
+      for ext in ${pair#*:}; do
+        case " $changed_ext " in
+          *" $ext "*) add_gap "dead-code — $lang symbols this branch adds were not checked; only Go exported funcs and types are extracted mechanically"
+                      break ;;
+        esac
+      done
     done
   else
-    add_gap "dead-code — no merge-base with a default branch, so the run's own commits could not be scoped"
+    add_hint "dead-code — no merge-base with a default branch, so the run's own commits could not be scoped"
   fi
 
   # 4. commit-boundary — arithmetic, and only possible because `clerk finish` recorded
@@ -1599,17 +1618,19 @@ cmd_verify() {
       fi
     done
   elif [ -z "$base" ]; then
-    add_gap "commit-boundary — no merge-base with a default branch, so the run's own commits could not be scoped"
+    add_hint "commit-boundary — no merge-base with a default branch, so the run's own commits could not be scoped"
   elif [ -z "$tasks" ]; then
-    add_gap "commit-boundary — no single breakdown under $th/tasks, so this run's task records could not be identified; name it with --tasks-file"
+    add_hint "commit-boundary — no single breakdown under $th/tasks, so this run's task records could not be identified; name it with --tasks-file"
   else
-    add_gap "commit-boundary — no per-task file records for $(basename "${tasks%.md}"); run tasks through 'clerk finish' for this check"
+    add_hint "commit-boundary — no per-task file records for $(basename "${tasks%.md}"); run tasks through 'clerk finish' for this check"
   fi
 
   local clean
   clean=$(printf '%s' "$findings" | jq -c 'map(select(.severity == "block")) | length == 0')
   jq -n --argjson clean "$clean" --argjson findings "$findings" --argjson not_checked "$notchecked" \
-    '{clean: $clean, findings: ($findings | sort_by(if .severity == "block" then 0 else 1 end)), not_checked: $not_checked}'
+    --argjson hints "$hints" \
+    '{clean: $clean, findings: ($findings | sort_by(if .severity == "block" then 0 else 1 end)),
+      not_checked: $not_checked, hints: $hints}'
   [ "$clean" = "true" ]
 }
 

@@ -225,6 +225,9 @@ printf '\nnotes\n' >> "$WT/tasks/w1.md"; commit_all "$WT" "Breakdown notes"
 eq "a commit touching only tasks/ leaves the receipt fresh" "audit" "$(run "$WT" step | field .step)"
 eq "step's code tree is the one clerk prepare reports" \
    "$(run "$WT" prepare | field .code_tree)" "$(run "$WT" step | field .code_tree)"
+# A file in a language clerk does not extract symbols from: the check says so rather
+# than passing over it, and that is residue a reader has to settle.
+mkdir -p "$WT/web" && printf 'export function widget() {}\n' > "$WT/web/widget.js"
 printf 'c\n' > "$WT/c.go"; commit_all "$WT" "Code after the suite"
 eq "a commit touching code sends the run back to suite" "suite|true" \
    "$(run "$WT" step | jq -r '[.step, (.why_not_done | contains("code changed") | tostring)] | join("|")')"

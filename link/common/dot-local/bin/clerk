@@ -1258,9 +1258,9 @@ cmd_receipt() {
 }
 
 # --------------------------------------------------------------------------------
-# gate — the four landing predicates, reported with their evidence.
+# gate — the five landing predicates, reported with their evidence.
 #
-# Three are computable. "The audit's findings are fixed or accepted" is a judgment, so
+# Four are computable. "The audit's findings are fixed or accepted" is a judgment, so
 # it is asserted by the caller rather than guessed at here; without the assertion the
 # gate simply does not open.
 # --------------------------------------------------------------------------------
@@ -1339,7 +1339,9 @@ cmd_gate() {
   #    made once and recorded against the code tree it applies to, so a run driven by
   #    `clerk step` does not repeat it here; the flag stays for a run driven without the
   #    ledger, and an acceptance from an earlier code tree counts for nothing.
-  local ldir accepted_ct=
+  # Initialised, not merely declared: under `set -u` the check below reads it whether or
+  # not check 4 took the branch that assigns it, and an unset local aborts the subshell.
+  local ldir= accepted_ct=
   if [ "$audit_accepted" = true ]; then
     passed=true; detail="caller asserted audit findings are fixed or explicitly accepted"
   else
@@ -1354,6 +1356,28 @@ cmd_gate() {
   fi
   checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
     '. + [{name: "audit-accepted", ok: $ok, detail: $d}]')
+
+  # 5. the run's own checks passed — staged tails, a hollow receipt, commit boundaries.
+  #    `clerk verify` is the mechanical half of the run-verifier agent and the step table
+  #    puts it before `land`, but the gate did not read it, so `clerk land` called
+  #    directly walked past it: three of the six runs measured landed over a block. The
+  #    step records its pass against the code tree, and an older one counts for nothing.
+  #    A repo with no ledger is not held to it — the assertion has nowhere to live.
+  local verified_ct=
+  if [ -z "$ldir" ]; then ldir=$(ledger_dir 2>/dev/null) || ldir=; fi
+  if [ -z "$ldir" ]; then
+    passed=true; detail="no run ledger here, so there is no recorded verify to read"
+  else
+    [ -f "$ldir/done.json" ] \
+      && verified_ct=$(jq -r '."verify-run".code_tree // empty' "$ldir/done.json" 2>/dev/null)
+    if [ -n "$verified_ct" ] && [ "$verified_ct" = "$(code_tree "$head")" ]; then
+      passed=true; detail="clerk verify was clean at this code tree"
+    else
+      passed=false; detail="run 'clerk step' and clear the verify-run step — it checks for staged tails, a hollow receipt and commit boundaries"
+    fi
+  fi
+  checks=$(printf '%s' "$checks" | jq -c --argjson ok "$passed" --arg d "$detail" \
+    '. + [{name: "run-verified", ok: $ok, detail: $d}]')
 
   ok=$(printf '%s' "$checks" | jq -c 'all(.[]; .ok)')
   printf '%s' "$checks" | jq --argjson ok "$ok" '{ok: $ok, checks: .}'

@@ -574,6 +574,26 @@ run "$R4" receipt --command "task test" --passed >/dev/null
 eq "prepare reports the code tree the gate compares by" "40" \
    "$(run "$R4" prepare | jq -r '.code_tree | length')"
 
+# The fifth predicate. `clerk verify` is the mechanical half of the run-verifier agent
+# and the step table puts it before `land`, but the gate did not read it, so `clerk land`
+# called directly walked straight past: three of six measured runs landed over a block.
+eq "a repo with no run ledger is not held to a verify it cannot record" "true" \
+   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="run-verified") | .ok')"
+R4L="$(git -C "$R4" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/$(git -C "$R4" rev-parse --abbrev-ref HEAD)"
+mkdir -p "$R4L" && printf '{"slug":"x","request":"x"}\n' > "$R4L/run.json"
+printf '{}\n' > "$R4L/done.json"
+eq "with a ledger and no clean verify recorded, the gate holds" "false" \
+   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="run-verified") | .ok')"
+eq "and says which step clears it" "true" \
+   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="run-verified") | .detail | contains("verify-run")')"
+jq -n --arg ct "$(run "$R4" prepare | jq -r .code_tree)" '{"verify-run": {code_tree: $ct}}' > "$R4L/done.json"
+eq "recorded at this code tree, it opens" "true" \
+   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="run-verified") | .ok')"
+jq -n '{"verify-run": {code_tree: "stale"}}' > "$R4L/done.json"
+eq "recorded at an earlier one, it does not" "false" \
+   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="run-verified") | .ok')"
+rm -rf "$R4L"
+
 printf 'loose\n' > "$R4/loose.txt"
 eq "an untracked file blocks the gate" "false" \
    "$(run "$R4" gate | jq -r '.checks[] | select(.name=="tree-clean") | .ok')"

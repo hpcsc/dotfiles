@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Claude Code resolves user-defined agents only in a full session: `--bare` skips the
 # discovery that finds them and leaves the five built-ins, so every lens would fail to
@@ -45,6 +45,11 @@ def names_own_sessions(harness):
 
 def reducible(harness):
     return harness in REDUCIBLE
+
+# What the machine can actually run at once. A literal count is wrong in both directions
+# — too many on a laptop, far too few on a build box — so it is derived the way Claude
+# Code's own workflow engine derives it, leaving two cores for everything else.
+DEFAULT_WORKERS = max(1, min(16, (os.cpu_count() or 4) - 2))
 
 MAX_ATTEMPTS = 3
 # A lens reads a whole diff and may run a suite; a scope pass is seconds. The ceiling is
@@ -364,14 +369,35 @@ def _remove_worktree(repo, path):
     shutil.rmtree(path, ignore_errors=True)
 
 
-def run_batch(jobs, schemas, *, harness, cwd, concurrent=True, workers=6, model=None, log=None):
-    """A phase's jobs, concurrently when the phase says they are independent."""
+def run_batch(jobs, schemas, *, harness, cwd, concurrent=True, workers=None, model=None,
+              log=None, on_start=None, on_event=None, on_done=None):
+    """A phase's jobs, concurrently when the phase says they are independent.
+
+    The callbacks are what makes a long phase watchable: `on_start` when a job is handed
+    to the harness, `on_event` for each thing it does, `on_done` the moment it returns.
+    Each is given the job's id, because several of these run at once and a line that does
+    not say which agent produced it is worse than no line.
+    """
     if not jobs:
         return []
     def one(j):
-        return run_job(j, schemas.get(j.get("schema_name")), harness=harness, cwd=cwd,
-                       model=model, log=log)
+        if on_start:
+            on_start(j)
+        r = run_job(j, schemas.get(j.get("schema_name")), harness=harness, cwd=cwd,
+                    model=model, log=log,
+                    on_event=(lambda e, jid=j["id"]: on_event(jid, e)) if on_event else None)
+        if on_done:
+            on_done(j, r)
+        return r
     if not concurrent or len(jobs) == 1:
         return [one(j) for j in jobs]
-    with ThreadPoolExecutor(max_workers=min(workers, len(jobs))) as pool:
-        return list(pool.map(one, jobs))
+    n = min(workers or DEFAULT_WORKERS, len(jobs))
+    with ThreadPoolExecutor(max_workers=n) as pool:
+        # as_completed, not pool.map: map yields in submission order, so a lens that
+        # finished in twenty seconds stays unreported behind one still running at three
+        # minutes. The list handed back keeps the caller's order all the same.
+        futures = {pool.submit(one, j): j["id"] for j in jobs}
+        done = {}
+        for f in as_completed(futures):
+            done[futures[f]] = f.result()
+        return [done[j["id"]] for j in jobs]

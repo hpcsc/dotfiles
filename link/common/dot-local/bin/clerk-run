@@ -34,8 +34,9 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, emit, gitout  # noqa: E402
+from clerk_lib import clerk, die, gitout  # noqa: E402
 import clerk_harness as hx  # noqa: E402
+from clerk_render import Out  # noqa: E402
 
 # A story is a dozen steps and as many tasks; well past that the run is circling something
 # the table cannot close, and the counter says so before the bill does.
@@ -199,102 +200,6 @@ def ledger_dir(cwd, slug):
     if not common:
         die("not a git repository")
     return Path(common) / "clerk" / "runs" / slug
-
-
-# --------------------------------------------------------------------------------
-# Output — the same walk at three volumes
-#
-# The stream is being read anyway to know when a turn ends, so what it carries is worth
-# showing: a run driven from a program is otherwise a wait with a number at the end, and
-# the thing most worth knowing about an unattended build is what it is touching. Progress
-# goes to stderr and the run's summary to stdout, so `clerk run | jq` still works.
-# --------------------------------------------------------------------------------
-
-class Out:
-    """default — a line per tool call, the step, its result and its cost
-       quiet   — steps and results only, for a cron entry with a log to write
-       raw     — the harness's own JSONL on stdout, summary last, for piping onward
-
-    Per-tool lines need the event stream reduced, which is done for Claude Code's shapes
-    only. Under a harness whose events are not reduced, `raw` still carries every line and
-    the other two levels fall back to steps and results — fewer lines, not wrong ones."""
-
-    def __init__(self, level):
-        self.level = level
-
-    def _emit_raw(self, obj):
-        print(json.dumps(obj, separators=(",", ":")), flush=True)
-
-    def step(self, text):
-        self._say(text, "step")
-
-    def result(self, text):
-        self._say(text, "result")
-
-    def note(self, text):
-        self._say(text, "note")
-
-    def reply(self, text):
-        self._say(text, "reply")
-
-    def _say(self, text, kind):
-        if self.level == "raw":
-            # A mechanical step spawns nothing, so without this the JSONL would have gaps
-            # exactly where clerk did the work itself.
-            self._emit_raw({"kind": kind, "text": text})
-            return
-        if self.level == "quiet" and kind not in ("step", "result"):
-            return
-        print(text, file=sys.stderr, flush=True)
-
-    def event(self, e):
-        if self.level == "raw":
-            if e.get("kind") == "raw":
-                print(e["line"], flush=True)
-            return
-        if e.get("kind") == "tool":
-            print(f"   \u22ef {describe(e.get('name'), e.get('input'))}",
-                  file=sys.stderr, flush=True)
-
-    def final(self, obj, code=0):
-        if self.level == "raw":
-            self._emit_raw({"kind": "summary", **obj})
-            sys.exit(code)
-        emit(obj, code)
-
-
-def _short(path):
-    try:
-        rel = os.path.relpath(str(path), os.getcwd())
-    except ValueError:
-        return str(path)
-    return rel if not rel.startswith("../..") else str(path)
-
-
-def _oneline(text, width=68):
-    line = " ".join(str(text).split())
-    return line if len(line) <= width else line[:width - 1] + "\u2026"
-
-
-def describe(name, inp):
-    """One tool call in one line. What identifies a call differs by tool — a path, a
-    command, a pattern — so the first field that says which call this was, wins."""
-    name = name or "?"
-    if not isinstance(inp, dict):
-        return name
-    path = next((inp[k] for k in ("file_path", "path", "notebook_path") if inp.get(k)), None)
-    if path:
-        size = ""
-        if "old_string" in inp or "new_string" in inp:
-            size = (f"  (+{len((inp.get('new_string') or '').splitlines())}"
-                    f" \u2212{len((inp.get('old_string') or '').splitlines())})")
-        elif "content" in inp:
-            size = f"  (+{len((inp.get('content') or '').splitlines())})"
-        return f"{name:<6} {_short(path)}{size}"
-    for key in ("command", "pattern", "query", "description", "prompt", "skill"):
-        if inp.get(key):
-            return f"{name:<6} {_oneline(inp[key])}"
-    return name
 
 
 # --------------------------------------------------------------------------------

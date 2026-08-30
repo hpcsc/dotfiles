@@ -9,13 +9,27 @@ turn's result — so this file and that function have to agree, and they live on
 apart for that reason.
 """
 
+import hashlib
 import json
 import os
+import re
 import sys
 import threading
+import time
 from pathlib import Path
 
 from clerk_lib import emit
+
+
+# Where a run in flight announces itself. A fixed path rather than the run's ledger,
+# because the one reader that matters — the status line — is re-rendered on every
+# keystroke and cannot afford the `git rev-parse` that finding a ledger costs.
+def active_dir():
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return Path(base) / "clerk" / "active"
+
+
+STALE_AFTER = 3600
 
 
 class Out:
@@ -27,9 +41,22 @@ class Out:
     only. Under a harness whose events are not reduced, `raw` still carries every line and
     the other two levels fall back to steps and results — fewer lines, not wrong ones."""
 
-    def __init__(self, level, log_path=None):
+    def __init__(self, level, log_path=None, beat=None):
         self.level = level
         self.lock = threading.Lock()
+        # (where it builds, what it is called) for a run that wants to be visible while
+        # it runs. Presence is the whole signal: the file is removed when the run ends.
+        self.beat = beat
+        self.beat_file = None
+        self._label, self._done, self._cost = "", 0, 0.0
+        if beat:
+            key = hashlib.sha1(str(beat["dir"]).encode()).hexdigest()[:12]
+            try:
+                active_dir().mkdir(parents=True, exist_ok=True)
+                self._sweep()
+                self.beat_file = active_dir() / f"{beat['slug']}-{key}"
+            except OSError:
+                self.beat_file = None
         self.log_path = str(log_path) if log_path else None
         self.log = None
         if log_path:
@@ -41,6 +68,39 @@ class Out:
                 self.log = open(log_path, "w", buffering=1)
             except OSError:
                 self.log, self.log_path = None, None
+
+    def _sweep(self):
+        """A run killed outright cannot remove its own file, so the next one to start
+        clears what is plainly finished. The reader stays a `read` and a glob."""
+        now = time.time()
+        for f in active_dir().glob("*"):
+            try:
+                if now - f.stat().st_mtime > STALE_AFTER:
+                    f.unlink()
+            except OSError:
+                pass
+
+    def _pulse(self, text, kind):
+        """What a glance is owed: what it is doing now, how much has landed, what it has
+        cost. Derived from the lines already being rendered, so neither runner has to
+        report its progress twice."""
+        if not self.beat_file:
+            return
+        if kind == "step":
+            self._label = text.split(" · ")[0][:40]
+        elif kind == "result":
+            self._done += 1
+            m = re.search(r"\$([0-9.]+)", text)
+            if m:
+                self._cost += float(m.group(1))
+        else:
+            return
+        try:
+            self.beat_file.write_text(
+                "\x1f".join([str(self.beat["dir"]), self.beat["slug"], self._label,
+                             str(self._done), f"{self._cost:.2f}", str(int(time.time()))]) + "\n")
+        except OSError:
+            pass
 
     def _write(self, text, to_stderr):
         with self.lock:
@@ -77,6 +137,7 @@ class Out:
         self._say(text, "reply")
 
     def _say(self, text, kind):
+        self._pulse(text, kind)
         if self.level == "raw":
             # A mechanical step spawns nothing, so without this the JSONL would have gaps
             # exactly where clerk did the work itself.
@@ -100,6 +161,11 @@ class Out:
                     to_stderr=self.level != "quiet")
 
     def final(self, obj, code=0):
+        if self.beat_file:
+            try:
+                self.beat_file.unlink()
+            except OSError:
+                pass
         if self.log:
             self.log.write(json.dumps(obj, indent=2) + "\n")
             self.log.close()

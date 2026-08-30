@@ -1448,7 +1448,8 @@ def audit_run(ctx, aud, o):
     if o["--quiet"] and o["--raw"]:
         die("--quiet and --raw ask for different things; pass one")
     out = Out("raw" if o["--raw"] else ("quiet" if o["--quiet"] else "default"),
-              log_path=None if o["--dry-run"] else progress_path(ctx))
+              log_path=None if o["--dry-run"] else progress_path(ctx),
+              beat=None if o["--dry-run"] else {"dir": ctx.cwd, "slug": f"audit {ctx.run.slug}"})
     out.opening()
     harness = o["--harness-cmd"] or ex.detect_harness()
     if not harness and not o["--dry-run"]:

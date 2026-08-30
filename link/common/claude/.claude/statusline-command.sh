@@ -11,7 +11,7 @@ input=$(cat)
 # Fields are joined with US, not tab: tab is an IFS whitespace character, so
 # bash would collapse the runs of it that an absent effort or rate_limit
 # produces and shift every later field one slot left.
-IFS=$'\x1f' read -r short_dir model effort used_pct pct_5h pct_7d cost <<<"$(
+IFS=$'\x1f' read -r short_dir cur_dir model effort used_pct pct_5h pct_7d cost <<<"$(
   jq -j '
     # Keep the last 2 path components (mirrors starship truncation_length=2).
     def shorten:
@@ -26,6 +26,7 @@ IFS=$'\x1f' read -r short_dir model effort used_pct pct_5h pct_7d cost <<<"$(
 
     [
         (.workspace.current_dir | shorten),
+        (.workspace.current_dir // ""),
         (.model.display_name // ""),
         (.effort.level // ""),
         (.context_window.used_percentage | pct),
@@ -50,6 +51,9 @@ COST_COLOR=$'\033[1;32m'
 GAUGE_LOW=$'\033[1;32m'
 GAUGE_MID=$'\033[1;33m'
 GAUGE_HIGH=$'\033[1;31m'
+# Its own hue because it is the only thing on this line that is neither the session nor
+# the account: work in flight that outlives the turn you are looking at.
+RUN_COLOR=$'\033[1;33m'
 SEP="${DIM} · ${RESET}"
 
 # Assigns rather than echoes: a $(...) result would fork a subshell per gauge.
@@ -63,6 +67,34 @@ set_gauge() {
     gauge="$GAUGE_LOW"
   fi
 }
+
+# A clerk run or audit round building in this directory. It is the one figure here that
+# is not about the session: a round is launched into the background because it outlives a
+# tool call, and without this the only sign it is still going is a file nobody remembers
+# to tail.
+#
+# Zero processes, which is the constraint the rest of this file is written to. The runner
+# writes a line to a fixed path — no git lookup to resolve a ledger — and presence is the
+# signal: the file is removed when the run ends, and the next run to start clears whatever
+# a killed one left behind. `read` and the glob are both builtins.
+run_info=""
+clerk_active="${XDG_CACHE_HOME:-$HOME/.cache}/clerk/active"
+if [ -d "$clerk_active" ]; then
+  for beat in "$clerk_active"/*; do
+    [ -f "$beat" ] || continue
+    IFS=$'\x1f' read -r b_dir b_slug b_label b_done b_cost b_at < "$beat" || continue
+    # Either way round: the status line reports the session's cwd, which may be the
+    # worktree the run builds in or the checkout it was launched from.
+    case "$cur_dir" in
+      "$b_dir"*) ;;
+      *) case "$b_dir" in "$cur_dir"*) ;; *) continue ;; esac ;;
+    esac
+    run_info="${SEP}${RUN_COLOR}${b_slug}${RESET}${DIM}:${RESET}${b_label}"
+    [ -n "$b_done" ] && [ "$b_done" != 0 ] && run_info="${run_info}${DIM} ${b_done}✓${RESET}"
+    [ -n "$b_cost" ] && run_info="${run_info}${DIM} \$${b_cost}${RESET}"
+    break
+  done
+fi
 
 effort_info=""
 if [ -n "$effort" ]; then
@@ -105,7 +137,7 @@ fi
 # the account is spending, which outlives the session and changes slowly, so it
 # does not pull the eye. It also separates three adjacent percentages that
 # otherwise can only be told apart by reading their labels.
-left="${DIR_COLOR}${short_dir}${RESET}${SEP}${MODEL_COLOR}${model}${RESET}${effort_info}${ctx_info}"
+left="${DIR_COLOR}${short_dir}${RESET}${SEP}${MODEL_COLOR}${model}${RESET}${effort_info}${ctx_info}${run_info}"
 
 # The green is fixed, not a gauge: it never becomes yellow or red, however
 # large the total grows. Every other figure on this line is a percentage of a

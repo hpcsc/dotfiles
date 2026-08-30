@@ -216,7 +216,7 @@ class State:
         self.model = opts["--model"]
         self.rounds = opts["rounds"]
         self.extra_tools = list(opts["--allow-tool"])
-        self.out = Out(opts["level"], log_path=opts.get("log_path"))
+        self.out = Out(opts["level"], log_path=opts.get("log_path"), beat=opts.get("beat"))
         self.waived = {}
         self.session = None             # the build phase's one conversation
         self.resume = False
@@ -647,6 +647,7 @@ def main(argv):
                                           ("review_breakdown", o["--no-review-breakdown"])) if on})
     o["rounds"] = int(o["--rounds"]) if (o["--rounds"] or "").isdigit() else DEFAULT_ROUNDS
     o["log_path"] = None if o["--dry-run"] else str(ledger_dir(cwd, slug) / "progress.log")
+    o["beat"] = None if o["--dry-run"] else {"dir": cwd, "slug": slug}
     st = State(cwd, slug, request, harness, cmd, o)
     st.out.opening()
     st.waived = waived

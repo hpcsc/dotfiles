@@ -42,6 +42,11 @@ tasks:
       - ./tests/clerk-step-test.sh
       - ./tests/clerk-run-test.sh
 
+  test:statusline:
+    desc: Run the status line fixture tests
+    cmds:
+      - ./tests/statusline-test.sh
+
   test:guidelines:
     desc: Check the live guidelines and agents against each other
     cmds:

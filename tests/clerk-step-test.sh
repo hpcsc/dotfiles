@@ -730,6 +730,44 @@ eq "and the log has them anyway" "true" \
 eq "the summary says where the log is, for a reader who missed the first line" "$LOG" \
    "$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --restart --quiet 2>/dev/null | jq -r '.progress')"
 
+# --------------------------------------------------------------------------------
+printf '\nclerk watch — the same log drawn as groups and rows, not as a scroll\n'
+
+# A hand-written log, so a half-finished round can be rendered without waiting for one.
+WLOG=$(cd "$(mktemp -d)" && pwd -P)/progress.log
+cat > "$WLOG" <<'LOG'
+scope · round 2 · 1 agent, one at a time
+  · scope started
+  ✓ scope                12 file(s), Go               8s · $0.31
+review · round 2 · 3 agents, concurrently  (1 held back)
+  · semantic:Go started
+  · tests:Go started
+  · guidelines:Go started
+   ⋯ semantic:Go        Read   internal/inbox/service.go
+  ✓ guidelines:Go        pass                         64s · $0.28
+   ⋯ tests:Go           Bash   task test:unit
+LOG
+W=$(run "$R" watch "$WLOG" --json)
+# Rows keep the order they were first seen in, so a lens that finished early does not
+# jump to the top and move the ones still running out from under the eye.
+eq "a finished agent and the ones still out are told apart, in the order they started" \
+   "semantic:Go=run|tests:Go=run|guidelines:Go=ok" \
+   "$(printf '%s' "$W" | jq -r '[.groups[1].rows[] | .name + "=" + .state] | join("|")')"
+eq "the row that is still out says what it is touching" "true" \
+   "$(printf '%s' "$W" | jq -r '[.groups[1].rows[] | select(.name=="tests:Go") | .doing] | first | contains("task test:unit")')"
+eq "a round still in flight is not reported finished" "false" \
+   "$(printf '%s' "$W" | jq -r '.finished | tostring')"
+eq "every phase is a group, in the order it ran" "scope|review" \
+   "$(printf '%s' "$W" | jq -r '[.groups[] | .title | split(" ")[0]] | join("|")')"
+printf 'round 2 done · $0.59\n{"ran": true}\n' >> "$WLOG"
+eq "the closing summary marks it finished" "true" \
+   "$(run "$R" watch "$WLOG" --json | jq -r '.finished | tostring')"
+eq "--once renders and exits rather than following" "0" \
+   "$(run "$R" watch "$WLOG" --once >/dev/null 2>&1; printf '%s' $?)"
+eq "with no log and no run, it says so rather than hanging" "3" \
+   "$(cd "$(mktemp -d)" && git init -q . && "$CLERK" watch >/dev/null 2>&1; printf '%s' $?)"
+rm -rf "$(dirname "$WLOG")"
+
 unset CLERK_AUDIT_PROMPTS
 
 # --------------------------------------------------------------------------------

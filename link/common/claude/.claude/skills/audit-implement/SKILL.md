@@ -77,7 +77,8 @@ the phase it was in half-recorded.
 ledger that gets every phase, every agent and every tool call whatever the console is set
 to. Put that path in your reply so the user can `tail -f` it rather than hunt for the temp
 file the background launch happened to pick. `clerk audit status` prints it too, before a
-round is even launched.
+round is even launched, and `clerk watch` draws it as phases and agents rather than a
+scroll — a split pane beside the session is the place for it.
 
 A round already in flight for this branch is continued rather than restarted; pass
 `--restart` to throw it away and begin again.

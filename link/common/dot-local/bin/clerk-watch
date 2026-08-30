@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""clerk watch — a run's progress, redrawn as it arrives.
+
+`clerk run` and `clerk audit run` both write what they are doing to `progress.log` in the
+run's ledger, and both are launched into the background because they outlive a tool call.
+That leaves the file as the only way to see where one is up to, and `tail -f` shows it as
+a scroll: a phase's agents interleave, a lens that finished scrolls away, and the totals
+are wherever they last appeared.
+
+This reads the same file and draws it as what it is — groups with rows under them, each
+row carrying its state and what it is touching. Nothing here talks to the runner: it is a
+reader over a file, so watching costs the run nothing and stopping it interrupts nothing.
+
+The parse is deliberately shallow. Indentation says the shape — a group at the margin, a
+row two spaces in, an activity three — so a phase table this does not know about still
+renders, and a format change costs a wrong label rather than an empty screen.
+"""
+
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import clerk, die, emit, gitout  # noqa: E402
+
+GROUP = re.compile(r"^(?! )(?P<title>.+?)\s*$")
+STARTED = re.compile(r"^  · (?P<row>\S+) started\s*$")
+NOTE = re.compile(r"^  · (?P<text>.+?)\s*$")
+ACTIVITY = re.compile(r"^   ⋯ (?:(?P<row>\S+)\s{2,})?(?P<what>.+?)\s*$")
+RESULT = re.compile(r"^  (?P<mark>[✓✗]) (?P<rest>.+?)\s*$")
+LABELLED = re.compile(r"^(?P<row>\S+)\s{2,}(?P<detail>.+)$")
+
+DIM, BOLD, RESET = "\033[2m", "\033[1m", "\033[0m"
+GREEN, RED, CYAN = "\033[32m", "\033[31m", "\033[36m"
+
+
+class Group:
+    def __init__(self, title):
+        self.title = title
+        self.rows = {}      # row -> {"state", "detail", "doing"}
+        self.order = []
+        self.lines = []     # anything that belongs to the group rather than a row
+
+    def row(self, name):
+        if name not in self.rows:
+            self.rows[name] = {"state": "run", "detail": "", "doing": ""}
+            self.order.append(name)
+        return self.rows[name]
+
+
+def parse(lines):
+    """(groups, tail) — the tail is whatever came after the last group, which is where a
+    runner's closing JSON lands."""
+    groups, tail = [], []
+    for raw in lines:
+        line = raw.rstrip("\n")
+        if not line.strip():
+            continue
+        if line.startswith("{") or (groups is not None and tail):
+            tail.append(line)
+            continue
+        m = STARTED.match(line)
+        if m and groups:
+            groups[-1].row(m.group("row"))
+            continue
+        m = ACTIVITY.match(line)
+        if m and groups:
+            g = groups[-1]
+            if m.group("row"):
+                g.row(m.group("row"))["doing"] = m.group("what")
+            elif g.order:
+                g.rows[g.order[-1]]["doing"] = m.group("what")
+            else:
+                g.lines.append(m.group("what"))
+            continue
+        m = RESULT.match(line)
+        if m and groups:
+            g, rest = groups[-1], m.group("rest")
+            lm = LABELLED.match(rest)
+            name = lm.group("row") if lm else rest
+            r = g.row(name)
+            r["state"] = "ok" if m.group("mark") == "✓" else "bad"
+            r["detail"] = lm.group("detail") if lm else ""
+            r["doing"] = ""
+            continue
+        m = NOTE.match(line)
+        if m and groups:
+            groups[-1].lines.append(m.group("text"))
+            continue
+        if GROUP.match(line):
+            groups.append(Group(line.strip()))
+    return groups, tail
+
+
+def render(groups, tail, started, path, width):
+    spent = 0.0
+    for g in groups:
+        for r in g.rows.values():
+            m = re.search(r"\$([0-9.]+)", r["detail"])
+            if m:
+                spent += float(m.group(1))
+    running = sum(1 for g in groups for r in g.rows.values() if r["state"] == "run")
+    done = sum(1 for g in groups for r in g.rows.values() if r["state"] != "run")
+    el = int(time.time() - started)
+    head = (f"{BOLD}{Path(path).parent.name}{RESET}  {DIM}·{RESET} {done} done"
+            f"{f', {running} running' if running else ''}"
+            f"  {DIM}·{RESET} {el // 60}m{el % 60:02d}s  {DIM}·{RESET} ${spent:.2f}")
+    out = [head, ""]
+    for g in groups:
+        out.append(f"  {CYAN}{g.title[:width - 2]}{RESET}")
+        for line in g.lines[-2:]:
+            out.append(f"    {DIM}{line[:width - 4]}{RESET}")
+        for name in g.order:
+            r = g.rows[name]
+            if r["state"] == "run":
+                mark, colour, detail = "⋯", DIM, r["doing"]
+            else:
+                mark = "✓" if r["state"] == "ok" else "✗"
+                colour = GREEN if r["state"] == "ok" else RED
+                detail = r["detail"]
+            out.append(f"    {colour}{mark}{RESET} {name:<20} {DIM}{detail[:max(0, width - 28)]}{RESET}")
+        out.append("")
+    if tail:
+        out.append(f"  {DIM}finished — {len(tail)} line(s) of summary in the log{RESET}")
+    return out
+
+
+def resolve(explicit):
+    """The log this call watches: the one named, else the open run's, else the branch's
+    ad-hoc audit. Read-only — watching never opens a ledger that was not there."""
+    if explicit:
+        return explicit
+    cwd = os.getcwd()
+    common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
+    if not common:
+        die("not a git repository")
+    rc, prep, _ = clerk("prepare", cwd=cwd)
+    slug = (prep or {}).get("run")
+    branch = (prep or {}).get("branch")
+    for p in ([Path(common) / "clerk" / "runs" / slug / "progress.log"] if slug else []) + \
+             ([Path(common) / "clerk" / "audits" / str(branch).replace("/", "-") / "progress.log"]
+              if branch else []):
+        if p.exists():
+            return str(p)
+    die("no progress log here — `clerk audit status` prints the path a round will write to, "
+        "and one appears when a run or a round starts", 3)
+
+
+def main(argv):
+    once = "--once" in argv
+    as_json = "--json" in argv
+    rest = [a for a in argv if not a.startswith("-")]
+    if "-h" in argv or "--help" in argv:
+        print("usage: clerk watch [<progress.log>] [--once] [--json]\n\n"
+              "Draws a run's progress as it arrives. --once renders the current state and\n"
+              "exits; --json reports it as data instead of a screen.")
+        return
+    path = resolve(rest[0] if rest else None)
+    # When the log was opened, not when it was last written to: mtime is the last line,
+    # which would report a round that has been running for four minutes as new.
+    st = os.stat(path)
+    started = getattr(st, "st_birthtime", st.st_mtime)
+
+    def snapshot():
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return parse(fh.readlines())
+
+    if as_json:
+        groups, tail = snapshot()
+        emit({"log": path, "finished": bool(tail),
+              "groups": [{"title": g.title,
+                          "rows": [{"name": n, **g.rows[n]} for n in g.order]} for g in groups]})
+    tty = sys.stdout.isatty()
+    width = (os.get_terminal_size().columns if tty else 100)
+    seen = -1
+    while True:
+        groups, tail = snapshot()
+        size = os.path.getsize(path)
+        if size != seen:
+            seen = size
+            frame = render(groups, tail, started, path, width)
+            if tty and not once:
+                sys.stdout.write("\033[H\033[2J" + "\n".join(frame) + "\n")
+            else:
+                sys.stdout.write("\n".join(frame) + "\n")
+            sys.stdout.flush()
+        if once or tail:
+            return
+        time.sleep(0.3)
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except KeyboardInterrupt:
+        sys.stdout.write("\n")

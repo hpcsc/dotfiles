@@ -12,6 +12,8 @@ apart for that reason.
 import json
 import os
 import sys
+import threading
+from pathlib import Path
 
 from clerk_lib import emit
 
@@ -25,8 +27,39 @@ class Out:
     only. Under a harness whose events are not reduced, `raw` still carries every line and
     the other two levels fall back to steps and results — fewer lines, not wrong ones."""
 
-    def __init__(self, level):
+    def __init__(self, level, log_path=None):
         self.level = level
+        self.lock = threading.Lock()
+        self.log_path = str(log_path) if log_path else None
+        self.log = None
+        if log_path:
+            # Full detail whatever the terminal is set to: a cron entry wants a quiet
+            # console and a complete file, and the file is the only way to watch a
+            # twenty-minute round that was launched into the background.
+            try:
+                Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+                self.log = open(log_path, "w", buffering=1)
+            except OSError:
+                self.log, self.log_path = None, None
+
+    def _write(self, text, to_stderr):
+        with self.lock:
+            if to_stderr:
+                print(text, file=sys.stderr, flush=True)
+            if self.log:
+                self.log.write(text + "\n")
+
+    @property
+    def wants_events(self):
+        """Whether a turn is worth streaming. A quiet terminal still wants them when a
+        log is being written — quiet console, complete file is the point of the log."""
+        return self.level != "quiet" or self.log is not None
+
+    def opening(self):
+        """Where to watch, said before anything happens, so it can be tailed from the
+        moment the command is launched rather than found afterwards in a transcript."""
+        if self.log_path and self.level != "raw":
+            print(f"progress: {self.log_path}", file=sys.stderr, flush=True)
 
     def _emit_raw(self, obj):
         print(json.dumps(obj, separators=(",", ":")), flush=True)
@@ -48,10 +81,10 @@ class Out:
             # A mechanical step spawns nothing, so without this the JSONL would have gaps
             # exactly where clerk did the work itself.
             self._emit_raw({"kind": kind, "text": text})
+            if self.log:
+                self._write(text, to_stderr=False)
             return
-        if self.level == "quiet" and kind not in ("step", "result"):
-            return
-        print(text, file=sys.stderr, flush=True)
+        self._write(text, to_stderr=not (self.level == "quiet" and kind not in ("step", "result")))
 
     def event(self, e, label=None):
         """One thing an agent did. `label` names which agent, for a phase running
@@ -60,13 +93,18 @@ class Out:
             if e.get("kind") == "raw":
                 print(e["line"], flush=True)
             return
-        if self.level == "quiet" or e.get("kind") != "tool":
+        if e.get("kind") != "tool":
             return
         who = f"{label:<18} " if label else ""
-        print(f"   \u22ef {who}{describe(e.get('name'), e.get('input'))}",
-              file=sys.stderr, flush=True)
+        self._write(f"   \u22ef {who}{describe(e.get('name'), e.get('input'))}",
+                    to_stderr=self.level != "quiet")
 
     def final(self, obj, code=0):
+        if self.log:
+            self.log.write(json.dumps(obj, indent=2) + "\n")
+            self.log.close()
+        if self.log_path:
+            obj = {**obj, "progress": self.log_path}
         if self.level == "raw":
             self._emit_raw({"kind": "summary", **obj})
             sys.exit(code)

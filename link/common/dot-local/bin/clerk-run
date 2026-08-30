@@ -216,7 +216,7 @@ class State:
         self.model = opts["--model"]
         self.rounds = opts["rounds"]
         self.extra_tools = list(opts["--allow-tool"])
-        self.out = Out(opts["level"])
+        self.out = Out(opts["level"], log_path=opts.get("log_path"))
         self.waived = {}
         self.session = None             # the build phase's one conversation
         self.resume = False
@@ -430,7 +430,7 @@ def one_turn(st, row, note):
                      session=(st.session if build else None),
                      resume=(st.resume if build else False),
                      attempts=2, log=st.out.note,
-                     on_event=(None if st.out.level == "quiet" else st.out.event))
+                     on_event=(st.out.event if st.out.wants_events else None))
     st.turns += 1
     st.spent += float(res.get("cost_usd") or 0)
     if build:
@@ -646,7 +646,9 @@ def main(argv):
                          {k for k, on in (("gears", o["--no-gears"]),
                                           ("review_breakdown", o["--no-review-breakdown"])) if on})
     o["rounds"] = int(o["--rounds"]) if (o["--rounds"] or "").isdigit() else DEFAULT_ROUNDS
+    o["log_path"] = None if o["--dry-run"] else str(ledger_dir(cwd, slug) / "progress.log")
     st = State(cwd, slug, request, harness, cmd, o)
+    st.out.opening()
     st.waived = waived
     st.load()
     out = walk(st, int(o["--max-steps"]) if (o["--max-steps"] or "").isdigit() else MAX_STEPS,

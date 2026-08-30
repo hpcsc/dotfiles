@@ -634,8 +634,18 @@ eq "with no harness on PATH a real run refuses rather than hanging" "3" \
 FAKE=$(cd "$(mktemp -d)" && pwd -P)
 cat > "$FAKE/claude" <<'STUB'
 #!/usr/bin/env bash
+ARGS="$*"
 p=$(cat)
-emit() { printf '{"is_error":false,"total_cost_usd":0.01,"result":%s}\n' "$(jq -Rs . <<< "$1")"; }
+# Answers in whichever format it was asked for, so the streamed path — and the tool
+# lines the progress log is made of — are exercised rather than assumed.
+emit() {
+  case "$ARGS" in
+    *stream-json*)
+      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"a.go"}}]}}\n'
+      printf '{"type":"result","subtype":"success","is_error":false,"result":%s,"total_cost_usd":0.01}\n' "$(jq -Rs . <<< "$1")" ;;
+    *) printf '{"is_error":false,"total_cost_usd":0.01,"result":%s}\n' "$(jq -Rs . <<< "$1")" ;;
+  esac
+}
 case "$p" in
   *"FRAGMENT scope-open"*)
     emit '{"base":"abc","head":"def","summary":"s","files":["a.go","b.go","c.go"],"languages":["Go"],"by_language":[{"language":"Go","files":["a.go","b.go","c.go"]}],"signals":{"tests_changed":false,"concurrency":false,"performance":false},"has_code":true}' ;;
@@ -703,6 +713,22 @@ eq "and the round's summary is its last line" "summary" \
    "$(printf '%s\n' "$RAW" | tail -1 | jq -r '.kind')"
 eq "--quiet and --raw together are refused" "2" \
    "$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --quiet --raw >/dev/null 2>&1; printf '%s' $?)"
+
+# A round launched into the background is watchable only if the path is knowable before
+# it starts. Quiet console, complete file: that is what the log is for.
+LOG=$(run "$RA" audit status | jq -r '.progress')
+eq "the path to watch is known before a round is launched" "true" \
+   "$(printf '%s' "$LOG" | grep -q 'clerk/runs/.*/progress.log' && echo true || echo false)"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+QERR=$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --restart --quiet 2>&1 >/dev/null)
+eq "it is announced on the first line, before anything is spawned" "true" \
+   "$(printf '%s\n' "$QERR" | head -1 | grep -q '^progress: ' && echo true || echo false)"
+eq "--quiet keeps the tool calls out of the terminal" "0" \
+   "$(printf '%s\n' "$QERR" | grep -c '⋯' | tr -d ' ')"
+eq "and the log has them anyway" "true" \
+   "$([ "$(grep -c '⋯' "$LOG" | tr -d ' ')" -gt 0 ] && echo true || echo false)"
+eq "the summary says where the log is, for a reader who missed the first line" "$LOG" \
+   "$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --restart --quiet 2>/dev/null | jq -r '.progress')"
 
 unset CLERK_AUDIT_PROMPTS
 

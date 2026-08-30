@@ -640,6 +640,9 @@ case "$p" in
   *"FRAGMENT scope-open"*)
     emit '{"base":"abc","head":"def","summary":"s","files":["a.go","b.go","c.go"],"languages":["Go"],"by_language":[{"language":"Go","files":["a.go","b.go","c.go"]}],"signals":{"tests_changed":false,"concurrency":false,"performance":false},"has_code":true}' ;;
   *"FRAGMENT lens-semantic"*)
+    # Slower than the lens submitted after it, which is the only way a fixture can show
+    # that a phase reports on completion rather than in the order it queued.
+    sleep 1
     emit 'Here you go:
 ```json
 {"verdict":"fail","findings":[{"id":"g1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"}],"note":null}
@@ -666,6 +669,40 @@ eq "one finding needs no dedupe pass, so none is paid for" "false" \
 # named, not quietly drop out of a panel the reader thinks ran whole.
 eq "a lens that never returns usable JSON is reported as failed" "review:guidelines:Go" \
    "$(printf '%s' "$RR" | jq -r '[.phases[] | select(.phase=="review") | .failed[]] | join(",")')"
+
+# --------------------------------------------------------------------------------
+printf '\nthe audit as it happens — a round is watchable, not a wait with a number\n'
+
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+PROG=$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --restart 2>&1 >/dev/null)
+eq "each phase says how many agents and whether they run at once" "true" \
+   "$(printf '%s\n' "$PROG" | grep -q 'review · round 1 · .* concurrently' && echo true || echo false)"
+eq "and a held-back lens is counted rather than left unsaid" "true" \
+   "$(printf '%s\n' "$PROG" | grep -q 'held back' && echo true || echo false)"
+eq "every agent reports what it came back with, and what it cost" "true" \
+   "$(printf '%s\n' "$PROG" | grep -qE '✓ semantic:Go .*finding.*\$0\.' && echo true || echo false)"
+eq "an agent that never returned usable JSON is marked, not dropped" "true" \
+   "$(printf '%s\n' "$PROG" | grep -q '✗ guidelines:Go' && echo true || echo false)"
+
+# The point of `as_completed`: a reader sees the panel drain rather than nothing for as
+# long as its slowest member. semantic is queued first and sleeps; guidelines is queued
+# second and must still be reported first.
+eq "a concurrent phase reports each agent as it lands, not as it queued" "true" \
+   "$(printf '%s\n' "$PROG" | awk '/[✓✗] guidelines:Go/{g=NR} /[✓✗] semantic:Go/{s=NR} END{print (g && s && g < s) ? "true" : "false"}')"
+
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+Q=$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --restart --quiet 2>&1 >/dev/null)
+eq "--quiet keeps the phases and the results and drops the tool calls" "0" \
+   "$(printf '%s\n' "$Q" | grep -c '⋯' | tr -d ' ')"
+
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+RAW=$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --restart --raw 2>/dev/null)
+eq "--raw is one JSON value per line, so it pipes" "true" \
+   "$(printf '%s\n' "$RAW" | jq -e . >/dev/null 2>&1 && echo true || echo false)"
+eq "and the round's summary is its last line" "summary" \
+   "$(printf '%s\n' "$RAW" | tail -1 | jq -r '.kind')"
+eq "--quiet and --raw together are refused" "2" \
+   "$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --quiet --raw >/dev/null 2>&1; printf '%s' $?)"
 
 unset CLERK_AUDIT_PROMPTS
 

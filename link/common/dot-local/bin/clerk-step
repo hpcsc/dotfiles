@@ -107,6 +107,11 @@ class Run:
         tmp.write_text(json.dumps(obj, indent=2) + "\n")
         tmp.replace(self.dir / name)
 
+    def append(self, name, obj):
+        self.dir.mkdir(parents=True, exist_ok=True)
+        with (self.dir / name).open("a") as fh:
+            fh.write(json.dumps(obj) + "\n")
+
     @property
     def meta(self):
         return self.read("run.json", {})
@@ -687,6 +692,17 @@ def row_verify_run(ctx):
         die(f"clerk verify failed: {err}")
     clean = bool(data.get("clean"))
     not_checked = data.get("not_checked", [])
+    if not ctx.read_only:
+        # Which check fired, every time the step asks. The event log records that `clerk
+        # verify` ran and what it exited, and answering "is this step worth its blocks"
+        # needs the rules — twelve runs of ledgers could say it blocked 53 times out of 60
+        # and not say what any of them was.
+        findings = data.get("findings") or []
+        ctx.run.append("verify-log.jsonl", {
+            "at": now(), "code_tree": ctx.head_ct, "clean": clean,
+            "blocks": sorted({f.get("check") for f in findings if f.get("severity") == "block"}),
+            "warns": sorted({f.get("check") for f in findings if f.get("severity") != "block"}),
+            "not_checked": len(not_checked)})
     residue = ctx.run.done.get("verify-residue")
     residue_ok = bool(residue) and residue.get("code_tree") == ctx.head_ct
     if clean and (not not_checked or residue_ok):

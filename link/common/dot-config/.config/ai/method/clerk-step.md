@@ -92,6 +92,8 @@ The ledger lives in the common git dir, not in the git dir of the worktree:
   audit.json        {rounds_planned, rounds: [{n, code_tree, findings, refuted, coverage_gaps}],
                      accepted: {code_tree, reason}}
   match-request.json {code_tree, mismatches, resolved}
+  verify-log.jsonl  one line each time the verify-run row ran the check:
+                    {at, code_tree, clean, blocks, warns, not_checked}
   land.json         {archived, integrate, integrate_source, landed}
 ```
 

@@ -297,6 +297,17 @@ eq "clean with residue holds the step: not_checked is non-empty" "verify-run|tru
 run "$WT" step --done verify-residue >/dev/null
 eq "--done verify-residue opens it" "land" "$(run "$WT" step | field .step)"
 
+# What fired, kept per call. The event log says `clerk verify` ran and what it exited,
+# which is not enough to answer whether the step earns its blocks.
+VLOG="$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/w1/verify-log.jsonl"
+eq "each run of the check is recorded with the rules that fired" "true" \
+   "$([ -s "$VLOG" ] && echo true || echo false)"
+eq "and it names blocks and warns apart" "true" \
+   "$(tail -1 "$VLOG" | jq -r 'has("blocks") and has("warns") and has("not_checked")')"
+BEFORE=$(wc -l < "$VLOG" | tr -d ' ')
+run "$WT" step --status >/dev/null
+eq "--status looks without recording, here as everywhere" "$BEFORE" "$(wc -l < "$VLOG" | tr -d ' ')"
+
 # --------------------------------------------------------------------------------
 printf '\nland — archive, then integrate only when asked; step follows the run to the main checkout\n'
 

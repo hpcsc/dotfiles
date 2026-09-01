@@ -56,7 +56,7 @@ The flags that shape a round:
 | `--depth deep` | three refuters on every high or medium claim, majority taken |
 | `--fixed-file <p>` | re-auditing after fixes: keeps every lens that owns one of these |
 | `--lens <key>` | narrow the panel by hand — only when every fix was a quality fix |
-| `--recheck <json>` | the findings you fixed, so they are re-asked |
+| `--recheck <json>` | the findings you fixed, so they are re-asked — whole objects, never bare ids: `[{"id": …, "claim": …, "note": "the fix you are reporting"}]` |
 | `--model <m>` | a different model for every agent in the round |
 | `--dry-run` | the panel it would spawn, and what it would cost, spawning nothing |
 | `--quiet` / `--raw` | phases and results only, or the raw event stream for a log |

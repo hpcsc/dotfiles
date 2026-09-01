@@ -1234,6 +1234,28 @@ def live_of(aud):
     return aud.get("live")
 
 
+def parse_recheck(raw):
+    """The findings a re-audit re-checks, which the panel renders one row each as
+    `[id] claim`. A bare list of ids is valid JSON, so without this it parses here and
+    dies inside prompt building instead — an AttributeError on `'str' object has no
+    attribute 'get'`, raised after the scope phase has already been spawned and paid for.
+    Checked at parse time, where the message can still say what the shape is."""
+    if not raw:
+        return []
+    try:
+        found = json.loads(raw)
+    except json.JSONDecodeError as e:
+        die(f"--recheck needs a JSON array of findings, and this will not parse as JSON: {e}")
+    if not isinstance(found, list) or any(not isinstance(f, dict) for f in found):
+        die('--recheck needs a JSON array of finding objects — [{"id": ..., "claim": ..., '
+            '"note": "the fix you are reporting"}, ...]. A list of bare ids carries nothing '
+            'for the lens to check the tree against.')
+    thin = [f.get("id") or "?" for f in found if not (f.get("id") and f.get("claim"))]
+    if thin:
+        die(f'every --recheck finding needs both "id" and "claim"; missing on: {", ".join(thin)}')
+    return found
+
+
 def audit_begin(ctx, aud, o):
     if live_of(aud) and not o["--restart"]:
         lv = aud["live"]
@@ -1248,7 +1270,7 @@ def audit_begin(ctx, aud, o):
         "depth": o["--depth"] or "standard",
         "fixed_files": o["--fixed-file"] or [],
         "lenses": o["--lens"] or [],
-        "recheck": json.loads(o["--recheck"]) if o["--recheck"] else [],
+        "recheck": parse_recheck(o["--recheck"]),
         "test_commands": json.loads(o["--test-commands"]) if o["--test-commands"] else
                          (ctx.prepare.get("test_commands") or {}),
     }

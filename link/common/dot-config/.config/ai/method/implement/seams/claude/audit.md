@@ -2,4 +2,4 @@ Launch it with `clerk audit run` — it holds the phase order, spawns each lens 
 
 Run it with `run_in_background: true`. A round takes fifteen to twenty-five minutes, well past what a foreground Bash call is allowed, and a killed round leaves the phase it was in half-recorded.
 
-Its first line is `progress: <path>` — a file in the run's ledger carrying every phase, agent and tool call. **Put that path in your reply**, so the round can be watched with `tail -f` instead of from a temp file nobody can find, or drawn as phases and agents with `clerk watch`.
+Its first two lines are `progress: <path>` — a file in the run's ledger carrying every phase, agent and tool call — and `watch: clerk watch <path>`, the command that draws that file as phases and agents and redraws it as they land. **Copy the `watch:` line into your reply as a fenced command**, so the round can be followed from a split pane rather than from a temp file nobody can find.

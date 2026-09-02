@@ -723,6 +723,10 @@ run "$RA" audit begin --base main --restart >/dev/null 2>&1
 QERR=$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --restart --quiet 2>&1 >/dev/null)
 eq "it is announced on the first line, before anything is spawned" "true" \
    "$(printf '%s\n' "$QERR" | head -1 | grep -q '^progress: ' && echo true || echo false)"
+eq "and the second line is the command that draws it, ready to paste" "watch: clerk watch $LOG" \
+   "$(printf '%s\n' "$QERR" | sed -n 2p)"
+eq "audit status names the same command before a round is launched" "clerk watch $LOG" \
+   "$(run "$RA" audit status | jq -r '.watch')"
 eq "--quiet keeps the tool calls out of the terminal" "0" \
    "$(printf '%s\n' "$QERR" | grep -c '⋯' | tr -d ' ')"
 eq "and the log has them anyway" "true" \

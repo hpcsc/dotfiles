@@ -120,6 +120,7 @@ class Out:
         moment the command is launched rather than found afterwards in a transcript."""
         if self.log_path and self.level != "raw":
             print(f"progress: {self.log_path}", file=sys.stderr, flush=True)
+            print(f"watch: clerk watch {self.log_path}", file=sys.stderr, flush=True)
 
     def _emit_raw(self, obj):
         print(json.dumps(obj, separators=(",", ":")), flush=True)

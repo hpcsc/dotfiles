@@ -1153,7 +1153,7 @@ def progress_path(ctx):
 
 def audit_status(ctx, aud, o):
     p = progress_path(ctx)
-    return {**aud, "progress": p, "watch": f"tail -f {p}"}
+    return {**aud, "progress": p, "watch": f"clerk watch {p}"}
 
 
 def audit_plan(ctx, aud, o):

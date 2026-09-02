@@ -34,18 +34,10 @@ DEFAULT_PERMISSION_MODE = "acceptEdits"
 # Claude Code takes a session id the caller chose; opencode names its own and hands it
 # back, so the first turn of a conversation there cannot be told what to call it.
 NAMES_OWN_SESSIONS = {"opencode"}
-# Whose event stream this module knows how to reduce into tool calls and text. opencode's
-# `--format json` is an event stream too, but its shape is documented rather than
-# exercised here, so its lines pass through raw and its reply is read from the envelope.
-REDUCIBLE = {"claude"}
 
 
 def names_own_sessions(harness):
     return harness in NAMES_OWN_SESSIONS
-
-
-def reducible(harness):
-    return harness in REDUCIBLE
 
 # What the machine can actually run at once. A literal count is wrong in both directions
 # — too many on a laptop, far too few on a build box — so it is derived the way Claude
@@ -107,14 +99,15 @@ def harness_cmd():
     return None
 
 
-def _argv(harness, job, model=None, *, session=None, resume=False, stream=False):
+def _argv(harness, job, model=None, *, session=None, resume=False):
     """The one function that knows what a harness is called and what its flags are.
 
-    `job` may carry `agent`, `allowed_tools` and `permission_mode`; `session` continues a
-    conversation, with `resume` saying whether that id already exists. Claude scopes tools
-    per invocation and opencode does not — there it is configuration, written by the
-    caller and pointed at through the environment — so `allowed_tools` reaches only one of
-    the two branches. Everything else maps across.
+    `job` may carry `agent` and `allowed_tools`; `session` continues a conversation, with
+    `resume` saying whether that id already exists. Claude scopes tools per invocation and
+    opencode does not — there it is configuration, written by the caller and pointed at
+    through the environment — so `allowed_tools` reaches only one of the two branches.
+    Everything else maps across. Claude's turn is always read as a stream: the last
+    `result` event is the envelope, so nothing downstream knows the difference.
     """
     if harness == "opencode":
         av = list(OPENCODE)
@@ -129,12 +122,11 @@ def _argv(harness, job, model=None, *, session=None, resume=False, stream=False)
             # in the reply. Not `--fork`: forking would keep each task separately
             # inspectable at the cost of the shared context that is the point.
             av += ["--session", session]
-        if (job.get("permission_mode") or DEFAULT_PERMISSION_MODE) != "manual":
-            av += ["--auto"]
+        av += ["--auto"]
         return av
     av = list(CLAUDE)
-    av += ["--output-format", "stream-json", "--verbose"] if stream else ["--output-format", "json"]
-    av += ["--permission-mode", job.get("permission_mode") or DEFAULT_PERMISSION_MODE]
+    av += ["--output-format", "stream-json", "--verbose"]
+    av += ["--permission-mode", DEFAULT_PERMISSION_MODE]
     if job.get("agent"):
         av += ["--agent", job["agent"]]
     if model:
@@ -321,8 +313,7 @@ def run_job(job, schema, *, harness, cwd, model=None, log=None, env=None,
             session=None, resume=False, on_event=None, attempts=MAX_ATTEMPTS):
     """One agent, retried while its reply does not parse or does not fit the schema.
 
-    With `on_event` the turn is streamed and every tool call reaches the caller as it
-    happens; without it the whole reply arrives at the end. `session` continues a
+    With `on_event` every tool call reaches the caller as it happens. `session` continues a
     conversation across calls — a separate process per turn against one id, because a turn
     written into a held-open stream while the model is mid-turn is discarded silently, and
     a run that skipped a task that way would be indistinguishable from one that built it.
@@ -344,23 +335,8 @@ def run_job(job, schema, *, harness, cwd, model=None, log=None, env=None,
             ask = prompt if complaint is None else (
                 prompt + f"\n\nYour previous reply could not be used: {complaint}. "
                          f"Return only the JSON, matching the schema exactly.")
-            argv = _argv(harness, job, model, session=sid, resume=resume, stream=bool(on_event))
-            if on_event:
-                text, cost, got, err = _run_streamed(harness, argv, ask, work, on_event,
-                                                     TIMEOUT_S, env)
-            else:
-                proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=subprocess.DEVNULL, text=True, cwd=work, env=env)
-                _track(proc)
-                try:
-                    stdout, _ = proc.communicate(ask, timeout=TIMEOUT_S)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    return {"id": job["id"], "ok": False, "cost_usd": spent, "session_id": sid,
-                            "error": f"the agent did not finish within {TIMEOUT_S}s"}
-                finally:
-                    _untrack(proc)
-                text, cost, got, err = _envelope(harness, stdout)
+            argv = _argv(harness, job, model, session=sid, resume=resume)
+            text, cost, got, err = _run_streamed(harness, argv, ask, work, on_event, TIMEOUT_S, env)
             spent += cost
             # A retry continues the conversation the first attempt opened, so what it is
             # told went wrong is said to the session that got it wrong.
@@ -413,7 +389,7 @@ def _remove_worktree(repo, path):
     shutil.rmtree(path, ignore_errors=True)
 
 
-def run_batch(jobs, schemas, *, harness, cwd, concurrent=True, workers=None, model=None,
+def run_batch(jobs, schemas, *, harness, cwd, concurrent=True, model=None,
               log=None, on_start=None, on_event=None, on_done=None):
     """A phase's jobs, concurrently when the phase says they are independent.
 
@@ -435,7 +411,7 @@ def run_batch(jobs, schemas, *, harness, cwd, concurrent=True, workers=None, mod
         return r
     if not concurrent or len(jobs) == 1:
         return [one(j) for j in jobs]
-    n = min(workers or DEFAULT_WORKERS, len(jobs))
+    n = min(DEFAULT_WORKERS, len(jobs))
     with ThreadPoolExecutor(max_workers=n) as pool:
         # as_completed, not pool.map: map yields in submission order, so a lens that
         # finished in twenty seconds stays unreported behind one still running at three

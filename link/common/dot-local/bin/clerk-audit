@@ -252,9 +252,6 @@ def audit_accept(ctx, aud, o):
 # and prose on the other and nothing checked they agreed.
 # ---------------------------------------------------------------------------------
 
-PHASES = ("scope", "review", "dedupe", "refute", "report", "done")
-
-
 def parse_recheck(raw):
     """The findings a re-audit re-checks, which the panel renders one row each as
     `[id] claim`. A bare list of ids is valid JSON, so without this it parses here and

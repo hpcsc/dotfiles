@@ -426,6 +426,8 @@ eq "the last round upheld a high finding, so another round begins" "true" \
    "$(run "$WT" audit begin --base main --restart | jq -r '.began')"
 eq "and the plan grows to hold the round the gate let through" "3" \
    "$(run "$WT" audit status | jq -r '.rounds_planned')"
+eq "--rounds on the launch records the plan, as the method says it does" "4" \
+   "$(run "$WT" audit begin --base main --restart --rounds 4 >/dev/null; run "$WT" audit status | jq -r '.rounds_planned')"
 eq "declining that finding leaves nothing to earn a round, and it is refused" "3" \
    "$(rc "$WT" audit begin --base main --restart --recheck "$DECL")"
 eq "with the reason saying what would earn one" "true" \

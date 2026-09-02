@@ -1412,6 +1412,10 @@ def audit_begin(ctx, aud, o):
               "reason": "a round is already in flight here — continue it with `clerk audit next`, "
                         "or start it over with --restart"}, 3)
     recheck = parse_recheck(o["--recheck"])
+    if o["--rounds"]:
+        if not o["--rounds"].isdigit():
+            die("--rounds needs a number")
+        aud["rounds_planned"] = int(o["--rounds"])
     last = (aud.get("rounds") or [None])[-1]
     if last and last.get("findings_list") is not None and not o["--another"]:
         earning = earns_another(last["findings_list"],

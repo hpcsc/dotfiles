@@ -239,6 +239,7 @@ class Ctx:
     read_only: bool = False  # --status: look without recording anything
     adhoc: bool = False  # an audit of a branch with no implement run behind it
     full: bool = False  # --full: print the step's text even if this session has seen it
+    branch_state: dict = None  # where the run's branch stands, resolved once by clerk_steps.run_branch
 
 
 def build_ctx(explicit_run=None, harness=None, read_only=False, full=False, pick=False):

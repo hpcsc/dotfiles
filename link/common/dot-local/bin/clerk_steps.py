@@ -158,21 +158,29 @@ def row_ground(ctx):
                        "(A repo with no guidelines directory: clerk step --done ground --caller <pattern>)")
 
 
+def run_branch(ctx):
+    """Where the run's branch stands, resolved once per call: whether it still exists,
+    whether the default branch already contains it, and which worktree holds it. The
+    isolate and land rows and `landed_elsewhere` each derived a part of this on their own."""
+    if ctx.branch_state is None:
+        slug = ctx.run.slug
+        ctx.branch_state = {"exists": ref_exists(slug, ctx.cwd),
+                            "merged": bool(ctx.default) and is_ancestor(slug, ctx.default, ctx.cwd),
+                            "worktree": worktree_for(slug, ctx.prepare.get("worktrees"))}
+    return ctx.branch_state
+
+
 def landed_elsewhere(ctx):
     """True when the run has left its branch for a reason the table accepts: the branch
     was merged or deleted, or its worktree holds the archive record."""
-    slug = ctx.run.slug
     if not ctx.run.read("breakdown.json"):
         return False
-    if not ref_exists(slug, ctx.cwd):
+    b = run_branch(ctx)
+    if not b["exists"] or b["merged"]:
         return True
-    if ctx.default and is_ancestor(slug, ctx.default, ctx.cwd):
-        return True
-    wt = worktree_for(slug, ctx.prepare.get("worktrees"))
-    if wt:
-        gd = gitout("rev-parse", "--absolute-git-dir", cwd=wt)
-        if gd and (Path(gd) / "clerk" / "archived.json").exists():
-            return True
+    if b["worktree"]:
+        gd = gitout("rev-parse", "--absolute-git-dir", cwd=b["worktree"])
+        return bool(gd) and (Path(gd) / "clerk" / "archived.json").exists()
     return False
 
 
@@ -185,8 +193,9 @@ def row_isolate(ctx):
         return row("isolate", True, mode=mode, fallback=fallback, path=ctx.build_tree)
     if landed_elsewhere(ctx):
         return row("isolate", True, mode="landed", note="the run has left its branch; it landed")
-    if ref_exists(slug, ctx.cwd):
-        wt = worktree_for(slug, ctx.prepare.get("worktrees"))
+    b = run_branch(ctx)
+    if b["exists"]:
+        wt = b["worktree"]
         if wt:
             return row("isolate", False, action="enter", path=wt,
                        why_not_done=f"the run's worktree is {wt} and this call is not in it",
@@ -421,10 +430,11 @@ def row_land(ctx):
                        why_not_done="archived; integration is on and cannot finish from inside the worktree",
                        done_by=f"leave the worktree keeping the branch (ExitWorktree keep on Claude Code), run the command `clerk land` printed in {ctx.repo_root}, then clerk step there")
         return row("land", True, archived=True, integrated=False)
-    if not ref_exists(slug, ctx.cwd):
+    b = run_branch(ctx)
+    if not b["exists"]:
         return row("land", True, archived=True, integrated=True)
-    wt = worktree_for(slug, ctx.prepare.get("worktrees"))
-    if ctx.default and is_ancestor(slug, ctx.default, ctx.cwd):
+    wt = b["worktree"]
+    if b["merged"]:
         if wt:
             return row("land", False, action="cleanup", why_not_done=f"merged; the worktree at {wt} remains",
                        done_by=f"git worktree remove {wt} && git branch -d {slug}; then clerk step")

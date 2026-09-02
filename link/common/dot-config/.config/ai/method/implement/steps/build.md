@@ -77,9 +77,9 @@ Say what landed in one or two lines and act on finish's `after_commit`. **Write 
 **Then read the task back for the two signals that the breakdown was wrong about it.** Both are things you have just observed, and both mean the same thing — the theory is not landing where the breakdown said it would:
 
 - **The implementation needed more than one attempt to go green**, for a reason other than a typo or a missing import. Not the count itself: the fact that the first shape you reached for was the wrong one.
-- **`clerk lint --staged` returned a finding.** The guidelines were loaded and still not followed, which is them not landing rather than a rule being obscure.
+- **`clerk finish` refused the task on a lint finding.** The guidelines were loaded and still not followed, which is them not landing rather than a rule being obscure.
 
-**Report either in the task's line whatever `gears` says.** It is a fact about the run, and it is exactly what someone deciding whether to trust the branch wants and cannot recover from the diff. Say the first with `--retried` on `clerk finish` as well; the second is a `clerk finish` refusal and is already on the record.
+**Report either in the task's line whatever `gears` says.** It is a fact about the run, and it is exactly what someone deciding whether to trust the branch wants and cannot recover from the diff. Say the first with `--retried` on `clerk finish` as well; the second was clerk's refusal and is already on the record.
 
 **With `gears` on, either one downshifts the run**: every task from here pauses after its tests, the way a low-certainty task does, regardless of what the breakdown assessed it as. It upshifts again after two consecutive tasks go green first try with a clean lint — say so when it does. `clerk step` computes the gear from the record and reports it as `gear`; announcing it is yours.
 

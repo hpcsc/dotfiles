@@ -2,11 +2,11 @@
 
 ### Adopt an existing breakdown if there is one
 
-If the request names a file in `tasks/`, or `clerk prepare` reported a `resume`, read that breakdown, present it with `clerk status`, and skip decomposing. Tasks with `done: true` in the sidecar are finished — `clerk next` resumes at the first unblocked one that is not.
+If the request names a file in `tasks/`, or `clerk prepare` reported a `resume`, read that breakdown, present it with `clerk status`, and skip decomposing. Tasks with `done: true` in the sidecar are finished — `clerk step` resumes at the first unblocked one that is not.
 
 **Do not decompose a story that already has a breakdown in progress.** Decomposing again produces a different breakdown against the same code, and the sidecar recording what was already built no longer describes it. `clerk status` tells you where the previous run stopped.
 
-A breakdown written before sidecars existed has no `tasks/<story>.json`, and `clerk next` refuses without one rather than guessing at dependencies. Recover it — and if it carries an old `- [x]` checklist, the recovery seeds `done` from those ticks so the run resumes where it left off:
+A breakdown written before sidecars existed has no `tasks/<story>.json`, and `clerk step` refuses to bind it without one rather than guessing at dependencies. Recover it — and if it carries an old `- [x]` checklist, the recovery seeds `done` from those ticks so the run resumes where it left off:
 
 ```
 clerk sidecar          # reads the `### Task N:` sections and their `**Depends on:**` lines
@@ -28,21 +28,17 @@ It does the codebase exploration and dependency analysis that makes the breakdow
 
 **One judgment call.** Decomposing costs a full agent (~15 minutes measured). Work that is obviously a single slice does not need it — say so and go straight to building. Anything with more than one deliverable, real dependencies, or an unclear surface gets decomposed.
 
-### Check the breakdown's evidence
+### Bind the breakdown to the run
 
 ```
-clerk lint --rule certainty-unevidenced <the sidecar it wrote>
+clerk step --done decompose --tasks-file <the breakdown>
 ```
 
-Seconds, no agent, and it settles the one thing about an assessment that is not a matter of opinion: a task called `high` or `medium` certainty with no precedent named, or one citing a file that is not there. Both mean the same thing — a confidence with nothing behind it, which is how the field drifts to `high` on everything and stops being worth reading.
-
-Pass the sidecar's path; the rule reads the breakdown rather than the diff, so it is not in what `--staged` would find. Fix a finding by correcting the assessment, not by deleting the reference: a precedent you cannot produce is a task that is `low`.
-
-Run it on an adopted breakdown too, which costs the same and tells you whether the breakdown you are about to build was checked when it was written.
+Before it binds anything it runs `clerk lint --rule certainty-unevidenced` over the sidecar and refuses on a finding. Seconds, no agent, and it settles the one thing about an assessment that is not a matter of opinion: a task called `high` or `medium` certainty with no precedent named, or one citing a file that is not there. Both mean the same thing — a confidence with nothing behind it, which is how the field drifts to `high` on everything and stops being worth reading. Fix a finding by correcting the assessment, not by deleting the reference: a precedent you cannot produce is a task that is `low`. An adopted breakdown goes through the same check, which tells you whether the one you are about to build was checked when it was written.
 
 **A breakdown planned before these fields existed carries neither**, and `clerk status` lists those under `gears.unassessed`. Read them as medium certainty and low blast radius — but **say that you did**, because "not assessed" and "assessed as routine" are otherwise the same silence. Do not re-decompose a run in progress to acquire them.
 
-**Then bind it to the run:** `clerk step --done decompose --tasks-file <the breakdown>`. It runs this lint itself and refuses on a finding, and on success it prints the task table — certainty and blast radius included — which is the breakdown presented, with the first task under `next`.
+On success it prints the task table — certainty and blast radius included — which is the breakdown presented, with the first task under `next`.
 
 ### Present the breakdown, then build
 

@@ -253,7 +253,7 @@ On, a task assessed `low` certainty or `high` blast radius stops after its tests
 written and red, before any implementation — the tests are where the theory lives, and
 that is the last moment at which being wrong costs only the tests. Two observed signals
 downshift the rest of the run into the same rhythm: an implementation that took more than
-one attempt to go green, and a `clerk lint --staged` finding. It upshifts again after two
+one attempt to go green, and a lint finding at `clerk finish`. It upshifts again after two
 clean tasks, because a pause that arrives on every task stops carrying information.
 
 ---

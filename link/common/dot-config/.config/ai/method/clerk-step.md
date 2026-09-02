@@ -118,8 +118,7 @@ stdin: jq reads its own options from anywhere on the command line, so an argv wi
 `clerk step` reads the log for:
 
 - **ground:** a `guidelines` run that exited 0 with `--caller <pattern>`
-- **the gears signals:** `finish N --retried`, a `finish N` that exited 1 (a lint refusal),
-  or a `lint --staged` that exited 1 after N was finished
+- **the gears signals:** `finish N --retried`, or a `finish N` that exited 1 (a lint refusal)
 - **learn:** a `learn` run that exited 0 with `--title`
 - **the plan signals for the reflection:** the tasks the plan called `high` that showed a
   signal, the `low` ones that did not, and the `fixup` calls that exited 3

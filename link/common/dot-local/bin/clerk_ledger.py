@@ -171,15 +171,12 @@ def learn_written(run):
 def task_signals(run):
     """Per task, the two observed signals the method reads as the plan being wrong about
     it: `clerk finish N --retried` (the first shape reached for was not the one that went
-    green) and a lint finding — a `lint --staged` that reported after N was finished, or a
-    `finish N` that refused. Returns ({n: {...}}, [n in finish order])."""
+    green) and a `finish N` that refused on a lint finding. Returns ({n: {...}}, [n in
+    finish order])."""
     signals = {}
     order = []
-    last_done = None
     for e in events(run):
         cmd, argv, rc = e.get("cmd"), e.get("argv", []), e.get("exit")
-        if cmd == "lint" and "--staged" in argv and rc == 1 and last_done is not None:
-            signals[last_done]["lint_findings"] = True
         if cmd == "finish" and argv and str(argv[0]).isdigit():
             n = int(argv[0])
             sig = signals.setdefault(n, {"retried": False, "lint_findings": False, "attempts": 0})
@@ -190,7 +187,6 @@ def task_signals(run):
                 sig["retried"] = sig["retried"] or "--retried" in argv
                 if n not in order:
                     order.append(n)
-                last_done = n
     return signals, order
 
 

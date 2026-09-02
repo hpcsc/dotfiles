@@ -252,6 +252,8 @@ run "$WT" audit plan --rounds 1 >/dev/null
 RD=$(run "$WT" audit round --report "$REP")
 eq "a round records its counts against the code tree" "true|1|2|1|1" \
    "$(printf '%s' "$RD" | jq -r '[(.recorded|tostring), (.round.n|tostring), (.round.findings|tostring), (.round.refuted|tostring), (.round.coverage_gaps|tostring)] | join("|")')"
+eq "and carries the incidents of its running, even when there were none" "[]" \
+   "$(printf '%s' "$RD" | jq -c '.round.incidents')"
 eq "a second round past the plan is refused" "3" "$(rc "$WT" audit round --report "$REP")"
 eq "--replan lets it through, on purpose" "2" "$(run "$WT" audit round --report "$REP" --replan 2 | field .round.n)"
 eq "status shows both rounds" "2|2" "$(run "$WT" audit status | jq -r '[(.rounds_planned|tostring), (.rounds|length|tostring)] | join("|")')"
@@ -733,6 +735,114 @@ eq "and the log has them anyway" "true" \
    "$([ "$(grep -c '⋯' "$LOG" | tr -d ' ')" -gt 0 ] && echo true || echo false)"
 eq "the summary says where the log is, for a reader who missed the first line" "$LOG" \
    "$(cd "$RA" && PATH="$FAKE:$PATH" "$CLERK" audit run --restart --quiet 2>/dev/null | jq -r '.progress')"
+
+# --------------------------------------------------------------------------------
+printf '\nthe runner keeps its own record — a killed round resumes where it stopped, and says what ended it\n'
+
+# The same stub, with a semantic lens that takes as long as SLOW says and a note of every
+# spawn, so a resume can be shown to spawn only what had not landed.
+FAKE2=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$FAKE2/claude" <<'STUB'
+#!/usr/bin/env bash
+ARGS="$*"
+p=$(cat)
+emit() {
+  case "$ARGS" in
+    *stream-json*)
+      printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"a.go"}}]}}\n'
+      printf '{"type":"result","subtype":"success","is_error":false,"result":%s,"total_cost_usd":0.01}\n' "$(jq -Rs . <<< "$1")" ;;
+    *) printf '{"is_error":false,"total_cost_usd":0.01,"result":%s}\n' "$(jq -Rs . <<< "$1")" ;;
+  esac
+}
+saw() { printf '%s\n' "$1" >> "$(dirname "$0")/spawns"; }
+case "$p" in
+  *"FRAGMENT scope-open"*) saw scope
+    [ -n "${BAD_SCOPE:-}" ] && { emit 'not json at all'; exit 0; }
+    emit '{"base":"abc","head":"def","summary":"s","files":["a.go","b.go","c.go"],"languages":["Go"],"by_language":[{"language":"Go","files":["a.go","b.go","c.go"]}],"signals":{"tests_changed":false,"concurrency":false,"performance":false},"has_code":true}' ;;
+  *"FRAGMENT lens-semantic"*) saw semantic; sleep "${SLOW:-0}"
+    emit '{"verdict":"fail","findings":[{"id":"g1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"}],"note":null}' ;;
+  *"FRAGMENT refute-open"*) saw refute; emit '{"finding_id":"g1","refuted":false,"blocked":false,"basis":"ran it"}' ;;
+  *"FRAGMENT report-open"*) saw report; emit '{"findings":[{"id":"g1"}],"coverage_gaps":[],"summary":"one real defect"}' ;;
+  *) saw guidelines; emit '{"verdict":"pass","findings":[],"note":null}' ;;
+esac
+STUB
+chmod +x "$FAKE2/claude"
+
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+LOG=$(run "$RA" audit status | jq -r '.progress')
+AJ=$(dirname "$LOG")/audit.json
+: > "$FAKE2/spawns"
+(cd "$RA" && PATH="$FAKE2:$PATH" SLOW=8 "$CLERK" audit run --restart --quiet >/dev/null 2>&1) &
+BG=$!
+for _ in $(seq 1 150); do grep -q '✓ guidelines:Go' "$LOG" 2>/dev/null && break; sleep 0.2; done
+PID=$(jq -r '.live.runner.pid' "$AJ")
+kill -TERM "$PID" 2>/dev/null
+wait "$BG" 2>/dev/null
+eq "the lens that had landed is in the ledger before the round is over" "true" \
+   "$(jq -r '.live.landed.review["review:guidelines:Go"].ok' "$AJ")"
+eq "the one still running is not" "false" \
+   "$(jq -r '.live.landed.review | has("review:semantic:Go")' "$AJ")"
+eq "the kill is on record: what sent it, what was kept, what was lost" "runner-killed|SIGTERM|review:guidelines:Go|review:semantic:Go" \
+   "$(jq -r '.incidents[-1] | [.kind, .signal, (.kept|join(",")), (.lost|join(","))] | join("|")' "$AJ")"
+eq "and the progress log closes on it rather than trailing off" "true" \
+   "$(grep -q 'killed by SIGTERM' "$LOG" && echo true || echo false)"
+eq "status says the runner is gone, and does not write the same death twice" "false|1" \
+   "$(run "$RA" audit status | jq -r '[(.runner.alive|tostring), ([.incidents[] | select(.kind|startswith("runner"))] | length | tostring)] | join("|")')"
+
+RS=$(cd "$RA" && PATH="$FAKE2:$PATH" SLOW=0 "$CLERK" audit run --quiet 2>/dev/null)
+eq "the resume takes up the phase the kill interrupted" "review,refute,report" \
+   "$(printf '%s' "$RS" | jq -r '[.phases[].phase] | join(",")')"
+eq "and keeps the lens that had landed rather than paying for it again" "review:guidelines:Go" \
+   "$(printf '%s' "$RS" | jq -r '.phases[0].kept | join(",")')"
+eq "so the harness saw the kept lens once and the interrupted one twice" "1|2" \
+   "$(grep -c '^guidelines$' "$FAKE2/spawns" | tr -d ' ')|$(grep -c '^semantic$' "$FAKE2/spawns" | tr -d ' ')"
+eq "the progress log names what it kept" "true" \
+   "$(grep -q 'guidelines:Go landed at .*, kept' "$LOG" && echo true || echo false)"
+eq "and the round still ends on the agent's report" "one real defect" \
+   "$(printf '%s' "$RS" | jq -r '.report.summary')"
+
+# A runner that got SIGKILL, or a machine that rebooted, sends nothing. The pid it left
+# in the ledger is the evidence.
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+sleep 60 & GHOST=$!
+kill -9 "$GHOST"; wait "$GHOST" 2>/dev/null
+plant() {  # pid
+  jq --argjson p "$1" '.live.runner = {pid: $p, phase: "review", started_at: "2026-01-01T00:00:00Z",
+       beat_at: "2026-01-01T00:00:10Z", agents: {"review:guidelines:Go": {started_at: "s", landed_at: "l"},
+       "review:semantic:Go": {started_at: "s"}}}' "$AJ" > "$AJ.new" && /bin/mv -f "$AJ.new" "$AJ"
+}
+plant "$GHOST"
+ST=$(run "$RA" audit status)
+eq "a runner that vanished without a word is reported dead, in the phase it was in" "false|review" \
+   "$(printf '%s' "$ST" | jq -r '[(.runner.alive|tostring), .runner.phase] | join("|")')"
+eq "and its death is written down with what it kept and what it lost" "runner-died|review:guidelines:Go|review:semantic:Go" \
+   "$(printf '%s' "$ST" | jq -r '.incidents[-1] | [.kind, (.kept|join(",")), (.lost|join(","))] | join("|")')"
+eq "asking again does not write it again" "$(printf '%s' "$ST" | jq '.incidents | length')" \
+   "$(run "$RA" audit status | jq '.incidents | length')"
+plant $$
+eq "a round another runner is still driving is refused, not driven twice" "3" \
+   "$(cd "$RA" && PATH="$FAKE2:$PATH" "$CLERK" audit run --quiet >/dev/null 2>&1; printf '%s' $?)"
+
+# An agent that goes quiet is the other thing a reader cannot tell from a dead round.
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+(cd "$RA" && PATH="$FAKE2:$PATH" SLOW=3 CLERK_STALL_AFTER=1 "$CLERK" audit run --restart --quiet >/dev/null 2>&1)
+eq "an agent silent past the threshold is written down, with how long it stayed silent" "review:semantic:Go|true" \
+   "$(jq -r '[.incidents[] | select(.kind=="stall")] | last | [.agent, (has("lasted_s")|tostring)] | join("|")' "$AJ")"
+eq "and the progress log says so while it is happening" "true" \
+   "$(grep -q 'semantic:Go silent' "$LOG" && echo true || echo false)"
+eq "a round that ran to the end leaves no death behind it" "true" \
+   "$(run "$RA" audit status | jq -r '[(.runner.finished_at != null), ([.incidents[] | select(.kind=="runner-died")] | length == 1)] | all | tostring')"
+
+# The phases with one agent end the round when that agent fails; the ledger should say
+# so, not just the console of whoever launched it.
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+eq "a scope agent that never answers usably ends the round" "3" \
+   "$(cd "$RA" && PATH="$FAKE2:$PATH" BAD_SCOPE=1 "$CLERK" audit run --restart --quiet >/dev/null 2>&1; printf '%s' $?)"
+eq "and the round records which agent failed it, and why" "phase-failed|scope|true" \
+   "$(jq -r '.incidents[-1] | [.kind, (.agents|join(",")), (.error | contains("attempts") | tostring)] | join("|")' "$AJ")"
+eq "an ending the runner chose is not a death" "0" \
+   "$(run "$RA" audit status | jq -r '[.incidents[] | select(.kind=="runner-died" and .phase=="scope")] | length')"
+rm -rf "$FAKE2"
 
 # --------------------------------------------------------------------------------
 printf '\nclerk watch — the same log drawn as groups and rows, not as a scroll\n'

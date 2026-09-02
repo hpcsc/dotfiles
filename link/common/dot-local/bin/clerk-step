@@ -34,8 +34,11 @@ import json
 from dataclasses import dataclass, field
 import os
 import re
+import signal
+import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -634,7 +637,17 @@ def row_audit(ctx):
                   last_round_fresh=bool(rounds) and rounds[-1].get("code_tree") == ctx.head_ct)
     if accepted and accepted.get("code_tree") == ctx.head_ct:
         return row("audit", True, rounds_done=len(rounds), accepted_at=accepted.get("at"))
-    if not rounds:
+    live = aud.get("live")
+    runner = runner_view(live)
+    if runner:
+        fields["runner"] = runner
+    if runner and runner["alive"]:
+        why = f"round {live['round']} is running: pid {runner['pid']}, in {runner['phase']}"
+    elif runner and not runner.get("finished_at"):
+        why = (f"round {live['round']} is in flight but its runner (pid {runner['pid']}) is gone — "
+               f"last seen {runner['beat_at']} in {runner['phase']}, {len(runner['landed'])} agent(s) "
+               f"kept, {len(runner['in_flight'])} to run again; `clerk audit run` resumes it")
+    elif not rounds:
         why = "no audit round is recorded for this run"
     elif not accepted:
         why = f"{len(rounds)} round(s) recorded, findings not yet accepted"
@@ -1153,7 +1166,10 @@ def progress_path(ctx):
 
 def audit_status(ctx, aud, o):
     p = progress_path(ctx)
-    return {**aud, "progress": p, "watch": f"clerk watch {p}"}
+    runner = runner_view(live_of(aud))
+    if runner and not runner["alive"]:
+        note_runner_dead(ctx, aud)
+    return {**aud, "runner": runner, "progress": p, "watch": f"clerk watch {p}"}
 
 
 def audit_plan(ctx, aud, o):
@@ -1183,7 +1199,8 @@ def audit_round(ctx, aud, o):
     gaps = summary["gaps_text"]
     again = repeated_gaps(gaps, [gap_key(g) for r in aud["rounds"] for g in r.get("gaps_text", [])])
     entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
-             "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary}
+             "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary,
+             "incidents": [i for i in aud.get("incidents") or [] if i.get("round") == len(aud["rounds"]) + 1]}
     aud["rounds"].append(entry)
     # Recording is the statement that this round is over, so the live round retires with
     # it. Left in place it still reads as a round in flight, and `clerk audit run` skips
@@ -1440,12 +1457,175 @@ def _short_id(job_id):
     return job_id.split(":", 1)[1] if ":" in job_id else job_id
 
 
-def _phase_line(nxt, jobs):
+def _phase_line(nxt, jobs, kept=()):
     n = len(jobs)
     how = "concurrently" if nxt.get("concurrent") and n > 1 else "one at a time"
     held = nxt.get("held_back") or []
-    tail = f"  ({len(held)} held back)" if held else ""
+    notes = ([f"{len(held)} held back"] if held else []) + ([f"{len(kept)} kept"] if kept else [])
+    tail = f"  ({', '.join(notes)})" if notes else ""
     return f"{nxt['phase']} · round {nxt['round']} · {n} agent{'s' if n != 1 else ''}, {how}{tail}"
+
+
+def _span(seconds):
+    return f"{int(seconds)}s" if seconds < 60 else f"{int(seconds) // 60}m"
+
+
+STALL_AFTER = int(os.environ.get("CLERK_STALL_AFTER", "300"))
+
+
+def runner_alive(pid):
+    """Whether the process a live round names is still the one driving it. The pid alone
+    does not say: numbers are reused, and a stranger's process would read as a runner."""
+    try:
+        os.kill(int(pid), 0)
+    except (ProcessLookupError, TypeError, ValueError):
+        return False
+    except PermissionError:
+        return True
+    ps = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True)
+    return "clerk" in ps.stdout
+
+
+def runner_view(lv):
+    r = (lv or {}).get("runner")
+    if not r:
+        return None
+    agents = r.get("agents") or {}
+    return {"pid": r.get("pid"), "alive": runner_alive(r.get("pid")), "phase": r.get("phase"),
+            "started_at": r.get("started_at"), "beat_at": r.get("beat_at"),
+            "finished_at": r.get("finished_at"), "died": r.get("died"),
+            "landed": sorted(k for k, a in agents.items() if a.get("landed_at")),
+            "in_flight": sorted(k for k, a in agents.items() if not a.get("landed_at"))}
+
+
+def note_runner_dead(ctx, aud):
+    """The incident for a runner that is gone without having said so, written once."""
+    lv = live_of(aud)
+    v = runner_view(lv)
+    if not v or v["alive"] or v["finished_at"] or v["died"]:
+        return None
+    lv["runner"]["died"] = now()
+    entry = {"at": now(), "kind": "runner-died", "round": lv["round"], "phase": v["phase"],
+             "pid": v["pid"], "last_beat": v["beat_at"], "kept": v["landed"], "lost": v["in_flight"]}
+    aud.setdefault("incidents", []).append(entry)
+    ctx.run.write("audit.json", aud)
+    return entry
+
+
+class Runner:
+    """The process driving a round, and the record it keeps of itself in the live round
+    as it goes: each agent's reply the moment it lands, so a resume spawns only the rest;
+    when each agent last did anything, so a stall is written down rather than mistaken
+    for a dead round; and what ended the process, when something did.
+
+    Everything that touches the ledger from a worker thread goes through `lock`. It is
+    re-entrant because a signal handler runs on the main thread, which may already be
+    holding it when the signal lands."""
+
+    def __init__(self, ctx, out):
+        self.ctx, self.out = ctx, out
+        self.lock = threading.RLock()
+        self.aud = self.lv = None
+        self.agents = {}
+        self.in_phase = False
+        self.stopped = threading.Event()
+
+    def bind(self, aud):
+        self.aud, self.lv = aud, live_of(aud)
+
+    def save(self):
+        with self.lock:
+            self.ctx.run.write("audit.json", self.aud)
+
+    def record(self):
+        return self.lv.setdefault("runner", {"pid": os.getpid(), "started_at": now(), "agents": {}})
+
+    def reusable(self, phase, jobs):
+        kept = (self.lv.get("landed") or {}).get(phase) or {}
+        return {j["id"]: kept[j["id"]] for j in jobs
+                if kept.get(j["id"], {}).get("ok")
+                and kept[j["id"]].get("code_tree") == self.ctx.head_ct}
+
+    def phase_started(self, phase):
+        with self.lock:
+            self.agents = {}
+            self.lv["runner"] = {"pid": os.getpid(), "phase": phase, "started_at": now(),
+                                 "beat_at": now(), "agents": {}}
+            self.in_phase = True
+            self.save()
+
+    def phase_done(self):
+        with self.lock:
+            self.in_phase = False
+            for jid, a in self.agents.items():
+                self._stall_over(a)
+
+    def agent_started(self, j):
+        with self.lock:
+            t = time.time()
+            self.agents[j["id"]] = {"last_event": t, "stall": None, "landed": False}
+            self.record()["agents"][j["id"]] = {"started_at": now()}
+            self.save()
+
+    def agent_event(self, jid, e):
+        with self.lock:
+            a = self.agents.get(jid)
+            if a:
+                a["last_event"] = time.time()
+                self._stall_over(a)
+
+    def agent_landed(self, j, r):
+        with self.lock:
+            a = self.agents.get(j["id"])
+            if a:
+                a["landed"] = True
+                self._stall_over(a)
+            rec = self.record()
+            rec["agents"].setdefault(j["id"], {})["landed_at"] = now()
+            self.lv.setdefault("landed", {}).setdefault(rec.get("phase") or self.lv["phase"], {})[j["id"]] = {
+                **r, "at": now(), "code_tree": self.ctx.head_ct}
+            self.save()
+
+    def roster(self):
+        landed = sorted(k for k, a in self.agents.items() if a["landed"])
+        return landed, sorted(k for k, a in self.agents.items() if not a["landed"])
+
+    def incident(self, kind, **fields):
+        with self.lock:
+            entry = {"at": now(), "kind": kind, "round": self.lv["round"],
+                     "phase": self.record().get("phase") or self.lv["phase"], **fields}
+            self.aud.setdefault("incidents", []).append(entry)
+            self.save()
+            return entry
+
+    def _stall_over(self, a):
+        if a["stall"] is not None:
+            a["stall"]["lasted_s"] = int(time.time() - a["since"])
+            a["stall"] = None
+
+    def watch(self):
+        tick = max(1, min(15, STALL_AFTER // 2))
+        while not self.stopped.wait(tick):
+            with self.lock:
+                if not self.in_phase:
+                    continue
+                t = time.time()
+                for jid, a in self.agents.items():
+                    silent = t - a["last_event"]
+                    if a["landed"] or a["stall"] is not None or silent <= STALL_AFTER:
+                        continue
+                    a["since"] = a["last_event"]
+                    a["stall"] = self.incident("stall", agent=jid, silent_s=int(silent))
+                    self.out.note(f"  · {_short_id(jid)} silent {_span(silent)}")
+                self.record()["beat_at"] = now()
+                self.save()
+
+    def finish(self):
+        self.stopped.set()
+        with self.lock:
+            if self.lv and self.lv.get("runner"):
+                self.lv["runner"]["finished_at"] = now()
+                self.save()
 
 
 def _verdict(r):
@@ -1494,7 +1674,39 @@ def audit_run(ctx, aud, o):
         audit_begin(ctx, aud, o2)
         aud = ctx.run.read("audit.json", aud)
 
+    runner = Runner(ctx, out)
+    runner.bind(aud)
     trace, spent = [], 0.0
+    prior = (runner.lv.get("runner") or {})
+    if prior.get("pid") and prior["pid"] != os.getpid() and not prior.get("finished_at"):
+        if runner_alive(prior["pid"]):
+            out.final({"ran": False, "phase": runner.lv["phase"], "cost_usd": 0.0,
+                       "reason": f"a runner (pid {prior['pid']}) is already driving this round — "
+                                 f"wait for it, or stop it and run again"}, 3)
+        died = note_runner_dead(ctx, aud)
+        if died:
+            out.note(f"  · the previous runner (pid {died['pid']}) died in {died['phase']}: "
+                     f"{len(died['kept'])} agent(s) kept, {len(died['lost'])} to run again")
+
+    def on_signal(signum, frame):
+        name = signal.Signals(signum).name
+        landed, in_flight = runner.roster()
+        with runner.lock:
+            runner.record()["died"] = now()
+            runner.incident("runner-killed", signal=name, kept=landed, lost=in_flight)
+        ex.stop_all()
+        runner.stopped.set()
+        try:
+            out.final({"ran": False, "phase": runner.record().get("phase") or runner.lv["phase"],
+                       "cost_usd": round(spent, 4), "reason": f"killed by {name}",
+                       "kept": landed, "lost": in_flight}, 128 + signum)
+        except SystemExit:
+            pass
+        os._exit(128 + signum)
+    for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(sig, on_signal)
+    threading.Thread(target=runner.watch, daemon=True).start()
+
     while True:
         nxt = audit_next(ctx, aud, o)
         if nxt["phase"] == "done":
@@ -1509,36 +1721,54 @@ def audit_run(ctx, aud, o):
             # and stops rather than inventing results for the ones after it.
             out.final({"dry_run": True, "phase": nxt["phase"], "plan": trace,
                        "note": "no agent was spawned; record a phase to advance"})
-        out.step(_phase_line(nxt, jobs))
+        kept = runner.reusable(nxt["phase"], jobs)
+        out.step(_phase_line(nxt, jobs, kept))
+        for jid, r in kept.items():
+            out.note(f"  · {_short_id(jid)} landed at {(r.get('at') or '')[11:16]}Z, kept")
+        todo = [j for j in jobs if j["id"] not in kept]
+        runner.phase_started(nxt["phase"])
         started = {}
         def began(j):
             started[j["id"]] = time.time()
+            runner.agent_started(j)
             out.note(f"  · {_short_id(j['id'])} started")
         def landed(j, r):
+            runner.agent_landed(j, r)
             took = int(time.time() - started.get(j["id"], time.time()))
             out.result(f"  {'✓' if r.get('ok') else '✗'} {_short_id(j['id']):<20} "
                        f"{_verdict(r):<28} {took}s · ${r.get('cost_usd') or 0:.2f}")
-        results = ex.run_batch(jobs, schemas, harness=harness, cwd=ctx.cwd,
-                               concurrent=bool(nxt.get("concurrent")), model=o["--model"],
-                               log=out.note, on_start=began, on_done=landed,
-                               on_event=((lambda jid, e: out.event(e, _short_id(jid)))
-                                         if out.wants_events else None))
-        spent += sum(r.get("cost_usd") or 0 for r in results)
+        def event(jid, e):
+            runner.agent_event(jid, e)
+            if out.wants_events:
+                out.event(e, _short_id(jid))
+        fresh = ex.run_batch(todo, schemas, harness=harness, cwd=ctx.cwd,
+                             concurrent=bool(nxt.get("concurrent")), model=o["--model"],
+                             log=out.note, on_start=began, on_done=landed, on_event=event)
+        runner.phase_done()
+        by_id = {r["id"]: r for r in fresh}
+        results = [kept[j["id"]] if j["id"] in kept else by_id[j["id"]] for j in jobs]
+        spent += sum(r.get("cost_usd") or 0 for r in fresh)
         failed = [r for r in results if not r.get("ok")]
         if failed and nxt["phase"] in ("scope", "report"):
             # These phases are one agent and everything after depends on it.
+            runner.incident("phase-failed", agents=[r["id"] for r in failed],
+                            error=failed[0].get("error"))
+            runner.finish()
             out.final({"ran": False, "phase": nxt["phase"], "cost_usd": round(spent, 4),
                        "reason": failed[0].get("error")}, 3)
         payload = _payload_for(nxt["phase"], jobs, results)
-        trace.append({"phase": nxt["phase"], "jobs": len(jobs),
+        trace.append({"phase": nxt["phase"], "jobs": len(jobs), "kept": sorted(kept),
                       "failed": [r["id"] for r in failed],
-                      "cost_usd": round(sum(r.get("cost_usd") or 0 for r in results), 4)})
+                      "cost_usd": round(sum(r.get("cost_usd") or 0 for r in fresh), 4)})
         tmp = Path(tempfile.mkdtemp(prefix="clerk-audit-")) / "results.json"
         tmp.write_text(json.dumps(payload), encoding="utf-8")
         o3 = dict(o); o3["--phase"] = nxt["phase"]; o3["--results"] = str(tmp)
-        audit_record(ctx, aud, o3)
-        aud = ctx.run.read("audit.json", aud)
+        with runner.lock:
+            audit_record(ctx, aud, o3)
+            aud = ctx.run.read("audit.json", aud)
+            runner.bind(aud)
 
+    runner.finish()
     lv = live_of(aud)
     out.step(f"round {lv['round']} done · ${round(spent, 4)}")
     # Every exit from the round goes through the renderer, so `--raw` stays one stream and

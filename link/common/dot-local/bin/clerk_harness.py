@@ -19,6 +19,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -55,6 +56,36 @@ MAX_ATTEMPTS = 3
 # A lens reads a whole diff and may run a suite; a scope pass is seconds. The ceiling is
 # a runaway guard, not a schedule.
 TIMEOUT_S = int(os.environ.get("CLERK_AGENT_TIMEOUT", "1800"))
+
+
+_running = set()
+_running_lock = threading.Lock()
+STOPPING = False
+
+
+def _track(proc):
+    with _running_lock:
+        _running.add(proc)
+
+
+def _untrack(proc):
+    with _running_lock:
+        _running.discard(proc)
+
+
+def stop_all():
+    """Ends every agent this process started and refuses to start another. A runner
+    going down would otherwise leave them spending against a ledger nobody is left to
+    write, and `run_job` would retry the one it just killed."""
+    global STOPPING
+    STOPPING = True
+    with _running_lock:
+        procs = list(_running)
+    for p in procs:
+        try:
+            p.terminate()
+        except OSError:
+            pass
 
 
 def new_session_id():
@@ -187,6 +218,7 @@ def _run_streamed(harness, argv, ask, cwd, on_event, timeout, env=None):
     proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, cwd=cwd, bufsize=1,
                             env=env)
+    _track(proc)
     try:
         proc.stdin.write(ask)
         proc.stdin.close()
@@ -215,6 +247,8 @@ def _run_streamed(harness, argv, ask, cwd, on_event, timeout, env=None):
     except subprocess.TimeoutExpired:
         proc.kill()
         return None, cost, sid, f"the agent did not finish within {timeout}s"
+    finally:
+        _untrack(proc)
     if text is None and err is None:
         # No event this module recognised as the result. The lines are still the harness's
         # own reply, so they go through the envelope reader rather than being thrown away
@@ -301,6 +335,9 @@ def run_job(job, schema, *, harness, cwd, model=None, log=None, env=None,
         work = tree or cwd
     try:
         while attempt < attempts:
+            if STOPPING:
+                return {"id": job["id"], "ok": False, "cost_usd": spent, "session_id": sid,
+                        "error": "the runner was stopped"}
             attempt += 1
             ask = prompt if complaint is None else (
                 prompt + f"\n\nYour previous reply could not be used: {complaint}. "
@@ -310,13 +347,18 @@ def run_job(job, schema, *, harness, cwd, model=None, log=None, env=None,
                 text, cost, got, err = _run_streamed(harness, argv, ask, work, on_event,
                                                      TIMEOUT_S, env)
             else:
+                proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                        stderr=subprocess.DEVNULL, text=True, cwd=work, env=env)
+                _track(proc)
                 try:
-                    proc = subprocess.run(argv, input=ask, cwd=work, env=env,
-                                          capture_output=True, text=True, timeout=TIMEOUT_S)
+                    stdout, _ = proc.communicate(ask, timeout=TIMEOUT_S)
                 except subprocess.TimeoutExpired:
+                    proc.kill()
                     return {"id": job["id"], "ok": False, "cost_usd": spent, "session_id": sid,
                             "error": f"the agent did not finish within {TIMEOUT_S}s"}
-                text, cost, got, err = _envelope(harness, proc.stdout)
+                finally:
+                    _untrack(proc)
+                text, cost, got, err = _envelope(harness, stdout)
             spent += cost
             # A retry continues the conversation the first attempt opened, so what it is
             # told went wrong is said to the session that got it wrong.

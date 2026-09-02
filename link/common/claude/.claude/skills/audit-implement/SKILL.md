@@ -70,8 +70,10 @@ language owning fewer than three changed files is folded rather than given a pan
 own — its files still reach every other lens as context, and `lenses_not_run` names them.
 
 **It takes longer than a tool call may.** Run it with `run_in_background: true` — a
-foreground Bash call is capped well below a round's wall clock, and a killed round leaves
-the phase it was in half-recorded.
+foreground Bash call is capped well below a round's wall clock. A round that is killed
+keeps every agent that had landed: `clerk audit run` resumes it and spawns only the rest,
+`clerk audit status` says whether its runner is still alive, and what ended it is written
+to the round's `incidents`.
 
 **Say where it can be watched.** Its first two lines are `progress: <path>`, a file in the
 run's ledger that gets every phase, every agent and every tool call whatever the console is

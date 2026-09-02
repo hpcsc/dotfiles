@@ -230,9 +230,8 @@ tree_is_clean() { [ -z "$(git status --porcelain 2>/dev/null)" ]; }
 # that green stale and sent the run back to the suite for a documentation change. A
 # source package that happens to be called tasks/ keeps counting as code.
 #
-# Must agree byte for byte with clerk-step's code_tree(): the same listing, the same
-# filter, lines joined by newline with none trailing. `prepare` reports it for HEAD so a
-# test can hold the two to that.
+# `prepare` reports it for HEAD, and `clerk step` reads it from there rather than
+# computing one of its own.
 code_tree() {
   local listing
   listing=$(git ls-tree -r "$1" 2>/dev/null) || return 1
@@ -693,6 +692,19 @@ cmd_prepare() {
     esac
   done
   root=$(repo_root) || die "not a git repository"
+  # The request is the top layer of the flags and the learnings path, and once a run is
+  # open the ledger holds it verbatim — so a bare `prepare` inside a run reads it from
+  # there. Before this `clerk step` called prepare twice, once to learn the run and once
+  # with its request, and a plugin asking for facts without the request got the layer
+  # below and could disagree with step about a flag.
+  local request_src=argument ldir
+  if [ -z "$request" ]; then
+    request_src=none
+    if ldir=$(ledger_dir 2>/dev/null) && [ -f "$ldir/run.json" ]; then
+      request=$(jq -r '.request // ""' "$ldir/run.json" 2>/dev/null)
+      [ -n "$request" ] && request_src=ledger
+    fi
+  fi
   wt=$(work_tree); th=$(tasks_home)
   def=$(default_branch)
   branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
@@ -741,6 +753,7 @@ cmd_prepare() {
     --arg go_tool_prefix "$prefix" \
     --arg learnings_path "$learn" \
     --arg learnings_path_source "$learn_src" \
+    --arg request_source "$request_src" \
     --arg commit_skill "$commit_skill" \
     --arg tasks_file "$tasks" \
     --arg tasks_home "$th" \
@@ -771,6 +784,7 @@ cmd_prepare() {
       go_tool_prefix: $go_tool_prefix,
       learnings_path: $learnings_path,
       learnings_path_source: $learnings_path_source,
+      request_source: $request_source,
       commit_skill: $commit_skill,
       tasks_file: (if $tasks_file == "" then null else $tasks_file end),
       tasks_home: $tasks_home,

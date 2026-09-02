@@ -77,6 +77,10 @@ eq "and names the run it would have clobbered" "w1" \
 eq "the first step is ground" "ground" "$(run "$R" step | field .step)"
 eq "and its facts are clerk prepare, with the request's flags applied" "true|request" \
    "$(run "$R" step | jq -r '[(.facts.flags.gears|tostring), .facts.flag_sources.gears] | join("|")')"
+eq "a bare prepare inside the run reads the request from the ledger itself" "ledger|true" \
+   "$(run "$R" prepare | jq -r '[.request_source, (.flags.gears|tostring)] | join("|")')"
+eq "and one typed on the command line still outranks it" "argument|false" \
+   "$(run "$R" prepare --request "no --no-gears" | jq -r '[.request_source, (.flags.gears|tostring)] | join("|")')"
 eq "facts carry what the caller reads, not what clerk keeps for itself" "true|true|false|false|false" \
    "$(run "$R" step | jq -r '[(.facts | has("build_tree")), (.facts | has("commit_skill")), (.facts | has("receipt")), (.facts | has("worktrees")), (.facts | has("runs_open"))] | map(tostring) | join("|")')"
 eq "without a method step file the instructions say so and defer to done_by" "true|true" \

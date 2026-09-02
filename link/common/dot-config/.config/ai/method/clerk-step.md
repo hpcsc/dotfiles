@@ -244,7 +244,7 @@ there, not a sentence in the prose. `tests/clerk-test.sh` keeps the core cases a
 the `finish` lint refusal and the code tree comparison.
 
 The step suite takes about two and a half minutes: most of its cases call `clerk step`,
-and each call runs `clerk prepare` once on a run branch and twice from the default branch.
+and each call runs `clerk prepare`, which reads the run's request from the ledger itself.
 
 ## Driving the audit from outside a session
 

@@ -246,8 +246,9 @@ def build_ctx(explicit_run=None, harness=None, read_only=False, full=False, pick
     common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
     if not common:
         die("not a git repository")
-    # `clerk prepare` is the facts, and with the request it is the facts with the run's
-    # flags applied — so it is asked once to find the run, and again once the run is known.
+    # `clerk prepare` resolves the run this tree belongs to and applies that run's request
+    # itself, so one call is the facts with the flags in force. Only a `--run` naming a
+    # different run asks again, with that run's request.
     rc, prep, err = clerk("prepare", cwd=cwd)
     if rc != 0 or not prep:
         die(f"clerk prepare failed: {err or 'no output'}")
@@ -255,9 +256,8 @@ def build_ctx(explicit_run=None, harness=None, read_only=False, full=False, pick
               branch=prep.get("branch") or None, head=gitout("rev-parse", "HEAD", cwd=cwd),
               default=prep.get("default_branch"), prepare=prep, read_only=read_only, full=full)
     ctx.run = resolve_run(ctx, explicit_run, pick=pick)
-    if ctx.run is not None:
-        request = ctx.run.meta.get("request") or ""
-        rc, prep, err = clerk("prepare", "--request", request, cwd=cwd)
+    if ctx.run is not None and prep.get("run") != ctx.run.slug:
+        rc, prep, err = clerk("prepare", "--request", ctx.run.meta.get("request") or "", cwd=cwd)
         if rc != 0 or not prep:
             die(f"clerk prepare failed: {err or 'no output'}")
         ctx.prepare = prep

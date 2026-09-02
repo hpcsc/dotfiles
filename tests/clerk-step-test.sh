@@ -13,7 +13,7 @@ CLERK="$BIN/clerk"
 export PATH="$BIN:$PATH"
 # The worktree directory depends on this; the assertions read paths from output, but a
 # deterministic run is easier to read when it fails.
-unset CLAUDECODE
+unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 export CLERK_HARNESS=claude
 PASS=0
 FAIL=0
@@ -325,6 +325,77 @@ eq "--done learn needs nothing else when there is nothing to record" "learn|true
    "$(run "$WT" step --done learn --none | jq -r '[.done, (.none|tostring)] | join("|")')"
 eq "and the run is finished" "finished" "$(run "$WT" step | field .step)"
 eq "which the ledger records" "true" "$(jq -r .finished "$R/.git/clerk/runs/w1/run.json")"
+
+# --------------------------------------------------------------------------------
+printf '\nstats — where the run went, from the ledger; tokens from the transcript once the session is known\n'
+
+S=$(run "$WT" stats --run w1 --json)
+eq "every step of the table is listed, in order" "ground,decompose,build,suite,audit,match-request,explain,verify-run,land,learn" \
+   "$(printf '%s' "$S" | jq -r '[.steps[].step] | join(",")')"
+eq "the steps the run stamped have a span, and they add up to the run" "true" \
+   "$(printf '%s' "$S" | jq -r '(.total_seconds >= 0) and ([.steps[] | select(.step | IN("build","suite","audit","land","learn")) | .seconds >= 0] | all) and (([.steps[].seconds // 0] | add) == .total_seconds) | tostring')"
+eq "each finished task has its own span" "2" "$(printf '%s' "$S" | jq -r '.tasks | length')"
+eq "and each recorded round, with its incidents and the agents it kept" "2|0|0" \
+   "$(printf '%s' "$S" | jq -r '[(.audit_rounds | length), .audit_rounds[0].incidents, .audit_rounds[0].agents] | map(tostring) | join("|")')"
+eq "with no session on record there are no tokens, and the reason is said" "null|true" \
+   "$(printf '%s' "$S" | jq -r '[(.tokens|tostring), (.note | contains("no session id"))] | map(tostring) | join("|")')"
+eq "--text renders the same as a table that opens with the run" "run w1" \
+   "$(run "$WT" stats --run w1 --text | head -1 | cut -d' ' -f1-2)"
+
+# A transcript the harness might have written, in the folder it keeps for the run's
+# working directory: one turn streamed as two lines, and one turn from after the run.
+TD=$(cd "$(mktemp -d)" && pwd -P)
+PD="$TD/$(printf '%s' "$WT" | sed 's/[^A-Za-z0-9]/-/g')"
+mkdir -p "$PD/sess-1/subagents"
+T0=$(jq -r .started_at "$R/.git/clerk/runs/w1/run.json")
+cat > "$PD/sess-1.jsonl" <<EOF
+{"type":"user","timestamp":"$T0","message":{"role":"user","content":"do the thing"}}
+{"type":"assistant","timestamp":"$T0","message":{"id":"m1","model":"test-model","usage":{"input_tokens":100,"cache_read_input_tokens":1000,"cache_creation_input_tokens":50,"output_tokens":10},"content":[{"type":"text","text":"a"}]}}
+{"type":"assistant","timestamp":"$T0","message":{"id":"m1","model":"test-model","usage":{"input_tokens":100,"cache_read_input_tokens":1000,"cache_creation_input_tokens":50,"output_tokens":40},"content":[{"type":"tool_use","name":"Bash","input":{}}]}}
+{"type":"assistant","timestamp":"2099-01-01T00:00:00Z","message":{"id":"m2","model":"test-model","usage":{"input_tokens":1,"cache_read_input_tokens":1,"cache_creation_input_tokens":1,"output_tokens":7},"content":[]}}
+EOF
+printf '{"agentType":"commit","description":"Commit task 1"}\n' > "$PD/sess-1/subagents/agent-1.meta.json"
+cat > "$PD/sess-1/subagents/agent-1.jsonl" <<EOF
+{"type":"assistant","timestamp":"$T0","message":{"id":"s1","model":"test-model","usage":{"input_tokens":5,"cache_read_input_tokens":500,"cache_creation_input_tokens":20,"output_tokens":30},"content":[]}}
+{"type":"user","timestamp":"$T0","message":{"role":"user","content":[{"type":"tool_result","content":"ok"}]}}
+EOF
+S=$(CLERK_TRANSCRIPTS_DIR="$TD" run "$WT" stats --run w1 --session sess-1 --json)
+eq "a session named on the command line is found in the run's working directory's folder" "true" \
+   "$(printf '%s' "$S" | jq -r '.transcript != null')"
+eq "a turn streamed as several lines is counted once, with the largest output it reported" "2|101|1001|51|47" \
+   "$(printf '%s' "$S" | jq -r '.tokens.total | [.turns, .input, .cache_read, .cache_creation, .output] | map(tostring) | join("|")')"
+eq "the turn inside the run lands in a step; the one after it is set aside, not lost" "1|1" \
+   "$(printf '%s' "$S" | jq -r '[([.steps[].tokens.turns] | add), .tokens.outside_run.turns] | map(tostring) | join("|")')"
+eq "the session's subagents are listed by type, with their tokens" "commit|30" \
+   "$(printf '%s' "$S" | jq -r '[.subagents[0].type, (.subagents[0].tokens.output|tostring)] | join("|")')"
+eq "a session the run recorded is used without being named" "sess-1" \
+   "$(jq '.session_id = "sess-1"' "$R/.git/clerk/runs/w1/run.json" > "$TD/run.json" && /bin/cp -f "$TD/run.json" "$R/.git/clerk/runs/w1/run.json"
+      CLERK_TRANSCRIPTS_DIR="$TD" run "$WT" stats --run w1 --json | jq -r '.session')"
+eq "a run without one offers the transcripts that overlap it, for --session" "sess-1" \
+   "$(jq 'del(.session_id)' "$R/.git/clerk/runs/w1/run.json" > "$TD/run.json" && /bin/cp -f "$TD/run.json" "$R/.git/clerk/runs/w1/run.json"
+      CLERK_TRANSCRIPTS_DIR="$TD" CLERK_INTERACTIVE=0 run "$WT" stats --run w1 --json | jq -r '.candidates[0].session')"
+
+# Choosing. The harness runs clerk with no terminal, so the picker must never appear
+# for it; a person with fzf gets the list, and a cancelled pick is not an answer.
+run "$R" step --start w2 --request "Second" >/dev/null
+FZ=$(cd "$(mktemp -d)" && pwd -P)
+printf '#!/usr/bin/env bash\ngrep -m1 "^w2 "\n' > "$FZ/fzf"; chmod +x "$FZ/fzf"
+FZC=$(cd "$(mktemp -d)" && pwd -P)
+printf '#!/usr/bin/env bash\ncat >/dev/null; exit 130\n' > "$FZC/fzf"; chmod +x "$FZC/fzf"
+eq "with fzf and a terminal, --pick offers every run and takes the choice" "w2" \
+   "$(cd "$R" && PATH="$FZ:$PATH" CLERK_INTERACTIVE=1 "$CLERK" stats --pick --json | jq -r '.run')"
+eq "without a terminal, --pick lists the runs and asks the caller to name one" "3" \
+   "$(cd "$R" && CLERK_INTERACTIVE=0 "$CLERK" stats --pick >/dev/null 2>&1; printf '%s' $?)"
+eq "and the list has every run, newest first" "w2,w1" \
+   "$(cd "$R" && CLERK_INTERACTIVE=0 "$CLERK" stats --pick 2>/dev/null | jq -r '[.runs[].slug] | join(",")')"
+eq "a cancelled pick is not an answer" "3" \
+   "$(cd "$R" && PATH="$FZC:$PATH" CLERK_INTERACTIVE=1 "$CLERK" stats --pick >/dev/null 2>&1; printf '%s' $?)"
+run "$R" step --rm w2 >/dev/null
+RX=$(new_repo)
+CLAUDE_CODE_SESSION_ID=sess-9 run "$RX" step --start x1 --request "stamp me" >/dev/null
+eq "--start stamps the session it was run from, so a later stats finds the transcript" "sess-9" \
+   "$(jq -r '.session_id' "$RX/.git/clerk/runs/x1/run.json")"
+rm -rf "$TD" "$FZ" "$FZC" "$RX"
 eq "a finished slug can be started again" "true" "$(run "$WT" step --start w1 --request "Round two" | field .started)"
 run "$WT" step --rm w1 >/dev/null
 

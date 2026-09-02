@@ -276,7 +276,7 @@ class Ctx:
     full: bool = False  # --full: print the step's text even if this session has seen it
 
 
-def build_ctx(explicit_run=None, harness=None, read_only=False, full=False):
+def build_ctx(explicit_run=None, harness=None, read_only=False, full=False, pick=False):
     cwd = os.getcwd()
     common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
     if not common:
@@ -289,7 +289,7 @@ def build_ctx(explicit_run=None, harness=None, read_only=False, full=False):
     ctx = Ctx(cwd=cwd, common=common, git_dir=gitout("rev-parse", "--absolute-git-dir", cwd=cwd),
               branch=prep.get("branch") or None, head=gitout("rev-parse", "HEAD", cwd=cwd),
               default=prep.get("default_branch"), prepare=prep, read_only=read_only, full=full)
-    ctx.run = resolve_run(ctx, explicit_run)
+    ctx.run = resolve_run(ctx, explicit_run, pick=pick)
     if ctx.run is not None:
         request = ctx.run.meta.get("request") or ""
         rc, prep, err = clerk("prepare", "--request", request, cwd=cwd)
@@ -305,11 +305,11 @@ def build_ctx(explicit_run=None, harness=None, read_only=False, full=False):
     return ctx
 
 
-def resolve_run(ctx, explicit):
+def resolve_run(ctx, explicit, pick=False):
     """Which ledger this call belongs to: `--run`, else the one `clerk prepare` resolved
     (named by the branch, or the single open run from the default branch). Several open
     runs from there is a choice the caller has to make, the way `prepare` refuses to
-    pick between breakdowns."""
+    pick between breakdowns — unless the command has its own way of asking (`pick`)."""
     if explicit:
         run = Run(runs_root(ctx.common) / explicit)
         if not run.exists():
@@ -321,6 +321,8 @@ def resolve_run(ctx, explicit):
     open_runs = ctx.prepare.get("runs_open") or []
     on_feature = ctx.branch and ctx.branch not in (ctx.default, "HEAD")
     if len(open_runs) > 1 and not on_feature:
+        if pick:
+            return None
         emit({"step": "start", "blocked": True,
               "reason": f"{len(open_runs)} runs are open; name the one this call is for with --run <slug>",
               "open_runs": open_run_summaries(ctx)}, 3)
@@ -330,6 +332,15 @@ def resolve_run(ctx, explicit):
 def open_run_summaries(ctx):
     return [run_summary(Run(runs_root(ctx.common) / slug), ctx.cwd)
             for slug in ctx.prepare.get("runs_open") or []]
+
+
+def all_run_summaries(ctx):
+    """Every run this repository has kept, finished or not, newest first."""
+    root = runs_root(ctx.common)
+    runs = [Run(d) for d in root.iterdir() if (d / "run.json").exists()] if root.is_dir() else []
+    rows = [run_summary(r, ctx.cwd) for r in runs]
+    rows.sort(key=lambda r: r.get("started_at") or "", reverse=True)
+    return rows
 
 
 def worktree_of(ctx, branch):
@@ -920,7 +931,7 @@ def cmd_start(slug, request, harness):
             p.unlink()
     run.write("run.json", {"slug": slug, "request": request, "started_at": now(), "launch_cwd": cwd,
                            "launch_branch": prep.get("branch"), "harness": harness or detect_harness(),
-                           "finished": False})
+                           "session_id": session_id(), "finished": False})
     return {"started": True, "run": slug, "ledger": str(run.dir), "request": request,
             "next": next_step(build_ctx(slug, harness))}
 
@@ -1198,9 +1209,14 @@ def audit_round(ctx, aud, o):
     summary = report_summary(o["--report"])
     gaps = summary["gaps_text"]
     again = repeated_gaps(gaps, [gap_key(g) for r in aud["rounds"] for g in r.get("gaps_text", [])])
+    landed = (live_of(aud) or {}).get("landed") or {}
     entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
              "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary,
-             "incidents": [i for i in aud.get("incidents") or [] if i.get("round") == len(aud["rounds"]) + 1]}
+             "incidents": [i for i in aud.get("incidents") or [] if i.get("round") == len(aud["rounds"]) + 1],
+             "agents": [{"phase": ph, "id": jid, "ok": rec.get("ok"), "seconds": rec.get("seconds"),
+                         "cost_usd": rec.get("cost_usd"), "attempts": rec.get("attempts"),
+                         "session_id": rec.get("session_id"), "at": rec.get("at")}
+                        for ph, by_id in landed.items() for jid, rec in by_id.items()]}
     aud["rounds"].append(entry)
     # Recording is the statement that this round is over, so the live round retires with
     # it. Left in place it still reads as a round in flight, and `clerk audit run` skips
@@ -1563,7 +1579,7 @@ class Runner:
     def agent_started(self, j):
         with self.lock:
             t = time.time()
-            self.agents[j["id"]] = {"last_event": t, "stall": None, "landed": False}
+            self.agents[j["id"]] = {"started": t, "last_event": t, "stall": None, "landed": False}
             self.record()["agents"][j["id"]] = {"started_at": now()}
             self.save()
 
@@ -1583,7 +1599,8 @@ class Runner:
             rec = self.record()
             rec["agents"].setdefault(j["id"], {})["landed_at"] = now()
             self.lv.setdefault("landed", {}).setdefault(rec.get("phase") or self.lv["phase"], {})[j["id"]] = {
-                **r, "at": now(), "code_tree": self.ctx.head_ct}
+                **r, "at": now(), "code_tree": self.ctx.head_ct,
+                "seconds": int(time.time() - a["started"]) if a else None}
             self.save()
 
     def roster(self):
@@ -1861,8 +1878,51 @@ def main_audit(argv):
     emit(handler(ctx, aud, o))
 
 
+STATS_SPEC = {"--run": "value", "--session": "value", "--pick": "bool", "--json": "bool",
+              "--text": "bool", "-h": "bool", "--help": "bool"}
+
+
+def main_stats(argv):
+    """Where a run's time and tokens went. The run is `--run`, else the branch's, else —
+    for a person at a terminal with fzf — a choice; a caller with no terminal is handed
+    the list and told to name one, so a model is never left waiting on a prompt."""
+    import clerk_stats as st
+    o, rest = parse(argv, STATS_SPEC)
+    if o["-h"] or o["--help"]:
+        print("usage: clerk stats [--run <slug> | --pick] [--session <id>] [--text | --json]")
+        sys.exit(0)
+    if rest:
+        die(f"unexpected argument '{rest[0]}'")
+    ctx = build_ctx(o["--run"], read_only=True, pick=True)
+    if ctx.run is None or o["--pick"]:
+        runs = all_run_summaries(ctx)
+        if not runs:
+            die("no runs in this repository", 3)
+        slug = st.pick_run(runs) if st.interactive() else None
+        if not slug:
+            emit({"run": None, "reason": "name a run with --run <slug>", "runs": runs}, 3)
+        ctx.run = Run(runs_root(ctx.common) / slug)
+    cwd = ctx.run.meta.get("launch_cwd") or ctx.cwd
+    session = o["--session"]
+    cands = []
+    if not session and not ctx.run.meta.get("session_id") \
+            and not (ctx.run.read("shown.json") or {}).get("session"):
+        cands = st.candidates(ctx.run, [cwd, ctx.cwd, ctx.build_tree])
+        if cands and st.interactive():
+            session = st.pick_session(cands)
+    stats = st.collect(ctx.run, cwd, session=session)
+    if stats["session"] is None and cands:
+        stats["candidates"] = cands
+    if o["--text"] or (not o["--json"] and sys.stdout.isatty()):
+        print(st.render(stats))
+        sys.exit(0)
+    emit(stats)
+
+
 if __name__ == "__main__":
     if NAME == "audit":
         main_audit(sys.argv[1:])
+    elif NAME == "stats":
+        main_stats(sys.argv[1:])
     else:
         main_step(sys.argv[1:])

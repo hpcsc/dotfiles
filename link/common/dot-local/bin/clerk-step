@@ -1123,13 +1123,17 @@ def main_step(argv):
 # --------------------------------------------------------------------------------
 
 def report_summary(path):
+    import clerk_stats
     text = sys.stdin.read() if path == "-" else Path(path).read_text()
     try:
-        rep = json.loads(text)
+        raw = json.loads(text)
     except json.JSONDecodeError:
         die(f"{path} is not valid JSON")
-    if not isinstance(rep, dict):
-        rep = {}
+    rep = clerk_stats.unwrap_report(raw)
+    if rep is None:
+        keys = ", ".join(sorted(raw)) if isinstance(raw, dict) else type(raw).__name__
+        die(f"{path} is not an audit report: no `findings` list at its top level or under `report` "
+            f"(it has: {keys}). Pass the report the round returned, or the whole reply that carries it.")
 
     def count(k):
         v = rep.get(k)

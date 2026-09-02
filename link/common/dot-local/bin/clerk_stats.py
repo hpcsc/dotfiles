@@ -49,6 +49,44 @@ def read_jsonl(path):
         return
 
 
+def unwrap_report(obj):
+    """The report inside whatever was saved. `clerk audit run` ends with a reply that
+    carries the report under `report`, and a run that saves the whole reply and passes
+    the file on has handed over a valid JSON document with no findings at its top level.
+    Returns None when neither shape is present."""
+    if not isinstance(obj, dict):
+        return None
+    if isinstance(obj.get("findings"), list):
+        return obj
+    inner = obj.get("report")
+    if isinstance(inner, dict) and isinstance(inner.get("findings"), list):
+        return inner
+    return None
+
+
+def finding_rows(rep):
+    return [{"id": f.get("id"), "severity": f.get("severity"), "nature": f.get("nature"),
+             "file": f.get("file"), "line": f.get("line")}
+            for f in (rep.get("findings") or []) if isinstance(f, dict)]
+
+
+def recover_round(r):
+    """Counts for a round recorded without them, read back from the report file it named."""
+    path = r.get("report")
+    if r.get("findings") is not None or not path:
+        return r
+    try:
+        rep = unwrap_report(json.loads(Path(path).read_text()))
+    except (OSError, json.JSONDecodeError):
+        return r
+    if not rep:
+        return r
+    gaps = rep.get("coverage_gaps")
+    return {**r, "findings": len(rep["findings"]),
+            "coverage_gaps": len(gaps) if isinstance(gaps, list) else None,
+            "findings_list": finding_rows(rep), "recovered_from_report": True}
+
+
 # --------------------------------------------------------------------------------
 # Windows: each step's span, from the stamps the run left behind
 # --------------------------------------------------------------------------------
@@ -130,6 +168,7 @@ def windows(run):
 
     audit_rounds, prev = [], suite_end
     for r in rounds:
+        r = recover_round(r)
         at = parse_at(r.get("at"))
         agents = r.get("agents") or []
         audit_rounds.append({
@@ -140,6 +179,7 @@ def windows(run):
             "agent_seconds": sum(a.get("seconds") or 0 for a in agents) or None,
             "cost_usd": round(sum(a.get("cost_usd") or 0 for a in agents), 4) if agents else None,
             "incidents": len(r.get("incidents") or []),
+            "recovered_from_report": bool(r.get("recovered_from_report")),
             "agent_rows": agents})
         prev = at or prev
 

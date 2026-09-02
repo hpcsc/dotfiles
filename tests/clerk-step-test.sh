@@ -239,7 +239,10 @@ printf '\naudit — rounds are recorded against a fresh receipt and a clean tree
 A=$(run "$WT" step)
 eq "the audit step hands over the request verbatim" "Add a widget --gears" "$(printf '%s' "$A" | field .request)"
 eq "and the base ref the work started from" "$(git -C "$WT" merge-base HEAD main)" "$(printf '%s' "$A" | field .base)"
-REP=$(mktemp); printf '{"findings": [1, 2], "refuted": [3], "coverage_gaps": ["documentation and fixtures were reviewed by nobody"], "lenses": ["semantic:Go"]}' > "$REP"
+# Saved as the runner's whole reply, report inside, which is what a run that keeps the
+# reply it was handed passes on; the report is read out of it.
+REP=$(mktemp); printf '{"ran": true, "round": 1, "phases": [], "report": {"findings": [1, 2], "refuted": [3], "coverage_gaps": ["documentation and fixtures were reviewed by nobody"], "lenses": ["semantic:Go"]}}' > "$REP"
+BADREP=$(mktemp); printf '{"ran": true, "phases": [], "progress": "x"}' > "$BADREP"
 eq "a round needs a report" "2" "$(rc "$WT" audit round)"
 printf 'x\n' > "$WT/probe.txt"
 eq "a round on a dirty tree is refused — a verifier's residue is not the branch" "3" "$(rc "$WT" audit round --report "$REP")"
@@ -249,6 +252,10 @@ eq "a round on a stale receipt is refused — the suite comes first" "3" "$(rc "
 run "$WT" receipt --command "go test ./..." --passed >/dev/null
 eq "accepting with no round recorded is refused" "3" "$(rc "$WT" audit accept)"
 run "$WT" audit plan --rounds 1 >/dev/null
+eq "a file with no findings in it, top level or under report, is not a report and is refused" "2" \
+   "$(rc "$WT" audit round --report "$BADREP")"
+eq "saying what it did find in the file" "1" \
+   "$(run "$WT" audit round --report "$BADREP" 2>&1 >/dev/null | grep -c 'it has: phases, progress, ran' | tr -d ' ')"
 RD=$(run "$WT" audit round --report "$REP")
 eq "a round records its counts against the code tree" "true|1|2|1|1" \
    "$(printf '%s' "$RD" | jq -r '[(.recorded|tostring), (.round.n|tostring), (.round.findings|tostring), (.round.refuted|tostring), (.round.coverage_gaps|tostring)] | join("|")')"
@@ -351,6 +358,10 @@ eq "every step of the table is listed, in order" "ground,decompose,build,suite,a
 eq "the steps the run stamped have a span, and they add up to the run" "true" \
    "$(printf '%s' "$S" | jq -r '(.total_seconds >= 0) and ([.steps[] | select(.step | IN("build","suite","audit","land","learn")) | .seconds >= 0] | all) and (([.steps[].seconds // 0] | add) == .total_seconds) | tostring')"
 eq "each finished task has its own span" "2" "$(printf '%s' "$S" | jq -r '.tasks | length')"
+AJW="$R/.git/clerk/runs/w1/audit.json"
+jq '.rounds[0].findings = null | .rounds[0].coverage_gaps = null | .rounds[0].findings_list = null' "$AJW" > "$AJW.new" && /bin/mv -f "$AJW.new" "$AJW"
+eq "a round recorded without its counts gets them back from the report file it named" "2|1|true" \
+   "$(run "$WT" stats --run w1 --json | jq -r '.audit_rounds[0] | [(.findings|tostring), (.coverage_gaps|tostring), (.recovered_from_report|tostring)] | join("|")')"
 eq "and each recorded round, with its incidents and the agents it kept" "2|0|0" \
    "$(printf '%s' "$S" | jq -r '[(.audit_rounds | length), .audit_rounds[0].incidents, .audit_rounds[0].agents] | map(tostring) | join("|")')"
 eq "with no session on record there are no tokens, and the reason is said" "null|true" \

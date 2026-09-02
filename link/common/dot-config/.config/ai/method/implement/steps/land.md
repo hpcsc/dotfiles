@@ -6,7 +6,7 @@ clerk land --integrate        # …and put it on the default branch regardless
 clerk land --no-integrate     # …and leave the branch standing regardless
 ```
 
-`land` runs the gate first and refuses if it does not open: every task checked off, the tree clean, a passing receipt **at the current HEAD**, the `verify-run` step clear at this code tree, and `--audit-accepted` asserted once the audit's findings are fixed or the user has accepted them. That last one is judgment, so it is asserted rather than inferred — without it the gate simply stays shut.
+`land` asks `clerk step` first and refuses unless the run has reached this step — the audit's acceptance, the story re-read and the verify pass are all read from the ledger at this code tree, never re-asserted. Then it runs the gate on what the table does not look at, and refuses if it does not open: every task checked off, the tree clean, a passing receipt **at the current code tree**. Only a branch landed without a run ledger needs `--audit-accepted`, because there the acceptance has nowhere else to live.
 
 It archives the breakdown to `tasks/completed/` **on the feature branch, before any integration**, so the archive commit rides with the work it belongs to rather than landing on the default branch behind it. That order is also the only one that works: `git mv` leaves a dirty tree and a dirty tree blocks the rebase.
 

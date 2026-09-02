@@ -298,9 +298,10 @@ flowchart LR
 ```
 
 The right-to-left arrow matters as much as the other one. "The audit's findings are
-fixed or accepted" is a judgment, so `clerk gate` never infers it — `clerk audit accept`
-records it once against the code tree it applies to, or the caller asserts it with
-`--audit-accepted`, and without either the gate stays shut.
+fixed or accepted" is a judgment, so nothing infers it — `clerk audit accept` records it
+once against the code tree it applies to, `clerk land` reads it through `clerk step`'s
+answer along with every other row, and a branch landed without a run ledger asserts it
+with `--audit-accepted`. Without either, the gate stays shut.
 
 ### Command surface
 

@@ -342,9 +342,8 @@ eq "--status looks without recording, here as everywhere" "$BEFORE" "$(wc -l < "
 printf '\nland — archive, then integrate only when asked; step follows the run to the main checkout\n'
 
 eq "not archived: land, with the command" "true" "$(run "$WT" step | jq -r '.done_by | contains("clerk land")')"
-eq "the gate opens on the acceptance clerk audit recorded — no flag needed" "true|true" \
-   "$(run "$WT" gate | jq -r '[(.checks[] | select(.name == "audit-accepted") | .ok | tostring), (.ok|tostring)] | join("|")')"
-run "$WT" land >/dev/null
+eq "land needs no flag: step vouches for the acceptance clerk audit recorded" "true" \
+   "$(run "$WT" land | jq -r '.archived != null')"
 eq "archived without integration: the run is landed on its branch" "learn" "$(run "$WT" step | field .step)"
 eq "--done learn needs nothing else when there is nothing to record" "learn|true" \
    "$(run "$WT" step --done learn --none | jq -r '[.done, (.none|tostring)] | join("|")')"

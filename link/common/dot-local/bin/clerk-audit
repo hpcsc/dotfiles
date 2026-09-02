@@ -16,7 +16,6 @@ import signal
 import sys
 import tempfile
 import threading
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -189,7 +188,8 @@ def audit_round(ctx, aud, o):
     gaps = summary["gaps_text"]
     again = repeated_gaps(gaps, [gap_key(g) for r in aud["rounds"] for g in r.get("gaps_text", [])])
     live = live_of(aud) or {}
-    landed = live.get("landed") or {}
+    landed = {ph: {jid: rec for jid, rec in by_id.items() if rec.get("landed_at")}
+              for ph, by_id in (live.get("agents") or {}).items()}
     ended = max((rec.get("at") for by_id in landed.values() for rec in by_id.values() if rec.get("at")),
                 default=None)
     entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
@@ -561,26 +561,18 @@ def _phase_line(nxt, jobs, kept=()):
     return f"{nxt['phase']} · round {nxt['round']} · {n} agent{'s' if n != 1 else ''}, {how}{tail}"
 
 
-STALL_AFTER = int(os.environ.get("CLERK_STALL_AFTER", "300"))
-
-
 class Runner:
-    """The process driving a round, and the record it keeps of itself in the live round
-    as it goes: each agent's reply the moment it lands, so a resume spawns only the rest;
-    when each agent last did anything, so a stall is written down rather than mistaken
-    for a dead round; and what ended the process, when something did.
-
-    Everything that touches the ledger from a worker thread goes through `lock`. It is
-    re-entrant because a signal handler runs on the main thread, which may already be
-    holding it when the signal lands."""
+    """The process driving a round, and the record it keeps of itself in the live round as
+    it goes: each agent's start, and its reply the moment it lands, under
+    `agents[phase][id]` — so a resume spawns only what has not landed, and a reader can
+    tell what a runner that died had kept — plus what ended the process, when something
+    did. Every ledger write from a worker thread goes through `lock`; it is re-entrant
+    because a signal handler runs on the main thread, which may already hold it."""
 
     def __init__(self, ctx, out):
         self.ctx, self.out = ctx, out
         self.lock = threading.RLock()
         self.aud = self.lv = None
-        self.agents = {}
-        self.in_phase = False
-        self.stopped = threading.Event()
 
     def bind(self, aud):
         self.aud, self.lv = aud, live_of(aud)
@@ -590,58 +582,46 @@ class Runner:
             self.ctx.run.write("audit.json", self.aud)
 
     def record(self):
-        return self.lv.setdefault("runner", {"pid": os.getpid(), "started_at": now(), "agents": {}})
+        return self.lv.setdefault("runner", {"pid": os.getpid(), "started_at": now()})
+
+    def agents(self, phase=None):
+        phase = phase or self.record().get("phase") or self.lv["phase"]
+        return self.lv.setdefault("agents", {}).setdefault(phase, {})
 
     def reusable(self, phase, jobs):
-        kept = (self.lv.get("landed") or {}).get(phase) or {}
+        kept = self.agents(phase)
         return {j["id"]: kept[j["id"]] for j in jobs
-                if kept.get(j["id"], {}).get("ok")
+                if kept.get(j["id"], {}).get("ok") and kept[j["id"]].get("landed_at")
                 and kept[j["id"]].get("code_tree") == self.ctx.head_ct}
 
-    def phase_started(self, phase):
+    def phase_started(self, phase, kept):
+        """Only what this phase keeps stays on record; the rest is about to be spawned
+        again, and a stale start would read as an agent still out."""
         with self.lock:
-            self.agents = {}
-            self.lv["runner"] = {"pid": os.getpid(), "phase": phase, "started_at": now(),
-                                 "beat_at": now(), "agents": {}}
-            self.in_phase = True
+            self.lv["runner"] = {"pid": os.getpid(), "phase": phase, "started_at": now()}
+            self.lv.setdefault("agents", {})[phase] = {k: v for k, v in self.agents(phase).items() if k in kept}
             self.save()
-
-    def phase_done(self):
-        with self.lock:
-            self.in_phase = False
-            for jid, a in self.agents.items():
-                self._stall_over(a)
 
     def agent_started(self, j):
         with self.lock:
-            t = time.time()
-            self.agents[j["id"]] = {"started": t, "last_event": t, "stall": None, "landed": False}
-            self.record()["agents"][j["id"]] = {"started_at": now()}
+            self.agents()[j["id"]] = {"started_at": now()}
             self.save()
-
-    def agent_event(self, jid, e):
-        with self.lock:
-            a = self.agents.get(jid)
-            if a:
-                a["last_event"] = time.time()
-                self._stall_over(a)
 
     def agent_landed(self, j, r):
+        """Returns how long the agent took, from the start it recorded."""
         with self.lock:
-            a = self.agents.get(j["id"])
-            if a:
-                a["landed"] = True
-                self._stall_over(a)
-            rec = self.record()
-            rec["agents"].setdefault(j["id"], {})["landed_at"] = now()
-            self.lv.setdefault("landed", {}).setdefault(rec.get("phase") or self.lv["phase"], {})[j["id"]] = {
-                **r, "at": now(), "code_tree": self.ctx.head_ct,
-                "seconds": int(time.time() - a["started"]) if a else None}
+            a = self.agents().setdefault(j["id"], {})
+            since = age_seconds(a.get("started_at"))
+            a.update({**r, "landed_at": now(), "at": now(), "code_tree": self.ctx.head_ct,
+                      "seconds": int(since) if since != float("inf") else None})
             self.save()
+            return a["seconds"] or 0
 
     def roster(self):
-        landed = sorted(k for k, a in self.agents.items() if a["landed"])
-        return landed, sorted(k for k, a in self.agents.items() if not a["landed"])
+        """(landed, in flight) for the phase being driven."""
+        ag = self.agents()
+        return (sorted(k for k, a in ag.items() if a.get("landed_at")),
+                sorted(k for k, a in ag.items() if not a.get("landed_at")))
 
     def incident(self, kind, **fields):
         with self.lock:
@@ -651,30 +631,7 @@ class Runner:
             self.save()
             return entry
 
-    def _stall_over(self, a):
-        if a["stall"] is not None:
-            a["stall"]["lasted_s"] = int(time.time() - a["since"])
-            a["stall"] = None
-
-    def watch(self):
-        tick = max(1, min(15, STALL_AFTER // 2))
-        while not self.stopped.wait(tick):
-            with self.lock:
-                if not self.in_phase:
-                    continue
-                t = time.time()
-                for jid, a in self.agents.items():
-                    silent = t - a["last_event"]
-                    if a["landed"] or a["stall"] is not None or silent <= STALL_AFTER:
-                        continue
-                    a["since"] = a["last_event"]
-                    a["stall"] = self.incident("stall", agent=jid, silent_s=int(silent))
-                    self.out.note(f"  · {_short_id(jid)} silent {span(silent)}")
-                self.record()["beat_at"] = now()
-                self.save()
-
     def finish(self):
-        self.stopped.set()
         with self.lock:
             if self.lv and self.lv.get("runner"):
                 self.lv["runner"]["finished_at"] = now()
@@ -748,7 +705,6 @@ def audit_run(ctx, aud, o):
             runner.record()["died"] = now()
             runner.incident("runner-killed", signal=name, kept=landed, lost=in_flight)
         ex.stop_all()
-        runner.stopped.set()
         try:
             out.final({"ran": False, "phase": runner.record().get("phase") or runner.lv["phase"],
                        "cost_usd": round(spent, 4), "reason": f"killed by {name}",
@@ -758,7 +714,6 @@ def audit_run(ctx, aud, o):
         os._exit(128 + signum)
     for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
         signal.signal(sig, on_signal)
-    threading.Thread(target=runner.watch, daemon=True).start()
 
     while True:
         nxt = audit_next(ctx, aud, o)
@@ -780,25 +735,20 @@ def audit_run(ctx, aud, o):
         for jid, r in kept.items():
             out.note(f"  · {_short_id(jid)} landed at {(r.get('at') or '')[11:16]}Z, kept")
         todo = [j for j in jobs if j["id"] not in kept]
-        runner.phase_started(nxt["phase"])
-        started = {}
+        runner.phase_started(nxt["phase"], kept)
         def began(j):
-            started[j["id"]] = time.time()
             runner.agent_started(j)
             out.note(f"  · {_short_id(j['id'])} started")
         def landed(j, r):
-            runner.agent_landed(j, r)
-            took = int(time.time() - started.get(j["id"], time.time()))
+            took = runner.agent_landed(j, r)
             out.result(f"  {'✓' if r.get('ok') else '✗'} {_short_id(j['id']):<20} "
                        f"{_verdict(r):<28} {took}s · ${r.get('cost_usd') or 0:.2f}")
         def event(jid, e):
-            runner.agent_event(jid, e)
             if out.wants_events:
                 out.event(e, _short_id(jid))
         fresh = ex.run_batch(todo, schemas, harness=harness, cwd=ctx.cwd,
                              concurrent=bool(nxt.get("concurrent")), model=o["--model"],
                              log=out.note, on_start=began, on_done=landed, on_event=event)
-        runner.phase_done()
         by_id = {r["id"]: r for r in fresh}
         results = [kept[j["id"]] if j["id"] in kept else by_id[j["id"]] for j in jobs]
         spent += sum(r.get("cost_usd") or 0 for r in fresh)

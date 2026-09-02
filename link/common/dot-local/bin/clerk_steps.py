@@ -322,7 +322,7 @@ def row_audit(ctx):
         why = f"round {live['round']} is running: pid {runner['pid']}, in {runner['phase']}"
     elif runner and not runner.get("finished_at"):
         why = (f"round {live['round']} is in flight but its runner (pid {runner['pid']}) is gone — "
-               f"last seen {runner['beat_at']} in {runner['phase']}, {len(runner['landed'])} agent(s) "
+               f"it entered {runner['phase']} at {runner['started_at']}, {len(runner['landed'])} agent(s) "
                f"kept, {len(runner['in_flight'])} to run again; `clerk audit run` resumes it")
     elif not rounds:
         why = "no audit round is recorded for this run"

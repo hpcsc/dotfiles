@@ -936,9 +936,9 @@ PID=$(jq -r '.live.runner.pid' "$AJ")
 kill -TERM "$PID" 2>/dev/null
 wait "$BG" 2>/dev/null
 eq "the lens that had landed is in the ledger before the round is over" "true" \
-   "$(jq -r '.live.landed.review["review:guidelines:Go"].ok' "$AJ")"
+   "$(jq -r '.live.agents.review["review:guidelines:Go"].ok' "$AJ")"
 eq "the one still running is not" "false" \
-   "$(jq -r '.live.landed.review | has("review:semantic:Go")' "$AJ")"
+   "$(jq -r '.live.agents.review["review:semantic:Go"] | has("landed_at")' "$AJ")"
 eq "the kill is on record: what sent it, what was kept, what was lost" "runner-killed|SIGTERM|review:guidelines:Go|review:semantic:Go" \
    "$(jq -r '.incidents[-1] | [.kind, .signal, (.kept|join(",")), (.lost|join(","))] | join("|")' "$AJ")"
 eq "and the progress log closes on it rather than trailing off" "true" \
@@ -964,9 +964,9 @@ run "$RA" audit begin --base main --restart >/dev/null 2>&1
 sleep 60 & GHOST=$!
 kill -9 "$GHOST"; wait "$GHOST" 2>/dev/null
 plant() {  # pid
-  jq --argjson p "$1" '.live.runner = {pid: $p, phase: "review", started_at: "2026-01-01T00:00:00Z",
-       beat_at: "2026-01-01T00:00:10Z", agents: {"review:guidelines:Go": {started_at: "s", landed_at: "l"},
-       "review:semantic:Go": {started_at: "s"}}}' "$AJ" > "$AJ.new" && /bin/mv -f "$AJ.new" "$AJ"
+  jq --argjson p "$1" '.live.runner = {pid: $p, phase: "review", started_at: "2026-01-01T00:00:00Z"}
+       | .live.agents = {review: {"review:guidelines:Go": {started_at: "s", landed_at: "l"},
+                                  "review:semantic:Go": {started_at: "s"}}}' "$AJ" > "$AJ.new" && /bin/mv -f "$AJ.new" "$AJ"
 }
 plant "$GHOST"
 ST=$(run "$RA" audit status)
@@ -980,13 +980,8 @@ plant $$
 eq "a round another runner is still driving is refused, not driven twice" "3" \
    "$(cd "$RA" && PATH="$FAKE2:$PATH" "$CLERK" audit run --quiet >/dev/null 2>&1; printf '%s' $?)"
 
-# An agent that goes quiet is the other thing a reader cannot tell from a dead round.
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
-(cd "$RA" && PATH="$FAKE2:$PATH" SLOW=3 CLERK_STALL_AFTER=1 "$CLERK" audit run --restart --quiet >/dev/null 2>&1)
-eq "an agent silent past the threshold is written down, with how long it stayed silent" "review:semantic:Go|true" \
-   "$(jq -r '[.incidents[] | select(.kind=="stall")] | last | [.agent, (has("lasted_s")|tostring)] | join("|")' "$AJ")"
-eq "and the progress log says so while it is happening" "true" \
-   "$(grep -q 'semantic:Go silent' "$LOG" && echo true || echo false)"
+(cd "$RA" && PATH="$FAKE2:$PATH" SLOW=0 "$CLERK" audit run --restart --quiet >/dev/null 2>&1)
 eq "a round that ran to the end leaves no death behind it" "true" \
    "$(run "$RA" audit status | jq -r '[(.runner.finished_at != null), ([.incidents[] | select(.kind=="runner-died")] | length == 1)] | all | tostring')"
 

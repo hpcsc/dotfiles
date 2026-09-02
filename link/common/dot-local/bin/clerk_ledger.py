@@ -355,9 +355,9 @@ def runner_view(lv):
     r = (lv or {}).get("runner")
     if not r:
         return None
-    agents = r.get("agents") or {}
+    agents = ((lv or {}).get("agents") or {}).get(r.get("phase")) or {}
     return {"pid": r.get("pid"), "alive": runner_alive(r.get("pid")), "phase": r.get("phase"),
-            "started_at": r.get("started_at"), "beat_at": r.get("beat_at"),
+            "started_at": r.get("started_at"),
             "finished_at": r.get("finished_at"), "died": r.get("died"),
             "landed": sorted(k for k, a in agents.items() if a.get("landed_at")),
             "in_flight": sorted(k for k, a in agents.items() if not a.get("landed_at"))}
@@ -371,7 +371,7 @@ def note_runner_dead(ctx, aud):
         return None
     lv["runner"]["died"] = now()
     entry = {"at": now(), "kind": "runner-died", "round": lv["round"], "phase": v["phase"],
-             "pid": v["pid"], "last_beat": v["beat_at"], "kept": v["landed"], "lost": v["in_flight"]}
+             "pid": v["pid"], "kept": v["landed"], "lost": v["in_flight"]}
     aud.setdefault("incidents", []).append(entry)
     ctx.run.write("audit.json", aud)
     return entry

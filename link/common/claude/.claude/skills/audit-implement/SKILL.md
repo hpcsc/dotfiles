@@ -56,7 +56,8 @@ The flags that shape a round:
 | `--depth deep` | three refuters on every high or medium claim, majority taken |
 | `--fixed-file <p>` | re-auditing after fixes: keeps every lens that owns one of these |
 | `--lens <key>` | narrow the panel by hand — only when every fix was a quality fix |
-| `--recheck <json>` | the findings you fixed, so they are re-asked — whole objects, never bare ids: `[{"id": …, "claim": …, "note": "the fix you are reporting"}]` |
+| `--recheck <json>` | every finding of the last round, fixed or declined, so they are re-asked or settled — whole objects, never bare ids: `[{"id": …, "claim": …, "decision": "fixed" \| "declined", "note": "the fix you are reporting, or why you declined"}]`. A declined one is shown to the lenses as settled and any re-raise is dropped before refutation |
+| `--another <why>` | run a round the last one did not earn — no `high`, or `medium` and `runtime`, finding you did not decline — and record why; without it such a round is refused |
 | `--model <m>` | a different model for every agent in the round |
 | `--dry-run` | the panel it would spawn, and what it would cost, spawning nothing |
 | `--quiet` / `--raw` | phases and results only, or the raw event stream for a log |
@@ -113,7 +114,7 @@ A round already in flight for this branch is continued rather than restarted; pa
 1. **Read `coverage_gaps` first.** An audit's blind spots are more actionable than its hits: they tell you what you still have to check yourself.
 2. **Work `findings` in order.** Each carries evidence. A `confirmed` runtime finding has a command and output you can re-run; a `confirmed` quality finding has a rule and a line.
 3. **Skim `refuted`.** A wrongly-refuted finding is the failure mode of this shape. If one looks right to you, it probably is — the verifier is instructed to default to refuting when uncertain.
-4. **Fix directly.** Do not delegate the fixes; you have the context and they are usually small. To confirm they landed, run another round with `--recheck` and `--fixed-file` set to the paths you touched: the panel keeps every lens that owns one of them and names the rest in `lenses_not_run`. Narrow harder with `--lens` only when every fix was a quality fix, which cannot break what another lens owns.
+4. **Fix directly.** Do not delegate the fixes; you have the context and they are usually small. To confirm they landed, run another round with `--recheck` naming every finding, `decision: fixed` or `decision: declined` with your reason (a declined one is settled and any re-raise is dropped), and `--fixed-file` set to the paths you touched: the panel keeps every lens that owns one of them and names the rest in `lenses_not_run`. Narrow harder with `--lens` only when every fix was a quality fix, which cannot break what another lens owns.
 5. **Persist what generalises.** A finding that names a repeatable mistake belongs in the repo's learnings file (`tasks/learnings.md`, or the out-of-tree per-project store when the repo gitignores `tasks/`) so the next run — of anything — inherits it.
 
 ---

@@ -755,12 +755,12 @@ def row_land(ctx):
     if ctx.branch == slug:
         archived = bool(stamp) or (Path(ctx.git_dir) / "clerk" / "archived.json").exists()
         if not archived:
-            return row("land", False, why_not_done="the breakdown is not archived",
+            return row("land", False, action="archive", why_not_done="the breakdown is not archived",
                        integrate=ctx.flags.get("integrate"),
                        done_by="clerk land [--integrate|--no-integrate] — it returns the step that follows as next")
         integrate = stamp.get("integrate") if stamp else ctx.flags.get("integrate")
         if integrate and ctx.in_worktree:
-            return row("land", False,
+            return row("land", False, action="leave",
                        why_not_done="archived; integration is on and cannot finish from inside the worktree",
                        done_by=f"leave the worktree keeping the branch (ExitWorktree keep on Claude Code), run the command `clerk land` printed in {ctx.repo_root}, then clerk step there")
         return row("land", True, archived=True, integrated=False)
@@ -769,15 +769,15 @@ def row_land(ctx):
     wt = worktree_of(ctx, slug)
     if ctx.default and is_ancestor(slug, ctx.default, ctx.cwd):
         if wt:
-            return row("land", False, why_not_done=f"merged; the worktree at {wt} remains",
+            return row("land", False, action="cleanup", why_not_done=f"merged; the worktree at {wt} remains",
                        done_by=f"git worktree remove {wt} && git branch -d {slug}; then clerk step")
-        return row("land", False, why_not_done=f"merged; branch {slug} remains",
+        return row("land", False, action="cleanup", why_not_done=f"merged; branch {slug} remains",
                    done_by=f"git branch -d {slug}; then clerk step")
     cmd = f"git -C {ctx.repo_root} merge --ff-only {slug}"
     if wt:
         cmd += f" && git -C {ctx.repo_root} worktree remove {wt}"
     cmd += f" && git -C {ctx.repo_root} branch -d {slug}"
-    return row("land", False, why_not_done=f"archived on {slug}, not yet on {ctx.default}",
+    return row("land", False, action="merge", why_not_done=f"archived on {slug}, not yet on {ctx.default}",
                done_by=f"{cmd}; then clerk step")
 
 

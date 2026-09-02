@@ -461,11 +461,11 @@ eq "the worktree run reaches land" "land" "$(run "$WL" step | field .step)"
 eq "land --integrate inside a worktree stops before the fast-forward" "3" "$(rc "$WL" land --audit-accepted --integrate)"
 eq "its stamp records that integration was asked for, by the request" "true|false|request" \
    "$(jq -r '[(.integrate|tostring), (.landed|tostring), .integrate_source] | join("|")' "$RL/.git/clerk/runs/lz/land.json")"
-eq "and step reads the stamp — no config says integrate — and says to finish from the main checkout" "true" \
-   "$(run "$WL" step | jq -r '.done_by | contains("leave the worktree")')"
+eq "and step reads the stamp — no config says integrate — and says to finish from the main checkout" "leave|true" \
+   "$(run "$WL" step | jq -r '[.action, (.done_by | contains("leave the worktree") | tostring)] | join("|")')"
 L=$(run "$RL" step)
 eq "from the main checkout the same run is found, at land" "lz|land" "$(printf '%s' "$L" | jq -r '[.run, .step] | join("|")')"
-eq "with the fast-forward command" "true" "$(printf '%s' "$L" | jq -r '.done_by | contains("merge --ff-only lz")')"
+eq "with the fast-forward command" "merge|true" "$(printf '%s' "$L" | jq -r '[.action, (.done_by | contains("merge --ff-only lz") | tostring)] | join("|")')"
 git -C "$RL" merge -q --ff-only lz && git -C "$RL" worktree remove "$WL" && git -C "$RL" branch -qd lz
 eq "merged and gone, the run moves to learn in the main checkout" "learn" "$(run "$RL" step | field .step)"
 eq "whose learnings path is reported" "$RL/tasks/learnings.md" "$(run "$RL" step | field .learnings_path)"

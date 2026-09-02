@@ -375,7 +375,7 @@ def do_audit(st, row):
 
 
 def do_land(st, row):
-    if "cannot finish from inside" in (row.get("why_not_done") or ""):
+    if row.get("action") == "leave":
         root = (row.get("facts") or {}).get("repo_root")
         if not root:
             return "integration has to finish outside the worktree and no repo_root was reported"

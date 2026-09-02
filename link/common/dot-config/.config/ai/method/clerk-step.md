@@ -227,10 +227,14 @@ each command refuses — lives one step per file under `implement/steps/<id>.md`
 seams inside them, so it arrives when it is usable rather than ten steps early. Two
 readers use those files:
 
-- `gen-skills.sh` resolves seam and include markers inside an included file, one level
-  down, so a step file can carry its seams.
+- `gen-skills.sh` renders a whole body, resolving the markers inside an included file
+  up to three levels down, so a step file can carry its seams.
 - `clerk step` prints one step file, with the seams resolved at run time.
   `CLERK_METHOD_DIR` points it at another method directory, which the tests use.
+
+Both go through `clerk_method.py`, the one resolver for seam, include, quote and var
+markers. The generator runs it strict, so an unresolved marker fails the build; `clerk
+step` runs it lenient, so a missing fragment is named in place rather than ending a run.
 
 The generated `SKILL.md` is the shape, the loop and the flags. The step text, and each
 step's own refusals, arrive only from `clerk step`.

@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 
 from clerk_lib import clerk, die, git, gitout, worktree_for
+from clerk_method import Renderer
 from clerk_ledger import (age_seconds, fixup_ambiguities, gear, guidelines_read, is_ancestor,
                           learn_written, now, receipt_state, ref_exists, runner_view, session_id,
                           task_signals)
@@ -48,22 +49,12 @@ def method_dir():
 
 
 def render_method(text, harness):
-    """Resolve {{seam:name}} and {{include:path}} the way gen-skills.sh does, for one harness."""
+    """One step file with its markers resolved for one harness, by the same resolver
+    `gen-skills.sh` renders whole bodies with. A missing fragment is marked in place
+    rather than fatal: a step printed mid-run is worth more with a hole named than not
+    printed at all."""
     mdir = method_dir()
-    out = []
-    for line in text.splitlines():
-        m = re.match(r"^\{\{seam:([a-z-]+)\}\}$", line)
-        if m:
-            p = mdir / "seams" / harness / f"{m.group(1)}.md"
-            out.append(p.read_text().rstrip("\n") if p.exists() else f"<!-- no seam {harness}/{m.group(1)} -->")
-            continue
-        m = re.match(r"^\{\{include:([a-z0-9/-]+\.md)\}\}$", line)
-        if m:
-            p = mdir.parent / m.group(1)
-            out.append(p.read_text().rstrip("\n") if p.exists() else f"<!-- no include {m.group(1)} -->")
-            continue
-        out.append(line)
-    return "\n".join(out).strip("\n")
+    return Renderer(mdir.parent, mdir / "seams" / harness, strict=False).render_text(text).strip("\n")
 
 
 # The gears pause is a moment inside the build step, and the method text for it is the

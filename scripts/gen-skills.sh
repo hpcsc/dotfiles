@@ -17,6 +17,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 METHOD="$ROOT/link/common/dot-config/.config/ai/method"
+RENDER="$ROOT/link/common/dot-local/bin/clerk_method.py"
 
 CHECK=false
 [ "${1:-}" = "--check" ] && CHECK=true
@@ -63,77 +64,13 @@ render() {
   [ -f "$body" ]  || { printf 'gen-skills: missing body %s\n' "$body" >&2; return 1; }
   [ -d "$seams" ] || { printf 'gen-skills: missing seams %s\n' "$seams" >&2; return 1; }
 
-  # Substitute every {{seam:name}} with seams/<tool>/<name>.md and every {{include:path}}
-  # with the file under the method root. An unresolved marker is an error rather than a
-  # silent hole: a SKILL.md missing its worktree section reads as complete and simply
-  # omits a step. An included file may itself carry seam and include markers, one level
-  # down: the step files under implement/steps/ are read by this script for the whole
-  # document and by `clerk step` one at a time, and both resolve the same markers.
-  awk -v seams="$seams" -v method="$METHOD" -v vars="$seams/vars.tsv" '
-    # A seam or a fragment may itself carry markers, so both go through one reader
-    # rather than one printing verbatim and the other resolving. Before this, a seam
-    # holding {{include:...}} emitted the marker as prose and nobody noticed.
-    BEGIN {
-      while ((getline line < vars) > 0) {
-        if (line ~ /^[a-z_]+\t/) {
-          k = line; sub(/\t.*$/, "", k)
-          v = line; sub(/^[^\t]*\t/, "", v)
-          VAR[k] = v
-        }
-      }
-      close(vars)
-    }
-    function marker_name(line, kind) {
-      sub("^\\{\\{" kind ":", "", line); sub(/\}\}$/, "", line); return line
-    }
-    # {{var}} placeholders let one fragment serve a prompt built in code, which fills
-    # them at run time, and a prompt written out as prose, which needs them spelled out.
-    function subst(line,   k) {
-      for (k in VAR) gsub("\\{\\{" k "\\}\\}", VAR[k], line)
-      return line
-    }
-    function emit_file(path, depth,   line, r) {
-      if ((r = (getline line < path)) < 0) {
-        printf("gen-skills: no such fragment %s\n", path) > "/dev/stderr"
-        exit 3
-      }
-      if (r == 0) { close(path); return }
-      do {
-        if (line ~ /^\{\{seam:[a-z-]+\}\}$/ && depth < 3) emit_file(seams "/" marker_name(line, "seam") ".md", depth + 1)
-        else if (line ~ /^\{\{include:[a-z0-9\/-]+\.md\}\}$/ && depth < 3) emit_file(method "/" marker_name(line, "include"), depth + 1)
-        else if (line ~ /^\{\{quote:[a-z0-9\/-]+\.md\}\}$/) emit_quote(method "/" marker_name(line, "quote"))
-        else if (line ~ /\{\{(seam|include|quote):/) {
-          printf("gen-skills: unresolved marker in %s: %s\n", path, line) > "/dev/stderr"
-          exit 3
-        }
-        else print subst(line)
-      } while ((getline line < path) > 0)
-      close(path)
-    }
-    # Prompt text an agent is told to pass on verbatim, marked off from the instructions
-    # around it the way the rest of the document marks it: as a block quote.
-    function emit_quote(path,   line, r) {
-      if ((r = (getline line < path)) < 0) {
-        printf("gen-skills: no such fragment %s\n", path) > "/dev/stderr"
-        exit 3
-      }
-      if (r == 0) { close(path); return }
-      do {
-        line = subst(line)
-        if (line == "") print ">"
-        else print "> " line
-      } while ((getline line < path) > 0)
-      close(path)
-    }
-    /^\{\{seam:[a-z-]+\}\}$/ { emit_file(seams "/" marker_name($0, "seam") ".md", 1); next }
-    # Fragments shared between skills, as opposed to per-tool variants. Included, not
-    # referenced, for the same reason seams are: a procedure the agent must follow in
-    # full should arrive in full.
-    /^\{\{include:[a-z0-9\/-]+\.md\}\}$/ { emit_file(method "/" marker_name($0, "include"), 1); next }
-    /^\{\{quote:[a-z0-9\/-]+\.md\}\}$/ { emit_quote(method "/" marker_name($0, "quote")); next }
-    /\{\{(seam|include|quote):/ { printf("gen-skills: malformed marker: %s\n", $0) > "/dev/stderr"; exit 3 }
-    { print subst($0) }
-  ' "$body" | stamp_header "${body#$ROOT/}"
+  # Every {{seam:name}} becomes seams/<tool>/<name>.md, every {{include:path}} the file
+  # under the method root, {{quote:path}} the same as a block quote, and {{var}} a value
+  # from the seam directory's vars.tsv. The resolver is clerk's own: the step files under
+  # implement/steps/ are read here for the whole document and by `clerk step` one at a
+  # time, and one resolver is what keeps the two readings the same. It exits 3 naming an
+  # unresolved marker rather than leaving a silent hole.
+  python3 "$RENDER" "$METHOD" "$seams" "$body" | stamp_header "${body#$ROOT/}"
 }
 
 printf '%s\n' "$TARGETS" | while read -r method tool out; do

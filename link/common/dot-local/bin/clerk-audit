@@ -1,1 +1,938 @@
-clerk-step
+#!/usr/bin/env python3
+"""clerk audit — the rounds and the acceptance that the audit step reads.
+
+The audit is a phase machine on the same shape as the step table: scope, review, dedupe,
+refute, report. `clerk audit next` hands out one phase's batch of agents with every prompt
+resolved, `clerk audit record` takes their replies and advances, and `clerk audit run`
+walks the whole machine in-process, shelling out to a headless harness only where a
+judgment is wanted. `plan`, `round` and `accept` are the ledger entries the step table
+reads; `status` says whether a round is in flight and whether its runner is still alive.
+"""
+
+import json
+import os
+import re
+import signal
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit  # noqa: E402
+import clerk_audit_panel as panel  # noqa: E402
+from clerk_ledger import (Run, age_seconds, build_ctx, live_of, note_runner_dead, now, parse,  # noqa: E402
+                          receipt_state, runner_alive, runner_view)
+from clerk_render import Out  # noqa: E402
+from clerk_steps import next_step  # noqa: E402
+
+
+# --------------------------------------------------------------------------------
+# clerk audit — the rounds and the acceptance the audit step reads
+# --------------------------------------------------------------------------------
+
+def report_summary(path):
+    import clerk_stats
+    text = sys.stdin.read() if path == "-" else Path(path).read_text()
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError:
+        die(f"{path} is not valid JSON")
+    rep = clerk_stats.unwrap_report(raw)
+    if rep is None:
+        keys = ", ".join(sorted(raw)) if isinstance(raw, dict) else type(raw).__name__
+        die(f"{path} is not an audit report: no `findings` list at its top level or under `report` "
+            f"(it has: {keys}). Pass the report the round returned, or the whole reply that carries it.")
+
+    def count(k):
+        v = rep.get(k)
+        return len(v) if isinstance(v, list) else None
+
+    def texts(k):
+        v = rep.get(k)
+        return [str(x) for x in v] if isinstance(v, list) else []
+
+    rows = [{"id": f.get("id"), "severity": f.get("severity"), "nature": f.get("nature"),
+             "file": f.get("file"), "line": f.get("line")}
+            for f in (rep.get("findings") or []) if isinstance(f, dict)]
+    return {"findings": count("findings"), "refuted": count("refuted"), "coverage_gaps": count("coverage_gaps"),
+            "lenses": rep.get("lenses"), "lenses_not_run": rep.get("lenses_not_run"),
+            # Kept, not just counted. A gap that comes back is the audit saying it will
+            # never cover that ground however many rounds run, and a count cannot say it.
+            "gaps_text": texts("coverage_gaps"), "findings_list": rows}
+
+
+SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def _between(a, b):
+    x, y = age_seconds(a), age_seconds(b)
+    return None if float("inf") in (x, y) else x - y
+
+
+def round_summary(entry, repeated=()):
+    """One block a reader can be shown as it is, for a round just recorded: what it
+    cost, what it found, what it could not cover."""
+    agents = entry.get("agents") or []
+    cost = sum(a.get("cost_usd") or 0 for a in agents) if agents else None
+    wall = _between(entry.get("started_at"), entry.get("ended_at"))
+    head = [f"round {entry.get('n')}", _span(wall),
+            f"${cost:.2f}" if cost is not None else "$-",
+            f"{len(agents)} agents" if agents else "no agent record",
+            f"{len(entry.get('incidents') or [])} incident(s)"]
+    rows = sorted(entry.get("findings_list") or [],
+                  key=lambda f: (SEVERITY_ORDER.get(f.get("severity"), 9), f.get("id") or ""))
+    by_sev = {}
+    for f in rows:
+        by_sev[f.get("severity") or "?"] = by_sev.get(f.get("severity") or "?", 0) + 1
+    sev = ", ".join(f"{n} {k}" for k, n in sorted(by_sev.items(), key=lambda kv: SEVERITY_ORDER.get(kv[0], 9)))
+    lines = [" · ".join(head),
+             f"findings {entry.get('findings') if entry.get('findings') is not None else 0}"
+             + (f" ({sev})" if sev else "")
+             + (f" · refuted {entry['refuted']}" if entry.get("refuted") is not None else "")
+             + f" · gaps {entry.get('coverage_gaps') or 0}"
+             + (f" ({len(repeated)} repeated)" if repeated else "")]
+    for f in rows:
+        where = f"{f.get('file') or '?'}" + (f":{f['line']}" if f.get("line") else "")
+        lines.append(f"  {(f.get('severity') or '?'):<7} {(f.get('nature') or '-'):<11} {where}  {f.get('id') or ''}")
+    if entry.get("suppressed"):
+        lines.append(f"  ({len(entry['suppressed'])} re-raised as declined and dropped)")
+    earning = earns_another(entry.get("findings_list"))
+    lines.append("another round: " + (f"earned by {', '.join(f.get('id') or '?' for f in earning)} "
+                                      f"unless declined" if earning
+                                      else "not earned — fix, prove by hand, suite, accept"))
+    return "\n".join(lines)
+
+
+def audit_summary(aud, accepted_at=None):
+    rounds = aud.get("rounds") or []
+    cost = sum(a.get("cost_usd") or 0 for r in rounds for a in (r.get("agents") or []))
+    priced = any(r.get("agents") for r in rounds)
+    first = next((r.get("started_at") for r in rounds if r.get("started_at")), None)
+    wall = _between(first, accepted_at)
+    incidents = sum(len(r.get("incidents") or []) for r in rounds)
+    counts = " / ".join(str(r.get("findings") if r.get("findings") is not None else "?") for r in rounds)
+    return " · ".join([f"audit accepted", f"{len(rounds)} round(s)", _span(wall),
+                       f"${cost:.2f}" if priced else "$-", f"findings {counts or 'none'}",
+                       f"{incidents} incident(s)"])
+
+
+GAP_NOISE = {
+    "a", "an", "and", "any", "are", "as", "at", "be", "been", "but", "by", "can", "could",
+    "did", "do", "does", "for", "from", "had", "has", "have", "in", "is", "it", "its",
+    "no", "not", "of", "on", "or", "so", "that", "the", "their", "them", "there", "these",
+    "they", "this", "those", "to", "was", "were", "which", "with", "would",
+}
+
+
+def gap_key(text):
+    """A gap's content words, for recognising one an earlier round already reported.
+
+    Gaps are prose an agent writes fresh every round, so the same uncovered ground comes
+    back reworded and exact matching sees two unrelated gaps."""
+    return frozenset(w for w in re.findall(r"[a-z0-9_]+", str(text).lower()) if w not in GAP_NOISE)
+
+
+def repeated_gaps(current, earlier):
+    """Gaps in `current` that one of `earlier` already covers.
+
+    Measured by containment rather than similarity: one round names the same uncovered
+    ground in half the words of another, and set similarity reads a shorter retelling as
+    a different gap — which is the case this exists to catch."""
+    out = []
+    for gap in current:
+        key = gap_key(gap)
+        if len(key) < 4:
+            continue
+        for prior in earlier:
+            smaller = min(len(key), len(prior))
+            if smaller and len(key & prior) / smaller >= 0.6:
+                out.append(gap)
+                break
+    return out
+
+
+def progress_path(ctx):
+    """Where a round writes what it is doing. Predictable, so it can be tailed without
+    first finding the temp file a background launch happened to pick."""
+    return str(ctx.run.dir / "progress.log")
+
+
+def audit_status(ctx, aud, o):
+    p = progress_path(ctx)
+    runner = runner_view(live_of(aud))
+    if runner and not runner["alive"]:
+        note_runner_dead(ctx, aud)
+    return {**aud, "runner": runner, "progress": p, "watch": f"clerk watch {p}"}
+
+
+def audit_plan(ctx, aud, o):
+    if not o["--rounds"] or not o["--rounds"].isdigit():
+        die("plan needs --rounds <n>")
+    aud["rounds_planned"] = int(o["--rounds"])
+    ctx.run.write("audit.json", aud)
+    return {"rounds_planned": aud["rounds_planned"], "rounds_done": len(aud["rounds"])}
+
+
+def audit_round(ctx, aud, o):
+    if not o["--report"]:
+        die("round needs --report <findings.json> (or - for stdin)")
+    fresh, rec, why = receipt_state(ctx)
+    if not fresh:
+        emit({"recorded": False, "reason": f"the suite must be green at this code tree before an audit round counts: {why}"}, 3)
+    if not ctx.prepare.get("clean"):
+        emit({"recorded": False, "reason": "the tree is dirty — a refuter left residue or work is in flight; restore the branch tip first"}, 3)
+    planned = aud.get("rounds_planned")
+    if o["--replan"]:
+        if not o["--replan"].isdigit():
+            die("--replan needs a number")
+        planned = aud["rounds_planned"] = int(o["--replan"])
+    if planned is not None and len(aud["rounds"]) >= planned:
+        emit({"recorded": False, "reason": f"{planned} round(s) were planned and {len(aud['rounds'])} recorded — say why another is needed with --replan <n>"}, 3)
+    summary = report_summary(o["--report"])
+    gaps = summary["gaps_text"]
+    again = repeated_gaps(gaps, [gap_key(g) for r in aud["rounds"] for g in r.get("gaps_text", [])])
+    live = live_of(aud) or {}
+    landed = live.get("landed") or {}
+    ended = max((rec.get("at") for by_id in landed.values() for rec in by_id.values() if rec.get("at")),
+                default=None)
+    entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
+             "started_at": live.get("started_at"), "ended_at": ended or (now() if live else None),
+             "another_reason": (live.get("args") or {}).get("another"),
+             "suppressed": live.get("suppressed") or [],
+             "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary,
+             "incidents": [i for i in aud.get("incidents") or [] if i.get("round") == len(aud["rounds"]) + 1],
+             "agents": [{"phase": ph, "id": jid, "ok": rec.get("ok"), "seconds": rec.get("seconds"),
+                         "cost_usd": rec.get("cost_usd"), "attempts": rec.get("attempts"),
+                         "session_id": rec.get("session_id"), "at": rec.get("at")}
+                        for ph, by_id in landed.items() for jid, rec in by_id.items()]}
+    aud["rounds"].append(entry)
+    # Recording is the statement that this round is over, so the live round retires with
+    # it. Left in place it still reads as a round in flight, and `clerk audit run` skips
+    # `audit_begin` for exactly that reason — then finds the phase already `done`, breaks
+    # out of the loop before spawning anything, and re-emits the round just recorded. That
+    # answer costs $0.00 and carries no phases, but is otherwise shaped like a fresh round
+    # that happened to find the same things, so the next round silently never runs.
+    aud["live"] = None
+    ctx.run.write("audit.json", aud)
+    earning = earns_another(entry.get("findings_list"))
+    out = {"recorded": True, "round": entry, "rounds_planned": planned,
+           "another_round": {"earned": bool(earning), "by": [f.get("id") for f in earning]},
+           "summary": round_summary(entry, again)}
+    # Surfaced on the round that repeats it, not left for a reader to notice across three
+    # JSON blobs. This is the one signal that says a further round will not reach it.
+    if again:
+        out["gaps_repeated"] = again
+    return out
+
+
+def audit_accept(ctx, aud, o):
+    rounds = aud.get("rounds", [])
+    planned = aud.get("rounds_planned")
+    at_head = [r for r in rounds if r.get("code_tree") == ctx.head_ct]
+    if not rounds:
+        emit({"accepted": False, "reason": "no audit round is recorded — record one first"}, 3)
+    if not at_head and not o["--early"]:
+        emit({"accepted": False, "reason": "no round describes this code tree — run a round, or pass --early \"<why the fixes need no re-audit>\""}, 3)
+    if planned is not None and len(rounds) < planned and not o["--early"]:
+        emit({"accepted": False, "reason": f"{planned} rounds planned, {len(rounds)} recorded — run the rest, or pass --early \"<why>\""}, 3)
+    aud["accepted"] = {"at": now(), "code_tree": ctx.head_ct, "sha": ctx.head,
+                       "rounds": len(rounds), "reason": o["--early"]}
+    ctx.run.write("audit.json", aud)
+    summary = audit_summary(aud, aud["accepted"]["at"])
+    if o["--early"]:
+        summary += f"\nreason: {o['--early']}"
+    return {"accepted": True, "rounds": len(rounds), "early": o["--early"], "summary": summary,
+            "next": next_step(ctx)}
+
+
+
+# ---------------------------------------------------------------------------------
+# The audit as a phase machine. `next` hands the caller one phase's batch of agents to
+# spawn; `record` takes their results and advances. Every decision between the two —
+# which lenses, what remit, what a later round's fixes still reach, how many refuters a
+# claim earns and whether one needs a tree — is made here, so the two harnesses differ
+# only in how they spawn an agent. Before this, that judgment was JavaScript on one side
+# and prose on the other and nothing checked they agreed.
+# ---------------------------------------------------------------------------------
+
+PHASES = ("scope", "review", "dedupe", "refute", "report", "done")
+
+
+def parse_recheck(raw):
+    """The findings a re-audit re-checks, which the panel renders one row each as
+    `[id] claim`. A bare list of ids is valid JSON, so without this it parses here and
+    dies inside prompt building instead — an AttributeError on `'str' object has no
+    attribute 'get'`, raised after the scope phase has already been spawned and paid for.
+    Checked at parse time, where the message can still say what the shape is."""
+    if not raw:
+        return []
+    try:
+        found = json.loads(raw)
+    except json.JSONDecodeError as e:
+        die(f"--recheck needs a JSON array of findings, and this will not parse as JSON: {e}")
+    if not isinstance(found, list) or any(not isinstance(f, dict) for f in found):
+        die('--recheck needs a JSON array of finding objects — [{"id": ..., "claim": ..., '
+            '"note": "the fix you are reporting"}, ...]. A list of bare ids carries nothing '
+            'for the lens to check the tree against.')
+    thin = [f.get("id") or "?" for f in found if not (f.get("id") and f.get("claim"))]
+    if thin:
+        die(f'every --recheck finding needs both "id" and "claim"; missing on: {", ".join(thin)}')
+    odd = [f["id"] for f in found if f.get("decision") not in (None, "fixed", "declined")]
+    if odd:
+        die(f'a --recheck finding\'s "decision" is "fixed" or "declined" (absent means fixed); '
+            f'not so on: {", ".join(odd)}')
+    return found
+
+
+def earns_another(rows, declined_ids=()):
+    """The findings of a round that earn a further round: high severity, or medium and
+    runtime — a defect something executes — and not declined by the author. A test's
+    strength or a convention is fixed and proven by hand; a round over it buys nothing."""
+    declined = {str(i).lower() for i in declined_ids}
+    return [f for f in rows or []
+            if (f.get("severity") == "high" or (f.get("severity") == "medium" and f.get("nature") == "runtime"))
+            and str(f.get("id") or "").lower() not in declined]
+
+
+def declined_match(finding, declined):
+    """The declined finding this one restates, or None. Lenses reuse the id verbatim
+    when they re-raise; when they reword, the claim's content words still overlap."""
+    fid = str(finding.get("id") or "").lower()
+    key = gap_key(finding.get("claim") or "")
+    for d in declined:
+        if fid and fid == str(d.get("id") or "").lower():
+            return d
+        dk = gap_key(d.get("claim") or "")
+        smaller = min(len(key), len(dk))
+        if smaller >= 4 and len(key & dk) / smaller >= 0.6:
+            return d
+    return None
+
+
+def audit_begin(ctx, aud, o):
+    if live_of(aud) and not o["--restart"]:
+        lv = aud["live"]
+        emit({"began": False, "phase": lv["phase"], "round": lv["round"],
+              "reason": "a round is already in flight here — continue it with `clerk audit next`, "
+                        "or start it over with --restart"}, 3)
+    recheck = parse_recheck(o["--recheck"])
+    if o["--rounds"]:
+        if not o["--rounds"].isdigit():
+            die("--rounds needs a number")
+        aud["rounds_planned"] = int(o["--rounds"])
+    last = (aud.get("rounds") or [None])[-1]
+    if last and last.get("findings_list") is not None and not o["--another"]:
+        earning = earns_another(last["findings_list"],
+                                [r["id"] for r in recheck if r.get("decision") == "declined"])
+        if not earning:
+            emit({"began": False, "round": last.get("n"),
+                  "reason": f"round {last.get('n')} upheld nothing that earns another round: no finding was "
+                            f"high, or medium and runtime, that you did not decline. Fix what it found, prove "
+                            f"the fixes by hand, run the suite, and `clerk audit accept --early \"<why>\"`. "
+                            f"To run one anyway, say why with --another \"<why>\"; the reason is recorded.",
+                  "findings": last["findings_list"]}, 3)
+    args = {
+        "target": o["--target"] or "branch",
+        "base_ref": o["--base"],
+        "brief": o["--brief"] or "",
+        "request": o["--request"] or "",
+        "depth": o["--depth"] or "standard",
+        "fixed_files": o["--fixed-file"] or [],
+        "lenses": o["--lens"] or [],
+        "recheck": recheck,
+        "another": o["--another"] or None,
+        "test_commands": json.loads(o["--test-commands"]) if o["--test-commands"] else
+                         (ctx.prepare.get("test_commands") or {}),
+    }
+    prior = None
+    if aud.get("rounds"):
+        prior = (aud.get("last_scope") or None)
+        # A round that passed the gate is a round the plan holds: refusing it again at
+        # record time, for a count set before anything was found, would ask for the
+        # same decision twice.
+        aud["rounds_planned"] = max(aud.get("rounds_planned") or 0, len(aud["rounds"]) + 1)
+    aud["live"] = {"round": len(aud.get("rounds", [])) + 1, "phase": "scope", "args": args,
+                   "scope": None, "reviews": [], "candidates": [], "verdicts": [],
+                   "not_run": [], "lens_notes": [], "report": None, "prior_scope": prior,
+                   "started_at": now()}
+    ctx.run.write("audit.json", aud)
+    return {"began": True, "round": aud["live"]["round"], "phase": "scope",
+            "next": audit_next(ctx, aud, o)}
+
+
+READ_TOOLS = ["Bash(clerk:*)", "Bash(rg:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
+              "Bash(git status:*)", "Bash(git grep:*)", "Bash(git rev-parse:*)", "Bash(git merge-base:*)",
+              "Bash(git ls-files:*)", "Bash(git blame:*)"]
+TWO_WORD_RUNNERS = ("go", "make", "npm", "pnpm", "yarn", "mix", "cargo", "task", "bundle", "uv")
+
+
+def job_tools(test_commands, isolation="none"):
+    """What a headless agent may run without asking. A `-p` session has nobody to answer
+    a permission prompt, so anything not on this list is silently refused — which is how
+    every `clerk lint` and `clerk guidelines` in a round came back "refused by the
+    permission gate" while the lens went on reading guideline files by hand. The repo's
+    test commands are allowed by their leading words; an agent given a worktree of its
+    own may also edit it."""
+    tools = list(READ_TOOLS)
+    for cmd in (test_commands or {}).values():
+        words = str(cmd or "").split()
+        if not words or words[0].startswith("("):
+            continue
+        head = " ".join(words[:2]) if words[0] in TWO_WORD_RUNNERS and len(words) > 1 else words[0]
+        for pat in ([f"Bash({head}:*)"] + ([f"Bash(go vet:*)", f"Bash(go build:*)"] if words[0] == "go" else [])):
+            if pat not in tools:
+                tools.append(pat)
+    if isolation == "worktree":
+        tools += ["Edit", "Write", "MultiEdit"]
+    return tools
+
+
+def _spawn(job_id, prompt, schema, agent=None, isolation="none", tools=None):
+    return {"id": job_id, "prompt": prompt, "schema_name": schema,
+            "agent": agent, "isolation": isolation, "allowed_tools": tools or []}
+
+
+def audit_next(ctx, aud, o):
+    lv = live_of(aud)
+    if not lv:
+        emit({"phase": None, "reason": "no round is in flight — `clerk audit begin` first"}, 3)
+    a = lv["args"]
+    prompts = panel.load_prompts()
+    if not prompts:
+        die(f"no audit prompt fragments under {panel.prompts_dir()} — set CLERK_AUDIT_PROMPTS "
+            f"or CLERK_METHOD_DIR to the method directory")
+    phase = lv["phase"]
+
+    tools = job_tools(a.get("test_commands"))
+    if phase == "scope":
+        return {"phase": "scope", "round": lv["round"], "concurrent": False,
+                "spawn": [_spawn("scope", panel.scope_prompt(
+                    prompts, target=a["target"], base_ref=a["base_ref"],
+                    prior_scope=lv.get("prior_scope")), "SCOPE_SCHEMA", tools=tools)],
+                "record_with": "clerk audit record --phase scope --results <file>"}
+
+    if phase == "review":
+        lenses, not_run = panel.build_panel(
+            lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],
+            request=a["request"], brief=a["brief"], recheck=a["recheck"],
+            test_commands=a["test_commands"])
+        lv["not_run"] = not_run
+        ctx.run.write("audit.json", aud)
+        return {"phase": "review", "round": lv["round"], "concurrent": True,
+                "spawn": [_spawn(f"review:{l['key']}", l["prompt"], "REVIEW_SCHEMA", l["agent"], tools=tools)
+                          for l in lenses],
+                "held_back": not_run,
+                "record_with": "clerk audit record --phase review --results <file>"}
+
+    if phase == "dedupe":
+        ctxb = panel._PromptCtx(lv["scope"], prompts, a["request"], a["brief"], (), a["test_commands"])
+        return {"phase": "dedupe", "round": lv["round"], "concurrent": False,
+                "spawn": [_spawn("dedupe", ctxb.dedupe(lv["candidates"]), "DEDUP_SCHEMA", tools=tools)],
+                "record_with": "clerk audit record --phase dedupe --results <file>"}
+
+    if phase == "refute":
+        jobs = panel.refute_jobs(lv["scope"], prompts, lv["candidates"], a["depth"],
+                                 request=a["request"], brief=a["brief"],
+                                 test_commands=a["test_commands"])
+        return {"phase": "refute", "round": lv["round"], "concurrent": True,
+                "spawn": [_spawn(f"refute:{j['id']}", j["prompt"], "VERDICT_SCHEMA",
+                                 isolation=j["isolation"],
+                                 tools=job_tools(a.get("test_commands"), j["isolation"])) for j in jobs],
+                "record_with": "clerk audit record --phase refute --results <file>"}
+
+    if phase == "report":
+        confirmed, refuted = _tally(lv)
+        ctxb = panel._PromptCtx(lv["scope"], prompts, a["request"], a["brief"], (), a["test_commands"])
+        return {"phase": "report", "round": lv["round"], "concurrent": False,
+                "spawn": [_spawn("report", ctxb.synth(confirmed, refuted, lv["lens_notes"],
+                                                      lv["not_run"]), "SYNTH_SCHEMA", tools=tools)],
+                "record_with": "clerk audit record --phase report --results <file>"}
+
+    return {"phase": "done", "round": lv["round"],
+            "report": lv.get("report"),
+            "record_with": "clerk audit round --report <the report you were handed>"}
+
+
+def _tally(lv):
+    """Majority over the refuters on each claim. A refuter that could not run has not
+    refuted anything: counting it as a vote would let a missing toolchain delete a real
+    defect, silently."""
+    by_finding = {}
+    for v in lv["verdicts"]:
+        by_finding.setdefault(v.get("finding_id") or v.get("id"), []).append(v)
+    confirmed, refuted = [], []
+    for f in lv["candidates"]:
+        votes = by_finding.get(f["id"], [])
+        usable = [v for v in votes if not v.get("blocked")]
+        blocked = bool(votes) and not usable
+        against = [v for v in usable if v.get("refuted")]
+        basis = (votes[0].get("basis") if votes else "no refuter returned a result")
+        if usable and len(against) * 2 > len(usable):
+            refuted.append({"finding": f, "basis": (against[0].get("basis") or basis)})
+        else:
+            confirmed.append({"finding": f, "basis": basis, "blocked": blocked})
+    return confirmed, refuted
+
+
+def _read_results(pathish):
+    raw = sys.stdin.read() if pathish == "-" else Path(pathish).read_text(encoding="utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        die(f"--results is not JSON: {e}")
+
+
+def audit_record(ctx, aud, o):
+    lv = live_of(aud)
+    if not lv:
+        emit({"recorded": False, "reason": "no round is in flight — `clerk audit begin` first"}, 3)
+    if not o["--phase"]:
+        die("record needs --phase <scope|review|dedupe|verify|report>")
+    if o["--phase"] != lv["phase"]:
+        emit({"recorded": False, "phase": lv["phase"],
+              "reason": f"this round is on '{lv['phase']}', not '{o['--phase']}' — "
+                        f"`clerk audit next` says what it wants"}, 3)
+    if not o["--results"]:
+        die("record needs --results <file|-> ")
+    data = _read_results(o["--results"])
+    ph = lv["phase"]
+
+    if ph == "scope":
+        lv["scope"] = data if isinstance(data, dict) else (data[0] if data else {})
+        aud["last_scope"] = lv["scope"]
+        lv["phase"] = "review"
+    elif ph == "review":
+        rows = data if isinstance(data, list) else [data]
+        lv["reviews"] = rows
+        cands, notes = [], []
+        for r in rows:
+            if not isinstance(r, dict):
+                continue
+            if r.get("note"):
+                notes.append(f"{r.get('lens', r.get('id', 'lens'))}: {r['note']}")
+            for f in r.get("findings") or []:
+                f.setdefault("lens", r.get("lens") or r.get("id"))
+                cands.append(f)
+        declined = [r for r in lv["args"].get("recheck") or [] if r.get("decision") == "declined"]
+        kept, suppressed = [], []
+        for f in cands:
+            d = declined_match(f, declined)
+            if d:
+                suppressed.append({"id": f.get("id"), "lens": f.get("lens"), "declined": d.get("id")})
+                notes.append(f"{f.get('lens')}: re-raised the declined finding {d.get('id')} as "
+                             f"{f.get('id')}; dropped as settled")
+            else:
+                kept.append(f)
+        cands, premerged = panel.premerge(kept)
+        lv["candidates"], lv["lens_notes"] = cands, notes
+        lv["suppressed"], lv["premerged"] = suppressed, premerged
+        # One finding needs no grouping pass, and none needs no refutation either.
+        lv["phase"] = "dedupe" if len(cands) > 1 else ("refute" if cands else "report")
+    elif ph == "dedupe":
+        clusters = data.get("clusters") if isinstance(data, dict) else None
+        merged, collapsed, why = panel.merge_clusters(lv["candidates"], clusters)
+        lv["candidates"] = merged
+        if why:
+            lv["not_run"].append(f"dedupe — {why}")
+        lv["dedupe_collapsed"] = collapsed
+        lv["phase"] = "refute" if lv["candidates"] else "report"
+    elif ph == "refute":
+        lv["verdicts"] = data if isinstance(data, list) else [data]
+        lv["phase"] = "report"
+    elif ph == "report":
+        lv["report"] = data if isinstance(data, dict) else (data[0] if data else {})
+        lv["phase"] = "done"
+    else:
+        die(f"unknown phase '{ph}'")
+
+    ctx.run.write("audit.json", aud)
+    out = {"recorded": True, "phase": ph, "next": audit_next(ctx, aud, o)}
+    if ph == "review":
+        out["suppressed"], out["premerged"] = lv["suppressed"], lv["premerged"]
+    return out
+
+
+
+def _short_id(job_id):
+    """`review:semantic:Go` reads as `semantic:Go`. The phase is already the line above."""
+    return job_id.split(":", 1)[1] if ":" in job_id else job_id
+
+
+def _phase_line(nxt, jobs, kept=()):
+    n = len(jobs)
+    how = "concurrently" if nxt.get("concurrent") and n > 1 else "one at a time"
+    held = nxt.get("held_back") or []
+    notes = ([f"{len(held)} held back"] if held else []) + ([f"{len(kept)} kept"] if kept else [])
+    tail = f"  ({', '.join(notes)})" if notes else ""
+    return f"{nxt['phase']} · round {nxt['round']} · {n} agent{'s' if n != 1 else ''}, {how}{tail}"
+
+
+def _span(seconds):
+    if seconds is None:
+        return "-"
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        return f"{seconds / 60:.1f}m"
+    return f"{int(seconds) // 3600}h{(int(seconds) % 3600) // 60:02d}m"
+
+
+STALL_AFTER = int(os.environ.get("CLERK_STALL_AFTER", "300"))
+
+
+class Runner:
+    """The process driving a round, and the record it keeps of itself in the live round
+    as it goes: each agent's reply the moment it lands, so a resume spawns only the rest;
+    when each agent last did anything, so a stall is written down rather than mistaken
+    for a dead round; and what ended the process, when something did.
+
+    Everything that touches the ledger from a worker thread goes through `lock`. It is
+    re-entrant because a signal handler runs on the main thread, which may already be
+    holding it when the signal lands."""
+
+    def __init__(self, ctx, out):
+        self.ctx, self.out = ctx, out
+        self.lock = threading.RLock()
+        self.aud = self.lv = None
+        self.agents = {}
+        self.in_phase = False
+        self.stopped = threading.Event()
+
+    def bind(self, aud):
+        self.aud, self.lv = aud, live_of(aud)
+
+    def save(self):
+        with self.lock:
+            self.ctx.run.write("audit.json", self.aud)
+
+    def record(self):
+        return self.lv.setdefault("runner", {"pid": os.getpid(), "started_at": now(), "agents": {}})
+
+    def reusable(self, phase, jobs):
+        kept = (self.lv.get("landed") or {}).get(phase) or {}
+        return {j["id"]: kept[j["id"]] for j in jobs
+                if kept.get(j["id"], {}).get("ok")
+                and kept[j["id"]].get("code_tree") == self.ctx.head_ct}
+
+    def phase_started(self, phase):
+        with self.lock:
+            self.agents = {}
+            self.lv["runner"] = {"pid": os.getpid(), "phase": phase, "started_at": now(),
+                                 "beat_at": now(), "agents": {}}
+            self.in_phase = True
+            self.save()
+
+    def phase_done(self):
+        with self.lock:
+            self.in_phase = False
+            for jid, a in self.agents.items():
+                self._stall_over(a)
+
+    def agent_started(self, j):
+        with self.lock:
+            t = time.time()
+            self.agents[j["id"]] = {"started": t, "last_event": t, "stall": None, "landed": False}
+            self.record()["agents"][j["id"]] = {"started_at": now()}
+            self.save()
+
+    def agent_event(self, jid, e):
+        with self.lock:
+            a = self.agents.get(jid)
+            if a:
+                a["last_event"] = time.time()
+                self._stall_over(a)
+
+    def agent_landed(self, j, r):
+        with self.lock:
+            a = self.agents.get(j["id"])
+            if a:
+                a["landed"] = True
+                self._stall_over(a)
+            rec = self.record()
+            rec["agents"].setdefault(j["id"], {})["landed_at"] = now()
+            self.lv.setdefault("landed", {}).setdefault(rec.get("phase") or self.lv["phase"], {})[j["id"]] = {
+                **r, "at": now(), "code_tree": self.ctx.head_ct,
+                "seconds": int(time.time() - a["started"]) if a else None}
+            self.save()
+
+    def roster(self):
+        landed = sorted(k for k, a in self.agents.items() if a["landed"])
+        return landed, sorted(k for k, a in self.agents.items() if not a["landed"])
+
+    def incident(self, kind, **fields):
+        with self.lock:
+            entry = {"at": now(), "kind": kind, "round": self.lv["round"],
+                     "phase": self.record().get("phase") or self.lv["phase"], **fields}
+            self.aud.setdefault("incidents", []).append(entry)
+            self.save()
+            return entry
+
+    def _stall_over(self, a):
+        if a["stall"] is not None:
+            a["stall"]["lasted_s"] = int(time.time() - a["since"])
+            a["stall"] = None
+
+    def watch(self):
+        tick = max(1, min(15, STALL_AFTER // 2))
+        while not self.stopped.wait(tick):
+            with self.lock:
+                if not self.in_phase:
+                    continue
+                t = time.time()
+                for jid, a in self.agents.items():
+                    silent = t - a["last_event"]
+                    if a["landed"] or a["stall"] is not None or silent <= STALL_AFTER:
+                        continue
+                    a["since"] = a["last_event"]
+                    a["stall"] = self.incident("stall", agent=jid, silent_s=int(silent))
+                    self.out.note(f"  · {_short_id(jid)} silent {_span(silent)}")
+                self.record()["beat_at"] = now()
+                self.save()
+
+    def finish(self):
+        self.stopped.set()
+        with self.lock:
+            if self.lv and self.lv.get("runner"):
+                self.lv["runner"]["finished_at"] = now()
+                self.save()
+
+
+def _verdict(r):
+    """One phrase for what an agent came back with, per phase. A count is what a reader
+    watching wants; the whole reply is in the report."""
+    if not r.get("ok"):
+        return (r.get("error") or "no usable reply")[:28]
+    d = r.get("data")
+    if not isinstance(d, dict):
+        return "ok"
+    if "findings" in d and isinstance(d["findings"], list):
+        n = len(d["findings"])
+        return f"{n} finding{'s' if n != 1 else ''}" if n else "pass"
+    if "refuted" in d:
+        return "refuted" if d.get("refuted") else ("blocked" if d.get("blocked") else "upheld")
+    if "files" in d and isinstance(d["files"], list):
+        return f"{len(d['files'])} file(s), {', '.join(d.get('languages') or []) or 'no language'}"
+    if "clusters" in d:
+        return f"{len(d['clusters'] or [])} cluster(s)"
+    return "ok"
+
+
+def audit_run(ctx, aud, o):
+    """Drive a whole round from here: no model reads the phase table, walks it, or decides
+    what to spawn. The loop is this function; the model is called only where a judgment is
+    actually wanted, and `clerk audit next` still describes each phase for a reader or for
+    a harness that would rather drive it by hand."""
+    import clerk_harness as ex
+    if o["--quiet"] and o["--raw"]:
+        die("--quiet and --raw ask for different things; pass one")
+    out = Out("raw" if o["--raw"] else ("quiet" if o["--quiet"] else "default"),
+              log_path=None if o["--dry-run"] else progress_path(ctx),
+              beat=None if o["--dry-run"] else {"dir": ctx.cwd, "slug": f"audit {ctx.run.slug}"})
+    out.opening()
+    harness = o["--harness-cmd"] or ex.detect_harness()
+    if not harness and not o["--dry-run"]:
+        die("no coding harness found on PATH — install `claude` or `opencode`, or pass "
+            "--harness-cmd, or use --dry-run to see the plan without spawning anything", 3)
+    schemas = panel.load_schemas()
+    if not schemas and not o["--dry-run"]:
+        die(f"no schemas.json beside {panel.prompts_dir()} — a headless agent has no schema "
+            f"enforced for it, so the runner cannot validate what comes back")
+
+    if not live_of(aud) or o["--restart"]:
+        o2 = dict(o); o2["--restart"] = True
+        audit_begin(ctx, aud, o2)
+        aud = ctx.run.read("audit.json", aud)
+
+    runner = Runner(ctx, out)
+    runner.bind(aud)
+    trace, spent = [], 0.0
+    prior = (runner.lv.get("runner") or {})
+    if prior.get("pid") and prior["pid"] != os.getpid() and not prior.get("finished_at"):
+        if runner_alive(prior["pid"]):
+            out.final({"ran": False, "phase": runner.lv["phase"], "cost_usd": 0.0,
+                       "reason": f"a runner (pid {prior['pid']}) is already driving this round — "
+                                 f"wait for it, or stop it and run again"}, 3)
+        died = note_runner_dead(ctx, aud)
+        if died:
+            out.note(f"  · the previous runner (pid {died['pid']}) died in {died['phase']}: "
+                     f"{len(died['kept'])} agent(s) kept, {len(died['lost'])} to run again")
+
+    def on_signal(signum, frame):
+        name = signal.Signals(signum).name
+        landed, in_flight = runner.roster()
+        with runner.lock:
+            runner.record()["died"] = now()
+            runner.incident("runner-killed", signal=name, kept=landed, lost=in_flight)
+        ex.stop_all()
+        runner.stopped.set()
+        try:
+            out.final({"ran": False, "phase": runner.record().get("phase") or runner.lv["phase"],
+                       "cost_usd": round(spent, 4), "reason": f"killed by {name}",
+                       "kept": landed, "lost": in_flight}, 128 + signum)
+        except SystemExit:
+            pass
+        os._exit(128 + signum)
+    for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(sig, on_signal)
+    threading.Thread(target=runner.watch, daemon=True).start()
+
+    while True:
+        nxt = audit_next(ctx, aud, o)
+        if nxt["phase"] == "done":
+            break
+        jobs = nxt.get("spawn") or []
+        if o["--dry-run"]:
+            trace.append({"phase": nxt["phase"], "jobs": [
+                {"id": j["id"], "agent": j.get("agent"), "isolation": j.get("isolation"),
+                 "schema": j.get("schema_name"), "prompt_chars": len(j["prompt"]),
+                 "allowed_tools": j.get("allowed_tools") or []} for j in jobs],
+                "held_back": nxt.get("held_back") or []})
+            # Nothing came back, so nothing can advance; a dry run reports the first phase
+            # and stops rather than inventing results for the ones after it.
+            out.final({"dry_run": True, "phase": nxt["phase"], "plan": trace,
+                       "note": "no agent was spawned; record a phase to advance"})
+        kept = runner.reusable(nxt["phase"], jobs)
+        out.step(_phase_line(nxt, jobs, kept))
+        for jid, r in kept.items():
+            out.note(f"  · {_short_id(jid)} landed at {(r.get('at') or '')[11:16]}Z, kept")
+        todo = [j for j in jobs if j["id"] not in kept]
+        runner.phase_started(nxt["phase"])
+        started = {}
+        def began(j):
+            started[j["id"]] = time.time()
+            runner.agent_started(j)
+            out.note(f"  · {_short_id(j['id'])} started")
+        def landed(j, r):
+            runner.agent_landed(j, r)
+            took = int(time.time() - started.get(j["id"], time.time()))
+            out.result(f"  {'✓' if r.get('ok') else '✗'} {_short_id(j['id']):<20} "
+                       f"{_verdict(r):<28} {took}s · ${r.get('cost_usd') or 0:.2f}")
+        def event(jid, e):
+            runner.agent_event(jid, e)
+            if out.wants_events:
+                out.event(e, _short_id(jid))
+        fresh = ex.run_batch(todo, schemas, harness=harness, cwd=ctx.cwd,
+                             concurrent=bool(nxt.get("concurrent")), model=o["--model"],
+                             log=out.note, on_start=began, on_done=landed, on_event=event)
+        runner.phase_done()
+        by_id = {r["id"]: r for r in fresh}
+        results = [kept[j["id"]] if j["id"] in kept else by_id[j["id"]] for j in jobs]
+        spent += sum(r.get("cost_usd") or 0 for r in fresh)
+        failed = [r for r in results if not r.get("ok")]
+        if failed and nxt["phase"] in ("scope", "report"):
+            # These phases are one agent and everything after depends on it.
+            runner.incident("phase-failed", agents=[r["id"] for r in failed],
+                            error=failed[0].get("error"))
+            runner.finish()
+            out.final({"ran": False, "phase": nxt["phase"], "cost_usd": round(spent, 4),
+                       "reason": failed[0].get("error")}, 3)
+        payload = _payload_for(nxt["phase"], jobs, results)
+        trace.append({"phase": nxt["phase"], "jobs": len(jobs), "kept": sorted(kept),
+                      "failed": [r["id"] for r in failed],
+                      "cost_usd": round(sum(r.get("cost_usd") or 0 for r in fresh), 4)})
+        tmp = Path(tempfile.mkdtemp(prefix="clerk-audit-")) / "results.json"
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        o3 = dict(o); o3["--phase"] = nxt["phase"]; o3["--results"] = str(tmp)
+        with runner.lock:
+            audit_record(ctx, aud, o3)
+            aud = ctx.run.read("audit.json", aud)
+            runner.bind(aud)
+
+    runner.finish()
+    lv = live_of(aud)
+    out.step(f"round {lv['round']} done · ${round(spent, 4)}")
+    # Every exit from the round goes through the renderer, so `--raw` stays one stream and
+    # the summary is its last line rather than a second, differently-shaped document.
+    out.final({"ran": True, "round": lv["round"], "cost_usd": round(spent, 4),
+               "phases": trace, "held_back": lv.get("not_run") or [], "report": lv.get("report"),
+               "suppressed": lv.get("suppressed") or [],
+               "next": ("work the findings; there is no run here to record a round against"
+                        if ctx.adhoc
+                        else "clerk audit round --report <write the report above to a file>")})
+
+
+def _payload_for(phase, jobs, results):
+    """Shape each phase's replies the way `record` reads them."""
+    ok = {r["id"]: r.get("data") for r in results if r.get("ok")}
+    if phase in ("scope", "dedupe", "report"):
+        return next(iter(ok.values()), {})
+    if phase == "review":
+        rows = []
+        for j in jobs:
+            d = ok.get(j["id"])
+            if isinstance(d, dict):
+                d.setdefault("lens", j["id"].split("review:", 1)[-1])
+                rows.append(d)
+        return rows
+    if phase == "refute":
+        rows = []
+        for j in jobs:
+            d = ok.get(j["id"])
+            if isinstance(d, dict):
+                d.setdefault("finding_id", j["id"].split("refute:", 1)[-1].split("#", 1)[0])
+                rows.append(d)
+            else:
+                # A refuter that could not run has refuted nothing, and saying so is what
+                # keeps a missing toolchain from deleting a real defect.
+                rows.append({"finding_id": j["id"].split("refute:", 1)[-1].split("#", 1)[0],
+                             "refuted": False, "blocked": True,
+                             "basis": "the refuter returned nothing usable"})
+        return rows
+    return []
+
+
+# Verbs that only need somewhere to keep a round. The rest record evidence the step
+# table reads, so they need the run that evidence describes.
+ADHOC_VERBS = ("run", "begin", "next", "record", "status")
+
+
+def adhoc_ledger(ctx):
+    """Somewhere to keep a round for a branch with no implement run behind it.
+
+    This skill is for work already built — a colleague's branch, or something done by
+    hand — as often as for a run clerk drove, and those have no ledger. The round lives
+    beside the runs rather than among them, so `clerk step` never mistakes one for a run
+    in flight.
+    """
+    name = (ctx.branch or "HEAD").replace("/", "-")
+    return Run(Path(ctx.common) / "clerk" / "audits" / name)
+
+
+AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept,
+         "status": audit_status, "begin": audit_begin, "next": audit_next,
+         "record": audit_record, "run": audit_run}
+
+
+def main_audit(argv):
+    """As main_step: every branch ends in emit()."""
+    if not argv or argv[0] in ("-h", "--help"):
+        print("usage: clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n            [--fixed-file <p>]... [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n            [--model <m>] [--dry-run] [--quiet | --raw]\n       clerk audit begin … | next | record --phase <p> --results <json|->  drive it by hand\n       clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>]\n       clerk audit accept [--early <why>] | status")
+        sys.exit(0)
+    verb, args = argv[0], argv[1:]
+    handler = AUDIT.get(verb)
+    if handler is None:
+        die(f"unknown verb '{verb}' — {', '.join(AUDIT)}")
+    o, _ = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value",
+                    "--early": "value", "--run": "value", "--phase": "value",
+                    "--results": "value", "--target": "value", "--base": "value",
+                    "--brief": "value", "--request": "value", "--depth": "value",
+                    "--recheck": "value", "--test-commands": "value", "--another": "value",
+                    "--fixed-file": "list", "--lens": "list", "--restart": "bool",
+                    "--dry-run": "bool", "--model": "value",
+                    "--quiet": "bool", "--raw": "bool",
+                    "--harness-cmd": "value"})
+    ctx = build_ctx(o["--run"])
+    if ctx.run is None:
+        if verb not in ADHOC_VERBS:
+            die(f"`clerk audit {verb}` records evidence against a run, and none is open "
+                f"here — `clerk step --start` first", 3)
+        ctx.run = adhoc_ledger(ctx)
+        ctx.adhoc = True
+    aud = ctx.run.read("audit.json", {"rounds_planned": None, "rounds": [], "accepted": None})
+    emit(handler(ctx, aud, o))
+
+
+if __name__ == "__main__":
+    main_audit(sys.argv[1:])

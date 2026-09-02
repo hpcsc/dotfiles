@@ -58,8 +58,9 @@ clerk audit round --report <findings.json>                      record a round
 clerk audit accept [--early "<why>"]                            record the acceptance
 ```
 
-`clerk audit` is the same program as `clerk step`, reached through the `clerk-audit`
-symlink.
+`clerk step`, `clerk audit` and `clerk stats` are three executables over two shared
+modules: `clerk_ledger.py` holds the run ledger, the event-log readers and the context
+every call resolves, and `clerk_steps.py` holds the step table.
 
 ## Run identity
 
@@ -298,9 +299,10 @@ Hooks are a second layer for what clerk cannot see, and each harness has its own
 
 ## Language and migration
 
-`clerk step` and `clerk audit` are one Python file, standard library only, next to the
-other Python plugins. The bash core gained the event log, the `code_tree` helper, the
-lint inside `finish`, and the ledger read in `gate`. What every plugin does the same way
+`clerk step`, `clerk audit` and `clerk stats` are Python, standard library only, next
+to the other Python plugins, sharing the ledger and the step table through
+`clerk_ledger.py` and `clerk_steps.py`. The bash core gained the event log, the
+`code_tree` helper, the lint inside `finish`, and the ledger read in `gate`. What every plugin does the same way
 — die and emit, git, the `clerk prepare` call, breakdown resolution, argument parsing as
 `clerk <name>` — lives in `clerk_lib.py` beside them, imported by path so it works
 stowed or not.

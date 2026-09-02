@@ -1,1 +1,59 @@
-clerk-step
+#!/usr/bin/env python3
+"""clerk stats — where a run's time and tokens went, from its ledger and transcript.
+
+The run is `--run`, else the branch's, else — for a person at a terminal with fzf — a
+choice; a caller with no terminal is handed the list and told to name one, so a model is
+never left waiting on a prompt.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit  # noqa: E402
+from clerk_ledger import Run, all_run_summaries, build_ctx, parse, runs_root  # noqa: E402
+
+
+STATS_SPEC = {"--run": "value", "--session": "value", "--pick": "bool", "--json": "bool",
+              "--text": "bool", "-h": "bool", "--help": "bool"}
+
+
+def main_stats(argv):
+    """Where a run's time and tokens went. The run is `--run`, else the branch's, else —
+    for a person at a terminal with fzf — a choice; a caller with no terminal is handed
+    the list and told to name one, so a model is never left waiting on a prompt."""
+    import clerk_stats as st
+    o, rest = parse(argv, STATS_SPEC)
+    if o["-h"] or o["--help"]:
+        print("usage: clerk stats [--run <slug> | --pick] [--session <id>] [--text | --json]")
+        sys.exit(0)
+    if rest:
+        die(f"unexpected argument '{rest[0]}'")
+    ctx = build_ctx(o["--run"], read_only=True, pick=True)
+    if ctx.run is None or o["--pick"]:
+        runs = all_run_summaries(ctx)
+        if not runs:
+            die("no runs in this repository", 3)
+        slug = st.pick_run(runs) if st.interactive() else None
+        if not slug:
+            emit({"run": None, "reason": "name a run with --run <slug>", "runs": runs}, 3)
+        ctx.run = Run(runs_root(ctx.common) / slug)
+    cwd = ctx.run.meta.get("launch_cwd") or ctx.cwd
+    session = o["--session"]
+    cands = []
+    if not session and not ctx.run.meta.get("session_id") \
+            and not (ctx.run.read("shown.json") or {}).get("session"):
+        cands = st.candidates(ctx.run, [cwd, ctx.cwd, ctx.build_tree])
+        if cands and st.interactive():
+            session = st.pick_session(cands)
+    stats = st.collect(ctx.run, cwd, session=session)
+    if stats["session"] is None and cands:
+        stats["candidates"] = cands
+    if o["--text"] or (not o["--json"] and sys.stdout.isatty()):
+        print(st.render(stats))
+        sys.exit(0)
+    emit(stats)
+
+
+if __name__ == "__main__":
+    main_stats(sys.argv[1:])

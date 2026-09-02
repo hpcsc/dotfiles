@@ -840,7 +840,19 @@ def next_step(ctx):
         meta["finished"] = True
         meta["finished_at"] = now()
         ctx.run.write("run.json", meta)
+    if r["step"] == "finished":
+        r["stats"] = run_stats_text(ctx)
     return present(ctx, r)
+
+
+def run_stats_text(ctx):
+    """The run's time and token table, for the closing message. A failure here is
+    reported in place of the table, never as a failed `clerk step`."""
+    try:
+        import clerk_stats
+        return clerk_stats.render(clerk_stats.collect(ctx.run, ctx.run.meta.get("launch_cwd") or ctx.cwd))
+    except Exception as e:  # noqa: BLE001
+        return f"(statistics unavailable: {e})"
 
 
 # What the caller reads from `facts`: the repo as prepare resolved it, minus what clerk
@@ -1127,11 +1139,63 @@ def report_summary(path):
         v = rep.get(k)
         return [str(x) for x in v] if isinstance(v, list) else []
 
+    rows = [{"id": f.get("id"), "severity": f.get("severity"), "nature": f.get("nature"),
+             "file": f.get("file"), "line": f.get("line")}
+            for f in (rep.get("findings") or []) if isinstance(f, dict)]
     return {"findings": count("findings"), "refuted": count("refuted"), "coverage_gaps": count("coverage_gaps"),
             "lenses": rep.get("lenses"), "lenses_not_run": rep.get("lenses_not_run"),
             # Kept, not just counted. A gap that comes back is the audit saying it will
             # never cover that ground however many rounds run, and a count cannot say it.
-            "gaps_text": texts("coverage_gaps")}
+            "gaps_text": texts("coverage_gaps"), "findings_list": rows}
+
+
+SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
+
+
+def _between(a, b):
+    x, y = age_seconds(a), age_seconds(b)
+    return None if float("inf") in (x, y) else x - y
+
+
+def round_summary(entry, repeated=()):
+    """One block a reader can be shown as it is, for a round just recorded: what it
+    cost, what it found, what it could not cover."""
+    agents = entry.get("agents") or []
+    cost = sum(a.get("cost_usd") or 0 for a in agents) if agents else None
+    wall = _between(entry.get("started_at"), entry.get("ended_at"))
+    head = [f"round {entry.get('n')}", _span(wall),
+            f"${cost:.2f}" if cost is not None else "$-",
+            f"{len(agents)} agents" if agents else "no agent record",
+            f"{len(entry.get('incidents') or [])} incident(s)"]
+    rows = sorted(entry.get("findings_list") or [],
+                  key=lambda f: (SEVERITY_ORDER.get(f.get("severity"), 9), f.get("id") or ""))
+    by_sev = {}
+    for f in rows:
+        by_sev[f.get("severity") or "?"] = by_sev.get(f.get("severity") or "?", 0) + 1
+    sev = ", ".join(f"{n} {k}" for k, n in sorted(by_sev.items(), key=lambda kv: SEVERITY_ORDER.get(kv[0], 9)))
+    lines = [" · ".join(head),
+             f"findings {entry.get('findings') if entry.get('findings') is not None else 0}"
+             + (f" ({sev})" if sev else "")
+             + (f" · refuted {entry['refuted']}" if entry.get("refuted") is not None else "")
+             + f" · gaps {entry.get('coverage_gaps') or 0}"
+             + (f" ({len(repeated)} repeated)" if repeated else "")]
+    for f in rows:
+        where = f"{f.get('file') or '?'}" + (f":{f['line']}" if f.get("line") else "")
+        lines.append(f"  {(f.get('severity') or '?'):<7} {(f.get('nature') or '-'):<11} {where}  {f.get('id') or ''}")
+    return "\n".join(lines)
+
+
+def audit_summary(aud, accepted_at=None):
+    rounds = aud.get("rounds") or []
+    cost = sum(a.get("cost_usd") or 0 for r in rounds for a in (r.get("agents") or []))
+    priced = any(r.get("agents") for r in rounds)
+    first = next((r.get("started_at") for r in rounds if r.get("started_at")), None)
+    wall = _between(first, accepted_at)
+    incidents = sum(len(r.get("incidents") or []) for r in rounds)
+    counts = " / ".join(str(r.get("findings") if r.get("findings") is not None else "?") for r in rounds)
+    return " · ".join([f"audit accepted", f"{len(rounds)} round(s)", _span(wall),
+                       f"${cost:.2f}" if priced else "$-", f"findings {counts or 'none'}",
+                       f"{incidents} incident(s)"])
 
 
 GAP_NOISE = {
@@ -1209,8 +1273,12 @@ def audit_round(ctx, aud, o):
     summary = report_summary(o["--report"])
     gaps = summary["gaps_text"]
     again = repeated_gaps(gaps, [gap_key(g) for r in aud["rounds"] for g in r.get("gaps_text", [])])
-    landed = (live_of(aud) or {}).get("landed") or {}
+    live = live_of(aud) or {}
+    landed = live.get("landed") or {}
+    ended = max((rec.get("at") for by_id in landed.values() for rec in by_id.values() if rec.get("at")),
+                default=None)
     entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
+             "started_at": live.get("started_at"), "ended_at": ended or (now() if live else None),
              "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary,
              "incidents": [i for i in aud.get("incidents") or [] if i.get("round") == len(aud["rounds"]) + 1],
              "agents": [{"phase": ph, "id": jid, "ok": rec.get("ok"), "seconds": rec.get("seconds"),
@@ -1226,7 +1294,8 @@ def audit_round(ctx, aud, o):
     # that happened to find the same things, so the next round silently never runs.
     aud["live"] = None
     ctx.run.write("audit.json", aud)
-    out = {"recorded": True, "round": entry, "rounds_planned": planned}
+    out = {"recorded": True, "round": entry, "rounds_planned": planned,
+           "summary": round_summary(entry, again)}
     # Surfaced on the round that repeats it, not left for a reader to notice across three
     # JSON blobs. This is the one signal that says a further round will not reach it.
     if again:
@@ -1247,7 +1316,11 @@ def audit_accept(ctx, aud, o):
     aud["accepted"] = {"at": now(), "code_tree": ctx.head_ct, "sha": ctx.head,
                        "rounds": len(rounds), "reason": o["--early"]}
     ctx.run.write("audit.json", aud)
-    return {"accepted": True, "rounds": len(rounds), "early": o["--early"], "next": next_step(ctx)}
+    summary = audit_summary(aud, aud["accepted"]["at"])
+    if o["--early"]:
+        summary += f"\nreason: {o['--early']}"
+    return {"accepted": True, "rounds": len(rounds), "early": o["--early"], "summary": summary,
+            "next": next_step(ctx)}
 
 
 
@@ -1483,7 +1556,13 @@ def _phase_line(nxt, jobs, kept=()):
 
 
 def _span(seconds):
-    return f"{int(seconds)}s" if seconds < 60 else f"{int(seconds) // 60}m"
+    if seconds is None:
+        return "-"
+    if seconds < 60:
+        return f"{int(seconds)}s"
+    if seconds < 3600:
+        return f"{seconds / 60:.1f}m"
+    return f"{int(seconds) // 3600}h{(int(seconds) % 3600) // 60:02d}m"
 
 
 STALL_AFTER = int(os.environ.get("CLERK_STALL_AFTER", "300"))

@@ -239,7 +239,7 @@ printf '\naudit — rounds are recorded against a fresh receipt and a clean tree
 A=$(run "$WT" step)
 eq "the audit step hands over the request verbatim" "Add a widget --gears" "$(printf '%s' "$A" | field .request)"
 eq "and the base ref the work started from" "$(git -C "$WT" merge-base HEAD main)" "$(printf '%s' "$A" | field .base)"
-REP=$(mktemp); printf '{"findings": [1, 2], "refuted": [3], "coverage_gaps": ["docs"], "lenses": ["semantic:Go"]}' > "$REP"
+REP=$(mktemp); printf '{"findings": [1, 2], "refuted": [3], "coverage_gaps": ["documentation and fixtures were reviewed by nobody"], "lenses": ["semantic:Go"]}' > "$REP"
 eq "a round needs a report" "2" "$(rc "$WT" audit round)"
 printf 'x\n' > "$WT/probe.txt"
 eq "a round on a dirty tree is refused — a verifier's residue is not the branch" "3" "$(rc "$WT" audit round --report "$REP")"
@@ -254,11 +254,21 @@ eq "a round records its counts against the code tree" "true|1|2|1|1" \
    "$(printf '%s' "$RD" | jq -r '[(.recorded|tostring), (.round.n|tostring), (.round.findings|tostring), (.round.refuted|tostring), (.round.coverage_gaps|tostring)] | join("|")')"
 eq "and carries the incidents of its running, even when there were none" "[]" \
    "$(printf '%s' "$RD" | jq -c '.round.incidents')"
+eq "and hands back a summary the reader can be shown as it is" "true" \
+   "$(printf '%s' "$RD" | jq -r '.summary | startswith("round 1 · ") and contains("findings 2") and contains("gaps 1")')"
 eq "a second round past the plan is refused" "3" "$(rc "$WT" audit round --report "$REP")"
-eq "--replan lets it through, on purpose" "2" "$(run "$WT" audit round --report "$REP" --replan 2 | field .round.n)"
+REP2=$(mktemp); printf '{"findings":[{"id":"f1","severity":"high","nature":"runtime","file":"a.go","line":3,"claim":"boom","confidence":"high","lens":"semantic:Go"},{"id":"f2","severity":"low","nature":"convention","file":"b.go","claim":"meh","confidence":"low","lens":"guidelines:Go"}],"coverage_gaps":["fixtures and documentation reviewed by nobody"],"summary":"s"}' > "$REP2"
+RD2=$(run "$WT" audit round --report "$REP2" --replan 2)
+eq "--replan lets it through, on purpose" "2" "$(printf '%s' "$RD2" | field .round.n)"
+eq "the summary lists each finding by severity, with its nature and where it is" "true" \
+   "$(printf '%s' "$RD2" | jq -r '.summary | contains("findings 2 (1 high, 1 low)") and contains("high    runtime     a.go:3  f1") and contains("(1 repeated)")')"
+eq "and the round keeps those findings, minus the prose, for a later reader" "f1,f2" \
+   "$(printf '%s' "$RD2" | jq -r '[.round.findings_list[].id] | join(",")')"
 eq "status shows both rounds" "2|2" "$(run "$WT" audit status | jq -r '[(.rounds_planned|tostring), (.rounds|length|tostring)] | join("|")')"
 A=$(run "$WT" audit accept)
 eq "accept records the acceptance" "true|2" "$(printf '%s' "$A" | jq -r '[(.accepted|tostring), (.rounds|tostring)] | join("|")')"
+eq "and sums the audit up for the reader: rounds, findings per round, incidents" "true" \
+   "$(printf '%s' "$A" | jq -r '.summary | startswith("audit accepted · 2 round(s)") and contains("findings 2 / 2") and contains("0 incident(s)")')"
 eq "and returns the step that follows under next" "match-request" "$(printf '%s' "$A" | jq -r '.next.step')"
 eq "and the run moves to match-request" "match-request" "$(run "$WT" step | field .step)"
 printf 'e\n' > "$WT/e.go"; commit_all "$WT" "Fix after acceptance"
@@ -324,6 +334,8 @@ eq "archived without integration: the run is landed on its branch" "learn" "$(ru
 eq "--done learn needs nothing else when there is nothing to record" "learn|true" \
    "$(run "$WT" step --done learn --none | jq -r '[.done, (.none|tostring)] | join("|")')"
 eq "and the run is finished" "finished" "$(run "$WT" step | field .step)"
+eq "and the finished reply carries the run's statistics for the closing message" "true" \
+   "$(run "$WT" step | jq -r '.stats | startswith("run w1 ") and contains("build")')"
 eq "which the ledger records" "true" "$(jq -r .finished "$R/.git/clerk/runs/w1/run.json")"
 
 # --------------------------------------------------------------------------------

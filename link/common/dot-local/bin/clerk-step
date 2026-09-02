@@ -1448,9 +1448,36 @@ def audit_begin(ctx, aud, o):
             "next": audit_next(ctx, aud, o)}
 
 
-def _spawn(job_id, prompt, schema, agent=None, isolation="none"):
+READ_TOOLS = ["Bash(clerk:*)", "Bash(rg:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
+              "Bash(git status:*)", "Bash(git grep:*)", "Bash(git rev-parse:*)", "Bash(git merge-base:*)",
+              "Bash(git ls-files:*)", "Bash(git blame:*)"]
+TWO_WORD_RUNNERS = ("go", "make", "npm", "pnpm", "yarn", "mix", "cargo", "task", "bundle", "uv")
+
+
+def job_tools(test_commands, isolation="none"):
+    """What a headless agent may run without asking. A `-p` session has nobody to answer
+    a permission prompt, so anything not on this list is silently refused — which is how
+    every `clerk lint` and `clerk guidelines` in a round came back "refused by the
+    permission gate" while the lens went on reading guideline files by hand. The repo's
+    test commands are allowed by their leading words; an agent given a worktree of its
+    own may also edit it."""
+    tools = list(READ_TOOLS)
+    for cmd in (test_commands or {}).values():
+        words = str(cmd or "").split()
+        if not words or words[0].startswith("("):
+            continue
+        head = " ".join(words[:2]) if words[0] in TWO_WORD_RUNNERS and len(words) > 1 else words[0]
+        for pat in ([f"Bash({head}:*)"] + ([f"Bash(go vet:*)", f"Bash(go build:*)"] if words[0] == "go" else [])):
+            if pat not in tools:
+                tools.append(pat)
+    if isolation == "worktree":
+        tools += ["Edit", "Write", "MultiEdit"]
+    return tools
+
+
+def _spawn(job_id, prompt, schema, agent=None, isolation="none", tools=None):
     return {"id": job_id, "prompt": prompt, "schema_name": schema,
-            "agent": agent, "isolation": isolation}
+            "agent": agent, "isolation": isolation, "allowed_tools": tools or []}
 
 
 def audit_next(ctx, aud, o):
@@ -1464,11 +1491,12 @@ def audit_next(ctx, aud, o):
             f"or CLERK_METHOD_DIR to the method directory")
     phase = lv["phase"]
 
+    tools = job_tools(a.get("test_commands"))
     if phase == "scope":
         return {"phase": "scope", "round": lv["round"], "concurrent": False,
                 "spawn": [_spawn("scope", panel.scope_prompt(
                     prompts, target=a["target"], base_ref=a["base_ref"],
-                    prior_scope=lv.get("prior_scope")), "SCOPE_SCHEMA")],
+                    prior_scope=lv.get("prior_scope")), "SCOPE_SCHEMA", tools=tools)],
                 "record_with": "clerk audit record --phase scope --results <file>"}
 
     if phase == "review":
@@ -1479,7 +1507,7 @@ def audit_next(ctx, aud, o):
         lv["not_run"] = not_run
         ctx.run.write("audit.json", aud)
         return {"phase": "review", "round": lv["round"], "concurrent": True,
-                "spawn": [_spawn(f"review:{l['key']}", l["prompt"], "REVIEW_SCHEMA", l["agent"])
+                "spawn": [_spawn(f"review:{l['key']}", l["prompt"], "REVIEW_SCHEMA", l["agent"], tools=tools)
                           for l in lenses],
                 "held_back": not_run,
                 "record_with": "clerk audit record --phase review --results <file>"}
@@ -1487,7 +1515,7 @@ def audit_next(ctx, aud, o):
     if phase == "dedupe":
         ctxb = panel._PromptCtx(lv["scope"], prompts, a["request"], a["brief"], (), a["test_commands"])
         return {"phase": "dedupe", "round": lv["round"], "concurrent": False,
-                "spawn": [_spawn("dedupe", ctxb.dedupe(lv["candidates"]), "DEDUP_SCHEMA")],
+                "spawn": [_spawn("dedupe", ctxb.dedupe(lv["candidates"]), "DEDUP_SCHEMA", tools=tools)],
                 "record_with": "clerk audit record --phase dedupe --results <file>"}
 
     if phase == "refute":
@@ -1496,7 +1524,8 @@ def audit_next(ctx, aud, o):
                                  test_commands=a["test_commands"])
         return {"phase": "refute", "round": lv["round"], "concurrent": True,
                 "spawn": [_spawn(f"refute:{j['id']}", j["prompt"], "VERDICT_SCHEMA",
-                                 isolation=j["isolation"]) for j in jobs],
+                                 isolation=j["isolation"],
+                                 tools=job_tools(a.get("test_commands"), j["isolation"])) for j in jobs],
                 "record_with": "clerk audit record --phase refute --results <file>"}
 
     if phase == "report":
@@ -1504,7 +1533,7 @@ def audit_next(ctx, aud, o):
         ctxb = panel._PromptCtx(lv["scope"], prompts, a["request"], a["brief"], (), a["test_commands"])
         return {"phase": "report", "round": lv["round"], "concurrent": False,
                 "spawn": [_spawn("report", ctxb.synth(confirmed, refuted, lv["lens_notes"],
-                                                      lv["not_run"]), "SYNTH_SCHEMA")],
+                                                      lv["not_run"]), "SYNTH_SCHEMA", tools=tools)],
                 "record_with": "clerk audit record --phase report --results <file>"}
 
     return {"phase": "done", "round": lv["round"],
@@ -1882,7 +1911,8 @@ def audit_run(ctx, aud, o):
         if o["--dry-run"]:
             trace.append({"phase": nxt["phase"], "jobs": [
                 {"id": j["id"], "agent": j.get("agent"), "isolation": j.get("isolation"),
-                 "schema": j.get("schema_name"), "prompt_chars": len(j["prompt"])} for j in jobs],
+                 "schema": j.get("schema_name"), "prompt_chars": len(j["prompt"]),
+                 "allowed_tools": j.get("allowed_tools") or []} for j in jobs],
                 "held_back": nxt.get("held_back") or []})
             # Nothing came back, so nothing can advance; a dry run reports the first phase
             # and stops rather than inventing results for the ones after it.

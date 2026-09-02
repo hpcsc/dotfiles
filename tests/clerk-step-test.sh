@@ -742,7 +742,7 @@ eq "the drop is said where the report reads it, not hidden" "2" \
    "$(run "$RA" audit status | jq -r '[.live.lens_notes[] | select(contains("dropped as settled"))] | length')"
 
 # Two lenses raising one id is one defect; no grouping agent is paid to say so.
-run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit begin --base main --restart --test-commands '{"Go":"go test ./..."}' >/dev/null 2>&1
 run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
 cat > "$RA/review2.json" <<'JSON'
 [{"lens":"semantic:Go","verdict":"fail","findings":[{"id":"g1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"}],"note":null},
@@ -751,6 +751,8 @@ JSON
 RV=$(run "$RA" audit record --phase review --results "$RA/review2.json")
 eq "one id raised by two lenses is one finding, carrying both lenses, with no dedupe pass" "1|refute|semantic:Go + guidelines:Go" \
    "$(printf '%s' "$RV" | jq -r '[(.premerged|tostring), .next.phase] | join("|")')|$(run "$RA" audit status | jq -r '.live.candidates[0].lens')"
+eq "a refuter given a worktree may edit it and run the repo's tests, vet and build" "true" \
+   "$(printf '%s' "$RV" | jq -r '.next.spawn[0].allowed_tools | (index("Edit") != null) and (index("Bash(go test:*)") != null) and (index("Bash(go vet:*)") != null) and (index("Bash(clerk:*)") != null)')"
 
 # The runner: the loop is a program, so the plan can be inspected without spending
 # anything, and the executor's parsing is tested against replies rather than agents.
@@ -761,6 +763,11 @@ eq "a dry run reports the phase it would spawn and spawns nothing" "true|review|
    "$(printf '%s' "$DR" | jq -r '[(.dry_run|tostring), .phase, (.plan[0].jobs|length|tostring)] | join("|")')"
 eq "and names the agent behind each job" "go-semantic-reviewer" \
    "$(printf '%s' "$DR" | jq -r '.plan[0].jobs[0].agent')"
+# A headless session has nobody to answer a permission prompt, so what a job may run is
+# said up front: clerk always, the repo's test command by its leading words, and a
+# checkout's edits only for the agent that was given one.
+eq "every job may run clerk without asking, and a lens may not edit the tree" "true|false" \
+   "$(printf '%s' "$DR" | jq -r '[([.plan[0].jobs[].allowed_tools | index("Bash(clerk:*)") != null] | all), (.plan[0].jobs[0].allowed_tools | index("Edit") != null)] | map(tostring) | join("|")')"
 eq "with no harness on PATH a real run refuses rather than hanging" "3" \
    "$(CLERK_HARNESS_CMD= PATH=/usr/bin:/bin rc "$RA" audit run)"
 

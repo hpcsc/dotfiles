@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, gitout  # noqa: E402
+from clerk_lib import clerk, die, gitout, parse  # noqa: E402
 import clerk_harness as hx  # noqa: E402
 from clerk_render import Out  # noqa: E402
 
@@ -605,38 +605,18 @@ the steps and their results; --raw puts the harness's own JSONL on stdout instea
 the summary as its last line."""
 
 
-def parse(argv):
-    opts = {k: ([] if t == "list" else (False if t == "bool" else None)) for k, t in SPEC.items()}
-    i = 0
-    while i < len(argv):
-        a = argv[i]
-        if a.startswith("--") and "=" in a and a.split("=", 1)[0] in SPEC:
-            a, v = a.split("=", 1)
-            argv = argv[:i] + [a, v] + argv[i + 1:]
-        if a in ("-h", "--help"):
-            print(USAGE)
-            sys.exit(0)
-        if a not in SPEC:
-            die(f"unknown argument '{a}'")
-        if SPEC[a] == "bool":
-            opts[a] = True
-            i += 1
-        else:
-            if i + 1 >= len(argv):
-                die(f"{a} needs a value")
-            (opts[a].append(argv[i + 1]) if SPEC[a] == "list"
-             else opts.__setitem__(a, argv[i + 1]))
-            i += 2
-    return opts
-
-
 def main(argv):
-    o = parse(list(argv))
+    if any(a in ("-h", "--help") for a in argv):
+        print(USAGE)
+        sys.exit(0)
+    o, rest = parse(argv, SPEC)
+    if rest:
+        die(f"unknown argument '{rest[0]}'")
     if o["--quiet"] and o["--raw"]:
         die("--quiet and --raw ask for different things; pass one")
     o["level"] = "raw" if o["--raw"] else ("quiet" if o["--quiet"] else "default")
     cwd = os.getcwd()
-    cmd = o["--harness-cmd"] or hx.detect_harness()
+    cmd = o["--harness-cmd"] or hx.harness_cmd()
     if not cmd and not o["--dry-run"]:
         die("no coding harness found on PATH — install `claude` or `opencode`, pass "
             "--harness-cmd, or use --dry-run to see the step without spawning anything", 3)

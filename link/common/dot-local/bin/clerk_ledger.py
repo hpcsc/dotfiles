@@ -308,14 +308,6 @@ def all_run_summaries(ctx):
     return rows
 
 
-def worktree_of(ctx, branch):
-    """The worktree holding `branch`, from the list `clerk prepare` reported."""
-    for wt in ctx.prepare.get("worktrees") or []:
-        if wt.get("branch") == branch:
-            return wt.get("path")
-    return None
-
-
 def session_id():
     return os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("OPENCODE_SESSION_ID") or None
 
@@ -337,39 +329,8 @@ def receipt_state(ctx):
 
 
 # --------------------------------------------------------------------------------
-# Flags, and the live audit round's runner
+# The live audit round's runner
 # --------------------------------------------------------------------------------
-
-def parse(argv, spec):
-    """Tiny flag parser: spec maps --flag to 'bool' | 'value' | 'list'."""
-    opts = {k: ([] if t == "list" else (False if t == "bool" else None)) for k, t in spec.items()}
-    rest = []
-    i = 0
-    while i < len(argv):
-        a = argv[i]
-        if a.startswith("--") and "=" in a and a.split("=", 1)[0] in spec and spec[a.split("=", 1)[0]] != "bool":
-            # --flag=value, the spelling every other clerk command takes as well.
-            a, v = a.split("=", 1)
-            argv = argv[:i] + [a, v] + argv[i + 1:]
-        if a in spec:
-            t = spec[a]
-            if t == "bool":
-                opts[a] = True
-                i += 1
-            else:
-                if i + 1 >= len(argv):
-                    die(f"{a} needs a value")
-                if t == "list":
-                    opts[a].append(argv[i + 1])
-                else:
-                    opts[a] = argv[i + 1]
-                i += 2
-        elif a.startswith("--") and a not in spec:
-            die(f"unknown argument '{a}'")
-        else:
-            rest.append(a)
-            i += 1
-    return opts, rest
 
 
 def live_of(aud):

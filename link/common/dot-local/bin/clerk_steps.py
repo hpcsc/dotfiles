@@ -15,10 +15,10 @@ import os
 import re
 from pathlib import Path
 
-from clerk_lib import clerk, die, git, gitout
+from clerk_lib import clerk, die, git, gitout, worktree_for
 from clerk_ledger import (age_seconds, fixup_ambiguities, gear, guidelines_read, is_ancestor,
                           learn_written, now, receipt_state, ref_exists, runner_view, session_id,
-                          task_signals, worktree_of)
+                          task_signals)
 
 VALIDATE_QUESTIONS = [
     "What does the story ask for that this branch does not do?",
@@ -168,7 +168,7 @@ def landed_elsewhere(ctx):
         return True
     if ctx.default and is_ancestor(slug, ctx.default, ctx.cwd):
         return True
-    wt = worktree_of(ctx, slug)
+    wt = worktree_for(slug, ctx.prepare.get("worktrees"))
     if wt:
         gd = gitout("rev-parse", "--absolute-git-dir", cwd=wt)
         if gd and (Path(gd) / "clerk" / "archived.json").exists():
@@ -186,7 +186,7 @@ def row_isolate(ctx):
     if landed_elsewhere(ctx):
         return row("isolate", True, mode="landed", note="the run has left its branch; it landed")
     if ref_exists(slug, ctx.cwd):
-        wt = worktree_of(ctx, slug)
+        wt = worktree_for(slug, ctx.prepare.get("worktrees"))
         if wt:
             return row("isolate", False, action="enter", path=wt,
                        why_not_done=f"the run's worktree is {wt} and this call is not in it",
@@ -423,7 +423,7 @@ def row_land(ctx):
         return row("land", True, archived=True, integrated=False)
     if not ref_exists(slug, ctx.cwd):
         return row("land", True, archived=True, integrated=True)
-    wt = worktree_of(ctx, slug)
+    wt = worktree_for(slug, ctx.prepare.get("worktrees"))
     if ctx.default and is_ancestor(slug, ctx.default, ctx.cwd):
         if wt:
             return row("land", False, action="cleanup", why_not_done=f"merged; the worktree at {wt} remains",

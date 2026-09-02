@@ -95,7 +95,9 @@ def new_session_id():
     return str(uuid.uuid4())
 
 
-def detect_harness():
+def harness_cmd():
+    """Which harness binary this machine has, or None. Not which method text a run
+    renders — that is the ledger's `harness`, and `clerk step` decides it."""
     if os.environ.get("CLERK_HARNESS_CMD"):
         return os.environ["CLERK_HARNESS_CMD"]
     if shutil.which("claude"):

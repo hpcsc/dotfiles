@@ -275,6 +275,22 @@ def finding_rank(f):
     return SEVERITY_RANK.get(f.get("severity"), 3) * 2 + (0 if f.get("nature") == "runtime" else 1)
 
 
+def _merged(members):
+    """One finding standing for several: the most telling copy, carrying every lens that
+    raised one of them and the ids it stands for."""
+    rep = dict(sorted(members, key=finding_rank)[0])
+    if len(members) > 1:
+        lenses = []
+        for m in members:
+            for k in str(m.get("lens") or "").split("+"):
+                k = k.strip()
+                if k and k not in lenses:
+                    lenses.append(k)
+        rep["lens"] = " + ".join(lenses)
+        rep["merged_from"] = [m["id"] for m in members]
+    return rep
+
+
 def merge_clusters(candidates, clusters):
     """(merged, collapsed, reason). The grouping is accepted only when it accounts for
     every finding exactly once. An agent that drops an id would delete a defect here,
@@ -293,17 +309,7 @@ def merge_clusters(candidates, clusters):
     merged = []
     for ids in proposed:
         members = [by_id[i] for i in ids]
-        rep = dict(sorted(members, key=finding_rank)[0])
-        if len(members) > 1:
-            lenses = []
-            for m in members:
-                for k in str(m.get("lens") or "").split("+"):
-                    k = k.strip()
-                    if k and k not in lenses:
-                        lenses.append(k)
-            rep["lens"] = " + ".join(lenses)
-            rep["merged_from"] = [m["id"] for m in members]
-        merged.append(rep)
+        merged.append(_merged(members))
     return merged, len(candidates) - len(merged), None
 
 
@@ -324,17 +330,7 @@ def premerge(candidates):
     merged = []
     for key in order:
         members = by_id[key]
-        rep = dict(sorted(members, key=finding_rank)[0])
-        if len(members) > 1:
-            lenses = []
-            for m in members:
-                for k in str(m.get("lens") or "").split("+"):
-                    k = k.strip()
-                    if k and k not in lenses:
-                        lenses.append(k)
-            rep["lens"] = " + ".join(lenses)
-            rep["merged_from"] = [m["id"] for m in members]
-        merged.append(rep)
+        merged.append(_merged(members))
     return merged, len(candidates) - len(merged)
 
 

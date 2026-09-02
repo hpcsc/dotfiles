@@ -20,11 +20,12 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, emit  # noqa: E402
+from clerk_lib import die, emit, parse  # noqa: E402
 import clerk_audit_panel as panel  # noqa: E402
-from clerk_ledger import (Run, age_seconds, build_ctx, live_of, note_runner_dead, now, parse,  # noqa: E402
+from clerk_ledger import (Run, age_seconds, build_ctx, live_of, note_runner_dead, now,  # noqa: E402
                           receipt_state, runner_alive, runner_view)
 from clerk_render import Out  # noqa: E402
+from clerk_stats import finding_rows, span, unwrap_report  # noqa: E402
 from clerk_steps import next_step  # noqa: E402
 
 
@@ -33,13 +34,12 @@ from clerk_steps import next_step  # noqa: E402
 # --------------------------------------------------------------------------------
 
 def report_summary(path):
-    import clerk_stats
     text = sys.stdin.read() if path == "-" else Path(path).read_text()
     try:
         raw = json.loads(text)
     except json.JSONDecodeError:
         die(f"{path} is not valid JSON")
-    rep = clerk_stats.unwrap_report(raw)
+    rep = unwrap_report(raw)
     if rep is None:
         keys = ", ".join(sorted(raw)) if isinstance(raw, dict) else type(raw).__name__
         die(f"{path} is not an audit report: no `findings` list at its top level or under `report` "
@@ -53,17 +53,12 @@ def report_summary(path):
         v = rep.get(k)
         return [str(x) for x in v] if isinstance(v, list) else []
 
-    rows = [{"id": f.get("id"), "severity": f.get("severity"), "nature": f.get("nature"),
-             "file": f.get("file"), "line": f.get("line")}
-            for f in (rep.get("findings") or []) if isinstance(f, dict)]
+    rows = finding_rows(rep)
     return {"findings": count("findings"), "refuted": count("refuted"), "coverage_gaps": count("coverage_gaps"),
             "lenses": rep.get("lenses"), "lenses_not_run": rep.get("lenses_not_run"),
             # Kept, not just counted. A gap that comes back is the audit saying it will
             # never cover that ground however many rounds run, and a count cannot say it.
             "gaps_text": texts("coverage_gaps"), "findings_list": rows}
-
-
-SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
 def _between(a, b):
@@ -77,16 +72,16 @@ def round_summary(entry, repeated=()):
     agents = entry.get("agents") or []
     cost = sum(a.get("cost_usd") or 0 for a in agents) if agents else None
     wall = _between(entry.get("started_at"), entry.get("ended_at"))
-    head = [f"round {entry.get('n')}", _span(wall),
+    head = [f"round {entry.get('n')}", span(wall),
             f"${cost:.2f}" if cost is not None else "$-",
             f"{len(agents)} agents" if agents else "no agent record",
             f"{len(entry.get('incidents') or [])} incident(s)"]
     rows = sorted(entry.get("findings_list") or [],
-                  key=lambda f: (SEVERITY_ORDER.get(f.get("severity"), 9), f.get("id") or ""))
+                  key=lambda f: (panel.SEVERITY_RANK.get(f.get("severity"), 9), f.get("id") or ""))
     by_sev = {}
     for f in rows:
         by_sev[f.get("severity") or "?"] = by_sev.get(f.get("severity") or "?", 0) + 1
-    sev = ", ".join(f"{n} {k}" for k, n in sorted(by_sev.items(), key=lambda kv: SEVERITY_ORDER.get(kv[0], 9)))
+    sev = ", ".join(f"{n} {k}" for k, n in sorted(by_sev.items(), key=lambda kv: panel.SEVERITY_RANK.get(kv[0], 9)))
     lines = [" · ".join(head),
              f"findings {entry.get('findings') if entry.get('findings') is not None else 0}"
              + (f" ({sev})" if sev else "")
@@ -113,7 +108,7 @@ def audit_summary(aud, accepted_at=None):
     wall = _between(first, accepted_at)
     incidents = sum(len(r.get("incidents") or []) for r in rounds)
     counts = " / ".join(str(r.get("findings") if r.get("findings") is not None else "?") for r in rounds)
-    return " · ".join([f"audit accepted", f"{len(rounds)} round(s)", _span(wall),
+    return " · ".join([f"audit accepted", f"{len(rounds)} round(s)", span(wall),
                        f"${cost:.2f}" if priced else "$-", f"findings {counts or 'none'}",
                        f"{incidents} incident(s)"])
 
@@ -569,16 +564,6 @@ def _phase_line(nxt, jobs, kept=()):
     return f"{nxt['phase']} · round {nxt['round']} · {n} agent{'s' if n != 1 else ''}, {how}{tail}"
 
 
-def _span(seconds):
-    if seconds is None:
-        return "-"
-    if seconds < 60:
-        return f"{int(seconds)}s"
-    if seconds < 3600:
-        return f"{seconds / 60:.1f}m"
-    return f"{int(seconds) // 3600}h{(int(seconds) % 3600) // 60:02d}m"
-
-
 STALL_AFTER = int(os.environ.get("CLERK_STALL_AFTER", "300"))
 
 
@@ -687,7 +672,7 @@ class Runner:
                         continue
                     a["since"] = a["last_event"]
                     a["stall"] = self.incident("stall", agent=jid, silent_s=int(silent))
-                    self.out.note(f"  · {_short_id(jid)} silent {_span(silent)}")
+                    self.out.note(f"  · {_short_id(jid)} silent {span(silent)}")
                 self.record()["beat_at"] = now()
                 self.save()
 
@@ -731,7 +716,7 @@ def audit_run(ctx, aud, o):
               log_path=None if o["--dry-run"] else progress_path(ctx),
               beat=None if o["--dry-run"] else {"dir": ctx.cwd, "slug": f"audit {ctx.run.slug}"})
     out.opening()
-    harness = o["--harness-cmd"] or ex.detect_harness()
+    harness = o["--harness-cmd"] or ex.harness_cmd()
     if not harness and not o["--dry-run"]:
         die("no coding harness found on PATH — install `claude` or `opencode`, or pass "
             "--harness-cmd, or use --dry-run to see the plan without spawning anything", 3)

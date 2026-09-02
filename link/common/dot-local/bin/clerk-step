@@ -17,9 +17,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, emit, git, gitout  # noqa: E402
+from clerk_lib import clerk, die, emit, git, gitout, parse, resolve_tasks_arg  # noqa: E402
 from clerk_ledger import (CALLERS, Run, build_ctx, detect_harness, now, open_run_summaries,  # noqa: E402
-                          parse, run_summary, runs_root, session_id)
+                          run_summary, runs_root, session_id)
 from clerk_steps import (ROWS, active_rows, facts_for, file_hash, instructions_for,  # noqa: E402
                          lint_sidecar, next_step)
 
@@ -52,16 +52,6 @@ def cmd_start(slug, request, harness):
             "next": next_step(build_ctx(slug, harness))}
 
 
-def resolve_tasks_path(ctx, p):
-    cand = [Path(p)]
-    if not Path(p).is_absolute():
-        cand = [Path(ctx.cwd) / p, Path(ctx.prepare.get("tasks_home") or ctx.cwd) / p]
-    for c in cand:
-        if c.exists():
-            return c.resolve()
-    die(f"no breakdown at {p}", 1)
-
-
 def done_ground(ctx, argv):
     o, _ = parse(argv, {"--caller": "value", "--dom": "bool", "--state": "bool"})
     if o["--caller"] not in CALLERS:
@@ -75,7 +65,10 @@ def done_decompose(ctx, argv):
     o, _ = parse(argv, {"--tasks-file": "value", "--approved": "bool"})
     if not o["--tasks-file"]:
         die("--done decompose needs --tasks-file <tasks/<story>.md>")
-    tf = resolve_tasks_path(ctx, o["--tasks-file"])
+    tf = resolve_tasks_arg(o["--tasks-file"], ctx.prepare.get("tasks_home") or ctx.cwd)
+    if not tf.exists():
+        die(f"no breakdown at {o['--tasks-file']}", 1)
+    tf = tf.resolve()
     side = tf.with_suffix(".json")
     if not side.exists():
         emit({"bound": False, "reason": f"no sidecar beside {tf} — run `clerk sidecar` to recover one, then bind again"}, 1)

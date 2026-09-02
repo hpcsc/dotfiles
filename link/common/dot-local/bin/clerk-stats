@@ -10,8 +10,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, emit  # noqa: E402
-from clerk_ledger import Run, all_run_summaries, build_ctx, parse, runs_root  # noqa: E402
+from clerk_lib import die, emit, parse  # noqa: E402
+from clerk_ledger import Run, all_run_summaries, build_ctx, runs_root  # noqa: E402
 
 
 STATS_SPEC = {"--run": "value", "--session": "value", "--pick": "bool", "--json": "bool",

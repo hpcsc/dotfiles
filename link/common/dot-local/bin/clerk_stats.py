@@ -440,6 +440,7 @@ def pick_session(rows):
 def span(seconds):
     if seconds is None:
         return "-"
+    seconds = int(seconds)
     if seconds < 60:
         return f"{seconds}s"
     if seconds < 3600:

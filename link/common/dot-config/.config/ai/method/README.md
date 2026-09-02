@@ -198,6 +198,26 @@ Suite, then receipt. Audit, fix, then **receipt again** — this is the only poi
 run where code lands after the last green. Re-audit narrowed to the lenses that raised
 what was fixed, widening to the full panel if any fix touched behaviour.
 
+#### What the rounds cost, measured
+
+The audit step's rules — plan one round, earn each further one on a `high` or a
+`medium` `runtime` finding, scope later rounds to the files the fixes touched — come
+from these figures, which the step text points at rather than repeats.
+
+- Across nineteen measured rounds, rounds one and two returned every high-severity
+  defect found and twenty of the thirty-one medium ones. Rounds three onward returned
+  forty-two more findings and not one of them high: eleven medium and thirty-one low,
+  for roughly 37% of the whole audit budget. Two runs kept going to four and five rounds
+  and bought low-severity quality findings at full price.
+- Over every round that had a successor, a gate of "medium or higher" would have let
+  through 78% of them; requiring the medium to be `runtime` let through 33%.
+- Over four measured runs, all 47 later-round findings landed in a file some fix had
+  touched, and both later-round `high` defects — including the one a previous round's
+  own fix introduced — were in files fixed before that round ran.
+- What fix-scoping saves is uneven. One run had 5 of 49 changed files touched by fixes,
+  all in one language, and could drop a whole language panel; another had 11 of 19
+  spanning both its languages and dropped nothing.
+
 Then the step no machine does: re-read the request verbatim against the finished branch
 and ask what it asked for that the branch does not do. Then write the theory down — the
 run is the last reader of the branch that understands it without reading it, and a

@@ -307,6 +307,37 @@ def merge_clusters(candidates, clusters):
     return merged, len(candidates) - len(merged), None
 
 
+def premerge(candidates):
+    """(merged, collapsed): findings several lenses raised under one id become one
+    finding carrying every lens, before any agent is asked to group anything. Lenses
+    that re-raise a rechecked finding reuse its id verbatim, and a grouping agent has
+    been seen to hand those back as separate clusters, so the identical case is settled
+    here and only the judgment calls reach it."""
+    by_id, order = {}, []
+    for f in candidates:
+        key = str(f.get("id") or "").strip().lower()
+        if not key or key not in by_id:
+            by_id[key or id(f)] = [f]
+            order.append(key or id(f))
+        else:
+            by_id[key].append(f)
+    merged = []
+    for key in order:
+        members = by_id[key]
+        rep = dict(sorted(members, key=finding_rank)[0])
+        if len(members) > 1:
+            lenses = []
+            for m in members:
+                for k in str(m.get("lens") or "").split("+"):
+                    k = k.strip()
+                    if k and k not in lenses:
+                        lenses.append(k)
+            rep["lens"] = " + ".join(lenses)
+            rep["merged_from"] = [m["id"] for m in members]
+        merged.append(rep)
+    return merged, len(candidates) - len(merged)
+
+
 def refuters_for(finding, depth):
     """How many independent refuters a claim gets. `deep` puts three on anything that
     would matter and takes the majority."""
@@ -371,17 +402,32 @@ class _PromptCtx:
     def recheck_block(self):
         if not self.recheck:
             return ""
-        rows = "\n".join(
-            f"  - [{r.get('id')}] {r.get('claim')}"
-            + (f" — reported fix: {r['note']}" if r.get("note") else "")
-            for r in self.recheck)
-        return ("THIS IS A RE-AUDIT. An earlier pass raised the findings below and they were reported fixed:\n"
-                + rows
-                + "\nFor each, check the tree and say whether the fix actually landed. If it did not, RE-RAISE "
-                  "it with the SAME id. Judge only whether the described change is there — whether the finding "
-                  "deserved fixing is settled and not yours to re-open.\n"
-                  "Your remit is otherwise unchanged: review this diff as you normally would. A fix can "
-                  "introduce a new defect, and you are the lens that would see it.\n\n")
+        fixed = [r for r in self.recheck if r.get("decision", "fixed") != "declined"]
+        declined = [r for r in self.recheck if r.get("decision") == "declined"]
+        out = "THIS IS A RE-AUDIT."
+        if fixed:
+            rows = "\n".join(
+                f"  - [{r.get('id')}] {r.get('claim')}"
+                + (f" — reported fix: {r['note']}" if r.get("note") else "")
+                for r in fixed)
+            out += (" An earlier pass raised the findings below and they were reported fixed:\n"
+                    + rows
+                    + "\nFor each, check the tree and say whether the fix actually landed. If it did not, RE-RAISE "
+                      "it with the SAME id. Judge only whether the described change is there — whether the finding "
+                      "deserved fixing is settled and not yours to re-open.\n")
+        if declined:
+            rows = "\n".join(
+                f"  - [{r.get('id')}] {r.get('claim')}"
+                + (f" — declined because: {r['note']}" if r.get("note") else "")
+                for r in declined)
+            out += (" The findings below were raised by an earlier pass and DECLINED by the author, with the "
+                    "reason given. They are settled: do NOT raise them again, under this id or any other, and do "
+                    "not argue the reason in `findings` — a finding that restates one of these is dropped unread. "
+                    "If you believe the reason is wrong, say so in `note`, which is read.\n"
+                    + rows + "\n")
+        out += ("Your remit is otherwise unchanged: review this diff as you normally would. A fix can "
+                "introduce a new defect, and you are the lens that would see it.\n\n")
+        return out
 
     def mechanical(self):
         if not self.scope.get("mechanical_ran"):

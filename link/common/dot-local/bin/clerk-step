@@ -1182,6 +1182,12 @@ def round_summary(entry, repeated=()):
     for f in rows:
         where = f"{f.get('file') or '?'}" + (f":{f['line']}" if f.get("line") else "")
         lines.append(f"  {(f.get('severity') or '?'):<7} {(f.get('nature') or '-'):<11} {where}  {f.get('id') or ''}")
+    if entry.get("suppressed"):
+        lines.append(f"  ({len(entry['suppressed'])} re-raised as declined and dropped)")
+    earning = earns_another(entry.get("findings_list"))
+    lines.append("another round: " + (f"earned by {', '.join(f.get('id') or '?' for f in earning)} "
+                                      f"unless declined" if earning
+                                      else "not earned — fix, prove by hand, suite, accept"))
     return "\n".join(lines)
 
 
@@ -1279,6 +1285,8 @@ def audit_round(ctx, aud, o):
                 default=None)
     entry = {"n": len(aud["rounds"]) + 1, "at": now(), "sha": ctx.head, "code_tree": ctx.head_ct,
              "started_at": live.get("started_at"), "ended_at": ended or (now() if live else None),
+             "another_reason": (live.get("args") or {}).get("another"),
+             "suppressed": live.get("suppressed") or [],
              "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary,
              "incidents": [i for i in aud.get("incidents") or [] if i.get("round") == len(aud["rounds"]) + 1],
              "agents": [{"phase": ph, "id": jid, "ok": rec.get("ok"), "seconds": rec.get("seconds"),
@@ -1294,7 +1302,9 @@ def audit_round(ctx, aud, o):
     # that happened to find the same things, so the next round silently never runs.
     aud["live"] = None
     ctx.run.write("audit.json", aud)
+    earning = earns_another(entry.get("findings_list"))
     out = {"recorded": True, "round": entry, "rounds_planned": planned,
+           "another_round": {"earned": bool(earning), "by": [f.get("id") for f in earning]},
            "summary": round_summary(entry, again)}
     # Surfaced on the round that repeats it, not left for a reader to notice across three
     # JSON blobs. This is the one signal that says a further round will not reach it.
@@ -1359,7 +1369,36 @@ def parse_recheck(raw):
     thin = [f.get("id") or "?" for f in found if not (f.get("id") and f.get("claim"))]
     if thin:
         die(f'every --recheck finding needs both "id" and "claim"; missing on: {", ".join(thin)}')
+    odd = [f["id"] for f in found if f.get("decision") not in (None, "fixed", "declined")]
+    if odd:
+        die(f'a --recheck finding\'s "decision" is "fixed" or "declined" (absent means fixed); '
+            f'not so on: {", ".join(odd)}')
     return found
+
+
+def earns_another(rows, declined_ids=()):
+    """The findings of a round that earn a further round: high severity, or medium and
+    runtime — a defect something executes — and not declined by the author. A test's
+    strength or a convention is fixed and proven by hand; a round over it buys nothing."""
+    declined = {str(i).lower() for i in declined_ids}
+    return [f for f in rows or []
+            if (f.get("severity") == "high" or (f.get("severity") == "medium" and f.get("nature") == "runtime"))
+            and str(f.get("id") or "").lower() not in declined]
+
+
+def declined_match(finding, declined):
+    """The declined finding this one restates, or None. Lenses reuse the id verbatim
+    when they re-raise; when they reword, the claim's content words still overlap."""
+    fid = str(finding.get("id") or "").lower()
+    key = gap_key(finding.get("claim") or "")
+    for d in declined:
+        if fid and fid == str(d.get("id") or "").lower():
+            return d
+        dk = gap_key(d.get("claim") or "")
+        smaller = min(len(key), len(dk))
+        if smaller >= 4 and len(key & dk) / smaller >= 0.6:
+            return d
+    return None
 
 
 def audit_begin(ctx, aud, o):
@@ -1368,6 +1407,18 @@ def audit_begin(ctx, aud, o):
         emit({"began": False, "phase": lv["phase"], "round": lv["round"],
               "reason": "a round is already in flight here — continue it with `clerk audit next`, "
                         "or start it over with --restart"}, 3)
+    recheck = parse_recheck(o["--recheck"])
+    last = (aud.get("rounds") or [None])[-1]
+    if last and last.get("findings_list") is not None and not o["--another"]:
+        earning = earns_another(last["findings_list"],
+                                [r["id"] for r in recheck if r.get("decision") == "declined"])
+        if not earning:
+            emit({"began": False, "round": last.get("n"),
+                  "reason": f"round {last.get('n')} upheld nothing that earns another round: no finding was "
+                            f"high, or medium and runtime, that you did not decline. Fix what it found, prove "
+                            f"the fixes by hand, run the suite, and `clerk audit accept --early \"<why>\"`. "
+                            f"To run one anyway, say why with --another \"<why>\"; the reason is recorded.",
+                  "findings": last["findings_list"]}, 3)
     args = {
         "target": o["--target"] or "branch",
         "base_ref": o["--base"],
@@ -1376,13 +1427,18 @@ def audit_begin(ctx, aud, o):
         "depth": o["--depth"] or "standard",
         "fixed_files": o["--fixed-file"] or [],
         "lenses": o["--lens"] or [],
-        "recheck": parse_recheck(o["--recheck"]),
+        "recheck": recheck,
+        "another": o["--another"] or None,
         "test_commands": json.loads(o["--test-commands"]) if o["--test-commands"] else
                          (ctx.prepare.get("test_commands") or {}),
     }
     prior = None
     if aud.get("rounds"):
         prior = (aud.get("last_scope") or None)
+        # A round that passed the gate is a round the plan holds: refusing it again at
+        # record time, for a count set before anything was found, would ask for the
+        # same decision twice.
+        aud["rounds_planned"] = max(aud.get("rounds_planned") or 0, len(aud["rounds"]) + 1)
     aud["live"] = {"round": len(aud.get("rounds", [])) + 1, "phase": "scope", "args": args,
                    "scope": None, "reviews": [], "candidates": [], "verdicts": [],
                    "not_run": [], "lens_notes": [], "report": None, "prior_scope": prior,
@@ -1516,7 +1572,19 @@ def audit_record(ctx, aud, o):
             for f in r.get("findings") or []:
                 f.setdefault("lens", r.get("lens") or r.get("id"))
                 cands.append(f)
+        declined = [r for r in lv["args"].get("recheck") or [] if r.get("decision") == "declined"]
+        kept, suppressed = [], []
+        for f in cands:
+            d = declined_match(f, declined)
+            if d:
+                suppressed.append({"id": f.get("id"), "lens": f.get("lens"), "declined": d.get("id")})
+                notes.append(f"{f.get('lens')}: re-raised the declined finding {d.get('id')} as "
+                             f"{f.get('id')}; dropped as settled")
+            else:
+                kept.append(f)
+        cands, premerged = panel.premerge(kept)
         lv["candidates"], lv["lens_notes"] = cands, notes
+        lv["suppressed"], lv["premerged"] = suppressed, premerged
         # One finding needs no grouping pass, and none needs no refutation either.
         lv["phase"] = "dedupe" if len(cands) > 1 else ("refute" if cands else "report")
     elif ph == "dedupe":
@@ -1537,7 +1605,10 @@ def audit_record(ctx, aud, o):
         die(f"unknown phase '{ph}'")
 
     ctx.run.write("audit.json", aud)
-    return {"recorded": True, "phase": ph, "next": audit_next(ctx, aud, o)}
+    out = {"recorded": True, "phase": ph, "next": audit_next(ctx, aud, o)}
+    if ph == "review":
+        out["suppressed"], out["premerged"] = lv["suppressed"], lv["premerged"]
+    return out
 
 
 
@@ -1871,6 +1942,7 @@ def audit_run(ctx, aud, o):
     # the summary is its last line rather than a second, differently-shaped document.
     out.final({"ran": True, "round": lv["round"], "cost_usd": round(spent, 4),
                "phases": trace, "held_back": lv.get("not_run") or [], "report": lv.get("report"),
+               "suppressed": lv.get("suppressed") or [],
                "next": ("work the findings; there is no run here to record a round against"
                         if ctx.adhoc
                         else "clerk audit round --report <write the report above to a file>")})
@@ -1931,7 +2003,7 @@ AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept,
 def main_audit(argv):
     """As main_step: every branch ends in emit()."""
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n            [--fixed-file <p>]... [--recheck <json>] [--lens <l>]... [--restart]\n            [--model <m>] [--dry-run] [--quiet | --raw]\n       clerk audit begin … | next | record --phase <p> --results <json|->  drive it by hand\n       clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>]\n       clerk audit accept [--early <why>] | status")
+        print("usage: clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n            [--fixed-file <p>]... [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n            [--model <m>] [--dry-run] [--quiet | --raw]\n       clerk audit begin … | next | record --phase <p> --results <json|->  drive it by hand\n       clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>]\n       clerk audit accept [--early <why>] | status")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
     handler = AUDIT.get(verb)
@@ -1941,7 +2013,7 @@ def main_audit(argv):
                     "--early": "value", "--run": "value", "--phase": "value",
                     "--results": "value", "--target": "value", "--base": "value",
                     "--brief": "value", "--request": "value", "--depth": "value",
-                    "--recheck": "value", "--test-commands": "value",
+                    "--recheck": "value", "--test-commands": "value", "--another": "value",
                     "--fixed-file": "list", "--lens": "list", "--restart": "bool",
                     "--dry-run": "bool", "--model": "value",
                     "--quiet": "bool", "--raw": "bool",

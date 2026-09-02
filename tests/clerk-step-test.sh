@@ -264,6 +264,10 @@ eq "the summary lists each finding by severity, with its nature and where it is"
    "$(printf '%s' "$RD2" | jq -r '.summary | contains("findings 2 (1 high, 1 low)") and contains("high    runtime     a.go:3  f1") and contains("(1 repeated)")')"
 eq "and the round keeps those findings, minus the prose, for a later reader" "f1,f2" \
    "$(printf '%s' "$RD2" | jq -r '[.round.findings_list[].id] | join(",")')"
+eq "a round says whether it earns another: not when all it upheld were counts" "false" \
+   "$(printf '%s' "$RD" | jq -r '.another_round.earned | tostring')"
+eq "and yes when it upheld a high finding, naming it, in the summary too" "true|f1|true" \
+   "$(printf '%s' "$RD2" | jq -r '[(.another_round.earned|tostring), (.another_round.by|join(",")), (.summary | contains("another round: earned by f1") | tostring)] | join("|")')"
 eq "status shows both rounds" "2|2" "$(run "$WT" audit status | jq -r '[(.rounds_planned|tostring), (.rounds|length|tostring)] | join("|")')"
 A=$(run "$WT" audit accept)
 eq "accept records the acceptance" "true|2" "$(printf '%s' "$A" | jq -r '[(.accepted|tostring), (.rounds|tostring)] | join("|")')"
@@ -403,6 +407,23 @@ eq "and the list has every run, newest first" "w2,w1" \
 eq "a cancelled pick is not an answer" "3" \
    "$(cd "$R" && PATH="$FZC:$PATH" CLERK_INTERACTIVE=1 "$CLERK" stats --pick >/dev/null 2>&1; printf '%s' $?)"
 run "$R" step --rm w2 >/dev/null
+# --------------------------------------------------------------------------------
+printf '\nthe gate — a further round is earned by what the last one upheld, or refused\n'
+
+DECL='[{"id":"f1","claim":"boom","decision":"declined","note":"by design"}]'
+eq "the last round upheld a high finding, so another round begins" "true" \
+   "$(run "$WT" audit begin --base main --restart | jq -r '.began')"
+eq "and the plan grows to hold the round the gate let through" "3" \
+   "$(run "$WT" audit status | jq -r '.rounds_planned')"
+eq "declining that finding leaves nothing to earn a round, and it is refused" "3" \
+   "$(rc "$WT" audit begin --base main --restart --recheck "$DECL")"
+eq "with the reason saying what would earn one" "true" \
+   "$(run "$WT" audit begin --base main --restart --recheck "$DECL" 2>/dev/null | jq -r '.reason | contains("earns another round")')"
+eq "--another runs one anyway, and keeps the reason on the round" "true|checking the fold" \
+   "$(run "$WT" audit begin --base main --restart --recheck "$DECL" --another "checking the fold" | jq -r '.began')|$(run "$WT" audit status | jq -r '.live.args.another')"
+eq "a decision that is neither fixed nor declined is refused before anything is spawned" "2" \
+   "$(rc "$WT" audit begin --base main --restart --recheck '[{"id":"f1","claim":"boom","decision":"maybe"}]')"
+
 RX=$(new_repo)
 CLAUDE_CODE_SESSION_ID=sess-9 run "$RX" step --start x1 --request "stamp me" >/dev/null
 eq "--start stamps the session it was run from, so a later stats finds the transcript" "sess-9" \
@@ -701,6 +722,35 @@ eq "one file in a secondary language is read by hand, not by a panel" "semantic:
    "$(printf '%s' "$N" | jq -r '[.next.spawn[].id | sub("^review:";"")] | join(",")')"
 eq "and the reader is told which files nobody reviewed" "true" \
    "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(test("too few to earn a panel"))] | length > 0 | tostring')"
+
+# A finding the author declined last round is settled. A lens that raises it again —
+# by the same id, or reworded — is dropped before anyone is paid to refute it.
+run "$RA" audit begin --base main --restart \
+    --recheck '[{"id":"g1","claim":"the reactor wiring is provably always empty on the automatic path","decision":"declined","note":"by design"}]' >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
+cat > "$RA/review.json" <<'JSON'
+[{"lens":"semantic:Go","verdict":"fail","findings":[{"id":"g1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"}],"note":null},
+ {"lens":"tests:Go","verdict":"fail","findings":[{"id":"reactor-wiring-always-empty","severity":"medium","nature":"runtime","file":"a.go","claim":"the reactor wiring on the automatic path is provably always empty"}],"note":null},
+ {"lens":"guidelines:Go","verdict":"fail","findings":[{"id":"g2","severity":"low","nature":"quality","file":"b.go","claim":"meh"}],"note":null}]
+JSON
+RV=$(run "$RA" audit record --phase review --results "$RA/review.json")
+eq "a finding that restates a declined one is dropped, whether by its id or by its wording" "g1,reactor-wiring-always-empty" \
+   "$(printf '%s' "$RV" | jq -r '[.suppressed[].id] | join(",")')"
+eq "and what remains goes straight to refutation" "refute|refute:g2" \
+   "$(printf '%s' "$RV" | jq -r '[.next.phase, .next.spawn[].id] | join("|")')"
+eq "the drop is said where the report reads it, not hidden" "2" \
+   "$(run "$RA" audit status | jq -r '[.live.lens_notes[] | select(contains("dropped as settled"))] | length')"
+
+# Two lenses raising one id is one defect; no grouping agent is paid to say so.
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
+cat > "$RA/review2.json" <<'JSON'
+[{"lens":"semantic:Go","verdict":"fail","findings":[{"id":"g1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"}],"note":null},
+ {"lens":"guidelines:Go","verdict":"fail","findings":[{"id":"G1","severity":"medium","nature":"runtime","file":"a.go","claim":"boom again"}],"note":null}]
+JSON
+RV=$(run "$RA" audit record --phase review --results "$RA/review2.json")
+eq "one id raised by two lenses is one finding, carrying both lenses, with no dedupe pass" "1|refute|semantic:Go + guidelines:Go" \
+   "$(printf '%s' "$RV" | jq -r '[(.premerged|tostring), .next.phase] | join("|")')|$(run "$RA" audit status | jq -r '.live.candidates[0].lens')"
 
 # The runner: the loop is a program, so the plan can be inspected without spending
 # anything, and the executor's parsing is tested against replies rather than agents.

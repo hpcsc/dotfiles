@@ -6,13 +6,7 @@ If the request names a file in `tasks/`, or `clerk prepare` reported a `resume`,
 
 **Do not decompose a story that already has a breakdown in progress.** Decomposing again produces a different breakdown against the same code, and the sidecar recording what was already built no longer describes it. `clerk status` tells you where the previous run stopped.
 
-A breakdown written before sidecars existed has no `tasks/<story>.json`, and `clerk step` refuses to bind it without one rather than guessing at dependencies. Recover it — and if it carries an old `- [x]` checklist, the recovery seeds `done` from those ticks so the run resumes where it left off:
-
-```
-clerk sidecar          # reads the `### Task N:` sections and their `**Depends on:**` lines
-```
-
-It prints what it extracted. **Check those dependencies against the breakdown before relying on them** — a misread edge reorders the work silently, which is the one thing this file is the source of truth for. If the breakdown has only a checklist and no task sections, it says so and leaves every `depends_on` empty; that is safe here, since a breakdown is emitted in dependency order and this skill runs one task at a time. Commit the sidecar alongside the breakdown it describes.
+A breakdown with no `tasks/<story>.json` beside it cannot be bound: `clerk step` refuses rather than guessing at dependencies from prose. Decompose it again, or write the sidecar by hand from the task sections — one entry per task with its `n`, `title`, `depends_on` and `done` — and commit it alongside the breakdown it describes.
 
 ### Otherwise decompose
 

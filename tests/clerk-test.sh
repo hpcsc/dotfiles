@@ -759,169 +759,6 @@ eq "and it archives that one"      "yes" "$([ -f "$R25/tasks/completed/alpha.md"
 eq "leaving the other where it was" "yes" "$([ -f "$R25/tasks/beta.md" ] && echo yes || echo no)"
 
 # --------------------------------------------------------------------------------
-printf '\nsidecar recovery\n'
-
-R9=$(new_repo)
-mkdir -p "$R9/tasks"
-cat > "$R9/tasks/legacy.md" <<'EOF'
-# Legacy breakdown
-
-## Progress
-- [ ] Task 1: Add the event type
-- [ ] Task 2: Wire the handler
-- [ ] Task 3: Update the docs
-
-## Tasks
-
-### Task 1: Add the event type
-
-**Behavior:** A new event exists.
-
-**Affected Files/Modules:**
-- `internal/events/order.go` — add the type
-- `internal/events/order_test.go` — cover it
-
-**Testable:** Yes
-
-**Depends on:** None
-
-### Task 2: Wire the handler
-
-**Behavior:** The handler dispatches it.
-
-**Affected Files/Modules:**
-- `internal/handler/order.go` — dispatch
-
-**Testable:** Yes
-
-**Depends on:** Task 1
-
-### Task 3: Update the docs
-
-**Behavior:** Docs mention it.
-
-**Affected Files/Modules:**
-- `README.md` — document
-
-**Testable:** No
-
-**Depends on:** Tasks 1, 2
-EOF
-git -C "$R9" add -A && git -C "$R9" commit -qm "Legacy plan"
-
-run "$R9" status >/dev/null 2>&1
-eq "status refuses a breakdown with no sidecar" "2" "$?"
-
-S=$(run "$R9" sidecar)
-eq "sidecar recovers every task"          "3" "$(printf '%s' "$S" | jq -r '.tasks')"
-eq "and says it read the task sections"   "sections" "$(printf '%s' "$S" | jq -r '.recovered_from')"
-eq "None becomes an empty dependency list" "0" "$(jq -r '.tasks[0].depends_on | length' "$R9/tasks/legacy.json")"
-eq "a single dependency is recovered"      "1" "$(jq -r '.tasks[1].depends_on | join(",")' "$R9/tasks/legacy.json")"
-eq "and so are several"                    "1,2" "$(jq -r '.tasks[2].depends_on | join(",")' "$R9/tasks/legacy.json")"
-eq "testable No is honoured"               "false" "$(jq -r '.tasks[2].testable' "$R9/tasks/legacy.json")"
-eq "language is inferred from the files"   "Go" "$(jq -r '.tasks[0].language' "$R9/tasks/legacy.json")"
-eq "affected files come across"            "internal/events/order.go" "$(jq -r '.tasks[0].affected_files[0]' "$R9/tasks/legacy.json")"
-eq "titles survive"                        "Wire the handler" "$(jq -r '.tasks[1].title' "$R9/tasks/legacy.json")"
-
-case "$(run "$R9" sidecar --force | jq -r '.next_step')" in
-  *"commit it alongside the breakdown"*) ok "and says to commit it before carrying on" ;;
-  *) bad "and says to commit it before carrying on" "a note about committing" "$(run "$R9" sidecar --force | jq -r '.next_step')" ;;
-esac
-
-git -C "$R9" add -A && git -C "$R9" commit -qm "Recover sidecar"
-eq "status works once the sidecar exists" "1" "$(run "$R9" status | jq -r '.next.task.n')"
-eq "and the recovered edges block the rest" "2" "$(run "$R9" status | jq -r '.next.blocked')"
-
-eq "it refuses to clobber an existing sidecar" "false" "$(run "$R9" sidecar | jq -r '.written')"
-eq "unless forced"                             "true"  "$(run "$R9" sidecar --force | jq -r '.written')"
-
-# The plan's judgments and their evidence are stated in the markdown as prose this parser
-# does not read, so a --force rewrite that rebuilt only what it parses would quietly return
-# an assessed breakdown to looking unassessed — and "nobody looked" is a claim about the
-# plan, not a gap in a file.
-jq '.tasks[0] += {certainty: "high", blast_radius: "low",
-                  patterns_to_follow: ["internal/events/order.go"]}
-    | .tasks[1] += {certainty: "low", blast_radius: "high"}' \
-  "$R9/tasks/legacy.json" > "$R9/tasks/legacy.tmp" && mv -f "$R9/tasks/legacy.tmp" "$R9/tasks/legacy.json"
-run "$R9" sidecar --force >/dev/null
-eq "a forced rewrite keeps the assessment it cannot re-derive" "high low" \
-   "$(jq -r '.tasks[0] | [.certainty, .blast_radius] | join(" ")' "$R9/tasks/legacy.json")"
-eq "and the evidence behind it" "internal/events/order.go" \
-   "$(jq -r '.tasks[0].patterns_to_follow | join(",")' "$R9/tasks/legacy.json")"
-eq "carried per task, not copied across them" "low high" \
-   "$(jq -r '.tasks[1] | [.certainty, .blast_radius] | join(" ")' "$R9/tasks/legacy.json")"
-eq "a task that never had one still has none" "null" \
-   "$(jq -r '.tasks[2].certainty' "$R9/tasks/legacy.json")"
-eq "and the fields it does re-derive are still rebuilt" "Wire the handler" \
-   "$(jq -r '.tasks[1].title' "$R9/tasks/legacy.json")"
-
-# A breakdown with only a checklist yields numbers and titles but no edges — safe,
-# because a breakdown is emitted in dependency order, but it must say so.
-R10=$(new_repo); mkdir -p "$R10/tasks"
-printf -- '- [ ] Task 1: First\n- [ ] Task 2: Second\n' > "$R10/tasks/bare.md"
-git -C "$R10" add -A && git -C "$R10" commit -qm "Bare plan"
-S=$(run "$R10" sidecar)
-eq "falls back to the checklist when there are no sections" "checklist" "$(printf '%s' "$S" | jq -r '.recovered_from')"
-eq "recovering both entries"                                "2" "$(printf '%s' "$S" | jq -r '.tasks')"
-case "$(printf '%s' "$S" | jq -r '.note')" in
-  *"every depends_on is empty"*) ok "and warns that no edges were recovered" ;;
-  *) bad "and warns that no edges were recovered" "a note about empty depends_on" "$(printf '%s' "$S" | jq -r '.note')" ;;
-esac
-
-R11=$(new_repo); mkdir -p "$R11/tasks"; printf 'no tasks here at all\n' > "$R11/tasks/empty.md"
-git -C "$R11" add -A && git -C "$R11" commit -qm "Empty"
-run "$R11" sidecar >/dev/null 2>&1
-eq "fails loudly when nothing parses" "2" "$?"
-
-
-# The shapes that make a **Depends on:** line prose rather than a field.
-R12=$(new_repo); mkdir -p "$R12/tasks"
-cat > "$R12/tasks/prose.md" <<'EOF'
-### Task 1: Independent one
-
-**Affected Files/Modules:**
-- `a.go` — x
-
-**Depends on:** None (US-006 is on main). Independent of Task 3 — different writers.
-
-### Task 2: Cross-story only
-
-**Affected Files/Modules:**
-- `b.go` — x
-
-**Depends on:** US-007 Task 1 (`ast.ThenView`) and US-007 Task 2 (the rest)
-
-### Task 3: Local plus cross-story
-
-**Affected Files/Modules:**
-- `c.go` — x
-
-**Depends on:** Task 2 (for the helper), and **US-009 Task 1**, which must be on main
-
-### Task 4: A range
-
-**Affected Files/Modules:**
-- `d.go` — x
-
-**Depends on:** Tasks 1-3, and **all upstream** — US-007 Task 5, US-009 Task 1
-
-### Task 5: A list joined by and
-
-**Affected Files/Modules:**
-- `e.go` — x
-
-**Depends on:** Tasks 1, 3 and 4 — the section states what each one produces
-EOF
-git -C "$R12" add -A && git -C "$R12" commit -qm "Prose deps"
-run "$R12" sidecar --tasks-file "$R12/tasks/prose.md" >/dev/null
-eq "None wins over a task named as NOT a dependency" "0" "$(jq -r '.tasks[0].depends_on | length' "$R12/tasks/prose.json")"
-eq "a purely cross-story dependency is not a local edge" "0" "$(jq -r '.tasks[1].depends_on | length' "$R12/tasks/prose.json")"
-eq "a local edge survives beside a cross-story one" "2" "$(jq -r '.tasks[2].depends_on | join(",")' "$R12/tasks/prose.json")"
-eq "a range expands"                                "1,2,3" "$(jq -r '.tasks[3].depends_on | join(",")' "$R12/tasks/prose.json")"
-eq "a list joined by and does not fuse its numbers" "1,3,4" "$(jq -r '.tasks[4].depends_on | join(",")' "$R12/tasks/prose.json")"
-
-
-# --------------------------------------------------------------------------------
 printf '\nthe whole flow inside a worktree\n'
 
 # The skill's primary shape is a worktree, and every task-file command was resolving
@@ -980,7 +817,7 @@ R14=$(new_repo); mkdir -p "$R14/tasks"
 printf -- '### Task 1: One\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R14/tasks/one.md"
 printf 'package a\n' > "$R14/a.go"
 git -C "$R14" add -A && git -C "$R14" commit -qm Plan
-run "$R14" sidecar >/dev/null
+jq -n '{tasks: [{n: 1, title: "One", depends_on: [], done: false}, {n: 2, title: "Two", depends_on: [1], done: false}]}' > "$R14/tasks/one.json"
 git -C "$R14" add -A && git -C "$R14" commit -qm Sidecar
 
 eq "a breakdown with no checkboxes works end to end" "1" "$(run "$R14" status | jq -r '.next.task.n')"
@@ -1000,17 +837,9 @@ eq "the breakdown itself is not touched" "0" \
    "$(git -C "$R14" diff --cached --name-only | grep -c 'one.md' | tr -d ' ')"
 
 # Formatting must match between the two writers or the first finish reformats the file.
-eq "finish does not reformat what sidecar wrote" "2" \
+eq "finish does not reformat the sidecar it read" "2" \
    "$(git -C "$R14" diff --cached -- tasks/one.json | grep -cE '^[-+][^-+]' | tr -d ' ')"
 
-# A breakdown from before the change carries ticks; recovery must pick them up.
-R15=$(new_repo); mkdir -p "$R15/tasks"
-printf -- '- [x] Task 1: One\n- [ ] Task 2: Two\n\n### Task 1: One\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R15/tasks/old.md"
-git -C "$R15" add -A && git -C "$R15" commit -qm Plan
-run "$R15" sidecar >/dev/null
-eq "recovery seeds done from a legacy checklist" "true" "$(jq -r '.tasks[0].done' "$R15/tasks/old.json")"
-eq "and leaves the unticked one open"            "false" "$(jq -r '.tasks[1].done' "$R15/tasks/old.json")"
-eq "so status resumes where the run left off"    "2" "$(run "$R15" status | jq -r '.next.task.n')"
 
 
 # --------------------------------------------------------------------------------
@@ -1020,7 +849,7 @@ R16=$(new_repo); mkdir -p "$R16/tasks"
 printf -- '### Task 1: One\n\n**Acceptance Criteria:**\n- [ ] first\n- [ ] second\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R16/tasks/r.md"
 printf 'package a\n' > "$R16/a.go"
 git -C "$R16" add -A && git -C "$R16" commit -qm Plan
-run "$R16" sidecar >/dev/null && git -C "$R16" add -A && git -C "$R16" commit -qm Sidecar
+jq -n '{tasks: [{n: 1, title: "One", depends_on: [], done: false}, {n: 2, title: "Two", depends_on: [1], done: false}]}' > "$R16/tasks/r.json" && git -C "$R16" add -A && git -C "$R16" commit -qm Sidecar
 
 # A task section's acceptance criteria are ticked by hand as they are verified, so the
 # breakdown stays a file the run edits even though progress left it.
@@ -1080,7 +909,7 @@ cat > "$R17/tasks/c.md" <<'EOF'
 EOF
 printf 'package a\n' > "$R17/a.go"
 git -C "$R17" add -A && git -C "$R17" commit -qm Plan
-run "$R17" sidecar >/dev/null && git -C "$R17" add -A && git -C "$R17" commit -qm Sidecar
+jq -n '{tasks: [{n: 1, title: "One", depends_on: [], done: false}, {n: 2, title: "Two", depends_on: [1], done: false}]}' > "$R17/tasks/c.json" && git -C "$R17" add -A && git -C "$R17" commit -qm Sidecar
 
 S=$(run "$R17" status)
 eq "counts criteria across the breakdown" "4|2|2" \
@@ -1156,11 +985,11 @@ R18=$(new_repo); mkdir -p "$R18/tasks/completed" "$R18/tasks/big-story/slice-one
 printf -- '### Task 1: One\n\n**Depends on:** None\n\n### Task 2: Two\n\n**Depends on:** Task 1\n' > "$R18/tasks/live.md"
 printf -- '### Task 1: Old\n\n**Depends on:** None\n' > "$R18/tasks/completed/past.md"
 git -C "$R18" add -A && git -C "$R18" commit -qm Plan
-run "$R18" sidecar --tasks-file "$R18/tasks/live.md" >/dev/null
-run "$R18" sidecar --tasks-file "$R18/tasks/completed/past.md" >/dev/null
+jq -n '{tasks: [{n: 1, title: "One", depends_on: [], done: false}, {n: 2, title: "Two", depends_on: [1], done: false}]}' > "$R18/tasks/live.json"
+jq -n '{tasks: [{n: 1, title: "Old", depends_on: [], done: false}]}' > "$R18/tasks/completed/past.json"
 # decompose-to-prs puts one breakdown per slice under tasks/<story>/<slice>/tasks.md.
 printf -- '### Task 1: Sliced\n\n**Depends on:** None\n' > "$R18/tasks/big-story/slice-one/tasks.md"
-run "$R18" sidecar --tasks-file "$R18/tasks/big-story/slice-one/tasks.md" >/dev/null
+jq -n '{tasks: [{n: 1, title: "Sliced", depends_on: [], done: false}]}' > "$R18/tasks/big-story/slice-one/tasks.json"
 
 A=$(run "$R18" status --all)
 eq "walks every breakdown, in flight and archived" "3" "$(printf '%s' "$A" | jq -r '.breakdowns | length')"
@@ -2458,6 +2287,6 @@ eq "an archived breakdown falls through rather than resolving to a path that is 
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R9" "$R10" "$R11" "$R12" "$R13" "$R14" "$R15" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36" "$R37" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R13" "$R14" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36" "$R37" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

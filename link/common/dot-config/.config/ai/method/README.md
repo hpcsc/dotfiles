@@ -168,11 +168,9 @@ The markdown describes the tasks in prose
 and the sidecar carries the dependency graph and the run's progress. Nothing rewrites
 the markdown afterwards. Then the only gate before code.
 
-A breakdown that predates the sidecar has none, and `clerk step --done decompose` refuses to
-bind it rather than guessing. `clerk sidecar` recovers one by reading the `### Task N:` sections and their
-`**Depends on:**` lines, and prints what it extracted so the edges can be checked. It is
-a recovery path, not a source of truth — a misread edge reorders work silently — so it
-is an explicit command rather than something `next` does behind your back.
+A breakdown with no sidecar cannot be bound: `clerk step --done decompose` refuses
+rather than guessing at dependencies from prose. Decompose it again, or write the sidecar
+by hand from the task sections.
 
 ### Phase 2 — build, task by task
 
@@ -330,7 +328,6 @@ with `--audit-accepted`. Without either, the gate stays shut.
 | `prepare [--request <text>]` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, which commit skill to invoke, resolved run flags with their sources, every existing worktree and breakdown with its progress, and `resume` — the part-built run to rejoin, paired with its worktree. Given the request, it applies the flags and `--learnings-path` typed in it as the top layer | 0 |
 | `guidelines [--language <L>]... [--caller <p>] [--file FILE]... [--section FILE:HEADING]... [--only]` | The required reading for those languages as text: short files whole, long ones cut to the sections a run must have loaded, plus any file or section named outright; `--only` narrows it to exactly what was named, for an agent that wants its own guideline rather than its language's. A "Not loaded" report for anything a reorganised guideline no longer satisfies | 0 · **2** no guidelines dir |
 | `isolate <kebab-name> [--worktree\|--in-place] [--base <ref>]` | This run's worktree under `.worktrees/` (`.claude/worktrees/` under Claude Code), with that directory written to `info/exclude` so it does not read as a dirty tree — or, with `in_place` on, a feature branch in the main checkout. Adopts an existing worktree or orphaned branch of that name; refuses the main checkout's own branch | 0 · **2** refused |
-| `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
 | `status [--all]` | Progress from the sidecar and, under `next`, the first task whose dependencies are done, plus acceptance criteria walked per task and each task's assessed certainty and blast radius rolled up as `gears`; `--all` walks every breakdown in the repo, in flight and archived | 0 |
 | `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
@@ -433,13 +430,6 @@ two files holding the one fact a resumed run depends on can disagree — while a
 that has gone stale still reads as the answer to whoever opens it. `clerk status` prints
 progress when a human wants it; `clerk finish` stages the sidecar with the code, so the
 progress record and the change it stands for land in the same commit.
-
-A breakdown from before the change still carries ticks. `clerk sidecar` seeds `done`
-from them, so recovering one resumes the run rather than declaring it unstarted.
-
-`clerk sidecar` and `clerk finish` write byte-identical formatting, so the first `finish`
-after a recovery shows a one-line `done` flip rather than reformatting the whole file
-into someone's task commit.
 
 The files under `<git-dir>/clerk` are internal bookkeeping, not an interface. They sit
 inside the git directory so they are per-worktree, never committed, and need no

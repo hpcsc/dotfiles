@@ -229,8 +229,8 @@ def row_decompose(ctx):
         return row("decompose", True, tasks_file=str(tf), sidecar=str(side), archived=True)
     if not side.exists():
         return row("decompose", False, tasks_file=bd["tasks_file"],
-                   why_not_done=f"no sidecar at {side} — run `clerk sidecar` to recover one, then bind again",
-                   done_by=f"clerk sidecar; clerk step --done decompose --tasks-file {bd['tasks_file']}")
+                   why_not_done=f"no sidecar at {side} — a breakdown is bound with its tasks/<story>.json",
+                   done_by=f"decompose again, or write the sidecar by hand from the task sections; then clerk step --done decompose --tasks-file {bd['tasks_file']}")
     if file_hash(side) != bd.get("lint_hash"):
         findings = lint_sidecar(side, ctx.cwd)
         if findings:

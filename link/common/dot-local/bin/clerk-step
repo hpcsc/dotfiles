@@ -72,7 +72,7 @@ def done_decompose(ctx, argv):
     tf = tf.resolve()
     side = tf.with_suffix(".json")
     if not side.exists():
-        emit({"bound": False, "reason": f"no sidecar beside {tf} — run `clerk sidecar` to recover one, then bind again"}, 1)
+        emit({"bound": False, "reason": f"no sidecar beside {tf} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections"}, 1)
     findings = lint_sidecar(side, ctx.cwd)
     if findings:
         emit({"bound": False, "reason": "lint certainty-unevidenced reports findings — correct the assessment, do not delete the reference",

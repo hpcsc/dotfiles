@@ -33,7 +33,7 @@ from clerk_lib import VERSION, plugin_bin  # noqa: E402
 # Commands whose running is evidence `clerk step` reads. Listed rather than "all of
 # them": the reads — step itself, status, prepare, audit, stack, story — run many times a
 # step and say nothing about progress, and the list is what keeps their cost at zero.
-LOGGED = {"isolate", "finish", "receipt", "verify", "land", "guidelines", "lint", "fixup", "learn", "sidecar"}
+LOGGED = {"isolate", "finish", "receipt", "verify", "land", "guidelines", "lint", "fixup", "learn"}
 # Commands whose success closes a step. Their reply carries the step that follows, as
 # `clerk step` would print it — under `next`, or `after_commit` for finish, whose own next
 # move is the commit clerk cannot make. Computed after the event is logged, so the row

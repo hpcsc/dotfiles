@@ -138,7 +138,7 @@ flowchart LR
     audit["clerk-audit"]
     runp["clerk-run"]
     mech["prepare · status · finish · receipt<br/>isolate · verify · land"]
-    others["stats · lint · guidelines · learn · fixup<br/>sidecar · stack · story · models · watch"]
+    others["stats · lint · guidelines · learn<br/>fixup · story · watch"]
   end
   subgraph S["shared modules: clerk_*.py"]
     lib["clerk_lib<br/>die, emit, git, parse, plugin_bin"]
@@ -191,7 +191,7 @@ Commands whose running is evidence are run rather than exec'd, so their exit is 
 flowchart TD
   cmd["clerk &lt;name&gt; args"]:::plain --> found{"clerk-&lt;name&gt; on PATH,<br/>or beside clerk?"}
   found -->|"no"| unknown["unknown command, exit 2"]:::plain
-  found -->|"yes"| lg{"in LOGGED?<br/>isolate finish receipt verify land<br/>guidelines lint fixup learn sidecar"}
+  found -->|"yes"| lg{"in LOGGED?<br/>isolate finish receipt verify land<br/>guidelines lint fixup learn"}
   lg -->|"no"| exec["exec it: its stdio and exit are clerk's"]:::clerk
   lg -->|"yes"| runit["resolve ledger_dir first,<br/>then run it, capturing the reply"]:::clerk
   runit --> log["ledger_log: cmd, argv, exit, at, head<br/>to events.jsonl — never for exit 2"]:::clerk

@@ -142,7 +142,7 @@ eq "--done decompose needs --tasks-file" "2" "$(rc "$WT" step --done decompose)"
 mkdir -p "$WT/tasks" && printf '### Task 1: Only\n' > "$WT/tasks/w1.md"
 eq "a breakdown without a sidecar is refused" "1" "$(rc "$WT" step --done decompose --tasks-file tasks/w1.md)"
 eq "and says what recovers one" "true" \
-   "$(run "$WT" step --done decompose --tasks-file tasks/w1.md 2>/dev/null | jq -r '.reason | contains("clerk sidecar")')"
+   "$(run "$WT" step --done decompose --tasks-file tasks/w1.md 2>/dev/null | jq -r '.reason | contains("tasks/<story>.json")')"
 seed "$WT" w1 '{"certainty": "high", "blast_radius": "low", "patterns_to_follow": []}'
 eq "a high certainty with no precedent is refused by the lint" "1" "$(rc "$WT" step --done decompose --tasks-file tasks/w1.md)"
 eq "with the findings in the reply" "1" \

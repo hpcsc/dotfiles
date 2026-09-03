@@ -157,7 +157,7 @@ def gate(audit_accepted=False, tasks_override=None):
             else:
                 ok, detail = False, f"{len(open_)} task(s) still open in {Path(side).name}"
         else:
-            ok, detail = False, f"no sidecar beside {tasks} — run 'clerk sidecar' to recover one"
+            ok, detail = False, f"no sidecar beside {tasks} — a breakdown is bound with its tasks/<story>.json"
     checks.append({"name": "tasks-complete", "ok": ok, "detail": detail})
 
     dirty = [ln for ln in (gitout("status", "--porcelain") or "").split("\n") if ln]

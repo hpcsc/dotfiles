@@ -108,7 +108,7 @@ def cmd_status(o):
         die(tasks_hint(th, "status"))
     side = sidecar_for(tasks)
     if not side:
-        die(f"no sidecar beside {tasks} — run 'clerk sidecar' to recover one")
+        die(f"no sidecar beside {tasks} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections")
     return status_of(tasks, side, False)
 
 
@@ -121,7 +121,7 @@ def cmd_finish(n, files, tasks_override=None):
         die(f"task file not found: {tasks}")
     side = sidecar_for(tasks)
     if not side:
-        die(f"no sidecar beside {tasks} — run 'clerk sidecar' to recover one")
+        die(f"no sidecar beside {tasks} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections")
     data = load_sidecar(side)
     entry = next((t for t in data.get("tasks") or [] if t.get("n") == n), None)
     if entry is None:

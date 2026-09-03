@@ -104,7 +104,7 @@ Facts about one checkout stay in the git dir of that worktree, `<git-dir>/clerk/
 
 Most evidence is a clerk command that ran. So clerk's dispatcher appends one line to the
 run's `events.jsonl` when one of these commands exits: `isolate`, `finish`, `receipt`,
-`verify`, `land`, and the `guidelines`, `lint`, `fixup`, `learn` and `sidecar` plugins. The line holds the command, its argv, its exit code, the time and HEAD.
+`verify`, `land`, and the `guidelines`, `lint`, `fixup` and `learn` plugins. The line holds the command, its argv, its exit code, the time and HEAD.
 Reads are not logged. A command with no run to log against logs nothing, which is every
 call outside a step-driven run.
 

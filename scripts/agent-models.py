@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""clerk models — which model each agent runs on, and which step of the method it serves.
+"""agent-models — which model each agent runs on, and which step of the method it serves.
 
 The answer used to live in seventy-four frontmatter blocks across two trees that spell a
 model differently: Claude Code names a tier it resolves against the session's family,
@@ -9,17 +9,18 @@ changing one agent's tier meant finding it twice.
 The registry holds both spellings and the step each agent serves. This reads it, writes
 it, and stamps the trees from it, so the frontmatter is output rather than input.
 
-  clerk models                       every agent, its step and its models
-  clerk models <agent>               one agent, with the reason for its tier
-  clerk models --tool claude         only that tree's column
-  clerk models --json                the registry as data
-  clerk models set <agent> --claude sonnet [--opencode <id>] [--why "..."]
-  clerk models apply                 restamp both trees from the registry
-  clerk models --check               fail if a tree disagrees with the registry
+  agent-models.py                    every agent, its step and its models
+  agent-models.py <agent>            one agent, with the reason for its tier
+  agent-models.py --tool claude      only that tree's column
+  agent-models.py --json             the registry as data
+  agent-models.py set <agent> --claude sonnet [--opencode <id>] [--why "..."]
+  agent-models.py apply              restamp both trees from the registry
+  agent-models.py --check            fail if a tree disagrees with the registry
 
 --registry, --claude-dir and --opencode-dir point any of these at other files.
 
-Dispatched to by `clerk` when invoked as `clerk models`, and runnable on its own.
+A repo generator rather than a run command: `scripts/gen-agent-models.sh` points it at the
+tracked trees, and it borrows clerk's argument parser from the bin directory.
 """
 
 import json
@@ -27,7 +28,7 @@ import re
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "link" / "common" / "dot-local" / "bin"))
 from clerk_lib import Parser, die  # noqa: E402
 
 HOME = Path.home()

@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""clerk finish — stage the named paths, lint the staged set, and only then mark the task
+done in the sidecar and stage it alongside; exit 1 on a lint finding, 3 while another
+task's files sit staged.
+
+    clerk finish <n> [--retried] [--tasks-file <f>] -- <files...>
+
+`--retried` records that the implementation needed more than one attempt to go green
+for a reason other than a typo. Nothing here acts on it: it goes into the run's event
+log by being on this command line, where `clerk step` reads it as one of the two signals
+that downshift a gears run. `complete` was once an alias; the word is a bash builtin and
+some sandboxes refuse it, so it is gone.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit  # noqa: E402
+from clerk_tasks import cmd_finish  # noqa: E402
+
+if __name__ == "__main__":
+    argv = sys.argv[1:]
+    if not argv or not argv[0].isdigit():
+        die("first argument must be a task number")
+    n = int(argv[0])
+    tasks_override = None
+    files = None
+    i = 1
+    while i < len(argv):
+        a = argv[i]
+        if a == "--tasks-file":
+            if i + 1 >= len(argv):
+                die("--tasks-file needs a value")
+            tasks_override = argv[i + 1]
+            i += 2
+        elif a == "--retried":
+            i += 1
+        elif a == "--":
+            files = argv[i + 1:]
+            break
+        else:
+            die(f"unknown argument '{a}'")
+    if not files:
+        die("name the files this task changed after '--' (never 'git add -A')")
+    emit(cmd_finish(n, files, tasks_override))

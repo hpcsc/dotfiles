@@ -246,11 +246,11 @@ def row_build(ctx):
     tf, side, _ = breakdown_files(ctx)
     if tf is None or not side.exists():
         return row("build", False, why_not_done="no sidecar to read tasks from")
-    # `clerk next` owns which task is ready — the dependency rule is applied, not repeated.
-    # --allow-dirty because a dirty tree is reported on the row, not a reason to stop asking.
-    rc, nx, err = clerk("next", "--allow-dirty", "--tasks-file", str(tf), cwd=ctx.cwd)
-    if nx is None:
-        die(f"clerk next failed: {err}")
+    # `clerk status` owns which task is ready — the dependency rule is applied, not repeated.
+    rc, st, err = clerk("status", "--tasks-file", str(tf), cwd=ctx.cwd)
+    if st is None:
+        die(f"clerk status failed: {err}")
+    nx = st.get("next") or {}
     total, remaining = nx.get("total", 0), nx.get("remaining", 0)
     progress = {"done": total - remaining, "total": total, "remaining": remaining, "blocked": nx.get("blocked", 0)}
     if nx.get("done"):

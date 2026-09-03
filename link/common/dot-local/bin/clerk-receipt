@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+"""clerk receipt — record a suite run against the SHA it describes.
+
+    clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
+
+The file that did not exist: without it a green run taken before the audit's fixes could
+still satisfy a gate that said "the full suite green". The gate and the verify check
+compare it to HEAD by code tree, and the output tail is what the vacuity check reads.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit, parse  # noqa: E402
+from clerk_tasks import cmd_receipt  # noqa: E402
+
+if __name__ == "__main__":
+    o, rest = parse(sys.argv[1:], {"--command": "value", "--passed": "bool", "--failed": "bool",
+                                   "--output-file": "value"})
+    if rest:
+        die(f"unknown argument '{rest[0]}'")
+    if not o["--command"]:
+        die("--command is required")
+    if o["--passed"] == o["--failed"]:
+        die("pass --passed or --failed")
+    emit(cmd_receipt(o["--command"], bool(o["--passed"]), o["--output-file"]))

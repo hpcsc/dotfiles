@@ -1,0 +1,21 @@
+#!/usr/bin/env python3
+"""clerk status — progress from the sidecar, for a human, with each task's assessed
+certainty and blast radius and the next unblocked task; --all walks every breakdown,
+archived ones included.
+
+`next` on the reply is the first task whose dependencies are all done, with how many
+remain and how many are blocked, which is what the build row of `clerk step` reads.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit, parse  # noqa: E402
+from clerk_tasks import cmd_status  # noqa: E402
+
+if __name__ == "__main__":
+    o, rest = parse(sys.argv[1:], {"--tasks-file": "value", "--all": "bool"})
+    if rest:
+        die(f"unknown argument '{rest[0]}'")
+    emit(cmd_status(o))

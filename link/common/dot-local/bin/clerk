@@ -678,330 +678,8 @@ cmd_branch() {
       note: "branched from the default branch; the work lands here rather than on it"}'
 }
 
-# --------------------------------------------------------------------------------
-# The sidecar. Reading `depends_on` out of markdown task bodies is a regex over prose;
-# `decompose-to-tasks` writes tasks/<story>.json beside the markdown so it is a lookup
-# instead. The markdown stays the human artifact and the progress record — the checkbox
-# is still what says a task is done — and the JSON only carries what tooling needs.
-# --------------------------------------------------------------------------------
-
-sidecar_for() {
-  local tasks=$1 j
-  j="${tasks%.md}.json"
-  [ -f "$j" ] || return 1
-  printf '%s' "$j"
-}
 
 
-cmd_next() {
-  local allow_dirty=false tasks_override= root wt th tasks side donej
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --allow-dirty) allow_dirty=true; shift ;;
-      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
-      *) die "next: unknown argument '$1'" ;;
-    esac
-  done
-
-  root=$(repo_root) || die "not a git repository"
-  th=$(tasks_home)
-  tasks=$(breakdown_for "$tasks_override") || die "$(tasks_hint "$th" next)"
-  [ -f "$tasks" ] || die "next: task file not found: $tasks"
-  side=$(sidecar_for "$tasks") || die "next: no sidecar beside $tasks — run 'clerk sidecar' to recover one from the breakdown, or let decompose-to-tasks write ${tasks%.md}.json"
-
-  # One task in flight at a time. A half-finished task sitting on top of another is what
-  # makes a run impossible to resume or review, so starting the next one is refused
-  # rather than merely discouraged.
-  if [ "$allow_dirty" != true ] && ! tree_is_clean; then
-    jq -n --arg d "$(git status --porcelain | head -5 | tr '\n' ';')" \
-      '{error: "work in flight", detail: ("commit or discard the current task before starting another: " + $d)}' >&2
-    return 3
-  fi
-
-  donej=$(jq -c '[.tasks[] | select(.done == true) | .n]' "$side")
-
-  jq --argjson done "$donej" '
-    (.tasks // []) as $all
-    | [$all[] | select(([.n] | inside($done)) | not)] as $open
-    | [$open[] | select([.depends_on // [] | .[] | select(([.] | inside($done)) | not)] | length == 0)] as $ready
-    | {
-        done: (($open | length) == 0),
-        total: ($all | length),
-        remaining: ($open | length),
-        blocked: (($open | length) - ($ready | length)),
-        task: ($ready | sort_by(.n) | first // null)
-      }' "$side"
-}
-
-# Named `finish` rather than `complete` because a bare `complete` token on a command
-# line collides with the bash builtin of that name — which does run strings through
-# programmable completion — and sandbox classifiers refuse the whole invocation before
-# clerk is ever reached. Nothing about this command runs a string; the collision is the
-# word. `complete` stays accepted so anything already scripted keeps working.
-#
-# Completion lives in the sidecar and nowhere else. It was briefly mirrored into a
-# markdown checkbox as well; two files carrying the one fact a resumed run depends on
-# can disagree, and a mirror that has gone stale still reads as authoritative to
-# whoever opens it.
-cmd_finish() {
-  local n= tasks_override= root wt th tasks side dir records f tmp staged_tasks=false tracked_tasks=true
-  n=${1:-}; shift 2>/dev/null || true
-  case "$n" in ''|*[!0-9]*) die "finish: first argument must be a task number" ;; esac
-
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
-      # The implementation needed more than one attempt to go green, for a reason other
-      # than a typo. Nothing here acts on it: it is the model's observation, and it goes
-      # into the run's event log by being on this command line, where `clerk step` reads
-      # it as one of the two signals that downshift a gears run.
-      --retried) shift ;;
-      --) shift; break ;;
-      *) die "finish: unknown argument '$1'" ;;
-    esac
-  done
-  [ $# -gt 0 ] || die "finish: name the files this task changed after '--' (never 'git add -A')"
-
-  root=$(repo_root) || die "not a git repository"
-  th=$(tasks_home)
-  tasks=$(breakdown_for "$tasks_override") || die "$(tasks_hint "$th" finish)"
-  [ -f "$tasks" ] || die "finish: task file not found: $tasks"
-  side=$(sidecar_for "$tasks") || die "finish: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
-
-  jq -e --argjson n "$n" '[.tasks[] | select(.n == $n)] | length > 0' "$side" >/dev/null 2>&1 \
-    || die "finish: no Task $n in $(basename "$side")"
-  jq -e --argjson n "$n" '[.tasks[] | select(.n == $n and .done == true)] | length == 0' "$side" >/dev/null 2>&1 \
-    || die "finish: Task $n is already done — a task is never redone"
-
-  for f in "$@"; do
-    [ -e "$f" ] || die "finish: '$f' does not exist — stage only what this task actually changed"
-  done
-
-  # One task in flight. A finish whose commit never happened leaves its paths in the
-  # index, and the next finish would sweep them into its own commit — which verify's
-  # boundary check reports at the end, after the history is already wrong. So a path
-  # that another task's record claims, still staged and not named here, refuses this
-  # one. Named here is fine: two tasks may touch one file in turn. Checked before this
-  # task's paths are added, so the index still says whose they are.
-  local p q owner held=
-  while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    for q in "$@"; do [ "$q" = "$p" ] && continue 2; done
-    owner=$(jq -r --arg p "$p" 'select(.files | index($p)) | .n' "$(run_records_dir "$(state_dir)" "$tasks")"/*.json 2>/dev/null | head -1)
-    [ -n "$owner" ] && held="$held $p (task $owner)"
-  done <<EOF
-$(git diff --cached --name-only 2>/dev/null)
-EOF
-  if [ -n "$held" ]; then
-    printf '%s\n' "$@" | jq -R -s --arg n "$n" --arg held "$held" \
-      '{task: ($n | tonumber), done: false, reason: "another-task-still-staged",
-        detail: ("the index still holds files clerk finish staged for another task:" + $held + " — commit that task (or unstage them) before finishing this one"),
-        named: (split("\n") | map(select(length > 0)))}'
-    return 3
-  fi
-
-  # Explicit paths only. `git add -A` sweeps whatever the user left loose in the tree
-  # into this task's commit, and untangling that later means rewriting history.
-  git add -- "$@" || die "finish: staging failed — report this and stop; do not stage by hand"
-
-  # The staged set is linted BEFORE the task is marked done, and a finding refuses the
-  # whole step with the paths left staged. The method asked for `clerk lint --staged`
-  # after finish; a rule the model runs is a rule the model can skip, and the audit then
-  # paid a lens, a verifier and a fixup to find what a regex settles here in a second.
-  # Only a finding refuses. A lint that cannot run is reported and does not block: the
-  # task is still done, and hiding that behind a tooling error would be the worse lie.
-  local lint_bin lint_out lint_rc lint_state=clean
-  lint_bin=$(plugin_bin lint) || lint_bin=
-  if [ -n "$lint_bin" ]; then
-    lint_out=$("$lint_bin" --staged --json 2>/dev/null); lint_rc=$?
-    printf '%s' "$lint_out" | jq -e . >/dev/null 2>&1 || lint_out='[]'
-    if [ "$lint_rc" -eq 1 ]; then
-      printf '%s\n' "$@" | jq -R -s --arg n "$n" --argjson findings "$lint_out" \
-        '{task: ($n | tonumber), done: false, lint_findings: $findings,
-          staged: (split("\n") | map(select(length > 0))),
-          next_step: "fix each finding — a defect, not an opinion — then run clerk finish again; the paths stay staged"}'
-      return 1
-    elif [ "$lint_rc" -ne 0 ]; then
-      lint_state="could not run (exit $lint_rc)"
-    fi
-  else
-    lint_state="not installed"
-  fi
-
-  tmp="${side}.clerk.$$"
-  jq --argjson n "$n" '.tasks |= map(if .n == $n then .done = true else . end)' "$side" > "$tmp" \
-    || die "finish: could not rewrite $side — report this and stop; do not mark it done by hand"
-  cat "$tmp" > "$side"; rm -f "$tmp"
-  # The breakdown is still a file a run edits: progress left it, but each task section
-  # carries its acceptance criteria as checkboxes, ticked by hand as they are verified.
-  # finish does not manage that content — but leaving it modified after a step whose
-  # whole point is that a task's pieces land together strands those ticks outside the
-  # commit and dirties the tree, which then blocks `next`.
-  #
-  # None of that applies when the repo keeps tasks/ out of history. Then the breakdown
-  # and its sidecar are machine-local, `git add` refuses them outright, and the hazard
-  # they are staged against — a sidecar committed without the code it stands for, or the
-  # reverse — cannot arise, because neither is ever committed. Rewriting the sidecar is
-  # the whole of the job.
-  if is_ignored "$(dirname "$side")" "$(basename "$side")"; then
-    tracked_tasks=false
-  else
-    tracked_tasks=true
-    if ! git diff --quiet -- "$tasks" 2>/dev/null; then
-      git add -- "$tasks" || die "finish: could not stage the modified breakdown"
-      staged_tasks=true
-    fi
-    git add -- "$side" || die "finish: could not stage the sidecar — report this and stop. Marking the task done and staging it with its code is precisely what this command exists to do in one step"
-  fi
-
-  dir=$(state_dir); records=$(run_records_dir "$dir" "$tasks"); mkdir -p "$records"
-  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{n: ($n | tonumber), at: $at, files: (split("\n") | map(select(length > 0)))}' \
-    > "$records/$n.json"
-
-  printf '%s\n' "$@" | jq -R -s -c --arg n "$n" --arg side "$side" --arg st "$staged_tasks" --arg tr "$tracked_tasks" \
-    --arg lint "$lint_state" \
-    '{task: ($n | tonumber), done: true, sidecar: $side, breakdown_staged: ($st == "true"),
-      breakdown_tracked: ($tr == "true"), lint: $lint,
-      staged: (split("\n") | map(select(length > 0))),
-      next_step: "invoke the commit skill — the message is judgment, not mechanics"}'
-}
-
-# Acceptance criteria per task section, counted from the breakdown. These are NOT run
-# progress — they are the record of which criteria were actually walked, ticked by hand
-# as each is verified. Reported so an unwalked one is visible; never gated on, because
-# whether a criterion has really been met is judgment and a script counting boxes would
-# be the wrong authority. Only checkboxes inside a `### Task N:` section are counted, so
-# a legacy progress list above the first section is excluded by construction.
-criteria_counts() {
-  awk '
-    function flush() { if (n != "") printf "%s\t%s\t%s\n", n, total, ticked; n = ""; total = 0; ticked = 0 }
-    /^###[[:space:]]+Task[[:space:]]+[0-9]+:/ {
-      flush(); n = $0; sub(/^###[[:space:]]+Task[[:space:]]+/, "", n); sub(/:.*$/, "", n); next
-    }
-    n != "" && /^[[:space:]]*- \[[ xX]\]/ { total++; if ($0 ~ /- \[[xX]\]/) ticked++ }
-    END { flush() }
-  ' "$1"
-}
-
-# Progress, for a human. The breakdown carries no progress checkboxes, so this is what
-# you read instead of skimming the markdown for ticks.
-#
-# `gears` rolls up the two fields the decomposition assessed per task: how sure the plan
-# is that the repo already answers how to build it, and what being wrong about it would
-# cost. Both are reported whatever the `gears` flag says — the flag decides whether a run
-# changes how it drives, never whether the assessment is available to read. `unassessed`
-# lists the tasks carrying neither, which is every task in a breakdown planned before the
-# fields existed; a caller must be able to tell those from tasks genuinely judged routine.
-status_of() {
-  local tasks=$1 side=$2 archived=$3 label=${4:-$1} crit
-
-  crit=$(criteria_counts "$tasks" | jq -R -s -c '
-    split("\n") | map(select(length > 0) | split("\t")
-      | {n: (.[0] | tonumber), total: (.[1] | tonumber), ticked: (.[2] | tonumber)})')
-
-  jq --arg t "$label" --arg s "$side" --argjson crit "$crit" --argjson archived "$archived" '
-    (.tasks // []) as $all
-    | ([$all[] | select(.done == true) | .n]) as $done
-    | ($crit | map({(.n | tostring): .}) | add // {}) as $c
-    | [$all[] | select(.done == true)
-       | ($c[.n | tostring] // {total: 0, ticked: 0}) as $k
-       | select($k.total > $k.ticked) | .n] as $unwalked
-    | {tasks_file: $t, sidecar: $s, archived: $archived, total: ($all | length), done: ($done | length),
-       remaining: ([$all[] | select(.done != true)] | length),
-       criteria: {total: ([$crit[].total] | add // 0), ticked: ([$crit[].ticked] | add // 0),
-                  unticked: (([$crit[].total] | add // 0) - ([$crit[].ticked] | add // 0))},
-       done_with_unticked_criteria: $unwalked,
-       gears: {low_certainty:     [$all[] | select(.certainty == "low")    | .n],
-               high_blast_radius: [$all[] | select(.blast_radius == "high") | .n],
-               unassessed:        [$all[] | select(has("certainty") | not)  | .n]},
-       progress: [$all[]
-         | ($c[.n | tostring] // {total: 0, ticked: 0}) as $k
-         | {n, title, done: (.done == true),
-            certainty: (.certainty // null), blast_radius: (.blast_radius // null),
-            criteria: {total: $k.total, ticked: $k.ticked, unticked: ($k.total - $k.ticked)},
-            blocked_by: [(.depends_on // [])[] | select(([.] | inside($done)) | not)]}]}' "$side"
-}
-
-# Progress, for a human. The breakdown carries no progress checkboxes, so this is what
-# you read instead of skimming the markdown for ticks. --all walks every breakdown in
-# the repo, in flight and archived, which is what a cross-story report wants: clerk owns
-# this format, so it owns reading it rather than leaving each caller to learn the schema.
-cmd_status() {
-  local tasks_override= all=false root wt th tasks side f arch
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --tasks-file) need_value $# --tasks-file; tasks_override=$2; shift 2 ;;
-      --all) all=true; shift ;;
-      *) die "status: unknown argument '$1'" ;;
-    esac
-  done
-  root=$(repo_root) || die "not a git repository"
-  wt=$(work_tree); th=$(tasks_home)
-
-  if [ "$all" = true ]; then
-    {
-      breakdown_paths "$th" yes | while IFS= read -r f; do
-        [ -f "$f" ] || continue
-        side="${f%.md}.json"
-        [ -f "$side" ] || continue
-        case "$f" in */completed/*) arch=true ;; *) arch=false ;; esac
-        # Report the path relative to the work tree. It is the identifier every consumer
-        # already has — a report walking `tasks/` sees relative paths — and an absolute
-        # one silently fails to join, which reads as "no data" rather than as an error.
-        status_of "$f" "$side" "$arch" "${f#$wt/}"
-      done
-    } | jq -s -c '{breakdowns: .}'
-    return
-  fi
-
-  tasks=$(breakdown_for "$tasks_override") || die "$(tasks_hint "$th" status)"
-  side=$(sidecar_for "$tasks") || die "status: no sidecar beside $tasks — run 'clerk sidecar' to recover one"
-  status_of "$tasks" "$side" false
-}
-
-
-# --------------------------------------------------------------------------------
-# receipt — records a suite run against the SHA it actually describes.
-#
-# This is the file that did not exist, which is why a green run taken before the audit
-# fixes could still satisfy a gate that said "the full suite green".
-# --------------------------------------------------------------------------------
-
-cmd_receipt() {
-  local command= passed= tail_file= sha dir out
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --command) need_value $# --command; command=$2; shift 2 ;;
-      --passed) passed=true; shift ;;
-      --failed) passed=false; shift ;;
-      --output-file) need_value $# --output-file; tail_file=$2; shift 2 ;;
-      *) die "receipt: unknown argument '$1'" ;;
-    esac
-  done
-  [ -n "$command" ] || die "receipt: --command is required"
-  [ -n "$passed" ] || die "receipt: pass --passed or --failed"
-
-  sha=$(git rev-parse HEAD 2>/dev/null) || die "receipt: cannot resolve HEAD"
-  dir=$(state_dir) || die "not a git repository"
-  mkdir -p "$dir" || die "receipt: cannot create $dir"
-
-  out=""
-  if [ -n "$tail_file" ] && [ -f "$tail_file" ]; then
-    out=$(tail -c 4000 "$tail_file")
-  fi
-
-  jq -n \
-    --arg sha "$sha" \
-    --arg command "$command" \
-    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg output_tail "$out" \
-    --argjson passed "$passed" \
-    '{sha: $sha, command: $command, passed: $passed, at: $at, output_tail: $output_tail}' \
-    > "$dir/receipt.json" || die "receipt: cannot write $dir/receipt.json"
-
-  jq -c . "$dir/receipt.json"
-}
 
 # --------------------------------------------------------------------------------
 # gate — the four landing predicates, reported with their evidence.
@@ -1012,6 +690,12 @@ cmd_receipt() {
 # audit accept`, and `land` reads it — with every other row's evidence — through step's
 # answer rather than here.
 # --------------------------------------------------------------------------------
+
+sidecar_for() {
+  local j="${1%.md}.json"
+  [ -f "$j" ] || return 1
+  printf '%s' "$j"
+}
 
 cmd_gate() {
   local audit_accepted=false tasks_override= dir root wt th head checks ok
@@ -1659,16 +1343,12 @@ need jq
 # Plugins whose running is evidence `clerk step` reads. Listed rather than "all of them":
 # the reads — step itself, audit, stack, story, models — run many times a step and say
 # nothing about progress, and the list is what keeps their cost at zero.
-LOGGED_PLUGINS=' guidelines lint fixup learn sidecar '
+LOGGED_PLUGINS=' finish receipt guidelines lint fixup learn sidecar '
 
 case "${1:-}" in
   init)     shift; logged init cmd_init "$@" ;;
   worktree) shift; logged worktree cmd_worktree "$@" ;;
   branch)   shift; logged branch cmd_branch "$@" ;;
-  next)     shift; cmd_next "$@" ;;
-  status)   shift; cmd_status "$@" ;;
-  finish|complete) shift; logged finish cmd_finish "$@" ;;
-  receipt)  shift; logged receipt cmd_receipt "$@" ;;
   verify)   shift; logged verify cmd_verify "$@" ;;
   land)     shift; logged land cmd_land "$@" ;;
   gate)    shift; cmd_gate "$@" ;;
@@ -1688,7 +1368,9 @@ case "${1:-}" in
           CLERK_OUT=$(mktemp "${TMPDIR:-/tmp}/clerk.XXXXXX") || die "cannot create a temp file"
           trap 'rm -f "$CLERK_OUT"' EXIT
           "$sub" "$@" > "$CLERK_OUT"; rc=$?
-          ledger_log "$ldir" "$name" "$rc" "$@"
+          # Exit 2 is a usage error in every plugin, as it is in every built-in, and a
+          # usage error is not evidence of anything: the built-ins die before the log.
+          [ "$rc" -ne 2 ] && ledger_log "$ldir" "$name" "$rc" "$@"
           with_next "$name" "$rc" "$ldir" "$CLERK_OUT"
           exit $rc ;;
         *) exec "$sub" "$@" ;;

@@ -375,7 +375,7 @@ eq "but both are still listed with their progress" "2" \
    "$(printf '%s' "$J" | jq -r '[.breakdowns[] | select(.started and (.finished | not))] | length')"
 
 # --------------------------------------------------------------------------------
-printf '\nnext and complete\n'
+printf '\nstatus and finish\n'
 
 R5=$(new_repo)
 mkdir -p "$R5/tasks"
@@ -393,15 +393,14 @@ EOF
 printf 'package a\n' > "$R5/a.go"; printf 'package b\n' > "$R5/b.go"
 git -C "$R5" add -A && git -C "$R5" commit -qm "Add plan"
 
-J=$(run "$R5" next)
-eq "picks the only unblocked task"        "1" "$(printf '%s' "$J" | jq -r '.task.n')"
-eq "counts the blocked ones separately"   "2" "$(printf '%s' "$J" | jq -r '.blocked')"
-eq "is not done while tasks remain"       "false" "$(printf '%s' "$J" | jq -r '.done')"
+J=$(run "$R5" status)
+eq "picks the only unblocked task"        "1" "$(printf '%s' "$J" | jq -r '.next.task.n')"
+eq "counts the blocked ones separately"   "2" "$(printf '%s' "$J" | jq -r '.next.blocked')"
+eq "is not done while tasks remain"       "false" "$(printf '%s' "$J" | jq -r '.next.done')"
 
 printf 'edit\n' >> "$R5/a.go"
-run "$R5" next >/dev/null 2>&1
-eq "refuses to start a task while one is in flight" "3" "$?"
-eq "unless explicitly allowed" "1" "$(run "$R5" next --allow-dirty | jq -r '.task.n')"
+eq "still names the next task with work in flight — the step row reports the dirty tree" "1" \
+   "$(run "$R5" status | jq -r '.next.task.n')"
 
 C=$(run "$R5" finish 1 -- a.go)
 eq "finish stages exactly the named files" "a.go" "$(printf '%s' "$C" | jq -r '.staged | join(",")')"
@@ -418,20 +417,20 @@ run "$R5" finish 2 >/dev/null 2>&1
 eq "refuses to run without an explicit file list" "2" "$?"
 
 git -C "$R5" commit -qm "Task 1"
-J=$(run "$R5" next)
-eq "the dependency unblocks once its task is done" "2" "$(printf '%s' "$J" | jq -r '.task.n')"
-eq "and blocked drops accordingly"                        "1" "$(printf '%s' "$J" | jq -r '.blocked')"
+J=$(run "$R5" status)
+eq "the dependency unblocks once its task is done" "2" "$(printf '%s' "$J" | jq -r '.next.task.n')"
+eq "and blocked drops accordingly"                        "1" "$(printf '%s' "$J" | jq -r '.next.blocked')"
 
 run "$R5" finish 2 -- b.go >/dev/null && git -C "$R5" commit -qm "Task 2"
 run "$R5" finish 3 -- README.md >/dev/null && git -C "$R5" commit -qm "Task 3"
-J=$(run "$R5" next)
-eq "reports done when every task is done" "true" "$(printf '%s' "$J" | jq -r '.done')"
-eq "and hands back no task"                  "null" "$(printf '%s' "$J" | jq -r '.task')"
+J=$(run "$R5" status)
+eq "reports done when every task is done" "true" "$(printf '%s' "$J" | jq -r '.next.done')"
+eq "and hands back no task"                  "null" "$(printf '%s' "$J" | jq -r '.next.task')"
 
 R6=$(new_repo); mkdir -p "$R6/tasks"; printf -- '- [ ] Task 1: x\n' > "$R6/tasks/s.md"
 git -C "$R6" add -A && git -C "$R6" commit -qm "No sidecar"
-run "$R6" next >/dev/null 2>&1
-eq "next refuses without a sidecar rather than parsing prose" "2" "$?"
+run "$R6" status >/dev/null 2>&1
+eq "status refuses without a sidecar rather than parsing prose" "2" "$?"
 
 # --------------------------------------------------------------------------------
 printf '\nverify\n'
@@ -815,8 +814,8 @@ cat > "$R9/tasks/legacy.md" <<'EOF'
 EOF
 git -C "$R9" add -A && git -C "$R9" commit -qm "Legacy plan"
 
-run "$R9" next >/dev/null 2>&1
-eq "next refuses a breakdown with no sidecar" "2" "$?"
+run "$R9" status >/dev/null 2>&1
+eq "status refuses a breakdown with no sidecar" "2" "$?"
 
 S=$(run "$R9" sidecar)
 eq "sidecar recovers every task"          "3" "$(printf '%s' "$S" | jq -r '.tasks')"
@@ -835,8 +834,8 @@ case "$(run "$R9" sidecar --force | jq -r '.next_step')" in
 esac
 
 git -C "$R9" add -A && git -C "$R9" commit -qm "Recover sidecar"
-eq "next works once the sidecar exists" "1" "$(run "$R9" next | jq -r '.task.n')"
-eq "and the recovered edges block the rest" "2" "$(run "$R9" next | jq -r '.blocked')"
+eq "status works once the sidecar exists" "1" "$(run "$R9" status | jq -r '.next.task.n')"
+eq "and the recovered edges block the rest" "2" "$(run "$R9" status | jq -r '.next.blocked')"
 
 eq "it refuses to clobber an existing sidecar" "false" "$(run "$R9" sidecar | jq -r '.written')"
 eq "unless forced"                             "true"  "$(run "$R9" sidecar --force | jq -r '.written')"
@@ -944,7 +943,7 @@ git -C "$R13" worktree add -q -b flow "$WT2" >/dev/null 2>&1
 
 eq "prepare finds the breakdown in the worktree" "$(cd "$WT2" && pwd -P)/tasks/wt.md" \
    "$(run "$WT2" prepare | jq -r '.tasks_file')"
-eq "next reads the worktree's sidecar" "1" "$(run "$WT2" next | jq -r '.task.n')"
+eq "status reads the worktree's sidecar" "1" "$(run "$WT2" status | jq -r '.next.task.n')"
 
 printf 'edit\n' >> "$WT2/a.go"
 C=$(run "$WT2" finish 1 -- a.go); RC=$?
@@ -989,7 +988,7 @@ git -C "$R14" add -A && git -C "$R14" commit -qm Plan
 run "$R14" sidecar >/dev/null
 git -C "$R14" add -A && git -C "$R14" commit -qm Sidecar
 
-eq "a breakdown with no checkboxes works end to end" "1" "$(run "$R14" next | jq -r '.task.n')"
+eq "a breakdown with no checkboxes works end to end" "1" "$(run "$R14" status | jq -r '.next.task.n')"
 eq "status counts what is left"                      "0|2" \
    "$(run "$R14" status | jq -r '.done')|$(run "$R14" status | jq -r '.remaining')"
 
@@ -1016,7 +1015,7 @@ git -C "$R15" add -A && git -C "$R15" commit -qm Plan
 run "$R15" sidecar >/dev/null
 eq "recovery seeds done from a legacy checklist" "true" "$(jq -r '.tasks[0].done' "$R15/tasks/old.json")"
 eq "and leaves the unticked one open"            "false" "$(jq -r '.tasks[1].done' "$R15/tasks/old.json")"
-eq "so next resumes where the run left off"      "2" "$(run "$R15" next --allow-dirty | jq -r '.task.n')"
+eq "so status resumes where the run left off"    "2" "$(run "$R15" status | jq -r '.next.task.n')"
 
 
 # --------------------------------------------------------------------------------
@@ -1143,8 +1142,8 @@ eq "and reads as null rather than a value it was never given" "[null,null]" \
 
 # `next` hands the run the whole task object, so the two travel to the point of use with
 # no second lookup — and a breakdown predating the fields still resolves rather than erroring.
-eq "next hands the assessment to the run with the task" "1 high low" \
-   "$(run "$RC1" next | jq -r '.task | [(.n|tostring), .certainty, .blast_radius] | join(" ")')"
+eq "status hands the assessment to the run with the task" "1 high low" \
+   "$(run "$RC1" status | jq -r '.next.task | [(.n|tostring), .certainty, .blast_radius] | join(" ")')"
 
 RC2=$(new_repo); mkdir -p "$RC2/tasks"
 printf -- '### Task 1: Legacy\n' > "$RC2/tasks/old.md"
@@ -1228,7 +1227,7 @@ J=$(run "$WT2" prepare)
 eq "yet prepare inside it resolves the breakdown anyway" "$R19/tasks/story.md" \
    "$(printf '%s' "$J" | jq -r '.tasks_file')"
 eq "reporting the work tree it is standing in"          "$WT2" "$(printf '%s' "$J" | jq -r '.build_tree')"
-eq "next picks up where the plan says"                  "1"    "$(run "$WT2" next | jq -r '.task.n')"
+eq "status picks up where the plan says"                "1"    "$(run "$WT2" status | jq -r '.next.task.n')"
 
 printf 'package a2\n' > "$WT2/a.go"
 C=$(run "$WT2" finish 1 -- a.go)
@@ -1324,7 +1323,7 @@ git -C "$R21" add -A && git -C "$R21" commit -qm "Add code"
 
 eq "a breakdown nested under a story is found without being named" \
    "$R21/tasks/the-story/first-deliverable/tasks.md" "$(run "$R21" prepare | jq -r '.tasks_file')"
-eq "and next resolves from it"     "1" "$(run "$R21" next | jq -r '.task.n')"
+eq "and status resolves from it"   "1" "$(run "$R21" status | jq -r '.next.task.n')"
 eq "prepare lists it as a breakdown" "1" "$(run "$R21" prepare | jq -r '.breakdowns | length')"
 
 # Archiving must not make the repo look ambiguous. Archived breakdowns are still .md
@@ -1344,10 +1343,10 @@ eq "though status --all still walks it" "2" \
 WT3="$R21/.wt/feature"
 git -C "$R21" worktree add -q -b feature "$WT3" >/dev/null 2>&1
 eq "a relative --tasks-file resolves from inside a worktree" "1" \
-   "$(run "$WT3" next --tasks-file tasks/the-story/first-deliverable/tasks.md | jq -r '.task.n')"
+   "$(run "$WT3" status --tasks-file tasks/the-story/first-deliverable/tasks.md | jq -r '.next.task.n')"
 eq "an absolute one keeps working" "1" \
-   "$(run "$WT3" next --tasks-file "$R21/tasks/the-story/first-deliverable/tasks.md" | jq -r '.task.n')"
-eq "and no --tasks-file at all works too" "1" "$(run "$WT3" next | jq -r '.task.n')"
+   "$(run "$WT3" status --tasks-file "$R21/tasks/the-story/first-deliverable/tasks.md" | jq -r '.next.task.n')"
+eq "and no --tasks-file at all works too" "1" "$(run "$WT3" status | jq -r '.next.task.n')"
 
 # --------------------------------------------------------------------------------
 printf '\nstory — deliverable state derived, never read from the plan\n'

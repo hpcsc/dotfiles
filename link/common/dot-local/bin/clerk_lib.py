@@ -64,6 +64,18 @@ def git_ok(*args, cwd=None):
     return git(*args, cwd=cwd).returncode == 0
 
 
+def plugin_bin(name):
+    """The executable behind `clerk <name>`: clerk-<name> on PATH, else beside this file.
+    One resolution for every caller, so a plugin not yet linked into ~/.local/bin is
+    found the same way by every command that needs it."""
+    import shutil
+    found = shutil.which(f"clerk-{name}")
+    if found:
+        return found
+    cand = HERE / f"clerk-{name}"
+    return str(cand) if cand.is_file() and cand.stat().st_mode & 0o111 else None
+
+
 def clerk(*args, cwd=None, env=None):
     """Run a core command and parse its JSON: (exit code, parsed or None, stderr). Beside
     this file first, then PATH, so a checkout that is not stowed still finds itself."""

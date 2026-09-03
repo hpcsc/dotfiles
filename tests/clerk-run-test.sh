@@ -115,10 +115,18 @@ printf '\nmechanical steps — clerk does them, no turn is paid for\n'
 # its argv to a log so the build phase's session handling can be asserted afterwards.
 FAKE=$(cd "$(mktemp -d)" && pwd -P)
 export STUB_LOG="$FAKE/argv.log"
+export AUDIT_LOG="$FAKE/audit-argv.log"
 cat > "$FAKE/claude" <<'STUB'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "$STUB_LOG"
 p=$(cat)
+# Two callers reach this stub: the runner, spawning one turn per step, and `clerk audit
+# run`, spawning the round's lens and refuter agents. Only the runner's turns are what
+# the assertions below count, and a prompt fragment is how an audit agent is recognised,
+# so the two are logged apart rather than into one file that means neither.
+case "$p" in
+  *FRAGMENT*) printf '%s\n' "$*" >> "$AUDIT_LOG" ;;
+  *)          printf '%s\n' "$*" >> "$STUB_LOG" ;;
+esac
 sid=""
 prev=""
 for a in "$@"; do
@@ -191,10 +199,13 @@ eq "and both turns name the same conversation" "1" \
    "$(grep -oE -- '--(session-id|resume) [0-9a-f-]+' "$STUB_LOG" | awk '{print $2}' | sort -u | wc -l | tr -d ' ')"
 eq "no step outside the build phase was given a session" "true" \
    "$(awk '/--session-id|--resume/ {n++} END {print (n == 2 ? "true" : "false")}' "$STUB_LOG")"
-# One --allowedTools per turn the runner made. The audit's own lenses are spawned by
-# `clerk audit run` and scoped by it, so they are not in this count.
+# One --allowedTools per turn the runner made. The audit's lens agents are scoped too,
+# by `clerk audit run` rather than by the runner, and they are counted separately —
+# folded into one log they outnumber the turns and this says nothing about either.
 eq "every turn the runner spawned was scoped" "true" \
    "$(test "$(grep -c -- '--allowedTools' "$STUB_LOG")" = "$(printf '%s' "$OUT" | jq -r '.turns')" && echo true || echo false)"
+eq "and so was every agent the audit spawned" "true" \
+   "$(test "$(grep -c -- '--allowedTools' "$AUDIT_LOG")" = "$(wc -l < "$AUDIT_LOG" | tr -d ' ')" && echo true || echo false)"
 
 # --------------------------------------------------------------------------------
 printf '\nrefusals mid-walk\n'

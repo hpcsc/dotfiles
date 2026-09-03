@@ -6,6 +6,9 @@ a file. Whether a deliverable has started, finished or landed is an observation,
 observation copied into the plan is a mirror that goes stale while still reading as
 authoritative. Nothing below reads `status:`.
 
+`clerk story stack [<plan.yaml>] [--create]` opens the deliverables as stacked draft PRs,
+in dependency order; see clerk_stack.py.
+
 Dispatched to by `clerk` when invoked as `clerk story`, and runnable on its own.
 """
 
@@ -212,13 +215,16 @@ def render_table(stories):
 
 
 def main(argv):
+    if argv and argv[0] == "stack":
+        from clerk_stack import main as stack_main
+        return stack_main(argv[1:])
     ap = Parser()
     ap.add_argument("--table", action="store_true", help="a table for a human instead of JSON")
     ap.add_argument("plan", nargs="?", help="a plan.yaml; default: every live plan under tasks/")
     args = ap.parse_args(argv)
     if args.help:
         print(__doc__.strip())
-        print("\nUSAGE\n  clerk story [<plan.yaml>] [--table]")
+        print("\nUSAGE\n  clerk story [<plan.yaml>] [--table]\n  clerk story stack [<plan.yaml>] [--create] [--json]")
         return 0
     table, plan_arg = args.table, args.plan
 

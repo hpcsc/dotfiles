@@ -10,9 +10,9 @@ So append a **`## Theory`** section to the breakdown, above `## Tasks`. Five sen
 - The design decision that was not forced — and the alternative you did not take.
 - What a reviewer should check hardest, and why that is the part most likely to be wrong.
 
-Write it for someone who has not read the story. No task numbers, no "as planned in task 3", no narration of the run — a reviewer reading it in a pull request has none of that, and a reference they cannot resolve reads as something they are missing. `clerk stack --create` lifts this section into the PR body verbatim, between the deliverable's Story Reference and its Boundaries, so it is the first thing read and the diff is checked against it.
+Write it for someone who has not read the story. No task numbers, no "as planned in task 3", no narration of the run — a reviewer reading it in a pull request has none of that, and a reference they cannot resolve reads as something they are missing. `clerk story stack --create` lifts this section into the PR body verbatim, between the deliverable's Story Reference and its Boundaries, so it is the first thing read and the diff is checked against it.
 
-**Commit it when the breakdown is tracked**, as its own commit — it describes the branch rather than any one task, and `clerk land` needs a clean tree. Where the repo gitignores `tasks/` there is nothing to commit and the file simply sits in the main checkout, which is where `clerk stack` reads it from.
+**Commit it when the breakdown is tracked**, as its own commit — it describes the branch rather than any one task, and `clerk land` needs a clean tree. Where the repo gitignores `tasks/` there is nothing to commit and the file simply sits in the main checkout, which is where `clerk story stack` reads it from.
 
 **Do this even when you found the run boring.** A run with nothing surprising in it is exactly the one whose theory nobody will think to ask about, and the one whose reviewer will therefore skim.
 

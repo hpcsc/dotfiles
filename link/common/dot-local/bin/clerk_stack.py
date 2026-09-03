@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""clerk stack — open a story's deliverables as stacked draft PRs, in dependency order.
+"""clerk story stack — open a story's deliverables as stacked draft PRs, in dependency order.
 
 `plan.yaml` already says which deliverable branches off which: `base: <sibling-id>` is a
 stacked PR whose base is that sibling's branch, and `base: <default-branch>` targets the
@@ -15,7 +15,7 @@ revert surgical — the risky deliverable sits alone at the bottom of the stack.
 Opening PRs is outward-facing and visible to a team, so it never happens by default. With
 no flag this prints the stack it would open; `--create` is the explicit go-ahead.
 
-Dispatched to by `clerk` when invoked as `clerk stack`, and runnable on its own.
+Reached as `clerk story stack`; `clerk-story` hands the arguments after the verb to `main`.
 """
 
 import json
@@ -256,7 +256,7 @@ def main(argv):
     args = ap.parse_args(argv)
     if args.help:
         print(__doc__.strip())
-        print("\nUSAGE\n  clerk stack [<plan.yaml>] [--create] [--json]")
+        print("\nUSAGE\n  clerk story stack [<plan.yaml>] [--create] [--json]")
         return 0
     create, as_json, plan_arg = args.create, args.json, args.plan
 

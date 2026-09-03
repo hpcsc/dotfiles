@@ -323,6 +323,6 @@ contract for a port one subcommand at a time. Rules for the port:
 
 - Facts for each task that a reviewer must see, `lint_findings_first_pass` and `retried`,
   can go into the sidecar at `finish` time. They then go into the task commit, where
-  `profile-run` and `clerk stack` can read them.
+  `profile-run` and `clerk story stack` can read them.
 - The opencode environment variable for harness detection, or a `--harness` flag in its
   command wrapper.

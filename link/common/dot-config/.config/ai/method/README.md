@@ -127,7 +127,7 @@ flowchart TD
   BUILD -->|"tasks open"| TASK
   BUILD -->|"none open"| SUITE
   SUITE["suite<br/>receipt green at this code tree"] --> AUDIT
-  AUDIT["audit<br/>clerk audit plan · round · accept"] --> VALIDATE
+  AUDIT["audit<br/>clerk audit run · round · accept"] --> VALIDATE
   VALIDATE["match-request<br/>clerk step --done match-request [--mismatch]<br/>blocked until --resolved"] --> THEORY
   THEORY["explain<br/>## Theory in the breakdown, committed"] --> VERIFY
   VERIFY["verify-run<br/>clerk verify clean · residue reviewed"] --> LAND
@@ -342,7 +342,7 @@ with `--audit-accepted`. Without either, the gate stays shut.
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 | `step [--start <slug> --request <text>] [--done <step> …] [--status] [--run <slug>] [--rm <slug>]` | The first step of the run that is not done, with the method text for it, computed from the repository and the run's ledger on every call; `--start` opens a run and records the request verbatim; `--done` records the steps whose completion is a judgment | 0 · **3** several open runs |
-| `audit plan --rounds <n>` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and the gate read | 0 · **3** refused |
+| `audit run [--rounds <n>] …` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and the gate read | 0 · **3** refused |
 
 Every command takes `--tasks-file` when `tasks/` holds more than one breakdown. Exit 2
 is a usage error throughout.

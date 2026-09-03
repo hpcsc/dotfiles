@@ -255,7 +255,7 @@ printf 'd\n' > "$WT/d.go"; commit_all "$WT" "More code"
 eq "a round on a stale receipt is refused — the suite comes first" "3" "$(rc "$WT" audit round --report "$REP")"
 run "$WT" receipt --command "go test ./..." --passed >/dev/null
 eq "accepting with no round recorded is refused" "3" "$(rc "$WT" audit accept)"
-run "$WT" audit plan --rounds 1 >/dev/null
+run "$WT" audit begin --base main --rounds 1 >/dev/null 2>&1
 eq "a file with no findings in it, top level or under report, is not a report and is refused" "2" \
    "$(rc "$WT" audit round --report "$BADREP")"
 eq "saying what it did find in the file" "1" \

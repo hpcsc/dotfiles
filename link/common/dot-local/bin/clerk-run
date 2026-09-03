@@ -329,10 +329,10 @@ def do_audit(st, row):
     if err:
         return f"`clerk audit status` failed: {err}"
     planned = aud.get("rounds_planned")
-    if planned is None:
-        clerk_json("audit", "plan", "--rounds", str(st.rounds), cwd=st.cwd)
-        planned = st.rounds
     args = ["audit", "run", "--request", st.request]
+    if planned is None:
+        args += ["--rounds", str(st.rounds)]
+        planned = st.rounds
     if row.get("base"):
         args += ["--base", row["base"]]
     if row.get("test_commands"):

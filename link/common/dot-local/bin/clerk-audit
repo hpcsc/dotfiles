@@ -161,14 +161,6 @@ def audit_status(ctx, aud, o):
     return {**aud, "runner": runner, "progress": p, "watch": f"clerk watch {p}"}
 
 
-def audit_plan(ctx, aud, o):
-    if not o["--rounds"] or not o["--rounds"].isdigit():
-        die("plan needs --rounds <n>")
-    aud["rounds_planned"] = int(o["--rounds"])
-    ctx.run.write("audit.json", aud)
-    return {"rounds_planned": aud["rounds_planned"], "rounds_done": len(aud["rounds"])}
-
-
 def audit_round(ctx, aud, o):
     if not o["--report"]:
         die("round needs --report <findings.json> (or - for stdin)")
@@ -832,7 +824,7 @@ def adhoc_ledger(ctx):
     return Run(Path(ctx.common) / "clerk" / "audits" / name)
 
 
-AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept,
+AUDIT = {"round": audit_round, "accept": audit_accept,
          "status": audit_status, "begin": audit_begin, "next": audit_next,
          "record": audit_record, "run": audit_run}
 
@@ -840,7 +832,7 @@ AUDIT = {"plan": audit_plan, "round": audit_round, "accept": audit_accept,
 def main_audit(argv):
     """As main_step: every branch ends in emit()."""
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n            [--fixed-file <p>]... [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n            [--model <m>] [--dry-run] [--quiet | --raw]\n       clerk audit begin … | next | record --phase <p> --results <json|->  drive it by hand\n       clerk audit plan --rounds <n> | round --report <json|-> [--replan <n>]\n       clerk audit accept [--early <why>] | status")
+        print("usage: clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n            [--fixed-file <p>]... [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n            [--model <m>] [--dry-run] [--quiet | --raw]\n       clerk audit round --report <json|-> [--replan <n>]\n       clerk audit accept [--early <why>] | status")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
     handler = AUDIT.get(verb)

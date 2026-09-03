@@ -53,7 +53,6 @@ clerk step                                                      the step to do n
 clerk step --done <id> [options]                                record an asserted step
 clerk step --status                                             every row, done or not
 clerk step --rm <slug>                                          delete a ledger
-clerk audit plan --rounds <n>                                   declare the round count
 clerk audit round --report <findings.json>                      record a round
 clerk audit accept [--early "<why>"]                            record the acceptance
 ```
@@ -189,7 +188,7 @@ category as well made a caller learn two words to reach the same line of the rep
 | 4 | `build N` (repeats) | `done` for N in the sidecar, and the tree is clean | `clerk finish N [--retried] -- <files>` lints the staged set before it sets `done` and refuses with exit 1 on findings. The commit makes the tree clean. The output carries `certainty`, `blast_radius`, `gear`, `pause_after_tests`, the last task's signals, and progress | derived |
 | 4a | `pause N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done pause N`. `step` prints `stop: true` before it | asserted, a pause |
 | 5 | `suite` | the receipt passed, and its code tree equals the HEAD code tree | `clerk receipt` | derived |
-| 6 | `audit` | `accepted` is present at this code tree | `clerk audit plan --rounds N`; for each round `clerk audit round --report <json>`, which refuses on a stale receipt, a dirty tree, or more rounds than planned without `--replan`; then `clerk audit accept [--early "<why>"]`. `step` prints the request from `run.json` as `request`, with `base` and `test_commands` | asserted for `accept`, derived for the rest |
+| 6 | `audit` | `accepted` is present at this code tree | `clerk audit run --rounds N`; for each round `clerk audit round --report <json>`, which refuses on a stale receipt, a dirty tree, or more rounds than planned without `--replan`; then `clerk audit accept [--early "<why>"]`. `step` prints the request from `run.json` as `request`, with `base` and `test_commands` | asserted for `accept`, derived for the rest |
 | 7 | `match-request` | `match-request.json` at this code tree, with no open mismatch | `clerk step --done match-request [--mismatch "…"]…`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions. A recorded mismatch is **blocked** until `--resolved` | asserted |
 | 8 | `explain` | the breakdown contains `## Theory`, and the file is committed when `tasks_tracked` is true | the model writes it. A `tasks/`-only commit does not disturb rows 5 to 7 | derived |
 | 9 | `verify-run` | `clerk verify --all-closed` is clean, and `not_checked` is empty or `--done verify-residue` is recorded. `hints` — what the check could not run for want of a flag — never holds the row | `step` runs verify itself when it reaches the row, and caches a pass in `done.json` at its code tree so the archive commit does not run it again | derived, then asserted |

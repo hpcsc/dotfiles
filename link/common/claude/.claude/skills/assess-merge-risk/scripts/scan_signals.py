@@ -356,7 +356,7 @@ def main():
         return rows
 
     lines = [
-        f"## Review surface",
+        "## Review surface",
         "",
         f"{len(files)} files changed — " + ", ".join(f"{n} {b}" for b, n in sorted(by_bucket.items())),
         f"Deployables touched: {', '.join(payload['deployables']) or '(none)'}",

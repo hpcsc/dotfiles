@@ -57,10 +57,16 @@ tasks:
     cmds:
       - ./tests/tmux-custom-keys-test.sh
 
+  test:python:
+    desc: Static checks over every Python file in the repo
+    cmds:
+      - "{{.SCRIPT_DIR}}/lint-python.sh"
+
   test:
     desc: Run every test suite
     cmds:
       - task: test:clerk
+      - task: test:python
       - task: test:guidelines
       - task: test:tmux-custom-keys
       - task: gen:skills:check

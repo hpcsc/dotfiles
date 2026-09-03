@@ -107,7 +107,7 @@ def audit_summary(aud, accepted_at=None):
     wall = _between(first, accepted_at)
     incidents = sum(len(r.get("incidents") or []) for r in rounds)
     counts = " / ".join(str(r.get("findings") if r.get("findings") is not None else "?") for r in rounds)
-    return " · ".join([f"audit accepted", f"{len(rounds)} round(s)", span(wall),
+    return " · ".join(["audit accepted", f"{len(rounds)} round(s)", span(wall),
                        f"${cost:.2f}" if priced else "$-", f"findings {counts or 'none'}",
                        f"{incidents} incident(s)"])
 
@@ -365,7 +365,7 @@ def job_tools(test_commands, isolation="none"):
         if not words or words[0].startswith("("):
             continue
         head = " ".join(words[:2]) if words[0] in TWO_WORD_RUNNERS and len(words) > 1 else words[0]
-        for pat in ([f"Bash({head}:*)"] + ([f"Bash(go vet:*)", f"Bash(go build:*)"] if words[0] == "go" else [])):
+        for pat in ([f"Bash({head}:*)"] + (["Bash(go vet:*)", "Bash(go build:*)"] if words[0] == "go" else [])):
             if pat not in tools:
                 tools.append(pat)
     if isolation == "worktree":

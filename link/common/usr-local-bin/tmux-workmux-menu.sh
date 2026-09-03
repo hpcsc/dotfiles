@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 
 # Session manager for workmux worktrees across every repo (not just the current
-# one). Bound to Prefix + S in ~/.tmux.conf. The top-level menu lets you jump to,
-# create, or delete a session. "Sessions" here are one of two kinds:
+# one). Bound to Prefix + S in ~/.tmux.conf, which opens an fzf list in a tmux
+# popup: type to filter, Enter jumps to the highlighted session, Tab marks
+# several, ctrl-x deletes the marked sessions (or the highlighted one when none
+# are marked) and refreshes the list in place, ctrl-t creates a session, Esc
+# closes. "Sessions" here are one of two kinds:
 #
 #   worktree  a workmux worktree. The menu opens each worktree as a tmux window
 #             in the current session (overriding workmux's global session mode),
@@ -11,18 +14,19 @@
 #   nvim      a plain tmux session opened on a repo's main checkout with no
 #             worktree behind it, tagged with @wmm_kind so this menu can find it.
 #
-# Creating a session shows a single-screen form (workmux-new-form, built from
-# tools/workmux-new-form) to pick the repo, name it, choose a worktree vs. the
-# repo's main checkout, and whether to open it as a tmux window (in the current
-# session) or its own tmux session. A no-worktree window is a quick editor
-# window and is not tracked by this menu; the other three are.
+# Creating a session replaces the list with a single-screen form
+# (workmux-new-form, built from tools/workmux-new-form) to pick the repo, name
+# it, choose a worktree vs. the repo's main checkout, and whether to open it as
+# a tmux window (in the current session) or its own tmux session. A no-worktree
+# window is a quick editor window and is not tracked by this menu; the other
+# three are.
 
 # A tmux key binding runs this with the server's environment, which can lack the
-# interactive shell's PATH. The mise shim dir (workmux/jq/fd) and ~/.local/bin
-# (workmux-new-form) are needed on every platform; /opt/homebrew/bin supplies
-# tmux/git on macOS (on Linux they come from /usr/bin, already on PATH), added
-# only when present.
-_prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
+# interactive shell's PATH. The mise shim dir (workmux/jq/fd), ~/.local/bin
+# (workmux-new-form) and ~/.fzf/bin (fzf) are needed on every platform;
+# /opt/homebrew/bin supplies tmux/git on macOS (on Linux they come from
+# /usr/bin, already on PATH), added only when present.
+_prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin:$HOME/.fzf/bin"
 [[ -d /opt/homebrew/bin ]] && _prefix="$_prefix:/opt/homebrew/bin"
 export PATH="$_prefix:$PATH"
 unset _prefix
@@ -189,15 +193,43 @@ create_nvim_window() {
 }
 
 # ----------------------------------------------------------------------------
-# Re-entry points — menu items call back into this script so PATH is set the
-# same way for the commands they run.
+# Re-entry points — fzf bindings call back into this script so PATH is set the
+# same way for the commands they run. A row is one line of --list:
+#   <display> TAB <kind> TAB <session> TAB <path> TAB <root>
+# fzf shows and filters on the display field; the rest ride along for actions.
 # ----------------------------------------------------------------------------
 
+C_GREEN=$'\e[32m'; C_BLUE=$'\e[34m'; C_YELLOW=$'\e[33m'; C_MAGENTA=$'\e[35m'; C_RESET=$'\e[0m'
+
+list_rows() {
+    local rows=() width=0 kind session repo branch is_open dirty path root
+    while IFS=$'\t' read -r kind session repo branch is_open dirty path root; do
+        [[ -z "$kind" ]] && continue
+        rows+=( "$kind"$'\t'"$session"$'\t'"$branch"$'\t'"$is_open"$'\t'"$dirty"$'\t'"$path"$'\t'"$root" )
+        (( ${#session} > width )) && width=${#session}
+    done < <(list_all)
+    local r open_mark dirty_mark tag
+    for r in "${rows[@]}"; do
+        IFS=$'\t' read -r kind session branch is_open dirty path root <<< "$r"
+        [[ "$is_open" == "true" ]] && open_mark="${C_GREEN}●${C_RESET} " || open_mark="  "
+        [[ "$dirty" == "true" ]] && dirty_mark=" ${C_YELLOW}*${C_RESET}" || dirty_mark=""
+        [[ "$kind" == "nvim" ]] && tag="${C_MAGENTA}nvim${C_RESET}" || tag="${C_BLUE}${branch}${C_RESET}"
+        printf '%s%-*s  %s%s\t%s\t%s\t%s\t%s\n' \
+            "$open_mark" "$width" "$session" "$tag" "$dirty_mark" "$kind" "$session" "$path" "$root"
+    done
+}
+
 case "$1" in
+    --list)
+        list_rows
+        exit 0
+        ;;
+
     # Jump: open the worktree's session (creates it if closed, switches if open)
     # or switch to the plain nvim session.
     --open)
-        client="$2"; kind="$3"; session="$4"; path="$5"; root="$6"
+        client="$2"
+        IFS=$'\t' read -r _ kind session path root <<< "$3"
         # A worktree already living in its own tmux session (it was created in
         # session mode) is named after its handle, so switch the client to it.
         # Reopening it instead would make workmux tear that session down and
@@ -245,77 +277,61 @@ case "$1" in
         exit 0
         ;;
 
-    # Remove: workmux confirms and refuses on uncommitted changes (its prompt is
-    # the safety gate). Killing a plain nvim session is confirmed here.
+    # Remove the given rows. Worktrees go to one `workmux remove` per repo,
+    # which confirms and refuses on uncommitted changes (its prompt is the
+    # safety gate). Plain nvim sessions are confirmed here, all at once.
     --delete)
-        kind="$2"; session="$3"; root="$4"
-        if [[ "$kind" == "nvim" ]]; then
-            read -rn1 -p "Kill nvim session '$session'? [y/N] " ans; echo
-            [[ "$ans" == "y" || "$ans" == "Y" ]] && tmux kill-session -t "=$session"
-        else
-            cd "$root" 2>/dev/null || exit 0
-            workmux remove "$session"
-            echo; read -rn1 -p "press any key…"
+        shift
+        [[ $# -eq 0 ]] && exit 0
+        nvims=()
+        cur_root=""; names=()
+        remove_batch() {
+            [[ ${#names[@]} -eq 0 ]] && return
+            ( cd "$cur_root" 2>/dev/null && workmux remove "${names[@]}" )
+        }
+        while IFS=$'\t' read -r _ kind session path root; do
+            if [[ "$kind" == "nvim" ]]; then
+                nvims+=("$session")
+                continue
+            fi
+            if [[ "$root" != "$cur_root" ]]; then
+                remove_batch; cur_root="$root"; names=()
+            fi
+            names+=("$session")
+        done < <(printf '%s\n' "$@" | sort -t$'\t' -k5,5 -k3,3)
+        remove_batch
+        if [[ ${#nvims[@]} -gt 0 ]]; then
+            read -rn1 -p "Kill nvim session(s) ${nvims[*]}? [y/N] " ans; echo
+            if [[ "$ans" == "y" || "$ans" == "Y" ]]; then
+                for s in "${nvims[@]}"; do tmux kill-session -t "=$s"; done
+            fi
         fi
+        echo; read -rn1 -p "press any key…"
         exit 0
         ;;
 
-    # Submenu of sessions to delete, each opening a confirmation popup.
-    --delete-menu)
+    # The list itself, run inside the popup. The client is passed in because a
+    # popup's tty does not identify the client to tmux. become() hands the
+    # command fzf's stdin, i.e. the row pipe, so the interactive form must read
+    # the tty explicitly or it exits at once as a cancel.
+    --fzf)
         client="$2"
-        menu=()
-        key=1
-        while IFS=$'\t' read -r kind session repo branch is_open dirty path root; do
-            [[ -z "$kind" ]] && continue
-            [[ "$dirty" == "true" ]] && dirty_mark=" #[fg=yellow]*#[default]" || dirty_mark=""
-            [[ "$kind" == "nvim" ]] && tag="#[fg=magenta]nvim#[default]" || tag="#[fg=blue]${branch}#[default]"
-            label="${session}  ${tag}${dirty_mark}"
-            menu+=( "$label" "$key" \
-                    "display-popup -E -w 70% -h 50% -T ' Delete Session ' \"$0 --delete '$kind' '$session' '$root'\"" )
-            [[ "$key" =~ ^[1-9]$ ]] && key=$((key + 1)) || key=""
-        done < <(list_all)
-        [[ ${#menu[@]} -eq 0 ]] && exit 0
-        tmux display-menu -c "$client" -x C -y C -T " Delete which session? " "${menu[@]}"
+        list_rows | fzf --ansi --multi --reverse --no-info --cycle \
+            --delimiter $'\t' --with-nth 1 --nth 1 \
+            --prompt '  ' --pointer '▶' --marker '✓' \
+            --header 'enter jump    tab mark    ctrl-x delete    ctrl-t new    esc close' \
+            --bind "enter:become($0 --open '$client' {})" \
+            --bind "ctrl-x:execute($0 --delete {+})+clear-query+reload($0 --list)" \
+            --bind "ctrl-t:become($0 --new '$client' </dev/tty)"
         exit 0
         ;;
 esac
 
 # ----------------------------------------------------------------------------
-# Top-level menu (entered from the key binding with the client name as $1).
+# Popup (entered from the key binding with the client name as $1).
 # ----------------------------------------------------------------------------
 
+# Roomy enough for the new-session form and workmux's create output.
 client="$1"
-
-menu=()
-key=1
-while IFS=$'\t' read -r kind session repo branch is_open dirty path root; do
-    [[ -z "$kind" ]] && continue
-
-    [[ "$is_open" == "true" ]] && open_mark="#[fg=green]●#[default] " || open_mark="  "
-    [[ "$dirty" == "true" ]] && dirty_mark=" #[fg=yellow]*#[default]" || dirty_mark=""
-    [[ "$kind" == "nvim" ]] && tag="#[fg=magenta]nvim#[default]" || tag="#[fg=blue]${branch}#[default]"
-
-    label="${open_mark}${session}  ${tag}${dirty_mark}"
-
-    # Single quotes guard paths/handles against word splitting; they never
-    # contain a single quote (handles are sanitized; worktrees and project roots
-    # live under workmux/home dirs that have none).
-    menu+=( "$label" "$key" "run-shell \"$0 --open '$client' '$kind' '$session' '$path' '$root'\"" )
-
-    [[ "$key" =~ ^[1-9]$ ]] && key=$((key + 1)) || key=""
-done < <(list_all)
-
-have_sessions=$([[ ${#menu[@]} -gt 0 ]] && echo 1)
-
-# Divider above the actions, but only when sessions precede it — a leading
-# separator as the first item would be misread by display-menu's flag parser.
-[[ -n "$have_sessions" ]] && menu+=( "" )
-
-# A roomy popup so the form and workmux's create output fit.
-menu+=( "#[fg=cyan]+#[default] New session…" "n" \
-        "display-popup -E -w 80% -h 70% -T ' New Session ' \"$0 --new '$client'\"" )
-
-[[ -n "$have_sessions" ]] && menu+=( "#[fg=red]x#[default] Delete session…" "d" \
-        "run-shell \"$0 --delete-menu '$client'\"" )
-
-tmux display-menu -c "$client" -x C -y C -T " Workmux Sessions " "${menu[@]}"
+tmux display-popup -c "$client" -E -w 90% -h 70% -T ' Workmux Sessions ' \
+    "$0 --fzf '$client'"

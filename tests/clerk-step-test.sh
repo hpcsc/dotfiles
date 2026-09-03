@@ -495,7 +495,7 @@ eq "and the opencode seam when asked" "cd into it" \
 # The real method: the step files the generator concatenates are the ones step prints.
 REAL="$(cd "$BIN/../dot-config/.config/ai/method/implement" && pwd -P)"
 eq "ground prints Phase 0 of the method, with the shared prepare fragment resolved" "true|true" \
-   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --full | jq -r '[(.instructions | contains("## Phase 0: Ground yourself") | tostring), (.instructions | contains("clerk prepare --request") | tostring)] | join("|")')"
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --full | jq -r '[(.instructions | contains("## Phase 0: Ground yourself") | tostring), (.instructions | contains("### Read the environment off the step") | tostring)] | join("|")')"
 eq "a step change prints the new step's text in full, unasked" "isolate|false" \
    "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --done ground --caller ui | jq -r '[.next.step, (.next.instructions_elided|tostring)] | join("|")')"
 eq "isolate prints the claude worktree seam" "true" \

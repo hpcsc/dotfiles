@@ -1,5 +1,5 @@
-Spawn the `decompose-to-tasks` subagent via the `task` tool with a complete, self-contained prompt, passing the languages `clerk prepare` reported:
+Spawn the `decompose-to-tasks` subagent via the `task` tool with a complete, self-contained prompt, passing the languages `facts` reports:
 
-> Detected project languages: [from `clerk prepare`]
+> Detected project languages: [from `facts.languages`]
 >
 > Decompose the following user story into implementation tasks. For each task set `language` to the language it primarily involves, `depends_on` to the tasks it builds on, and `certainty` and `blast_radius` to your assessment of it: [the feature description from the request]

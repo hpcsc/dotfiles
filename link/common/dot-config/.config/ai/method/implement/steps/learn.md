@@ -24,7 +24,7 @@ clerk learn --type convention --title "<short title>" \
             --task 3 --feature "<feature name>"
 ```
 
-`--type` is one of `convention`, `recurring-finding`, `constraint`, `pattern`. Pass `--path` when this run was given its own learnings file; otherwise it writes to the one `clerk prepare` resolved, **which hangs off the repo root and not the worktree you are standing in** — hand-resolving it from here writes a file the next run will never read.
+`--type` is one of `convention`, `recurring-finding`, `constraint`, `pattern`. Pass `--path` when this run was given its own learnings file; otherwise it writes to the one `facts.learnings_path` names, **which hangs off the repo root and not the worktree you are standing in** — hand-resolving it from here writes a file the next run will never read.
 
 **Dedup is still yours.** It refuses an exact title collision, and that is the whole of what a script can settle; matching on substance is judgment, which is what `--list` is for. `--replace` folds new wording into an entry that already exists.
 

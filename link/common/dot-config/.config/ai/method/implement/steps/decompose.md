@@ -2,7 +2,7 @@
 
 ### Adopt an existing breakdown if there is one
 
-If the request names a file in `tasks/`, or `clerk prepare` reported a `resume`, read that breakdown, present it with `clerk status`, and skip decomposing. Tasks with `done: true` in the sidecar are finished — `clerk step` resumes at the first unblocked one that is not.
+If the request names a file in `tasks/`, or the step reported a `resume`, read that breakdown, present it with `clerk status`, and skip decomposing. Tasks with `done: true` in the sidecar are finished — `clerk step` resumes at the first unblocked one that is not.
 
 **Do not decompose a story that already has a breakdown in progress.** Decomposing again produces a different breakdown against the same code, and the sidecar recording what was already built no longer describes it. `clerk status` tells you where the previous run stopped.
 

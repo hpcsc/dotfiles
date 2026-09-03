@@ -602,8 +602,8 @@ task common:test:clerk         the clerk fixture tests
 clerk help                     the command surface
 ```
 
-`clerk` requires `git` and `jq`, targets bash 3.2 so it runs on macOS's system shell,
-and is stowed to `~/.local/bin` from `link/common/dot-local/bin/`.
+`clerk` requires `git` and Python 3 with nothing beyond the standard library, and is
+stowed to `~/.local/bin` from `link/common/dot-local/bin/`.
 
 If `clerk` is absent, the skill says to stop rather than hand-execute its resolutions.
 Getting the test-command precedence wrong silently tests the wrong thing, which is the

@@ -109,9 +109,8 @@ Reads are not logged. A command with no run to log against logs nothing, which i
 call outside a step-driven run.
 
 clerk resolves the ledger before the command runs, so `land --integrate`, which ends on
-the default branch, still logs to the run it merged. argv travels NUL-separated over
-stdin: jq reads its own options from anywhere on the command line, so an argv with
-`--command` in it was parsed as jq's.
+the default branch, still logs to the run it merged. A usage error, exit 2 in every
+command, is not logged: a mistyped invocation is not evidence of anything.
 
 `clerk step` reads the log for:
 
@@ -298,26 +297,26 @@ Hooks are a second layer for what clerk cannot see, and each harness has its own
 - **opencode:** a plugin on session idle can prompt again. `tool.execute.before` covers the
   tool denials. Neither blocks a stop.
 
-## Language and migration
+## Language
 
-`clerk step`, `clerk audit` and `clerk stats` are Python, standard library only, next
-to the other Python plugins, sharing the ledger and the step table through
-`clerk_ledger.py` and `clerk_steps.py`. The bash core gained the event log, the
-`code_tree` helper, the lint inside `finish`, and the ledger read in `gate`. What every plugin does the same way
-— die and emit, git, the `clerk prepare` call, breakdown resolution, argument parsing as
-`clerk <name>` — lives in `clerk_lib.py` beside them, imported by path so it works
-stowed or not.
+Everything is Python, standard library only, stowed to `~/.local/bin` from
+`link/common/dot-local/bin/`. `clerk` itself is the dispatcher: it runs `clerk-<name>`,
+logs the ones whose exit is evidence, and computes the next step in its own process for
+the four replies that carry one. Each command is an executable that parses arguments and
+calls a module beside it — `clerk_repo` for the repo's facts and the event log,
+`clerk_tasks` for the sidecar, `clerk_verify` for the checks, `clerk_land` for isolating
+and landing, `clerk_ledger` for the run ledger, `clerk_steps` for the row table — so
+another command imports what it needs rather than running it. The subprocesses left are
+git, the harness, and a command another command deliberately runs as a program: `clerk
+lint` from `finish`, the executables from the dispatcher. Nothing calls back up the stack.
 
-The direction stays one Python package: the core is bash 3.2 with `jq` calls that build
-JSON by hand, 9 of the 10 `clerk-*` files are Python already, and the ledger is JSON that
-every subcommand reads and writes. `tests/clerk-test.sh` is black-box, so it is the
-contract for a port one subcommand at a time. Rules for the port:
+`tests/clerk-test.sh` is black-box and was the contract for the port from bash, one
+built-in at a time. Rules that still hold:
 
 - One `git()` helper with `cwd`, captured output, and die() for the error — `clerk_lib`'s.
 - Never `shell=True`. Argument lists keep the request and the paths out of a shell.
-- Use shell from Python in two cases only: a fixed pipeline with no decisions and no user
-  input, or a whole bash subcommand not yet ported. Never split one subcommand across the
-  two languages.
+- Logic goes in a `clerk_*.py` module and the executable stays thin, so the next command
+  that needs the same answer imports it.
 
 ## Open questions
 

@@ -15,20 +15,19 @@ sequenceDiagram
   autonumber
   participant M as model, running the skill
   participant S as clerk step
-  participant C as clerk core (bash)
+  participant C as clerk, the dispatcher
   participant L as ledger and git
   M->>S: clerk step --start slug --request "…"
   S->>L: write runs/slug/run.json
   loop until step is finished
-    S->>C: clerk prepare
-    C->>L: read run.json, tasks/, receipt, git
-    C-->>S: facts: flags, code tree, receipt, run
+    S->>L: prepare, in-process: run.json, tasks/, the receipt, git
+    L-->>S: facts: flags, code tree, receipt, run
     S->>S: evaluate the row table top-down
     S-->>M: step, instructions, done_by, stop, blocked
     M->>M: do that one step, nothing after it
     M->>C: the command done_by names (finish, receipt, land …)
-    C->>L: append events.jsonl, write its stamp
-    C->>S: finish, branch, land, learn embed the next row
+    C->>L: run it; append events.jsonl, write its stamp
+    C->>S: finish, isolate, land, learn: next_step, in-process
     C-->>M: reply, with next or after_commit
   end
 ```
@@ -45,7 +44,7 @@ sequenceDiagram
 flowchart TD
   start["start<br/>run.json exists"] -->|"clerk step --start"| ground
   ground["ground<br/>a guidelines --caller run is in the event log<br/>tree clean, else blocked"] -->|"clerk guidelines --caller"| isolate
-  isolate["isolate<br/>the current branch is the slug"] -->|"clerk worktree · clerk branch"| decompose
+  isolate["isolate<br/>the current branch is the slug"] -->|"clerk isolate"| decompose
   decompose["decompose<br/>breakdown bound, sidecar lint clean<br/>approved when review_breakdown is on"] -->|"clerk step --done decompose --tasks-file"| build
   build["build N, once per task<br/>done in the sidecar and the tree clean"] -->|"clerk finish N -- files, then the commit"| build
   build -. "gears on and the task is hard:<br/>pause N until --done pause N" .-> build
@@ -121,87 +120,95 @@ flowchart LR
   classDef file fill:#FFFFFF,stroke:#9AA39D,stroke-width:1px,color:#1B1F1D
 ```
 
-**Where it lives:** clerk (bash): state_dir, ledger_dir, run_records_dir · clerk_ledger.py: Run · method/clerk-step.md, section "Ledger"
+**Where it lives:** clerk_repo.py: state_dir, ledger_dir, run_records_dir, ledger_log · clerk_ledger.py: Run · method/clerk-step.md, section "Ledger"
 
 **When you would change it:** A new per-run fact goes in the ledger through `Run.write` or `Run.mark`, never in tasks/: a tracked ledger would dirty the tree on every write and put session evidence into PRs.
 
 ## Files, and which imports which
 
-One bash core owns the git-facing mechanics and dispatches `clerk <name>` to an executable called clerk-<name>. The Python commands share modules beside them, imported by path so they work stowed or not. Every plugin reaches back into the core for its facts through `clerk prepare` rather than re-deriving them.
+One Python dispatcher runs `clerk-<name>` executables, the way git runs `git-<name>`. Every call between commands is an import: the repo's facts, the sidecar, the checks, the landing and the step table are modules beside the executables, imported by path so they work stowed or not. The only subprocesses left are git, the harness, and a command another command deliberately runs as a program — `clerk-lint` from finish, the executables from the dispatcher — so nothing calls back up the stack.
 
 ```mermaid
 flowchart LR
-  subgraph B["bash core: clerk"]
-    core["prepare · worktree · branch · next<br/>finish · status · receipt · gate<br/>verify · land · init"]
+  subgraph D["dispatcher"]
+    core["clerk<br/>runs clerk-&lt;name&gt;, logs the ones that are evidence,<br/>embeds the next step in four replies"]
   end
   subgraph P["commands: clerk-&lt;name&gt;"]
     step["clerk-step"]
     audit["clerk-audit"]
-    stats["clerk-stats"]
     runp["clerk-run"]
-    others["lint · guidelines · learn · fixup<br/>sidecar · stack · story · models · watch"]
+    mech["prepare · status · finish · receipt<br/>isolate · verify · land"]
+    others["stats · lint · guidelines · learn · fixup<br/>sidecar · stack · story · models · watch"]
   end
   subgraph S["shared modules: clerk_*.py"]
-    lib["clerk_lib<br/>die, emit, git, clerk(), parse"]
+    lib["clerk_lib<br/>die, emit, git, parse, plugin_bin"]
+    repo["clerk_repo<br/>the repo's facts, prepare, the event log"]
+    tasks["clerk_tasks<br/>the sidecar: status, next task, finish, receipt"]
+    verify["clerk_verify<br/>the mechanical checks"]
+    landm["clerk_land<br/>isolate, the gate, landing"]
     ledger["clerk_ledger<br/>Run, Ctx, build_ctx, event readers"]
     steps["clerk_steps<br/>the row table, instructions"]
-    method["clerk_method<br/>seam/include renderer"]
+    method["clerk_method<br/>seam and include renderer"]
     panel["clerk_audit_panel<br/>lenses, remits, refuters"]
-    harness["clerk_harness<br/>spawn claude -p / opencode"]
+    harness["clerk_harness<br/>spawn claude -p or opencode"]
     render["clerk_render<br/>progress lines, beat file"]
     st["clerk_stats<br/>time and tokens"]
   end
-  core -->|"dispatches clerk &lt;name&gt;"| P
-  step --> steps --> ledger --> lib
+  core -->|"runs, as a process"| P
+  core -.->|"next step, in-process"| steps
+  step --> steps --> ledger --> repo --> lib
   steps --> method
-  step --> ledger
+  steps --> tasks
+  steps --> verify
+  mech --> repo
+  mech --> tasks
+  mech --> verify
+  mech --> landm --> repo
   audit --> panel
   audit --> render
   audit --> st
   audit --> steps
   runp --> harness
   runp --> render
-  stats --> ledger
   others --> lib
-  lib -.->|"clerk prepare, as a subprocess"| core
-  gen["scripts/gen-skills.sh"]:::plain --> method
+  others -.->|"facts(), in-process"| repo
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
   classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
   classDef file fill:#FFFFFF,stroke:#9AA39D,stroke-width:1px,color:#1B1F1D
-  class core,step,audit,stats,runp,others clerk
+  class core,step,audit,runp,mech,others clerk
 ```
 
-**Where it lives:** link/common/dot-local/bin/ · clerk_lib.py for what every plugin does the same way
+**Where it lives:** link/common/dot-local/bin/ · clerk_lib.py for what every command does the same way
 
-**When you would change it:** A new command is a new clerk-<name> executable with a first docstring line reading `clerk <name> — …`; the core lists it without being told. Put shared logic in a clerk_*.py module, not in a second copy.
+**When you would change it:** A new command is a new clerk-<name> executable with a first docstring line reading `clerk <name> — …`; the dispatcher lists it without being told. Put the logic in a clerk_*.py module and keep the executable to argument parsing, so another command can import it rather than run it.
 
-## A command's round trip through the core
+## A command's round trip through the dispatcher
 
-Commands whose running is evidence are wrapped so their exit is logged to the run's event log on the way out, and four of them embed the next step in their reply. The ledger is resolved before the command runs, because `land --integrate` ends on a branch the run is no longer named by.
+Commands whose running is evidence are run rather than exec'd, so their exit is appended to the run's event log on the way out, and four of them get the next step computed in the dispatcher's own process and added to their reply. The ledger is resolved before the command runs, because `land --integrate` ends on a branch the run is no longer named by. A usage error, exit 2 everywhere, is not evidence and is not logged.
 
 ```mermaid
 flowchart TD
-  cmd["clerk &lt;name&gt; args"]:::plain --> builtin{"built-in?"}
-  builtin -->|"yes"| logged["logged: resolve ledger_dir first,<br/>run cmd_&lt;name&gt; into a temp file"]:::clerk
-  builtin -->|"no: clerk-&lt;name&gt; on PATH or beside clerk"| lp{"in LOGGED_PLUGINS?<br/>guidelines lint fixup learn sidecar"}
-  lp -->|"yes"| logged
-  lp -->|"no"| exec["exec the plugin; its stdio and exit are clerk's"]:::clerk
-  logged --> log["ledger_log: append cmd, argv, exit, at, head<br/>to events.jsonl — never fails the command"]:::clerk
-  log --> nxt{"in INLINE_NEXT?<br/>finish branch land learn"}
-  nxt -->|"yes, and exit 0"| embed["run clerk step, add its reply<br/>as next, or after_commit for finish"]:::clerk
+  cmd["clerk &lt;name&gt; args"]:::plain --> found{"clerk-&lt;name&gt; on PATH,<br/>or beside clerk?"}
+  found -->|"no"| unknown["unknown command, exit 2"]:::plain
+  found -->|"yes"| lg{"in LOGGED?<br/>isolate finish receipt verify land<br/>guidelines lint fixup learn sidecar"}
+  lg -->|"no"| exec["exec it: its stdio and exit are clerk's"]:::clerk
+  lg -->|"yes"| runit["resolve ledger_dir first,<br/>then run it, capturing the reply"]:::clerk
+  runit --> log["ledger_log: cmd, argv, exit, at, head<br/>to events.jsonl — never for exit 2"]:::clerk
+  log --> nxt{"in INLINE_NEXT, exit 0?<br/>finish isolate land learn"}
+  nxt -->|"yes"| embed["next_step(build_ctx()) in this process,<br/>added as next, or after_commit for finish"]:::clerk
   nxt -->|"no"| out["print the reply, exit with the command's code"]:::clerk
   embed --> out
-  prepare["prepare, next, status, gate, step, audit …<br/>are reads: never logged"]:::plain
+  reads["prepare, status, step, audit …<br/>are reads: never logged"]:::plain
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
   classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
   classDef file fill:#FFFFFF,stroke:#9AA39D,stroke-width:1px,color:#1B1F1D
 ```
 
-**Where it lives:** clerk (bash): the case statement at the bottom, logged(), ledger_log(), with_next(), INLINE_NEXT, LOGGED_PLUGINS
+**Where it lives:** link/common/dot-local/bin/clerk: LOGGED, INLINE_NEXT, run_logged
 
-**When you would change it:** A command whose running should count as evidence for a row goes into LOGGED_PLUGINS, and the row reads it through an event reader in clerk_ledger.py such as `guidelines_read`.
+**When you would change it:** A command whose running should count as evidence for a row goes into LOGGED, and the row reads it through an event reader in clerk_ledger.py such as `guidelines_read`.
 
 ## The audit is a second machine of the same shape
 

@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from clerk_lib import die, emit, git, gitout
-from clerk_repo import prepare
+from clerk_repo import ledger_read, prepare
 
 CALLERS = ("ui", "inbound", "outbound", "async", "exported")
 
@@ -64,13 +64,7 @@ class Run:
         return (self.dir / "run.json").exists()
 
     def read(self, name, default=None):
-        p = self.dir / name
-        if not p.exists():
-            return default
-        try:
-            return json.loads(p.read_text())
-        except json.JSONDecodeError:
-            die(f"ledger file {p} is not valid JSON — report this and stop; do not repair it by hand")
+        return ledger_read(self.dir / name, default)
 
     def write(self, name, obj):
         self.dir.mkdir(parents=True, exist_ok=True)

@@ -138,6 +138,21 @@ def ledger_dir(cwd=None):
     return str(root / open_[0]) if len(open_) == 1 else None
 
 
+def ledger_read(path, default=None):
+    """A ledger file, or `default` when it is not there. Malformed is not missing: a run
+    whose own record will not parse is in a state nobody knows, and answering from a
+    default would act on a guess. Repo config — package.json, tasks/clerk.json — reads
+    through `_json_file` instead, where a bad file is the user's to fix and falling back
+    to detection is a safe answer."""
+    p = Path(path)
+    if not p.exists():
+        return default
+    try:
+        return json.loads(p.read_text())
+    except json.JSONDecodeError:
+        die(f"ledger file {p} is not valid JSON — report this and stop; do not repair it by hand")
+
+
 def ledger_log(directory, cmd, rc, argv, cwd=None):
     """Appends one event. Never fails the command it records: a logging error must not
     turn a finished task into a failed one."""
@@ -448,7 +463,7 @@ def ledger_breakdown(cwd=None):
     d = ledger_dir(cwd)
     if not d:
         return None
-    bd = _json_file(Path(d) / "breakdown.json")
+    bd = ledger_read(Path(d) / "breakdown.json")
     tf = (bd or {}).get("tasks_file") if isinstance(bd, dict) else None
     return tf if tf and Path(tf).is_file() else None
 
@@ -529,7 +544,7 @@ def request_from_ledger(cwd=None):
     d = ledger_dir(cwd)
     if not d:
         return None
-    meta = _json_file(Path(d) / "run.json")
+    meta = ledger_read(Path(d) / "run.json")
     return (meta or {}).get("request") or None if isinstance(meta, dict) else None
 
 

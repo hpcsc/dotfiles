@@ -17,6 +17,8 @@ from pathlib import Path
 
 from clerk_lib import clerk, die, git, gitout, worktree_for
 from clerk_method import Renderer
+from clerk_tasks import load_sidecar, next_task
+from clerk_verify import verify
 from clerk_ledger import (age_seconds, fixup_ambiguities, gear, guidelines_read, is_ancestor,
                           learn_written, now, receipt_state, ref_exists, runner_view, session_id,
                           task_signals)
@@ -246,11 +248,8 @@ def row_build(ctx):
     tf, side, _ = breakdown_files(ctx)
     if tf is None or not side.exists():
         return row("build", False, why_not_done="no sidecar to read tasks from")
-    # `clerk status` owns which task is ready — the dependency rule is applied, not repeated.
-    rc, st, err = clerk("status", "--tasks-file", str(tf), cwd=ctx.cwd)
-    if st is None:
-        die(f"clerk status failed: {err}")
-    nx = st.get("next") or {}
+    # `next_task` owns which task is ready — the dependency rule is applied, not repeated.
+    nx = next_task(load_sidecar(side).get("tasks") or [])
     total, remaining = nx.get("total", 0), nx.get("remaining", 0)
     progress = {"done": total - remaining, "total": total, "remaining": remaining, "blocked": nx.get("blocked", 0)}
     if nx.get("done"):
@@ -368,12 +367,7 @@ def row_verify_run(ctx):
     if passed and passed.get("code_tree") == ctx.head_ct:
         return row("verify-run", True, cached=True)
     tf, _, archived = breakdown_files(ctx)
-    args = ["verify", "--all-closed"]
-    if tf is not None and not archived:
-        args += ["--tasks-file", str(tf)]
-    rc, data, err = clerk(*args, cwd=ctx.cwd)
-    if data is None:
-        die(f"clerk verify failed: {err}")
+    data = verify(True, str(tf) if tf is not None and not archived else None, ctx.cwd)
     clean = bool(data.get("clean"))
     not_checked = data.get("not_checked", [])
     if not ctx.read_only:

@@ -22,6 +22,7 @@ from clerk_ledger import (CALLERS, Run, build_ctx, detect_harness, now, open_run
                           run_summary, runs_root, session_id)
 from clerk_steps import (ROWS, active_rows, facts_for, file_hash, instructions_for,  # noqa: E402
                          lint_sidecar, next_step)
+from clerk_tasks import status_of  # noqa: E402
 
 
 def cmd_start(slug, request, harness):
@@ -80,9 +81,9 @@ def done_decompose(ctx, argv):
     approved = bool(o["--approved"]) or bool(prev.get("approved"))
     ctx.run.write("breakdown.json", {"tasks_file": str(tf), "sidecar": str(side), "approved": approved,
                                      "lint_hash": file_hash(side), "at": now()})
-    rc, st, _ = clerk("status", "--tasks-file", str(tf), cwd=ctx.cwd)
+    st = status_of(str(tf), str(side), False)
     return {"bound": True, "tasks_file": str(tf), "approved": approved,
-            "plan": (st or {}).get("progress"), "gears": (st or {}).get("gears")}
+            "plan": st.get("progress"), "gears": st.get("gears")}
 
 
 def done_pause(ctx, argv):

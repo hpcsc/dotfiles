@@ -11,10 +11,9 @@ fast-forward costs a history rewrite.
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
-from clerk_lib import die, emit, git, gitout, plugin_bin
+from clerk_lib import die, emit, git, gitout
 from clerk_repo import (breakdown_for, common_dir, current_branch, default_branch, env_get, head_sha,
                         is_ignored, ledger_dir, ledger_put, now, receipt_state, repo_root, resolve_flag,
                         run_records_dir, sidecar_for, state_dir, tasks_home, tasks_hint, work_tree)
@@ -187,17 +186,17 @@ def gate(audit_accepted=False, tasks_override=None):
 # --------------------------------------------------------------------------------
 
 def step_says(cwd=None):
-    """What `clerk step` answers here, or None when no run ledger or no step command."""
+    """The row `clerk step` would return here, or None when no run ledger is open. Read
+    without recording: the real `clerk step` call is the one that caches a verify pass."""
     if not ledger_dir(cwd):
         return None
-    step = plugin_bin("step")
-    if not step:
-        return None
-    r = subprocess.run([step], cwd=cwd, capture_output=True, text=True)
+    from clerk_ledger import build_ctx
+    from clerk_steps import evaluate
     try:
-        return json.loads(r.stdout) if r.stdout.strip() else {}
-    except json.JSONDecodeError:
+        ctx = build_ctx(read_only=True)
+    except SystemExit:
         return {}
+    return evaluate(ctx) if ctx.run is not None else {}
 
 
 def land(integrate=None, audit=False, name=None, tasks_override=None, check=False):

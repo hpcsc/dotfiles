@@ -1,178 +1,46 @@
-#!/usr/bin/env bash
-# clerk — the deterministic mechanics of an implementation run.
-#
-# It keeps the docket and checks the paperwork; it never judges the work. Everything
-# here is something a program does more reliably than a prompt: resolving facts about
-# the repo, selecting the next unblocked task, deciding whether a branch may land.
-# Writing the code, reviewing it, and deciding a fix is right stay with the model.
-#
-# Targets bash 3.2 (macOS /bin/bash): no associative arrays, no ${v,,}, no mapfile.
-# Requires: git, jq.
-#
-# If you are an agent reading this to work out what a command would have done: don't.
-# The files under <git-dir>/clerk are internal bookkeeping, not an interface, and doing
-# a failed command's work by hand defeats the point of it being a command — the
-# guarantees live in doing the steps together, not in the end state resembling theirs.
-# When a command fails, report the failure and stop.
+#!/usr/bin/env python3
+"""clerk — the deterministic mechanics of an implementation run.
 
-set -uo pipefail
+It keeps the docket and checks the paperwork; it never judges the work. Everything here
+is something a program does more reliably than a prompt: resolving facts about the repo,
+selecting the next unblocked task, deciding whether a branch may land. Writing the code,
+reviewing it, and deciding a fix is right stay with the model.
 
-CLERK_VERSION=0.4.0
+This file is the dispatcher. `clerk <name>` runs the executable `clerk-<name>` — on PATH,
+or beside this file — the way git runs `git-<name>`. A command whose running is evidence
+`clerk step` reads is run rather than exec'd, so its exit can be appended to the run's
+event log on the way out, and the four that close a step carry the step that follows in
+their reply, computed in this process rather than by a second call.
 
-die() { printf 'clerk: %s\n' "$1" >&2; exit 2; }
+If you are an agent reading this to work out what a command would have done: don't. The
+files under <git-dir>/clerk are internal bookkeeping, not an interface, and doing a
+failed command's work by hand defeats the point of it being a command — the guarantees
+live in doing the steps together, not in the end state resembling theirs. When a command
+fails, report the failure and stop.
+"""
 
-need() { command -v "$1" >/dev/null 2>&1 || die "missing required tool: $1"; }
+import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
-# The directory this script really lives in, through any symlink. `dirname "$0"` alone
-# answers ~/.local/bin when clerk is linked there, which is the one directory a plugin
-# missing from PATH is guaranteed not to be in.
-self_dir() {
-  local p=$0 d
-  while [ -L "$p" ]; do
-    d=$(dirname "$p"); p=$(readlink "$p")
-    case "$p" in /*) ;; *) p="$d/$p" ;; esac
-  done
-  (cd "$(dirname "$p")" 2>/dev/null && pwd -P)
-}
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from clerk_lib import VERSION, plugin_bin  # noqa: E402
 
-# The executable behind `clerk <name>`: clerk-<name> on PATH, else beside this script.
-# One resolution for every caller — the dispatcher looked on PATH alone while `finish`
-# also tried its own directory, so a plugin not yet linked into ~/.local/bin ran inside
-# `clerk finish` and was "unknown" to `clerk lint` a moment later.
-plugin_bin() {
-  local p
-  p=$(command -v "clerk-$1" 2>/dev/null) && { printf '%s' "$p"; return 0; }
-  p="$(self_dir)/clerk-$1"
-  [ -x "$p" ] && { printf '%s' "$p"; return 0; }
-  return 1
-}
-
-
-# The tree we are standing in. Never assume the main checkout: inside a worktree it is
-# on another branch entirely, and a suite or verifier pointed there tests code that
-# does not contain the feature. This is the resolution the skill prose kept getting
-# wrong by saying "the main tree".
-#
-# The helper keeps git's name because git's is what it returns; `prepare` reports it as
-# `build_tree`, because a reader who sees `work_tree` beside `in_worktree` reads it as
-# "the worktree" and it is the main checkout whenever there is not one.
-work_tree() { git rev-parse --show-toplevel 2>/dev/null; }
-
-# The main repo root, which is NOT the work tree inside a worktree. tasks/ and the
-# learnings file live here.
-repo_root() {
-  local common
-  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  dirname "$common"
-}
-
-
-# --------------------------------------------------------------------------------
-# The run ledger — opened and read by `clerk step`, appended to here.
-#
-# `clerk step` derives a run's position from evidence, and most of that evidence is a
-# clerk command having run: the guidelines were printed, a task was finished, the suite
-# was recorded. So every command that produces evidence appends one line to the run's
-# events file on its way out — what ran, with what arguments, how it exited, at which
-# HEAD — and `land` leaves a stamp with what it decided. Nothing here judges anything;
-# the ledger is a record and `clerk step` is its reader. A command with no run to log
-# against logs nothing, which is every invocation outside a step-driven run, so nothing
-# about these commands changes there.
-# --------------------------------------------------------------------------------
-
-# The ledger this invocation belongs to, or nothing. On a feature branch it is the run
-# named by the branch; on the default branch it is the one unfinished run, if there is
-# exactly one — the rule `clerk step` resolves by, so the two never disagree about which
-# run a command served.
-ledger_dir() {
-  local common runs branch def open n
-  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  runs="$common/clerk/runs"
-  [ -d "$runs" ] || return 1
-  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-  def=$(default_branch)
-  if [ -n "$branch" ] && [ "$branch" != HEAD ] && [ "$branch" != "$def" ]; then
-    [ -f "$runs/$branch/run.json" ] && { printf '%s' "$runs/$branch"; return 0; }
-    return 1
-  fi
-  open=$(open_runs)
-  n=$(printf '%s\n' "$open" | grep -c '[^[:space:]]')
-  [ "$n" -eq 1 ] && { printf '%s/%s' "$runs" "$open"; return 0; }
-  return 1
-}
-
-# Every run under <git-common-dir>/clerk/runs that has not finished, one slug per line.
-open_runs() {
-  local common runs d
-  common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
-  runs="$common/clerk/runs"
-  [ -d "$runs" ] || return 0
-  for d in "$runs"/*/; do
-    [ -f "${d}run.json" ] || continue
-    [ "$(jq -r '.finished // false' "${d}run.json" 2>/dev/null)" != true ] && basename "$d"
-  done
-  return 0
-}
-
-# Appends one event to the ledger at $1. Never fails the command it records and never
-# prints: a logging error must not turn a finished task into a failed one.
-ledger_log() {  # <ledger-dir> <cmd> <exit> <argv...>
-  local dir=$1 cmd=$2 rc=$3 head; shift 3
-  [ -n "$dir" ] && [ -d "$dir" ] || return 0
-  head=$(git rev-parse HEAD 2>/dev/null)
-  # argv goes in NUL-separated on stdin: jq reads its own options from anywhere on the
-  # command line, so an argv carrying --command or --rule would be parsed as jq's.
-  printf '%s\0' "$@" | jq -R -s -c --arg cmd "$cmd" --arg rc "$rc" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg head "$head" \
-    '{cmd: $cmd, argv: (split("\u0000") | map(select(length > 0))), exit: ($rc | tonumber), at: $at, head: $head}' \
-    >> "$dir/events.jsonl" 2>/dev/null || true
-}
-
-
+# Commands whose running is evidence `clerk step` reads. Listed rather than "all of
+# them": the reads — step itself, status, prepare, audit, stack, story — run many times a
+# step and say nothing about progress, and the list is what keeps their cost at zero.
+LOGGED = {"isolate", "finish", "receipt", "verify", "land", "guidelines", "lint", "fixup", "learn", "sidecar"}
 # Commands whose success closes a step. Their reply carries the step that follows, as
-# `clerk step` would print it — under `next`, or `after_commit` for finish, whose own
-# next move is the commit clerk cannot make — so the caller acts on it rather than
-# spending a round trip asking. Computed after the event is logged, so the row reads the
-# evidence this very command produced: a `--retried` finish shifts the gear it reports.
-# Never for the commands `clerk step` itself runs (verify, lint), which would recurse.
-INLINE_NEXT=' finish isolate land learn '
+# `clerk step` would print it — under `next`, or `after_commit` for finish, whose own next
+# move is the commit clerk cannot make. Computed after the event is logged, so the row
+# reads the evidence this very command produced.
+INLINE_NEXT = {"finish": "after_commit", "isolate": "next", "land": "next", "learn": "next"}
 
-with_next() {  # <name> <rc> <ledger-dir> <output-file>
-  local key=next step_bin nxt
-  case "$INLINE_NEXT" in *" $1 "*) ;; *) cat "$4"; return 0 ;; esac
-  if [ "$2" -ne 0 ] || [ -z "$3" ] || ! step_bin=$(plugin_bin step) \
-     || ! jq -e 'type == "object"' "$4" >/dev/null 2>&1; then
-    cat "$4"; return 0
-  fi
-  [ "$1" = finish ] && key=after_commit
-  if nxt=$("$step_bin" 2>/dev/null) && printf '%s' "$nxt" | jq -e . >/dev/null 2>&1; then
-    jq --arg k "$key" --argjson n "$nxt" '. + {($k): $n}' "$4"
-  else
-    cat "$4"
-  fi
-}
-
-
-default_branch() {
-  local d=
-  # Only ask git when origin/HEAD actually exists. Without a remote, `rev-parse
-  # --abbrev-ref origin/HEAD` echoes the literal string back, which sed reduces to
-  # "HEAD" — and a base of HEAD makes every base..HEAD diff silently empty, so the
-  # run's own commits vanish and every scoped check reports nothing to find.
-  if git show-ref --verify --quiet refs/remotes/origin/HEAD 2>/dev/null; then
-    d=$(git rev-parse --abbrev-ref origin/HEAD 2>/dev/null | sed 's#^origin/##')
-  fi
-  case "$d" in ''|HEAD|origin/HEAD) d= ;; esac
-  if [ -z "$d" ]; then
-    for c in main master; do
-      if git show-ref --verify --quiet "refs/heads/$c"; then d=$c; break; fi
-    done
-  fi
-  printf '%s' "$d"
-}
-
-
-usage() {
-  cat <<'EOF'
+USAGE = """\
 clerk — deterministic mechanics for an implementation run
 
 A run is driven by `clerk step`: open it once with `clerk step --start <slug> --request
@@ -188,71 +56,99 @@ both. `clerk prepare` reports the resolved values as `flags` and where each came
 
 Everything here is mechanical. Judgment — writing code, reviewing it, deciding a fix
 is right — stays with the caller.
-EOF
-  list_plugins
-}
+"""
 
-# What a plugin says it is: the first line of its docstring reading `clerk <name> — ...`.
-# Read from the file rather than kept here, so the listing cannot go stale; an executable
-# that answers to two names (clerk-audit is clerk-step) carries a line for each.
-plugin_desc() {  # <file> <name>
-  awk -v n="$2" 'NR > 40 { exit } { sub(/^"""/, "") }
-    index($0, "clerk " n " — ") == 1 { print substr($0, length("clerk " n " — ") + 1); exit }' "$1" 2>/dev/null
-}
 
-# An executable named clerk-<name> on PATH, or beside this script, is a subcommand — the
-# same two places plugin_bin looks, in the same order. Listing what is actually installed
-# beats naming them here, which would go stale the moment one is added.
-list_plugins() {
-  local dir f name found=
-  printf '\nSUBCOMMANDS  (clerk-<name> on PATH, or beside clerk; `clerk <name> --help` for each)\n'
-  IFS=:
-  for dir in $PATH $(self_dir); do
-    [ -d "$dir" ] || continue
-    for f in "$dir"/clerk-*; do
-      [ -x "$f" ] && [ -f "$f" ] || continue
-      name=$(basename "$f"); name=${name#clerk-}
-      case " $found " in *" $name "*) continue ;; esac
-      found="$found $name"
-      printf '  clerk %-12s %s\n' "$name" "$(plugin_desc "$f" "$name")"
-    done
-  done
-  unset IFS
-  [ -n "$found" ] || printf '  (none installed)\n'
-}
+def plugin_desc(path, name):
+    """What a plugin says it is: the first line of its docstring reading `clerk <name> — …`,
+    read from the file so the listing cannot go stale."""
+    try:
+        with open(path, errors="replace") as fh:
+            for i, line in enumerate(fh):
+                if i > 40:
+                    break
+                line = line.lstrip('"')
+                if line.startswith(f"clerk {name} — "):
+                    return line[len(f"clerk {name} — "):].rstrip()
+    except OSError:
+        pass
+    return ""
 
-need git
-need jq
 
-# Plugins whose running is evidence `clerk step` reads. Listed rather than "all of them":
-# the reads — step itself, audit, stack, story, models — run many times a step and say
-# nothing about progress, and the list is what keeps their cost at zero.
-LOGGED_PLUGINS=' isolate finish receipt verify land guidelines lint fixup learn sidecar '
+def list_plugins():
+    seen = {}
+    for d in os.environ.get("PATH", "").split(":") + [str(HERE)]:
+        p = Path(d)
+        if not p.is_dir():
+            continue
+        for f in sorted(p.glob("clerk-*")):
+            name = f.name[len("clerk-"):]
+            if name in seen or not f.is_file() or not os.access(f, os.X_OK):
+                continue
+            seen[name] = plugin_desc(f, name)
+    print("\nSUBCOMMANDS  (clerk-<name> on PATH, or beside clerk; `clerk <name> --help` for each)")
+    for name, desc in seen.items():
+        print(f"  clerk {name:<12} {desc}")
+    if not seen:
+        print("  (none installed)")
 
-case "${1:-}" in
-  version) printf 'clerk %s\n' "$CLERK_VERSION" ;;
-  ''|-h|--help|help) usage ;;
-  *)
-    # git's model: an executable named clerk-<name> becomes `clerk <name>`. The plugin
-    # owns stdio either way and its exit status is clerk's; a logged one is called rather
-    # than exec'd so its exit can be recorded on the way out. Built-ins are matched first,
-    # above — a plugin cannot shadow one, so what `clerk next` does never depends on what
-    # happens to be on PATH.
-    if sub=$(plugin_bin "$1"); then
-      name=$1; shift
-      case "$LOGGED_PLUGINS" in
-        *" $name "*)
-          ldir=$(ledger_dir 2>/dev/null) || ldir=
-          CLERK_OUT=$(mktemp "${TMPDIR:-/tmp}/clerk.XXXXXX") || die "cannot create a temp file"
-          trap 'rm -f "$CLERK_OUT"' EXIT
-          "$sub" "$@" > "$CLERK_OUT"; rc=$?
-          # Exit 2 is a usage error in every plugin, as it is in every built-in, and a
-          # usage error is not evidence of anything: the built-ins die before the log.
-          [ "$rc" -ne 2 ] && ledger_log "$ldir" "$name" "$rc" "$@"
-          with_next "$name" "$rc" "$ldir" "$CLERK_OUT"
-          exit $rc ;;
-        *) exec "$sub" "$@" ;;
-      esac
-    fi
-    die "unknown command '$1' (try: clerk help)" ;;
-esac
+
+def next_for(key):
+    """The step that follows, computed here: what `clerk step` would print."""
+    try:
+        from clerk_ledger import build_ctx
+        from clerk_steps import next_step
+        return {key: next_step(build_ctx())}
+    except SystemExit:
+        return {}
+    except Exception:  # noqa: BLE001 — the reply stands without the hint
+        return {}
+
+
+def run_logged(name, exe, argv):
+    from clerk_repo import ledger_dir, ledger_log
+    # Resolved BEFORE the command runs: `land --integrate` ends on the default branch,
+    # where the run can no longer be named by the branch it just merged.
+    ldir = ledger_dir()
+    r = subprocess.run([exe, *argv], stdout=subprocess.PIPE, text=True)
+    out = r.stdout
+    # Exit 2 is a usage error in every command, and a usage error is not evidence of
+    # anything.
+    if r.returncode != 2:
+        ledger_log(ldir, name, r.returncode, argv)
+    if r.returncode == 0 and ldir and name in INLINE_NEXT:
+        try:
+            reply = json.loads(out)
+        except json.JSONDecodeError:
+            reply = None
+        if isinstance(reply, dict):
+            reply.update(next_for(INLINE_NEXT[name]))
+            out = json.dumps(reply, indent=2) + "\n"
+    sys.stdout.write(out)
+    sys.stdout.flush()
+    return r.returncode
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        print(USAGE, end="")
+        list_plugins()
+        return 0
+    if argv[0] == "version":
+        print(f"clerk {VERSION}")
+        return 0
+    if not shutil.which("git"):
+        print("clerk: missing required tool: git", file=sys.stderr)
+        return 2
+    name, rest = argv[0], argv[1:]
+    exe = plugin_bin(name)
+    if not exe:
+        print(f"clerk: unknown command '{name}' (try: clerk help)", file=sys.stderr)
+        return 2
+    if name in LOGGED:
+        return run_logged(name, exe, rest)
+    os.execv(exe, [exe, *rest])
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

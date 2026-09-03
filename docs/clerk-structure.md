@@ -1,14 +1,59 @@
 # Inside clerk
 
-Seven diagrams of how the implement skill and clerk fit together, drawn for someone about to change them. Green is what clerk decides from evidence; terracotta is what the model judges. The same two fills mean the same two things in the method README.
+How the implement skill and clerk fit together, drawn for someone about to change them. Green marks what clerk decides from evidence, terracotta what the model judges — the same two fills as in the method README.
 
 The whole design is one split. Anything a program does more reliably than a prompt — which test command wins, which task is next, whether a green receipt describes the tree about to land, what step comes after this one — is a clerk command. Writing the code, reviewing it and deciding a fix is right stay with the model.
 
-So the implement skill is one loop: ask `clerk step` what comes next, do that one thing, ask again. clerk answers from git state and a ledger it keeps per run, and the prose for each step arrives in the reply rather than in the skill file.
+## The problem, and the one idea
+
+The obvious way to make a model follow a procedure is to write the procedure down and hand it over. It half works. A long enough list gets partly followed, and a skipped step is silent — nothing downstream knows step 4 never happened, so the run keeps going and the gap shows up at review, or later.
+
+clerk's answer is to stop storing the position anywhere. There is no counter and no checklist. Every turn asks the same question, and the answer is worked out fresh from the repository:
+
+```mermaid
+flowchart LR
+  P["the procedure, in a file<br/>read once at the start"]:::plain --> M["the model"]:::you
+  M --> X["step 4 skipped:<br/>nothing notices"]:::plain
+  C["clerk step<br/>asked again every turn"]:::clerk --> M2["the model"]:::you
+  M2 -->|"do that one thing, then ask again"| C
+  C --> Y["step 4 skipped:<br/>the answer is step 4"]:::clerk
+  classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
+  classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
+  classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
+```
+
+Everything else on this page follows from that. There are eleven steps in a fixed order; the code that answers "is this one done?" for a step is its **row**; the whole pass over one request is a **run**, and the records clerk keeps for it are its **ledger**.
+
+## Two ways a step can be finished
+
+If clerk could check every step by looking at the repository, it would, and there would be nothing to explain. But some steps are not observable. Nothing in git can show that the guidelines were read and thought about, or that the request was re-read against the branch and found to match.
+
+The choice there is between trusting the model silently and making it say so out loud. clerk does the second: the claim is recorded, and — when the claim is about the code — recorded *against* that code, so changing the code takes the claim back.
+
+```mermaid
+flowchart TD
+  Q{"can the repository<br/>show this step was done?"}:::plain
+  Q -->|yes| D["derived — clerk looks:<br/>git, a file, or the log<br/>of commands that have run"]:::clerk
+  Q -->|no| A["asserted — the model states it:<br/>clerk step --done ground"]:::you
+  D --> DR["finished, and worked out<br/>again on every call"]:::plain
+  A --> W["written down, with the code<br/>it was said about"]:::plain
+  W --> T{"is the claim<br/>about the code?"}:::plain
+  T -->|"the audit · the request re-read · verify"| E["the code changes,<br/>the claim expires,<br/>the step comes back"]:::clerk
+  T -->|"guidelines read · a pause shown"| K["it stays finished"]:::plain
+  classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
+  classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
+  classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
+```
+
+That is the split the two fills mark on every diagram below: green where clerk decides, terracotta where the model does. It is also why an assertion is never a bare flag — a claim with no code attached could never be taken back.
+
+The same instinct runs through the rest. `clerk finish` asks which files a task owns rather than reading `git status`, because "what I meant to change" is not observable either. The plan lives in two files — a **breakdown**, `tasks/<story>.md`, written by a person, and a **sidecar**, `tasks/<story>.json`, where clerk keeps per-task state — so clerk never edits prose it did not write. A **receipt** records that the suite passed *and* what it passed against, because "the tests pass" without that is a claim about a moment, not about the branch.
 
 ## One call, repeated
 
-The skill never walks a procedure from memory. Every turn is the same call, and the answer is recomputed from the repository and the ledger, so a stopped run resumes with the call it would have made anyway. Commands that close a step embed the next one in their reply so the model does not spend a round trip asking.
+That loop in full, with the parts of it that are not obvious. `clerk step` gathers the repository's facts in its own process rather than shelling out for them. The model's next move is a different command entirely — whatever the reply's `done_by` named. And four of those commands hand back the step that follows, so closing one and asking for the next is a single call rather than two.
+
+A stopped run needs nothing to restart it: the next call is the call it would have made anyway.
 
 ```mermaid
 sequenceDiagram
@@ -26,7 +71,7 @@ sequenceDiagram
     S-->>M: step, instructions, done_by, stop, blocked
     M->>M: do that one step, nothing after it
     M->>C: the command done_by names (finish, receipt, land …)
-    C->>L: run it; append events.jsonl, write its stamp
+    C->>L: run it, append events.jsonl, write what it records
     C->>S: finish, isolate, land, learn: next_step, in-process
     C-->>M: reply, with next or after_commit
   end
@@ -38,7 +83,9 @@ sequenceDiagram
 
 ## The step table and what closes each row
 
-`clerk step` reads the rows from the top and returns the first one that is not done. A green row closes when clerk observes the world change; a terracotta row closes when the model records a judgment with `--done`, stamped with the code tree it applies to. Nothing moves the position but evidence.
+The eleven, in order. `clerk step` reads them from the top and returns the first one not done.
+
+Where a claim is stamped with the *code tree* it was made about, that means the file listing at HEAD minus the plan files under `tasks/`, hashed. Comparing by that rather than by commit is what lets the run commit its own plan — the archive, the write-up — without making a green suite stale, while any touch of the code still does.
 
 ```mermaid
 flowchart TD
@@ -64,13 +111,17 @@ flowchart TD
   class decompose,match,learn you
 ```
 
+Two labels on it are worth spelling out. *Gears* is an optional flag: with it on, a task the plan called hard stops once its tests are red, so a person sees them before any code is written. *Residue* is what `clerk verify` ran but could not judge — a symbol only prose mentions, a task owning no file of its own — left for a person rather than counted as clean.
+
 **Where it lives:** clerk_steps.py: ROWS and the row_* functions · clerk-step: the DONE handlers · method/clerk-step.md, section "The step table"
 
 **When you would change it:** A new row is one `row_<name>` function returning `row(id, done, …)` plus its place in ROWS, a step file under method/implement/steps/, and a section in tests/clerk-step-test.sh.
 
 ## Four places state lives, and who writes each
 
-Tracked files under tasks/ are team decisions and go into commits. The environment file is one machine's. The two directories under .git are clerk's own records: per checkout for what one worktree knows, per run in the common git dir so the ledger outlives the worktree that is removed at the end.
+Four rather than one, because they have different owners and different lifetimes. What the team decides is meant to be reviewed, so it is tracked and goes into the commits. What one machine prefers is nobody else's business, so it sits in a gitignored file.
+
+What clerk records is neither. Tracking it would dirty the tree on every write — the exact signal the step table reads to know a task has been committed — and would put session records in front of reviewers, where the model could edit them. So it lives under `.git`: what one checkout knows in that checkout's git dir, what the run knows in the common one, because a run's last steps happen in the main checkout after the worktree is gone.
 
 ```mermaid
 flowchart LR
@@ -92,6 +143,7 @@ flowchart LR
   subgraph R["&lt;git-common-dir&gt;/clerk/runs/slug/ — this run"]
     rj["run.json<br/>request, harness, finished<br/>done · breakdown · match_request · land"]
     ev["events.jsonl<br/>every logged command"]
+    vl["verify-log.jsonl<br/>which check fired, each time"]
     aj["audit.json<br/>rounds, live round, acceptance"]
     sh["shown.json<br/>which step text this session saw"]
     pl["progress.log · runner.json"]
@@ -99,13 +151,12 @@ flowchart LR
   finish["clerk finish"]:::clerk -->|marks done, stages| sc
   finish -->|records| tr
   receipt["clerk receipt"]:::clerk --> rc
-  land["clerk land"]:::clerk --> ar
-  land --> lj
+  land["clerk land"]:::clerk -->|archive record| ar
+  land -->|land| rj
   logged["every logged command"]:::clerk -->|appends| ev
-  step["clerk step --start · --done"]:::clerk --> rj
-  step --> dn
-  step --> bj
-  step --> mr
+  step["clerk step --start · --done"]:::clerk -->|done · breakdown · match_request| rj
+  step -->|the step text it printed| sh
+  step -->|appends, at the verify-run row| vl
   audit["clerk audit"]:::clerk --> aj
   run["clerk run · clerk audit run"]:::clerk --> pl
   model["the model"]:::you -->|ticks criteria, writes Theory| bd
@@ -118,11 +169,56 @@ flowchart LR
 
 **Where it lives:** clerk_repo.py: state_dir, ledger_dir, run_records_dir, ledger_log · clerk_ledger.py: Run · method/clerk-step.md, section "Ledger"
 
-**When you would change it:** A new per-run fact goes in the ledger through `Run.write` or `Run.mark`, never in tasks/: a tracked ledger would dirty the tree on every write and put session evidence into PRs.
+**When you would change it:** A new per-run fact goes in the ledger through `Run.put` or `Run.mark`, never in tasks/: a tracked ledger would dirty the tree on every write and put session evidence into PRs.
+
+## The log, and the record
+
+A derived step has to answer something like "has `clerk guidelines` run for this run, naming a caller pattern?" Nothing in git knows. The cheapest answer is to write a line down every time one of clerk's own commands finishes, and let any such question become a search of that list.
+
+So the dispatcher appends one line — the command, its arguments, its exit code, the time, and HEAD — for each of the nine commands that change something. Reads are not logged: `clerk step` alone runs several times per step and would bury everything else.
+
+```mermaid
+flowchart LR
+  G["clerk guidelines --caller"]:::clerk --> ev
+  F["clerk finish N"]:::clerk --> ev
+  X["clerk fixup"]:::clerk --> ev
+  L["clerk learn --title"]:::clerk --> ev
+  O["isolate · receipt<br/>verify · land · lint"]:::clerk --> ev
+  ev["events.jsonl<br/>one line per command"]:::file
+  ev -->|"did guidelines run, and<br/>name a caller pattern?"| rg["the ground step<br/>is finished"]:::plain
+  ev -->|"was a task retried, or<br/>refused by the lint?"| rp["slow down — pause<br/>on the hard tasks"]:::plain
+  ev -->|"was a learning written?"| rl["the learn step<br/>is finished"]:::plain
+  ev -->|"which fixups found a<br/>task boundary drawn wrong?"| rb["what this run tells<br/>the next plan"]:::plain
+  ev -->|"when did each<br/>command run?"| rs["how long each<br/>step took"]:::plain
+  D["clerk step --done &lt;id&gt;"]:::you --> rj
+  LD["clerk land"]:::clerk --> rj
+  rj["run.json — what the model claimed,<br/>each with the code it claimed it about"]:::file
+  rj -->|"read straight back,<br/>nothing to replay"| ra["decompose · match-request<br/>land · the cached verify pass"]:::plain
+  classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
+  classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
+  classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
+  classDef file fill:#FFFFFF,stroke:#9AA39D,stroke-width:1px,color:#1B1F1D
+```
+
+A log rather than a flag per question, because the questions arrive later. Nothing decided in advance that a run would want to know how many fixups found a task boundary drawn across one file — the lines were already there, and answering it meant reading the same file a new way. That is why the right side of the picture can grow without the left side changing.
+
+What a log is bad at is being glanced at. "Where is this run?" should be one look rather than a replay, so what the model claims goes into `run.json` and is read straight back. Each side pays for the other: the log answers questions nobody has asked yet, the record answers the one being asked now.
+
+Two steps take either. Ground finishes when a `clerk guidelines --caller` run turns up in the log, or — in a repo with no guidelines to read — when the model says so. The learning at the end is the same. The reply names which one answered, so nobody has to guess whether clerk saw it or was told.
+
+`verify-log.jsonl` is a second log, for a question the first cannot answer. The event log records that `clerk verify` ran and what it exited, not which of its checks fired, and "is this step worth what it blocks?" needs the checks. Nothing in clerk reads it; it is there for a person looking across many runs.
+
+The audit keeps a file of its own because it wants both halves at once. Its list of finished rounds only ever grows, but a round still in flight is rewritten as each review agent lands, from several threads at a time — and putting a rewrite of the run's identity behind every one of those writes is a lost update waiting to happen.
+
+**Where it lives:** clerk: LOGGED · clerk_repo.py: ledger_log · clerk_ledger.py: events, guidelines_read, task_signals, gear, learn_written, fixup_ambiguities · method/clerk-step.md, section "The event log"
+
+**When you would change it:** A fact a clerk command already produces should be derived, not asserted — add a reader beside `guidelines_read` rather than a `--done` handler. Assert only what no command can see. Adding a command to `LOGGED` costs one set entry; taking one out silently strands every reader that folds it.
 
 ## Files, and which imports which
 
-One Python dispatcher runs `clerk-<name>` executables, the way git runs `git-<name>`. Every call between commands is an import: the repo's facts, the sidecar, the checks, the landing and the step table are modules beside the executables, imported by path so they work stowed or not. The only subprocesses left are git, the harness, and a command another command deliberately runs as a program — `clerk-lint` from finish, the executables from the dispatcher — so nothing calls back up the stack.
+One dispatcher, an executable per command, and a set of modules beside them. Where a command needs what another one knows, it imports it rather than running it: the repo's facts, the sidecar, the checks, the landing and the step table are all modules, imported by path so they work whether the tree is stowed or not.
+
+That leaves git, the harness, and the few places a command deliberately runs another as a program — `clerk-lint` from `finish`, the executables from the dispatcher. Nothing calls back up the stack, so a failure is one stack trace rather than a reply parsed back out of another command's stdout.
 
 ```mermaid
 flowchart LR
@@ -181,7 +277,11 @@ flowchart LR
 
 ## A command's round trip through the dispatcher
 
-Commands whose running is evidence are run rather than exec'd, so their exit is appended to the run's event log on the way out, and four of them get the next step computed in the dispatcher's own process and added to their reply. The ledger is resolved before the command runs, because `land --integrate` ends on a branch the run is no longer named by. A usage error, exit 2 everywhere, is not evidence and is not logged.
+`clerk` itself does almost nothing. It finds `clerk-<name>` and hands over, the way git finds `git-<name>`, so a new command is a new executable and nothing has to be told it exists.
+
+Two things make it more than a lookup. A command whose running is evidence has to leave a trace, so rather than becoming that command the dispatcher runs it and writes the line on the way out. And four commands close a step, so it works the next one out in its own process and adds it to the reply. Everything else it simply becomes, which costs nothing.
+
+The ledger is resolved before the command runs rather than after, because `land --integrate` finishes on a branch the run is no longer named by. A usage error — exit 2 in every command — is never logged: a mistyped invocation is not evidence of anything.
 
 ```mermaid
 flowchart TD
@@ -208,7 +308,7 @@ flowchart TD
 
 ## The audit is a second machine of the same shape
 
-`clerk audit next` hands out one phase's batch of agent jobs with every prompt resolved; `record` takes the replies and advances. `clerk audit run` walks that loop in-process and spawns a headless harness only where a judgment is wanted. Each landed reply is written to the live round as it arrives, so a killed round resumes with only the rest.
+The audit reviews the finished branch with agents rather than rules. A *lens* is one of them: one angle — semantic, guidelines, concurrency, performance, tests — over one language. A *refuter* is given a single finding and asked to disprove it, so what reaches the report is what survived being argued with. `clerk audit next` hands out one phase's batch of those jobs with every prompt resolved; `record` takes the replies and advances. `clerk audit run` walks that loop in-process and spawns a headless harness only where a judgment is wanted. Each landed reply is written to the live round as it arrives, so a killed round resumes with only the rest.
 
 ```mermaid
 stateDiagram-v2
@@ -238,7 +338,7 @@ stateDiagram-v2
 
 ## Where the words the model reads come from
 
-The skill file the harness loads is generated, and holds only what is true before any step runs. Each step's method is its own file, rendered for the harness at the moment the step is reached. Both readings go through one resolver, so a seam that renders in the skill renders the same way in the reply.
+Everything the model reads is generated from sources under `method/`. The skill file the *harness* — the tool running the model, Claude Code or opencode — loads at the start holds only what is true before any step runs. Each step's method is its own file, rendered at the moment the step is reached. Both readings go through one resolver, so a *seam* — a piece of prose that differs by harness, kept apart so the shared text stays one copy — renders the same way in the skill and in the reply.
 
 ```mermaid
 flowchart LR

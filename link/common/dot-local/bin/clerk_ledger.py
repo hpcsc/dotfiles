@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from clerk_lib import die, emit, git, gitout
-from clerk_repo import ledger_read, prepare
+from clerk_repo import ledger_read, prepare, run_section
 
 CALLERS = ("ui", "inbound", "outbound", "async", "exported")
 
@@ -66,6 +66,18 @@ class Run:
     def read(self, name, default=None):
         return ledger_read(self.dir / name, default)
 
+    def section(self, name, default=None):
+        return run_section(self.dir, name, default)
+
+    def put(self, **fields):
+        """Keys into run.json, the rest of the file untouched — the run's whole record
+        lives there. audit.json stays its own file: a live round is written from the
+        runner's worker threads as each agent lands, and folding it in would put a
+        whole-file rewrite of the run's identity behind every one of those writes."""
+        meta = self.read("run.json", {})
+        meta.update(fields)
+        self.write("run.json", meta)
+
     def write(self, name, obj):
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = self.dir / f"{name}.tmp"
@@ -87,12 +99,12 @@ class Run:
 
     @property
     def done(self):
-        return self.read("done.json", {})
+        return self.section("done", {})
 
     def mark(self, key, record):
-        d = self.done
+        d = dict(self.done)
         d[key] = record
-        self.write("done.json", d)
+        self.put(done=d)
 
 
 def runs_root(common):
@@ -100,7 +112,7 @@ def runs_root(common):
 
 
 def run_summary(run, cwd):
-    bd = run.read("breakdown.json")
+    bd = run.section("breakdown")
     progress = None
     side_path = Path(bd["sidecar"]) if bd else None
     if side_path and not side_path.exists():

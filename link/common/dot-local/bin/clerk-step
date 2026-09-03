@@ -77,10 +77,10 @@ def done_decompose(ctx, argv):
     if findings:
         emit({"bound": False, "reason": "lint certainty-unevidenced reports findings — correct the assessment, do not delete the reference",
               "findings": findings}, 1)
-    prev = ctx.run.read("breakdown.json") or {}
+    prev = ctx.run.section("breakdown") or {}
     approved = bool(o["--approved"]) or bool(prev.get("approved"))
-    ctx.run.write("breakdown.json", {"tasks_file": str(tf), "sidecar": str(side), "approved": approved,
-                                     "lint_hash": file_hash(side), "at": now()})
+    ctx.run.put(breakdown={"tasks_file": str(tf), "sidecar": str(side), "approved": approved,
+                           "lint_hash": file_hash(side), "at": now()})
     st = status_of(str(tf), str(side), False)
     return {"bound": True, "tasks_file": str(tf), "approved": approved,
             "plan": st.get("progress"), "gears": st.get("gears")}
@@ -98,7 +98,7 @@ def done_pause(ctx, argv):
 
 def done_match_request(ctx, argv):
     o, _ = parse(argv, {"--mismatch": "list", "--resolved": "bool"})
-    rec = ctx.run.read("match-request.json") or {}
+    rec = ctx.run.section("match_request") or {}
     if o["--resolved"]:
         if rec.get("code_tree") != ctx.head_ct:
             die("nothing to resolve: nothing is recorded at this code tree", 1)
@@ -106,7 +106,7 @@ def done_match_request(ctx, argv):
         rec["resolved_at"] = now()
     else:
         rec = {"code_tree": ctx.head_ct, "at": now(), "mismatches": o["--mismatch"], "resolved": False}
-    ctx.run.write("match-request.json", rec)
+    ctx.run.put(match_request=rec)
     return {"done": "match-request", "mismatches": rec["mismatches"], "resolved": rec["resolved"]}
 
 

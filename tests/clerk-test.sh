@@ -2264,9 +2264,10 @@ eq "which is a missing flag, not judgment, so it never reaches the residue" "0" 
    "$(run "$R33" verify | jq -r '[.not_checked[]? | select(test("no single breakdown"))] | length')"
 
 R33RUNS="$(git -C "$R33" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/alpha"
+R33META='{"slug":"alpha","request":"x","started_at":"2026-01-01T00:00:00Z","finished":false}'
 mkdir -p "$R33RUNS"
-printf '{"slug":"alpha","request":"x","started_at":"2026-01-01T00:00:00Z","finished":false}\n' > "$R33RUNS/run.json"
-printf '{"tasks_file":"%s","sidecar":"%s"}\n' "$R33/tasks/alpha.md" "$R33/tasks/alpha.json" > "$R33RUNS/breakdown.json"
+printf '%s\n' "$R33META" | jq --arg t "$R33/tasks/alpha.md" --arg s "$R33/tasks/alpha.json" \
+   '.breakdown = {tasks_file: $t, sidecar: $s}' > "$R33RUNS/run.json"
 
 eq "with the run's ledger, the bound breakdown resolves it" "alpha.md" \
    "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
@@ -2274,6 +2275,13 @@ eq "and verify runs commit-boundary instead of hinting" "0" \
    "$(run "$R33" verify | jq -r '[.hints[]? | select(test("no single breakdown"))] | length')"
 eq "an explicit --tasks-file still outranks the ledger" "beta.md" \
    "$(run "$R33" status --tasks-file tasks/beta.md | jq -r '.tasks_file | split("/") | last')"
+
+# A ledger written by an older clerk holds its breakdown in a file of its own. The fallback
+# that still reads it is what keeps a run already in flight working.
+printf '%s\n' "$R33META" > "$R33RUNS/run.json"
+printf '{"tasks_file":"%s","sidecar":"%s"}\n' "$R33/tasks/alpha.md" "$R33/tasks/alpha.json" > "$R33RUNS/breakdown.json"
+eq "a ledger written before the records merged still resolves its breakdown" "alpha.md" \
+   "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
 
 # An archived run's bound path no longer exists, so the ledger must not answer with it
 # and shadow the completed/ lookup its caller does.

@@ -90,13 +90,9 @@ flowchart LR
     tr["tasks/story/N.json<br/>files each task staged"]
   end
   subgraph R["&lt;git-common-dir&gt;/clerk/runs/slug/ — this run"]
-    rj["run.json<br/>request, harness, finished"]
+    rj["run.json<br/>request, harness, finished<br/>done · breakdown · match_request · land"]
     ev["events.jsonl<br/>every logged command"]
-    dn["done.json<br/>asserted steps"]
-    bj["breakdown.json"]
     aj["audit.json<br/>rounds, live round, acceptance"]
-    mr["match-request.json"]
-    lj["land.json"]
     sh["shown.json<br/>which step text this session saw"]
     pl["progress.log · runner.json"]
   end

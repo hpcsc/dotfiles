@@ -112,11 +112,11 @@ def windows(run):
     for e in ev:
         if e.get("cmd") == "finish" and e.get("exit") == 0 and e.get("argv") and e["_at"]:
             finishes[str(e["argv"][0])] = e["_at"]
-    breakdown = run.read("breakdown.json") or {}
-    done = run.read("done.json") or {}
+    breakdown = run.section("breakdown") or {}
+    done = run.done or {}
     aud = run.read("audit.json") or {}
-    match = run.read("match-request.json") or {}
-    land = run.read("land.json") or {}
+    match = run.section("match_request") or {}
+    land = run.section("land") or {}
 
     build_end = max(finishes.values()) if finishes else None
     suite_end = first("receipt", after=build_end) if build_end else None

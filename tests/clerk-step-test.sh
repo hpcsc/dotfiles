@@ -155,7 +155,7 @@ eq "--done decompose returns the first task under next — here pausing for its 
 eq "a clean sidecar binds" "true|2" "$(printf '%s' "$B" | jq -r '[(.bound|tostring), (.plan|length|tostring)] | join("|")')"
 eq "and the reply is the plan table, certainty and blast radius included" "1:low/low 2:high/high" \
    "$(printf '%s' "$B" | jq -r '[.plan[] | "\(.n):\(.certainty)/\(.blast_radius)"] | join(" ")')"
-eq "the bound path is absolute" "$WT/tasks/w1.md" "$(jq -r .tasks_file "$R/.git/clerk/runs/w1/breakdown.json")"
+eq "the bound path is absolute" "$WT/tasks/w1.md" "$(jq -r .breakdown.tasks_file "$R/.git/clerk/runs/w1/run.json")"
 eq "--status shows decompose done" "true" "$(run "$WT" step --status | jq -r '.rows[] | select(.step == "decompose") | .done')"
 
 # The lint is re-run when the sidecar changes under the binding.
@@ -463,7 +463,7 @@ run "$WL" step --done verify-residue >/dev/null
 eq "the worktree run reaches land" "land" "$(run "$WL" step | field .step)"
 eq "land --integrate inside a worktree stops before the fast-forward" "3" "$(rc "$WL" land --audit-accepted --integrate)"
 eq "its stamp records that integration was asked for, by the request" "true|false|request" \
-   "$(jq -r '[(.integrate|tostring), (.landed|tostring), .integrate_source] | join("|")' "$RL/.git/clerk/runs/lz/land.json")"
+   "$(jq -r '.land | [(.integrate|tostring), (.landed|tostring), .integrate_source] | join("|")' "$RL/.git/clerk/runs/lz/run.json")"
 eq "and step reads the stamp — no config says integrate — and says to finish from the main checkout" "leave|true" \
    "$(run "$WL" step | jq -r '[.action, (.done_by | contains("leave the worktree") | tostring)] | join("|")')"
 L=$(run "$RL" step)
@@ -549,7 +549,7 @@ LJ=$(run "$RJ" land --audit-accepted)
 eq "land --integrate in place fast-forwards and deletes the branch" "true|ij" \
    "$(printf '%s' "$LJ" | jq -r '[(.landed|tostring), .deleted_branch] | join("|")')"
 eq "and the stamp says so, with where integration was decided" "true|true|tasks/clerk.json|true" \
-   "$(jq -r '[(.landed|tostring), (.integrate|tostring), .integrate_source, (.deleted_branch|tostring)] | join("|")' "$RJ/.git/clerk/runs/ij/land.json")"
+   "$(jq -r '.land | [(.landed|tostring), (.integrate|tostring), .integrate_source, (.deleted_branch|tostring)] | join("|")' "$RJ/.git/clerk/runs/ij/run.json")"
 eq "the land event is logged to the run although it ended on main" "land|0" \
    "$(tail -1 "$RJ/.git/clerk/runs/ij/events.jsonl" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
 eq "and step, from main, moves the run to learn" "learn" "$(run "$RJ" step | field .step)"

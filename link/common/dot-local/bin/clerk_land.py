@@ -14,9 +14,18 @@ import shutil
 from pathlib import Path
 
 from clerk_lib import die, emit, git, gitout
+from clerk_ledger import Run
 from clerk_repo import (breakdown_for, common_dir, current_branch, default_branch, env_get, head_sha,
-                        is_ignored, ledger_dir, ledger_put, now, receipt_state, repo_root, resolve_flag,
+                        is_ignored, ledger_dir, now, receipt_state, repo_root, resolve_flag,
                         run_records_dir, sidecar_for, state_dir, tasks_home, tasks_hint, work_tree)
+
+
+def stamp_land(record):
+    """The run's land record, when this call belongs to one. `clerk land` also archives a
+    breakdown outside any run, and then there is no ledger to write to."""
+    ldir = ledger_dir()
+    if ldir:
+        Run(ldir).put(land=record)
 
 
 # --------------------------------------------------------------------------------
@@ -265,9 +274,8 @@ def land(integrate=None, audit=False, name=None, tasks_override=None, check=Fals
         # The records stop meaning anything once the breakdown has left tasks/.
         shutil.rmtree(run_records_dir(state, tasks), ignore_errors=True)
 
-    ldir = ledger_dir()
-    ledger_put(ldir, "land.json", {"archived": archived, "integrate": bool(integrate),
-                                   "integrate_source": integrate_src, "landed": False, "at": now()})
+    stamp_land({"archived": archived, "integrate": bool(integrate),
+                "integrate_source": integrate_src, "landed": False, "at": now()})
 
     if not integrate:
         emit({"landed": False, "archived": archived, "branch": branch, "default_branch": default,
@@ -318,8 +326,8 @@ def land(integrate=None, audit=False, name=None, tasks_override=None, check=Fals
             elif line == f"branch refs/heads/{branch}":
                 holder = p
                 break
-    ledger_put(ldir, "land.json", {"archived": archived, "integrate": True, "integrate_source": integrate_src,
-                                   "landed": True, "deleted_branch": deleted, "at": now()})
+    stamp_land({"archived": archived, "integrate": True, "integrate_source": integrate_src,
+                "landed": True, "deleted_branch": deleted, "at": now()})
     if deleted:
         left = None
     elif holder:

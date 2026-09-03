@@ -153,6 +153,20 @@ def ledger_read(path, default=None):
         die(f"ledger file {p} is not valid JSON — report this and stop; do not repair it by hand")
 
 
+def run_section(directory, name, default=None):
+    """One of the run's records — its breakdown, its asserted steps, its match-request,
+    its land stamp — read out of run.json, where they all live. Ledgers written by an
+    older clerk hold each in a <name>.json beside it, so a key run.json does not have
+    falls back to that file; drop the fallback once no such ledger is open."""
+    if not directory:
+        return default
+    meta = ledger_read(Path(directory) / "run.json")
+    if isinstance(meta, dict) and name in meta:
+        return meta[name]
+    legacy = ledger_read(Path(directory) / f"{name.replace('_', '-')}.json")
+    return default if legacy is None else legacy
+
+
 def ledger_log(directory, cmd, rc, argv, cwd=None):
     """Appends one event. Never fails the command it records: a logging error must not
     turn a finished task into a failed one."""
@@ -162,18 +176,6 @@ def ledger_log(directory, cmd, rc, argv, cwd=None):
         with (Path(directory) / "events.jsonl").open("a") as fh:
             fh.write(json.dumps({"cmd": cmd, "argv": list(argv), "exit": int(rc), "at": now(),
                                  "head": head_sha(cwd) or ""}) + "\n")
-    except OSError:
-        pass
-
-
-def ledger_put(directory, name, obj):
-    """One stamp file, whole or not at all."""
-    if not directory or not Path(directory).is_dir():
-        return
-    try:
-        tmp = Path(directory) / f"{name}.tmp"
-        tmp.write_text(json.dumps(obj) + "\n")
-        tmp.replace(Path(directory) / name)
     except OSError:
         pass
 
@@ -463,7 +465,7 @@ def ledger_breakdown(cwd=None):
     d = ledger_dir(cwd)
     if not d:
         return None
-    bd = ledger_read(Path(d) / "breakdown.json")
+    bd = run_section(d, "breakdown")
     tf = (bd or {}).get("tasks_file") if isinstance(bd, dict) else None
     return tf if tf and Path(tf).is_file() else None
 

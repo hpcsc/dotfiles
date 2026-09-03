@@ -114,7 +114,7 @@ def row(step_id, done, **fields):
 def breakdown_files(ctx):
     """(tasks_file, sidecar, archived) for the bound breakdown. `clerk land` moves both
     into tasks/completed/, and a run that has landed still reads them from there."""
-    bd = ctx.run.read("breakdown.json")
+    bd = ctx.run.section("breakdown")
     if not bd:
         return None, None, False
     tf, side = Path(bd["tasks_file"]), Path(bd["sidecar"])
@@ -128,7 +128,7 @@ def breakdown_files(ctx):
 
 
 def sidecar_tasks(ctx):
-    bd = ctx.run.read("breakdown.json")
+    bd = ctx.run.section("breakdown")
     if not bd:
         return None, None
     _, side, _ = breakdown_files(ctx)
@@ -166,7 +166,7 @@ def run_branch(ctx):
 def landed_elsewhere(ctx):
     """True when the run has left its branch for a reason the table accepts: the branch
     was merged or deleted, or its worktree holds the archive record."""
-    if not ctx.run.read("breakdown.json"):
+    if not ctx.run.section("breakdown"):
         return False
     b = run_branch(ctx)
     if not b["exists"] or b["merged"]:
@@ -217,7 +217,7 @@ def file_hash(path):
 
 
 def row_decompose(ctx):
-    bd = ctx.run.read("breakdown.json")
+    bd = ctx.run.section("breakdown")
     resume = ctx.prepare.get("resume")
     if not bd:
         return row("decompose", False,
@@ -326,7 +326,7 @@ def row_audit(ctx):
 
 
 def row_match_request(ctx):
-    rec = ctx.run.read("match-request.json")
+    rec = ctx.run.section("match_request")
     base = ctx.prepare.get("base")
     log = gitout("log", "--oneline", f"{base}..HEAD", cwd=ctx.cwd) if base else gitout("log", "--oneline", "-20", cwd=ctx.cwd)
     fields = dict(request=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=VALIDATE_QUESTIONS)
@@ -400,9 +400,9 @@ def row_verify_run(ctx):
 
 def row_land(ctx):
     slug = ctx.run.slug
-    stamp = ctx.run.read("land.json")
+    stamp = ctx.run.section("land")
     if stamp and stamp.get("landed"):
-        return row("land", True, archived=True, integrated=True, source="land.json")
+        return row("land", True, archived=True, integrated=True, source="the run's land record")
     if ctx.branch == slug:
         archived = bool(stamp) or (Path(ctx.git_dir) / "clerk" / "archived.json").exists()
         if not archived:
@@ -488,10 +488,7 @@ def next_step(ctx):
     `finished`, stamped the first time the table is walked to its end."""
     r = evaluate(ctx)
     if r["step"] == "finished" and not ctx.run.finished and not ctx.read_only:
-        meta = ctx.run.meta
-        meta["finished"] = True
-        meta["finished_at"] = now()
-        ctx.run.write("run.json", meta)
+        ctx.run.put(finished=True, finished_at=now())
     if r["step"] == "finished":
         r["stats"] = run_stats_text(ctx)
     return present(ctx, r)

@@ -412,9 +412,9 @@ flowchart LR
   end
   subgraph GC["&lt;git-common-dir&gt;/clerk/runs/&lt;slug&gt;/ · per run"]
     direction TB
-    L1["run.json · the request, verbatim"]
+    L1["run.json · the request verbatim, and the run's<br/>records: done · breakdown · match_request · land"]
     L2["events.jsonl · every logged clerk command"]
-    L3["done.json · breakdown.json · audit.json<br/>match-request.json · land.json"]
+    L3["audit.json · rounds, live round, acceptance"]
   end
   W1["decompose-to-tasks · clerk finish · the model's ticks"] --> REPO
   W2["clerk receipt · clerk land · clerk finish"] --> GD

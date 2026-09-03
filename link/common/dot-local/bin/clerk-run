@@ -283,19 +283,16 @@ def do_isolate(st, row):
         st.cwd = row["path"]
         st.out.note(f"  · entered {row['path']}")
         return True
-    if action == "worktree":
-        out, err = clerk_json("worktree", st.slug, cwd=st.cwd)
+    if action in ("worktree", "branch", "switch"):
+        out, err = clerk_json("isolate", st.slug, cwd=st.cwd)
         if err or not out:
-            return f"`clerk worktree {st.slug}` failed: {err}"
-        os.chdir(out["path"])
-        st.cwd = out["path"]
-        st.out.note(f"  · {'adopted' if out.get('adopted') else 'created'} {out['path']}")
-        return True
-    if action in ("branch", "switch"):
-        out, err = clerk_json("branch", st.slug, cwd=st.cwd)
-        if err:
-            return f"`clerk branch {st.slug}` failed: {err}"
-        st.out.note(f"  · on branch {(out or {}).get('branch', st.slug)}")
+            return f"`clerk isolate {st.slug}` failed: {err}"
+        if out.get("mode") == "worktree":
+            os.chdir(out["path"])
+            st.cwd = out["path"]
+            st.out.note(f"  · {'adopted' if out.get('adopted') else 'created'} {out['path']}")
+        else:
+            st.out.note(f"  · on branch {out.get('branch', st.slug)}")
         return True
     return f"the isolate row asked for '{action}', which the runner does not know how to do"
 

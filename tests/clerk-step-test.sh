@@ -106,8 +106,8 @@ printf '\nisolate — the run gets a branch of its own, and step follows it ther
 
 I=$(run "$R" step)
 eq "with in_place off the action is a worktree, named with the slug" "worktree|true" \
-   "$(printf '%s' "$I" | jq -r '[.action, (.done_by | contains("clerk worktree w1") | tostring)] | join("|")')"
-WT=$(run "$R" worktree w1 | field .path)
+   "$(printf '%s' "$I" | jq -r '[.action, (.done_by | contains("clerk isolate w1") | tostring)] | join("|")')"
+WT=$(run "$R" isolate w1 --worktree | field .path)
 I=$(run "$R" step)
 eq "once the worktree exists, step from the main checkout says enter it" "enter|$WT" \
    "$(printf '%s' "$I" | jq -r '[.action, .path] | join("|")')"
@@ -131,7 +131,7 @@ mkdir -p "$RI/tasks" && printf '{"in_place": true}\n' > "$RI/tasks/clerk.json" &
 run "$RI" step --start ip --request "In place" >/dev/null
 run "$RI" step --done ground --caller inbound >/dev/null
 eq "with in_place on the action is a branch" "branch" "$(run "$RI" step | field .action)"
-run "$RI" branch ip >/dev/null
+run "$RI" isolate ip --in-place >/dev/null
 eq "on that branch isolate is done in place" "true|in-place|false" \
    "$(run "$RI" step --status | jq -r '.rows[] | select(.step == "isolate") | [(.done|tostring), .mode, (.fallback|tostring)] | join("|")')"
 
@@ -167,7 +167,7 @@ commit_all "$WT" "Breakdown"
 
 RP=$(new_repo)
 mkdir -p "$RP/tasks" && printf '{"review_breakdown": true, "in_place": true}\n' > "$RP/tasks/clerk.json" && commit_all "$RP" "Config"
-run "$RP" step --start rp --request "Reviewed" >/dev/null; run "$RP" step --done ground --caller ui >/dev/null; run "$RP" branch rp >/dev/null
+run "$RP" step --start rp --request "Reviewed" >/dev/null; run "$RP" step --done ground --caller ui >/dev/null; run "$RP" isolate rp --in-place >/dev/null
 seed "$RP" rp
 run "$RP" step --done decompose --tasks-file tasks/rp.md >/dev/null
 eq "with review_breakdown on the breakdown is a pause: bound but not approved" "decompose|true" \
@@ -451,7 +451,7 @@ run "$WT" step --rm w1 >/dev/null
 # Integration from a worktree finishes in the main checkout, and step follows.
 RL=$(new_repo)
 run "$RL" step --start lz --request "Land it" >/dev/null; run "$RL" step --done ground --caller ui >/dev/null
-WL=$(run "$RL" worktree lz | field .path)
+WL=$(run "$RL" isolate lz --worktree | field .path)
 seed "$WL" lz; run "$WL" step --done decompose --tasks-file tasks/lz.md >/dev/null; commit_all "$WL" "Breakdown"
 build_tasks "$WL"
 run "$WL" receipt --command true --passed >/dev/null
@@ -522,8 +522,8 @@ eq "an exit other than 0 is recorded as it happened" "land|1" \
 eq "a usage error dies before the log and is not evidence" "land|1" \
    "$(run "$RE" finish 9 -- nope >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
 eq "reads are not logged" "3" "$(run "$RE" prepare >/dev/null; run "$RE" status >/dev/null 2>&1; run "$RE" step >/dev/null; wc -l < "$EV" | tr -d ' ')"
-WE=$(run "$RE" worktree ev | field .path)
-eq "worktree is logged against the run it isolates" "worktree|ev" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[0]] | join("|")')"
+WE=$(run "$RE" isolate ev --worktree | field .path)
+eq "isolate is logged against the run it isolates" "isolate|ev" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[0]] | join("|")')"
 run "$WE" receipt --command inner --passed >/dev/null
 eq "inside the worktree the branch names the ledger" "receipt|inner" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[1]] | join("|")')"
 run "$RE" step --start ev2 --request "Second" >/dev/null
@@ -535,7 +535,7 @@ eq "two open runs from the default branch: nothing is logged rather than the wro
 RJ=$(new_repo)
 mkdir -p "$RJ/tasks" && printf '{"in_place": true, "integrate": true}\n' > "$RJ/tasks/clerk.json" && commit_all "$RJ" "Config"
 run "$RJ" step --start ij --request "In place, integrated" >/dev/null; run "$RJ" step --done ground --caller ui >/dev/null
-run "$RJ" branch ij >/dev/null
+run "$RJ" isolate ij --in-place >/dev/null
 seed "$RJ" ij; run "$RJ" step --done decompose --tasks-file tasks/ij.md >/dev/null; commit_all "$RJ" "Breakdown"
 build_tasks "$RJ"
 run "$RJ" receipt --command true --passed >/dev/null
@@ -584,7 +584,7 @@ seed_chain() {  # repo slug n
 }
 RS=$(new_repo)
 mkdir -p "$RS/tasks" && printf '{"in_place": true, "gears": true}\n' > "$RS/tasks/clerk.json" && commit_all "$RS" "Config"
-run "$RS" step --start sg --request "Shifting" >/dev/null; run "$RS" step --done ground --caller ui >/dev/null; run "$RS" branch sg >/dev/null
+run "$RS" step --start sg --request "Shifting" >/dev/null; run "$RS" step --done ground --caller ui >/dev/null; run "$RS" isolate sg --in-place >/dev/null
 seed_chain "$RS" sg 5; run "$RS" step --done decompose --tasks-file tasks/sg.md >/dev/null; commit_all "$RS" "Breakdown"
 eq "an unassessed task in a gears run builds straight through, gear normal" "build|1|normal|false" \
    "$(run "$RS" step | jq -r '[.step, (.n|tostring), .gear, (.pause_after_tests|tostring)] | join("|")')"

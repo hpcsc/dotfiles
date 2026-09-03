@@ -173,12 +173,6 @@ eq "a tracked config switches it on"   "true" "$(run "$RG" prepare | jq -r '.fla
 eq "and the request still outranks it" "false" \
    "$(run "$RG" prepare --request 'x --no-gears' | jq -r '.flags.gears')"
 
-RI=$(new_repo)
-eq "init writes every flag key, not only the one named" "in_place integrate review_breakdown gears" \
-   "$(run "$RI" init --gears | jq -r '.flags | keys_unsorted | join(" ")')"
-eq "with the named one on and the rest off" "false false false true" \
-   "$(jq -r '[.in_place, .integrate, .review_breakdown, .gears] | join(" ")' "$RI/tasks/clerk.json")"
-
 # --------------------------------------------------------------------------------
 printf '\nlearnings path\n'
 
@@ -225,10 +219,10 @@ eq "resolves the main repo root separately"   "$(cd "$R3" && pwd -P)" "$(printf 
 eq "reports the worktree's own branch"        "feature" "$(printf '%s' "$J" | jq -r '.branch')"
 
 # --------------------------------------------------------------------------------
-printf '\nworktree creation\n'
+printf '\nisolate — a worktree\n'
 
 RW=$(new_repo)
-W=$(run "$RW" worktree add-widget)
+W=$(run "$RW" isolate add-widget --worktree)
 eq "lands under .worktrees, beside the git dir" "$RW/.worktrees/add-widget" \
    "$(printf '%s' "$W" | jq -r '.path')"
 eq "on a branch named for the feature" "add-widget" "$(printf '%s' "$W" | jq -r '.branch')"
@@ -243,7 +237,7 @@ eq "so the main checkout still reads clean" "true" "$(run "$RW" prepare | jq -r 
 eq "and it goes in info/exclude, leaving no tracked file dirty" "1" \
    "$(grep -cxF '.worktrees/' "$RW/.git/info/exclude")"
 
-W2=$(run "$RW" worktree add-widget)
+W2=$(run "$RW" isolate add-widget --worktree)
 eq "a second call adopts rather than creating another" "true" \
    "$(printf '%s' "$W2" | jq -r '.adopted')"
 eq "and points at the one that already exists" "$RW/.worktrees/add-widget" \
@@ -255,7 +249,7 @@ eq "and the exclude line is not written twice" "1" \
 
 # A branch whose worktree was removed still carries the run's commits.
 git -C "$RW" worktree remove "$RW/.worktrees/add-widget"
-W3=$(run "$RW" worktree add-widget)
+W3=$(run "$RW" isolate add-widget --worktree)
 eq "an orphaned branch is checked out, not branched over" "false|true" \
    "$(printf '%s|%s' "$(printf '%s' "$W3" | jq -r '.created')" "$(printf '%s' "$W3" | jq -r '.adopted')")"
 
@@ -263,43 +257,43 @@ RW2=$(new_repo)
 git -C "$RW2" checkout -q -b other && printf 'x\n' > "$RW2/x.md" \
   && git -C "$RW2" add -A && git -C "$RW2" commit -qm "Other" && git -C "$RW2" checkout -q main
 eq "--base branches from the ref it is given" "true" \
-   "$(run "$RW2" worktree from-other --base other >/dev/null; \
+   "$(run "$RW2" isolate from-other --worktree --base other >/dev/null; \
       git -C "$RW2/.worktrees/from-other" log --oneline -1 --format=%s | grep -qx Other && echo true || echo false)"
 
 eq "a name git would refuse is refused here, with a name in the message" "2" \
-   "$(run "$RW2" worktree 'bad name' >/dev/null 2>&1; printf '%s' $?)"
-eq "and so is no name at all" "2" "$(run "$RW2" worktree >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RW2" isolate 'bad name' --worktree >/dev/null 2>&1; printf '%s' $?)"
+eq "and so is no name at all" "2" "$(run "$RW2" isolate --worktree >/dev/null 2>&1; printf '%s' $?)"
 eq "a branch checked out in the main tree cannot be worktreed over" "2" \
-   "$(run "$RW2" worktree main >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RW2" isolate main --worktree >/dev/null 2>&1; printf '%s' $?)"
 
 # --------------------------------------------------------------------------------
-printf '\nbranch — the in-place counterpart of a worktree\n'
+printf '\nisolate — in place, a branch\n'
 
 # With in_place on there is no worktree, and the method's "create a feature branch if you
 # are on the default branch" reads as optional. Skipped once, it put nine commits and two
 # audit rounds straight onto main with nothing reviewable to hand over.
 RB=$(new_repo)
-B=$(run "$RB" branch add-widget)
+B=$(run "$RB" isolate add-widget --in-place)
 eq "branches off the default branch" "add-widget|true|true" \
    "$(printf '%s' "$B" | jq -r '[.branch, (.created|tostring), (.switched|tostring)] | join("|")')"
 eq "and the work lands there, not on main" "add-widget" \
    "$(git -C "$RB" rev-parse --abbrev-ref HEAD)"
 
 eq "called again it is a no-op, not a second branch" "false|false" \
-   "$(run "$RB" branch add-widget | jq -r '[(.created|tostring), (.switched|tostring)] | join("|")')"
+   "$(run "$RB" isolate add-widget --in-place | jq -r '[(.created|tostring), (.switched|tostring)] | join("|")')"
 eq "and says why it did nothing" "1" \
-   "$(run "$RB" branch add-widget | grep -c 'already off the default branch')"
+   "$(run "$RB" isolate add-widget --in-place | grep -c 'already off the default branch')"
 
 # A run resumed from the default branch finds its own commits rather than starting over.
 git -C "$RB" checkout -q main
 eq "an existing branch is switched to, not branched over" "false|true" \
-   "$(run "$RB" branch add-widget | jq -r '[(.created|tostring), (.switched|tostring)] | join("|")')"
+   "$(run "$RB" isolate add-widget --in-place | jq -r '[(.created|tostring), (.switched|tostring)] | join("|")')"
 eq "leaving one branch, not two" "1" \
    "$(git -C "$RB" branch --list 'add-widget*' | wc -l | tr -d ' ')"
 
 eq "a name git would refuse is refused here" "2" \
-   "$(run "$RB" branch 'bad name' >/dev/null 2>&1; printf '%s' $?)"
-eq "and so is no name at all" "2" "$(run "$RB" branch >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RB" isolate 'bad name' --in-place >/dev/null 2>&1; printf '%s' $?)"
+eq "and so is no name at all" "2" "$(run "$RB" isolate --in-place >/dev/null 2>&1; printf '%s' $?)"
 
 # --------------------------------------------------------------------------------
 printf '\ncommit skill\n'
@@ -531,7 +525,7 @@ EOF
 printf '{"tasks":[{"n":1,"title":"Done","depends_on":[],"done":true},{"n":2,"title":"Not done","depends_on":[],"done":false}]}\n' > "$R4/tasks/story.json"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Add tasks"
 
-G=$(run "$R4" gate); RC=$?
+G=$(run "$R4" land --check); RC=$?
 eq "gate refuses while a task is open" "false" "$(printf '%s' "$G" | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
 eq "gate exits non-zero when not ok"        "1"     "$RC"
 eq "no receipt recorded is reported as such" "false" "$(printf '%s' "$G" | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
@@ -539,36 +533,36 @@ eq "no receipt recorded is reported as such" "false" "$(printf '%s' "$G" | jq -r
 jq '.tasks |= map(.done = true)' "$R4/tasks/story.json" > "$R4/tasks/t" && mv -f "$R4/tasks/t" "$R4/tasks/story.json"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Finish task 2"
 eq "gate accepts a fully done breakdown" "true" \
-   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
+   "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
 
 run "$R4" receipt --command "task test" --passed >/dev/null
 eq "a receipt at HEAD is fresh" "true" \
-   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
+   "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
 printf 'a fix applied after the suite ran\n' >> "$R4/README.md"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Apply an audit fix"
 eq "a receipt from before a later commit is stale" "false" \
-   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
-case "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .detail')" in
+   "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
+case "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .detail')" in
   *"the tree changed after the suite ran"*) ok "and says why, in the terms that matter" ;;
-  *) bad "and says why" "mentions the tree changing" "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .detail')" ;;
+  *) bad "and says why" "mentions the tree changing" "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .detail')" ;;
 esac
 
 run "$R4" receipt --command "task test" --passed >/dev/null
 eq "re-running the suite clears it" "true" \
-   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
+   "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
 # The Theory section and the archive land as tasks/-only commits after the last green.
 printf '\n## Theory\n\nOne abstraction.\n' >> "$R4/tasks/story.md"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Write the theory"
 eq "a commit that touches only the plan files keeps the receipt fresh" "true" \
-   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
+   "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 eq "and verify does not call it vacuous either" "0" \
    "$(run "$R4" verify | jq -r '[.findings[] | select(.check == "vacuous-receipt")] | length')"
 printf 'package p\n' > "$R4/tasks/code.go"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Code under a directory called tasks"
 eq "code under tasks/ still counts as code" "false" \
-   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
+   "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 run "$R4" receipt --command "task test" --passed >/dev/null
 eq "prepare reports the code tree the gate compares by" "40" \
    "$(run "$R4" prepare | jq -r '.code_tree | length')"
@@ -583,19 +577,19 @@ L=$(run "$R4" land --audit-accepted); RC=$?
 eq "with a run ledger, land defers to clerk step and refuses while the run is elsewhere" "false|ground" \
    "$(printf '%s' "$L" | jq -r '[(.landed|tostring), .step] | join("|")')"
 eq "and exits non-zero"                                                                 "1" "$RC"
-eq "the gate itself no longer reads the ledger"                                         "4" \
-   "$(run "$R4" gate | jq -r '.checks | length')"
 rm -rf "$R4L"
+eq "without a ledger, land --check is the four predicates and nothing else"             "4" \
+   "$(run "$R4" land --check | jq -r '.checks | length')"
 
 printf 'loose\n' > "$R4/loose.txt"
 eq "an untracked file blocks the gate" "false" \
-   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="tree-clean") | .ok')"
+   "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="tree-clean") | .ok')"
 rm "$R4/loose.txt"
 
 eq "the audit predicate is never inferred" "false" \
-   "$(run "$R4" gate | jq -r '.checks[] | select(.name=="audit-accepted") | .ok')"
+   "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="audit-accepted") | .ok')"
 
-G=$(run "$R4" gate --audit-accepted); RC=$?
+G=$(run "$R4" land --check --audit-accepted); RC=$?
 eq "all four pass once the audit is asserted" "true" "$(printf '%s' "$G" | jq -r '.ok')"
 eq "and the gate exits zero"                  "0"    "$RC"
 
@@ -604,7 +598,7 @@ printf '\nreceipt guards\n'
 
 run "$R4" receipt --command "task test" --failed >/dev/null
 eq "a failed receipt does not satisfy the gate" "false" \
-   "$(run "$R4" gate --audit-accepted | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
+   "$(run "$R4" land --check --audit-accepted | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
 run "$R4" receipt >/dev/null 2>&1
 eq "receipt requires --command" "2" "$?"
@@ -957,7 +951,7 @@ eq "the main checkout's sidecar is untouched" "false" \
 git -C "$WT2" commit -qm "Task 1"
 run "$WT2" receipt --command "go test ./..." --passed >/dev/null
 eq "gate reads the worktree breakdown" "true" \
-   "$(run "$WT2" gate --audit-accepted | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
+   "$(run "$WT2" land --check --audit-accepted | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
 
 L=$(run "$WT2" land --audit-accepted)
 eq "land archives inside the worktree" "tasks/completed/wt.md" "$(printf '%s' "$L" | jq -r '.archived')"
@@ -1105,7 +1099,7 @@ printf 'more\n' >> "$R17/a.go"
 run "$R17" finish 2 -- a.go >/dev/null && git -C "$R17" commit -qm "Task 2"
 run "$R17" receipt --command "go test ./..." --passed >/dev/null
 eq "an unticked criterion does not shut the gate" "true" \
-   "$(run "$R17" gate --audit-accepted | jq -r '.ok')"
+   "$(run "$R17" land --check --audit-accepted | jq -r '.ok')"
 eq "though status still says so"                  "2" \
    "$(run "$R17" status | jq -r '.criteria.unticked')"
 

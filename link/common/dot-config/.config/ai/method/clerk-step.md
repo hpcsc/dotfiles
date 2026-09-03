@@ -104,9 +104,8 @@ Facts about one checkout stay in the git dir of that worktree, `<git-dir>/clerk/
 ### The event log
 
 Most evidence is a clerk command that ran. So clerk's dispatcher appends one line to the
-run's `events.jsonl` when one of these commands exits: `worktree`, `branch`, `finish`,
-`receipt`, `verify`, `land`, `init`, and the `guidelines`, `lint`, `fixup`, `learn` and
-`sidecar` plugins. The line holds the command, its argv, its exit code, the time and HEAD.
+run's `events.jsonl` when one of these commands exits: `isolate`, `finish`, `receipt`,
+`verify`, `land`, and the `guidelines`, `lint`, `fixup`, `learn` and `sidecar` plugins. The line holds the command, its argv, its exit code, the time and HEAD.
 Reads are not logged. A command with no run to log against logs nothing, which is every
 call outside a step-driven run.
 
@@ -169,7 +168,7 @@ refused until the model ran the suite again for a docs-only change. Both now com
 code tree, through one helper in clerk: `prepare` reports the tree at HEAD and whether
 the recorded receipt still describes it, and `clerk step` reads both from there rather
 than computing its own. The same goes for the run a call belongs to and the task that is
-ready: `prepare` names the run, `clerk next` names the task, and step applies the answer.
+ready: `prepare` names the run, `clerk status` names the task, and step applies the answer.
 
 ## The step table
 
@@ -185,7 +184,7 @@ category as well made a caller learn two words to reach the same line of the rep
 |---|---|---|---|---|
 | 0 | `start` | `run.json` exists | `clerk step --start <slug> --request "…"`. Refuses when an unfinished ledger exists for the slug | input |
 | 1 | `ground` | a `guidelines --caller <pattern>` run exited 0, or `--done ground --caller` for a repo with no guidelines directory. `prepare.clean` is true, else **blocked** | the event log. The output of `step` includes the `prepare` JSON as `facts`, so there is no prepare step to skip | derived |
-| 2 | `isolate` | the current branch is the slug. `mode` says worktree or in-place; `fallback` says in-place without `in_place` on | `clerk worktree <slug>` or `clerk branch <slug>`. From the main checkout, `step` prints "enter `<path>`" until the cwd is the worktree | derived |
+| 2 | `isolate` | the current branch is the slug. `mode` says worktree or in-place; `fallback` says in-place without `in_place` on | `clerk isolate <slug>`. From the main checkout, `step` prints "enter `<path>`" until the cwd is the worktree | derived |
 | 3 | `decompose` | `breakdown.json` is bound, the sidecar exists, `lint certainty-unevidenced` is clean at the sidecar's present hash, and `approved` is set when `review_breakdown` is on | `clerk step --done decompose --tasks-file <md> [--approved]`. It runs the lint itself and refuses on findings. On success it prints the task table. An archived breakdown reads from `tasks/completed/` | asserted for the bind, derived for the lint |
 | 4 | `build N` (repeats) | `done` for N in the sidecar, and the tree is clean | `clerk finish N [--retried] -- <files>` lints the staged set before it sets `done` and refuses with exit 1 on findings. The commit makes the tree clean. The output carries `certainty`, `blast_radius`, `gear`, `pause_after_tests`, the last task's signals, and progress | derived |
 | 4a | `pause N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done pause N`. `step` prints `stop: true` before it | asserted, a pause |

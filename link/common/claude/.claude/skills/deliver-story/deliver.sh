@@ -245,7 +245,7 @@ while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
         say "skip: $id is being worked on at $where — the plan still says pending, clerk is right"
         continue
       fi
-      # Resuming is safe because the run reads its own sidecar: `clerk next` hands back the
+      # Resuming is safe because the run reads its own sidecar: `clerk status` hands back the
       # first unblocked task that is not already done, so the same prompt continues from
       # where it stopped instead of rebuilding what landed. A tree left dirty mid-task
       # stops it again on arrival, which is the report you want rather than a run that

@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""clerk isolate — give the run somewhere of its own: a worktree beside the git dir, or a
+feature branch in the main checkout when in_place is on.
+
+    clerk isolate <kebab-name> [--worktree|--in-place] [--base <ref>]
+
+Which of the two comes from the run's request and the repo's settings, the way `clerk
+prepare` resolves `in_place`; the flags here overrule that for one call. A worktree goes
+under .claude/worktrees/ when the harness is Claude Code, else .worktrees/, and that
+directory is added to info/exclude so it never reads as a dirty tree. An existing worktree
+or orphaned branch of the name is adopted rather than duplicated: a second tree for one
+feature is how the first one's commits get stranded. In place, the branch is created when
+standing on the default one, switched to when it exists, and left alone otherwise.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit, parse  # noqa: E402
+from clerk_land import isolate  # noqa: E402
+
+if __name__ == "__main__":
+    o, rest = parse(sys.argv[1:], {"--worktree": "bool", "--in-place": "bool", "--base": "value"})
+    if len(rest) > 1:
+        die(f"one name, not two ('{rest[0]}' and '{rest[1]}')")
+    if o["--worktree"] and o["--in-place"]:
+        die("--worktree and --in-place ask for different things; pass one")
+    mode = True if o["--in-place"] else (False if o["--worktree"] else None)
+    emit(isolate(rest[0] if rest else None, mode, o["--base"]))

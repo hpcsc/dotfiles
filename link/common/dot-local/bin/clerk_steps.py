@@ -193,14 +193,14 @@ def row_isolate(ctx):
                        done_by=f"enter {wt} (EnterWorktree with that path on Claude Code; cd elsewhere), then clerk step")
         return row("isolate", False, action="switch",
                    why_not_done=f"branch {slug} exists with no worktree; this run builds in place",
-                   done_by=f"clerk branch {slug} — it returns the step that follows as next")
+                   done_by=f"clerk isolate {slug} — it returns the step that follows as next")
     if ctx.flags.get("in_place"):
         return row("isolate", False, action="branch",
                    why_not_done="in_place is on and the run has no branch yet",
-                   done_by=f"clerk branch {slug} — it returns the step that follows as next")
+                   done_by=f"clerk isolate {slug} — it returns the step that follows as next")
     return row("isolate", False, action="worktree",
                why_not_done="the run has no worktree yet",
-               done_by=f"clerk worktree {slug}; enter the path it reports; then clerk step")
+               done_by=f"clerk isolate {slug}; enter the path it reports; then clerk step")
 
 
 def lint_sidecar(side_path, cwd):

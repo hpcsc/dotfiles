@@ -56,7 +56,7 @@ Two defects made the case concretely.
 
 Both are stated correctly in prose, and stating them is not enough. `clerk` makes them
 unrepresentable: `clerk prepare` resolves the tree with `git rev-parse --show-toplevel`,
-and `clerk gate` compares the code the recorded receipt describes to the code at `HEAD`.
+and `clerk land` compares the code the recorded receipt describes to the code at `HEAD`.
 
 The third defect was the skill itself: 535 lines of procedure whose order lived only in
 the model's reading of it. `clerk step` holds the order now, and the skill is one loop.
@@ -119,7 +119,7 @@ gate. A row names the command that supplies its evidence.
 flowchart TD
   START["start<br/>run.json holds the request verbatim"] --> GROUND
   GROUND["ground<br/>a clerk guidelines --caller run exited 0<br/>blocked while the tree is dirty"] --> ISOLATE
-  ISOLATE["isolate<br/>branch == slug<br/>clerk worktree · clerk branch"] --> PLAN
+  ISOLATE["isolate<br/>branch == slug<br/>clerk isolate"] --> PLAN
   PLAN["decompose<br/>breakdown bound · sidecar present · lint clean<br/>clerk step --done decompose --tasks-file"] --> TASK
   TASK{"task N<br/>first open task with its<br/>dependencies done"} -->|"gears on, and low certainty /<br/>high blast radius / downshifted"| TESTS
   TESTS["pause N · stop: true<br/>clerk step --done pause N"] --> BUILD
@@ -178,7 +178,7 @@ is an explicit command rather than something `next` does behind your back.
 
 `clerk step` returns the first task whose dependencies are all checked off, and keeps
 returning it until its commit leaves the tree clean — one task in flight at a time is
-what keeps a run resumable. (`clerk next` still answers the same question on its own.)
+what keeps a run resumable. (`clerk status` still answers the same question on its own, under `next`.)
 
 `clerk finish N -- <files>` stages exactly those paths, lints the staged set, and only
 then marks the task done in the sidecar and stages it alongside, so the progress record
@@ -264,8 +264,8 @@ middle rule the field dies quietly: every task varies its pattern somehow, so `m
 true of nearly everything and never wrong, and a breakdown assessed entirely `medium` is
 indistinguishable from one never assessed at all.
 
-They are always written and always reported — `clerk status` rolls them up, `clerk next`
-hands them to the run, the deliverable driver prints them on every launch line. The
+They are always written and always reported — `clerk status` rolls them up and hands
+them to the run, the deliverable driver prints them on every launch line. The
 `gears` flag decides only whether a run **acts** on them, and it is off by default, so a
 run with nothing configured behaves exactly as it always has.
 
@@ -327,17 +327,14 @@ with `--audit-accepted`. Without either, the gate stays shut.
 
 | Command | What it settles | Exit |
 |---|---|---|
-| `init [--force] [--in-place] [--integrate] [--review-breakdown] [--gears]` | Scaffolds `tasks/clerk.json`, every key written out so the file lists what it accepts | 0 · **2** if it exists without `--force` |
 | `prepare [--request <text>]` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, which commit skill to invoke, resolved run flags with their sources, every existing worktree and breakdown with its progress, and `resume` — the part-built run to rejoin, paired with its worktree. Given the request, it applies the flags and `--learnings-path` typed in it as the top layer | 0 |
 | `guidelines [--language <L>]... [--caller <p>] [--file FILE]... [--section FILE:HEADING]... [--only]` | The required reading for those languages as text: short files whole, long ones cut to the sections a run must have loaded, plus any file or section named outright; `--only` narrows it to exactly what was named, for an agent that wants its own guideline rather than its language's. A "Not loaded" report for anything a reorganised guideline no longer satisfies | 0 · **2** no guidelines dir |
-| `worktree <kebab-name> [--base <ref>]` | This run's worktree under `.worktrees/`, with `.worktrees/` written to `info/exclude` so it does not read as a dirty tree. Adopts an existing worktree or orphaned branch of that name; refuses the main checkout's own branch | 0 · **2** refused |
-| `branch <kebab-name>` | The in-place counterpart of `worktree`: a feature branch when standing on the default one, a switch when it already exists, a no-op otherwise | 0 · **2** refused |
-| `next` | The first task whose dependencies are done, from the JSON sidecar | 0 · **3** while a task is in flight |
+| `isolate <kebab-name> [--worktree\|--in-place] [--base <ref>]` | This run's worktree under `.worktrees/` (`.claude/worktrees/` under Claude Code), with that directory written to `info/exclude` so it does not read as a dirty tree — or, with `in_place` on, a feature branch in the main checkout. Adopts an existing worktree or orphaned branch of that name; refuses the main checkout's own branch | 0 · **2** refused |
 | `sidecar [--force]` | Recovers `tasks/<story>.json` from a breakdown that predates sidecars, seeding `done` from any old ticks | 0 · **2** if nothing parses |
-| `status [--all]` | Progress from the sidecar, plus acceptance criteria walked per task and each task's assessed certainty and blast radius rolled up as `gears`; `--all` walks every breakdown in the repo, in flight and archived | 0 |
-| `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it (`complete` is an accepted alias) | 0 · **2** refused |
+| `status [--all]` | Progress from the sidecar and, under `next`, the first task whose dependencies are done, plus acceptance criteria walked per task and each task's assessed certainty and blast radius rolled up as `gears`; `--all` walks every breakdown in the repo, in flight and archived | 0 |
+| `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
-| `gate` | Four landing predicates, each with its evidence | 0 open · **1** shut |
+| `land --check` | The four landing predicates, each with its evidence, without landing | 0 open · **1** shut |
 | `fixup [--onto <sha>] -- <files>` · `fixup --replay [--force]` | Marks a fix for the commit that introduced it, refusing when several commits in range touch the file or when the files' targets differ; then one autosquash replay, aborted and reverted on conflict, refused on a published range | 0 · **3** needs your judgment |
 | `learn --type <t> --title <s> --learning <s> --apply-when <s>` · `learn --list` | Appends the block to the learnings file resolved from the **repo root**, not the worktree the run is standing in; refuses an exact title collision, leaving dedup on substance to the caller | 0 · **3** title exists |
 | `lint [--staged] [--rule <r>]... [<paths>]` | The conventions a regex settles: a comment naming code by its plan position, scenario-named sibling tests, a method apart from its type — and, over a breakdown's sidecar, a certainty assessed `high` or `medium` with no precedent behind it | 0 clean · **1** findings |
@@ -369,14 +366,8 @@ repo as of the run — a repo whose build cannot work from a worktree wants `--i
 every time, and one whose work is mostly in a blast radius wants `--gears` — so each is
 also a setting. Two files, highest first:
 
-```console
-$ clerk init --in-place          # scaffolds the tracked file, in_place already on
-{"created": ".../tasks/clerk.json", "tracked": true,
- "flags": {"in_place": true, "integrate": false, "review_breakdown": false, "gears": false}, ...}
-```
-
 ```jsonc
-// tasks/clerk.json — tracked, a team decision. `clerk init` writes it.
+// tasks/clerk.json — tracked, a team decision. Written by hand; every key is optional.
 { "in_place": true, "integrate": false, "review_breakdown": false, "gears": false }
 
 // tasks/.environment — gitignored, machine-local. JSON, or key=value. Hand-written.

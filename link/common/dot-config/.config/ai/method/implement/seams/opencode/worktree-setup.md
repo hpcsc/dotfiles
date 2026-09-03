@@ -9,7 +9,7 @@ Then **work in a worktree**, unless `in_place` is on — from the request, or fr
 Otherwise create it and step into it:
 
 ```
-cd "$(clerk worktree <kebab-feature-name> | jq -r .path)"
+cd "$(clerk isolate <kebab-feature-name> | jq -r .path)"
 ```
 
 It puts the tree under `.worktrees/` beside the git dir, branches from HEAD (`--base <ref>` to branch from elsewhere), and adds `.worktrees/` to the repo's `info/exclude` so the directory it just made does not read as a dirty tree to the next `clerk prepare`. It reports whether it `created` the worktree or `adopted` one that was already there.
@@ -18,14 +18,8 @@ Once inside, `git` and file operations run against the worktree naturally — no
 
 **A repo that keeps `tasks/` out of history is not a reason to skip the worktree.** A fresh checkout only ever materialises tracked files, so an excluded breakdown will not be in the new worktree — but `clerk` resolves it at the main repo root in that case and every command finds it there. `prepare` says which regime you are in: `tasks_tracked` and `tasks_home`. Building in the main checkout to stay near the breakdown trades the isolation for nothing, and it is the isolation that keeps the audit's verifiers from writing probe files into a tree you are also running a suite in.
 
-**When the isolation cannot be had, fall back rather than improvise.** `clerk worktree` failing, or refusing because the branch is already checked out in the main tree, ends the same way: build `--in-place` on a feature branch, and say which you used, because it changes where the user finds the code. Switching the main checkout off that branch is the other way out of the second case — but do not create a second tree for one feature.
+**When the isolation cannot be had, fall back rather than improvise.** `clerk isolate` failing, or refusing because the branch is already checked out in the main tree, ends the same way: build `--in-place` on a feature branch, and say which you used, because it changes where the user finds the code. Switching the main checkout off that branch is the other way out of the second case — but do not create a second tree for one feature.
 
-With `in_place` on: no worktree, but still a branch.
-
-```
-clerk branch <kebab-feature-name>
-```
-
-It branches off the default branch when that is where you are standing, switches to the branch if it already exists, and does nothing when you are already off the default branch. **The flag turns off the worktree, not the branch** — skipped once, it put a whole feature and both its audit rounds straight onto the default branch, with nothing reviewable to hand over and, had integration been off, unreviewed work left there permanently.
+With `in_place` on, the same `clerk isolate <kebab-feature-name>` makes no worktree, but still a branch: it branches off the default branch when that is where you are standing, switches to the branch if it already exists, and does nothing when you are already off the default branch. **The flag turns off the worktree, not the branch** — skipped once, it put a whole feature and both its audit rounds straight onto the default branch, with nothing reviewable to hand over and, had integration been off, unreviewed work left there permanently.
 
 Then build in the main checkout. Say so in your opening summary when a config file rather than the request is what turned `in_place` on, and name the file — `--worktree` in the request overrules it for one run.

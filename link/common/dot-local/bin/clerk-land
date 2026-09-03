@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""clerk land — archive the breakdown; land the branch only if asked.
+
+    clerk land [--integrate|--no-integrate] [--audit-accepted] [--feature-name <n>]
+               [--tasks-file <f>] [--check]
+
+With a run ledger it asks `clerk step` first and refuses unless the run has reached the
+land row. Then the gate: every task done, a clean tree, a passing receipt at this code
+tree, and the audit's acceptance — vouched for by step, or asserted with --audit-accepted
+on a branch landed without a ledger. `--check` prints the gate and stops. Exit 1 when the
+gate is shut, 3 after a live rebase or from inside a worktree, where the fast-forward has
+to finish from the main checkout.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit, parse  # noqa: E402
+from clerk_land import land  # noqa: E402
+
+if __name__ == "__main__":
+    o, rest = parse(sys.argv[1:], {"--integrate": "bool", "--no-integrate": "bool", "--audit-accepted": "bool",
+                                   "--feature-name": "value", "--tasks-file": "value", "--check": "bool"})
+    if rest:
+        die(f"unknown argument '{rest[0]}'")
+    # Unset stays distinguishable from "asked for off", or the repo default would overrule
+    # a caller who typed --no-integrate.
+    integrate = True if o["--integrate"] else (False if o["--no-integrate"] else None)
+    emit(land(integrate, o["--audit-accepted"], o["--feature-name"], o["--tasks-file"], o["--check"]))

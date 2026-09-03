@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""clerk verify — the mechanical half of run-verifier: staged tails, a vacuous or stale
+receipt, new exported symbols with no non-test caller, and commit-boundary arithmetic.
+
+    clerk verify [--all-closed] [--tasks-file <f>]
+
+Exit 0 when clean, 1 on a block. `not_checked` is ground the check could not judge and a
+reader has to look at; `hints` is ground it could not run for want of a flag.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import die, emit, parse  # noqa: E402
+from clerk_verify import verify  # noqa: E402
+
+if __name__ == "__main__":
+    o, rest = parse(sys.argv[1:], {"--all-closed": "bool", "--tasks-file": "value"})
+    if rest:
+        die(f"unknown argument '{rest[0]}'")
+    out = verify(o["--all-closed"], o["--tasks-file"])
+    emit(out, 0 if out["clean"] else 1)

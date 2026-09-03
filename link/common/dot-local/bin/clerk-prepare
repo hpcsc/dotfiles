@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""clerk prepare — resolve the repo's facts as JSON; the request is scanned for the flags
+and --learnings-path it carries, which outrank every config file.
+
+One call, one object: languages, test commands and the resolved test_command, the Go
+tool prefix, the learnings path, repo root against build tree, the base, the code tree at
+HEAD, whether the tree is clean, which commit skill to invoke, the run this tree belongs
+to, every breakdown with its progress, every worktree, and `resume`. Given the request it
+applies the request's layer too; inside an open run it reads the request from the ledger.
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import VERSION, die, emit, parse  # noqa: E402
+from clerk_repo import prepare  # noqa: E402
+
+if __name__ == "__main__":
+    o, rest = parse(sys.argv[1:], {"--request": "value"})
+    if rest:
+        die(f"unknown argument '{rest[0]}'")
+    facts = prepare(request=o["--request"])
+    facts["version"] = VERSION
+    emit(facts)

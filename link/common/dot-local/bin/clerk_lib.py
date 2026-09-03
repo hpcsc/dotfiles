@@ -15,6 +15,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 CLERK = HERE / "clerk"
+VERSION = "0.5.0"
 
 # `clerk-lint` → "lint"; clerk-audit, a symlink to clerk-step, answers as "audit". The
 # prefix is the core's own: `clerk: <cmd>: <msg>`.
@@ -80,16 +81,12 @@ def clerk(*args, cwd=None, env=None):
     return r.returncode, data, r.stderr.strip()
 
 
-def facts(*args, cwd=None):
-    """`clerk prepare`, which already resolves the facts with precedence rules subtle
-    enough to get wrong twice — where the breakdown lives when tasks/ is excluded, which
-    branch is default, where the work tree is. A failure passes prepare's own reason
-    through: "clerk prepare failed" sent the reader looking at the wrong command when
-    what it actually said was "not a git repository"."""
-    rc, data, err = clerk("prepare", *args, cwd=cwd)
-    if rc != 0 or data is None:
-        die(err or f"clerk prepare exited {rc} with no output", rc if rc not in (0, 1) else 2)
-    return data
+def facts(cwd=None, request=None):
+    """`clerk prepare`'s facts, resolved in-process: precedence rules subtle enough to get
+    wrong twice — where the breakdown lives when tasks/ is excluded, which branch is
+    default, where the work tree is — decided once in clerk_repo and read here."""
+    from clerk_repo import prepare  # clerk_repo imports this module, so the import waits
+    return prepare(cwd, request)
 
 
 def resolve_tasks_arg(arg, tasks_home):

@@ -265,24 +265,6 @@ receipt_state() {  # <state-dir> <head-sha>
       why: (if $why == "" then null else $why end)}'
 }
 
-# --------------------------------------------------------------------------------
-# Language detection — every match, not just the first. A repo with go.mod and
-# package.json is both, and a run that sees only the first tests half of it.
-# --------------------------------------------------------------------------------
-
-detect_languages() {
-  local root=$1
-  {
-    [ -f "$root/go.mod" ] && echo "Go"
-    [ -f "$root/package.json" ] && echo "JavaScript/TypeScript"
-    [ -f "$root/mix.exs" ] && echo "Elixir"
-    { [ -f "$root/Gemfile" ] || ls "$root"/*.gemspec >/dev/null 2>&1; } && echo "Ruby"
-    { [ -f "$root/pyproject.toml" ] || [ -f "$root/setup.py" ] || [ -f "$root/requirements.txt" ]; } && echo "Python"
-    [ -f "$root/Cargo.toml" ] && echo "Rust"
-    ls "$root"/*.tf >/dev/null 2>&1 && echo "HCL"
-    true
-  } 2>/dev/null
-}
 
 # --------------------------------------------------------------------------------
 # tasks/.environment — a gitignored machine-local cache. Written as JSON by the
@@ -302,56 +284,6 @@ env_get() {
   [ -n "$v" ] && printf '%s' "$v"
 }
 
-# Precedence is a team decision beating a machine cache beating a guess. A cached
-# command must never shadow one the team committed.
-resolve_test_commands() {
-  local root=$1 cfg="$1/tasks/test-commands.json" envf="$1/tasks/.environment" cmd=
-  if [ -f "$cfg" ] && jq -e . "$cfg" >/dev/null 2>&1; then
-    jq -c . "$cfg"
-    return
-  fi
-  cmd=$(env_get "$envf" test_command) || cmd=
-  if [ -n "$cmd" ]; then jq -n -c --arg c "$cmd" '{default: $c, _source: "tasks/.environment"}'; return; fi
-  if [ -f "$root/Taskfile.yml" ] || [ -f "$root/Taskfile.yaml" ]; then
-    jq -n -c '{default: "task test", _source: "detected: Taskfile"}'
-  elif [ -f "$root/Makefile" ] && grep -qE '^test:' "$root/Makefile" 2>/dev/null; then
-    jq -n -c '{default: "make test", _source: "detected: Makefile"}'
-  elif [ -f "$root/package.json" ] && jq -e '.scripts.test' "$root/package.json" >/dev/null 2>&1; then
-    jq -n -c '{default: "npm test", _source: "detected: package.json"}'
-  elif [ -f "$root/go.mod" ]; then
-    jq -n -c '{default: "go test ./...", _source: "detected: go.mod"}'
-  else
-    jq -n -c '{_source: "undetected"}'
-  fi
-}
-
-# Records whether THIS machine runs Go through mise. Gitignored for that reason:
-# committing it hands a teammate without mise a command that cannot run. Decided once,
-# never per-command, and never double-wrapped.
-resolve_go_prefix() {
-  local root=$1 envf="$1/tasks/.environment" p=
-  p=$(env_get "$envf" go_tool_prefix) && { printf '%s' "$p"; return; }
-  [ -f "$root/go.mod" ] || { printf ''; return; }
-  if grep -hE '^[[:space:]]*go[[:space:]]*=' \
-       "$root/mise.toml" "$root/.mise.toml" "$root/mise.local.toml" "$root/.mise.local.toml" \
-       2>/dev/null | head -1 | grep -q .; then
-    printf 'mise exec -- '
-  else
-    printf ''
-  fi
-}
-
-# Durable learnings must survive across runs but must not be committed into a shared
-# repo that gitignores tasks/. Let the project's own gitignore decide.
-resolve_learnings_path() {
-  local root=$1 slug=
-  if (cd "$root" && git check-ignore -q tasks/learnings.md 2>/dev/null); then
-    slug=$(printf '%s' "$root" | sed 's#/#-#g; s#^-##')
-    printf '%s/.claude/implement-learnings/%s/learnings.md' "$HOME" "$slug"
-  else
-    printf '%s/tasks/learnings.md' "$root"
-  fi
-}
 
 # --------------------------------------------------------------------------------
 # Run flags. A skill flag is often really a property of the repo: one whose build
@@ -427,31 +359,6 @@ resolve_flag() {
   printf 'false\tdefault'
 }
 
-resolve_flags() {
-  local root=$1 request=$2 key
-  for key in $FLAG_KEYS; do
-    printf '%s\t%s\n' "$key" "$(resolve_flag "$root" "$key" "$request")"
-  done | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t"))
-    | {flags:        (map({key: .[0], value: (.[1] == "true")}) | from_entries),
-       flag_sources: (map({key: .[0], value: .[2]})             | from_entries)}'
-}
-
-# `--learnings-path <p>` / `--learnings-path=<p>`. A caller fanning several runs over
-# one story gives each its own file, because learnings_path is keyed on the repository
-# and every worktree of one repo shares a git-common-dir — left resolved, concurrent
-# runs would append to a single file at once and overwrite each other.
-#
-# The path is deliberately not required to sit inside the repo: the out-of-tree case is
-# the whole point of the override. A relative one resolves against the repo root rather
-# than the caller's cwd, which inside a worktree is not the same directory.
-request_learnings_path() {
-  local request=$1 root=$2 p
-  p=$(printf '%s' "$request" | tr -s '[:space:]' '\n' | awk '
-    /^--learnings-path=./ { sub(/^--learnings-path=/, ""); print; exit }
-    $0 == "--learnings-path" { if ((getline nxt) > 0 && nxt !~ /^--/) print nxt; exit }')
-  [ -n "$p" ] || return 1
-  case "$p" in /*) printf '%s' "$p" ;; *) printf '%s/%s' "$root" "$p" ;; esac
-}
 
 # Writes the tracked half of the pair above. It goes next to the resolver on purpose:
 # the two must agree on the filename and the key spelling, and a scaffold that writes
@@ -619,181 +526,6 @@ ledger_breakdown() {
   return 1
 }
 
-# --------------------------------------------------------------------------------
-# prepare
-# --------------------------------------------------------------------------------
-
-# Every breakdown under tasks/, with how far each got. find_tasks_file deliberately
-# refuses when there is more than one; this is what a resuming run reads instead of
-# guessing, and what stops it decomposing a story that is already half built.
-list_breakdowns() {
-  local wt=$1 f side
-  breakdown_paths "$wt" | while IFS= read -r f; do
-    [ -f "$f" ] || continue
-    side="${f%.md}.json"
-    if [ -f "$side" ]; then
-      jq -c --arg p "$f" --arg s "$side" \
-        '{path: $p, sidecar: $s, total: (.tasks | length),
-          done: ([.tasks[] | select(.done == true)] | length),
-          started: ([.tasks[] | select(.done == true)] | length > 0),
-          finished: ([.tasks[] | select(.done != true)] | length == 0)}' "$side" 2>/dev/null
-    else
-      jq -n -c --arg p "$f" '{path: $p, sidecar: null, total: null, done: null, started: null, finished: null}'
-    fi
-  done | jq -s -c .
-}
-
-# Which commit skill to invoke: the project's own, or the personal one that wraps the
-# same agent. A repo defining `commit` usually does so to carry a convention its history
-# depends on — a ticket trailer, a scope prefix — so reaching past it for the generic
-# one writes messages that are wrong in a way nothing downstream checks.
-#
-# The work tree, not the repo root: a project skill is a tracked file on the branch, and
-# after a run enters its worktree that is the copy the harness resolves.
-commit_skill_for() {
-  local wt=$1
-  if [ -f "$wt/.claude/skills/commit/SKILL.md" ]; then printf 'commit'; else printf 'pcommit'; fi
-}
-
-# Where a stopped run left off, or null. The rule was stated in prose and reapplied by
-# hand every restart, and both ways of getting it wrong are expensive: a second
-# decomposition produces a different task list against code the first run already
-# changed, and a second worktree strands the first one's commits somewhere nobody looks.
-#
-# A breakdown is resumable when it has started and has not finished. Its home is the
-# worktree whose branch is the breakdown's own slug, because `git worktree add -b` and
-# `tasks/<story>.md` are given the same feature name — so the pairing is a lookup, not a
-# guess. A null worktree is ordinary: an --in-place run never had one.
-#
-# Several part-built breakdowns is null too, not a pick. That is the normal state of a
-# repo planned as deliverables, choosing between them needs to know which run this is,
-# and `breakdowns` already lists every one with its progress. find_tasks_file refuses
-# the same ambiguity for the same reason.
-resume_for() {
-  local breakdowns=$1 trees=$2
-  printf '%s' "$breakdowns" | jq -c --argjson trees "$trees" '
-    map(select(.started == true and .finished == false)) as $live
-    | if ($live | length) != 1 then null
-      else ($live[0] | . as $b
-            | ($b.path | sub("^.*/"; "") | sub("\\.md$"; "")) as $slug
-            | {breakdown: $b, slug: $slug,
-               worktree: (($trees | map(select(.branch == $slug)) | first) // null)})
-      end'
-}
-
-cmd_prepare() {
-  local root wt th gd branch base def langs cmds prefix learn tasks clean tracked breakdowns trees flags resume commit_skill
-  local request= learn_src=resolved
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --request)   need_value $# --request; request=$2; shift 2 ;;
-      --request=*) request=${1#--request=}; shift ;;
-      *) die "prepare: unknown argument '$1'" ;;
-    esac
-  done
-  root=$(repo_root) || die "not a git repository"
-  # The request is the top layer of the flags and the learnings path, and once a run is
-  # open the ledger holds it verbatim — so a bare `prepare` inside a run reads it from
-  # there. Before this `clerk step` called prepare twice, once to learn the run and once
-  # with its request, and a plugin asking for facts without the request got the layer
-  # below and could disagree with step about a flag.
-  local request_src=argument ldir
-  if [ -z "$request" ]; then
-    request_src=none
-    if ldir=$(ledger_dir 2>/dev/null) && [ -f "$ldir/run.json" ]; then
-      request=$(jq -r '.request // ""' "$ldir/run.json" 2>/dev/null)
-      [ -n "$request" ] && request_src=ledger
-    fi
-  fi
-  wt=$(work_tree); th=$(tasks_home)
-  def=$(default_branch)
-  branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-  base=""
-  [ -n "$def" ] && base=$(git merge-base HEAD "$def" 2>/dev/null)
-  langs=$(detect_languages "$root" | jq -R -s -c 'split("\n") | map(select(length > 0))')
-  cmds=$(resolve_test_commands "$root")
-  prefix=$(resolve_go_prefix "$root")
-  learn=$(resolve_learnings_path "$root")
-  if [ -n "$request" ]; then
-    learn=$(request_learnings_path "$request" "$root") && learn_src=request \
-      || learn=$(resolve_learnings_path "$root")
-  fi
-  flags=$(resolve_flags "$root" "$request")
-  tasks=$(find_tasks_file "$th") || tasks=""
-  breakdowns=$(list_breakdowns "$th")
-  # Worktrees this repo already has. A resumed run must enter the one it left rather
-  # than opening a second for the same feature and stranding the first's commits.
-  trees=$(git worktree list --porcelain 2>/dev/null | awk '
-    /^worktree /{p=$2} /^branch /{b=$2; sub(/^refs\/heads\//, "", b); print p "\t" b}' \
-    | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {path: .[0], branch: .[1]})')
-  resume=$(resume_for "$breakdowns" "$trees")
-  commit_skill=$(commit_skill_for "$wt")
-  if tree_is_clean; then clean=true; else clean=false; fi
-  if is_ignored "$root" tasks; then tracked=false; else tracked=true; fi
-  local ct run= runs_open receipt
-  ct=$(code_tree HEAD) || ct=""
-  # The run this tree belongs to, every run still open, and the suite receipt this tree
-  # holds — reported here so `clerk step` reads them rather than resolving each again by
-  # a rule of its own that has to be kept in step with this one.
-  run=$(ledger_dir 2>/dev/null) && run=$(basename "$run") || run=
-  runs_open=$(open_runs | jq -R -s -c 'split("\n") | map(select(length > 0))')
-  receipt=$(receipt_state "$(state_dir)" "$(git rev-parse HEAD 2>/dev/null)")
-
-  jq -n \
-    --arg version "$CLERK_VERSION" \
-    --arg code_tree "$ct" \
-    --arg run "$run" \
-    --argjson runs_open "$runs_open" \
-    --argjson receipt "$receipt" \
-    --arg repo_root "$root" \
-    --arg build_tree "$wt" \
-    --arg branch "$branch" \
-    --arg default_branch "$def" \
-    --arg base "$base" \
-    --arg go_tool_prefix "$prefix" \
-    --arg learnings_path "$learn" \
-    --arg learnings_path_source "$learn_src" \
-    --arg request_source "$request_src" \
-    --arg commit_skill "$commit_skill" \
-    --arg tasks_file "$tasks" \
-    --arg tasks_home "$th" \
-    --argjson tasks_tracked "$tracked" \
-    --argjson languages "$langs" \
-    --argjson test_commands "$cmds" \
-    --argjson clean "$clean" \
-    --argjson breakdowns "$breakdowns" \
-    --argjson worktrees "$trees" \
-    --argjson resume "$resume" \
-    --argjson flagobj "$flags" \
-    '{
-      version: $version,
-      repo_root: $repo_root,
-      build_tree: $build_tree,
-      in_worktree: ($repo_root != $build_tree),
-      branch: $branch,
-      default_branch: (if $default_branch == "" then null else $default_branch end),
-      base: (if $base == "" then null else $base end),
-      code_tree: (if $code_tree == "" then null else $code_tree end),
-      run: (if $run == "" then null else $run end),
-      runs_open: $runs_open,
-      receipt: $receipt,
-      clean: $clean,
-      languages: $languages,
-      test_commands: $test_commands,
-      test_command: ($test_commands.default // null),
-      go_tool_prefix: $go_tool_prefix,
-      learnings_path: $learnings_path,
-      learnings_path_source: $learnings_path_source,
-      request_source: $request_source,
-      commit_skill: $commit_skill,
-      tasks_file: (if $tasks_file == "" then null else $tasks_file end),
-      tasks_home: $tasks_home,
-      tasks_tracked: $tasks_tracked,
-      breakdowns: $breakdowns,
-      worktrees: $worktrees,
-      resume: $resume
-    } + $flagobj'
-}
 
 # --------------------------------------------------------------------------------
 # The run's own worktree
@@ -1931,7 +1663,6 @@ LOGGED_PLUGINS=' guidelines lint fixup learn sidecar '
 
 case "${1:-}" in
   init)     shift; logged init cmd_init "$@" ;;
-  prepare)  shift; cmd_prepare "$@" ;;
   worktree) shift; logged worktree cmd_worktree "$@" ;;
   branch)   shift; logged branch cmd_branch "$@" ;;
   next)     shift; cmd_next "$@" ;;

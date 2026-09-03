@@ -8,6 +8,7 @@
 set -uo pipefail
 
 CLERK="$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-local/bin/clerk"
+MODELS="$(cd "$(dirname "$0")/.." && pwd)/scripts/agent-models.py"
 PASS=0
 FAIL=0
 
@@ -1458,7 +1459,7 @@ printf '\nstack — PR bases derived from the plan DAG\n'
 # The fixture has no origin, so no `gh` call is made and every openable deliverable
 # reads as "create". What is under test is the ordering and the base each PR targets,
 # which is decided before any network call.
-SK=$(run "$R22" stack --json)
+SK=$(run "$R22" story stack --json)
 sk() { printf '%s' "$SK" | jq -r --arg i "$1" --arg f "$2" '.[0].deliverables[] | select(.id == $i) | .[$f]'; }
 
 eq "a deliverable based on the default branch targets it"  "main"        "$(sk building base)"
@@ -1479,7 +1480,7 @@ eq "the stack is emitted bottom-first, so a base exists before the PR that targe
    "true" "$(printf '%s' "$SK" | jq -r '[.[0].deliverables[] | .id] | index("building") < index("stacked")')"
 
 eq "creating without an origin refuses rather than opening half a stack" "2" \
-   "$(run "$R22" stack --create >/dev/null 2>&1; echo $?)"
+   "$(run "$R22" story stack --create >/dev/null 2>&1; echo $?)"
 
 # The retarget that makes a stack survive its own merges. Two real branches: `high` sits
 # on `low`, and once `low` lands, a PR still pointing at br-low diffs against code that
@@ -1503,25 +1504,25 @@ printf 'high\n' > "$R27/high.txt"; git -C "$R27" add -A; git -C "$R27" commit -q
 git -C "$R27" checkout -q main
 
 eq "a stacked PR targets its prerequisite while that is unlanded" "br-low" \
-   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base')"
+   "$(run "$R27" story stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base')"
 eq "and is opened rather than skipped" "create" \
-   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .action')"
+   "$(run "$R27" story stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .action')"
 
 git -C "$R27" merge -q --no-ff -m "Land low" br-low
 eq "once the prerequisite lands the stack retargets to the mainline" "main" \
-   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base')"
+   "$(run "$R27" story stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base')"
 eq "and says why it moved" "low has merged" \
-   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base_note')"
+   "$(run "$R27" story stack --json | jq -r '.[0].deliverables[] | select(.id == "high") | .base_note')"
 eq "the landed prerequisite drops out of the stack" "already merged" \
-   "$(run "$R27" stack --json | jq -r '.[0].deliverables[] | select(.id == "low") | .skip')"
+   "$(run "$R27" story stack --json | jq -r '.[0].deliverables[] | select(.id == "low") | .skip')"
 
 R26=$(new_repo); mkdir -p "$R26/tasks/one" "$R26/tasks/two"
 printf 'story: One\nstory_slug: one\ndeliverables:\n  - id: a\n    branch: br-a\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/one/a.md\n' > "$R26/tasks/one/plan.yaml"
 printf 'story: Two\nstory_slug: two\ndeliverables:\n  - id: b\n    branch: br-b\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/two/b.md\n' > "$R26/tasks/two/plan.yaml"
 git -C "$R26" remote add origin git@github.com:example/repo.git
-eq "two plans is fine to look at" "2" "$(run "$R26" stack --json | jq 'length')"
+eq "two plans is fine to look at" "2" "$(run "$R26" story stack --json | jq 'length')"
 eq "and refused for --create, which would open another story's PRs" "2" \
-   "$(run "$R26" stack --create >/dev/null 2>&1; echo $?)"
+   "$(run "$R26" story stack --create >/dev/null 2>&1; echo $?)"
 
 # --------------------------------------------------------------------------------
 printf '\nguidelines — required reading, loaded not looked up\n'
@@ -2066,7 +2067,7 @@ printf -- '---\nname: writer\ntools: Read\n---\n\nbody\n'  > "$MD/claude/writer.
 printf -- '---\nname: checker\nmodel: haiku\n---\n\nbody\n' > "$MD/claude/checker.md"
 printf -- '---\ndescription: w\nmode: all\n---\n\nbody\n'   > "$MD/opencode/writer.md"
 printf -- '---\ndescription: c\nmode: all\n---\n\nbody\n'   > "$MD/opencode/checker.md"
-M() { "$CLERK" models --registry "$MD/registry.json" --claude-dir "$MD/claude" --opencode-dir "$MD/opencode" "$@"; }
+M() { "$MODELS" --registry "$MD/registry.json" --claude-dir "$MD/claude" --opencode-dir "$MD/opencode" "$@"; }
 
 eq "a tree that disagrees with the registry is stale" "1" \
    "$(M --check >/dev/null 2>&1; printf '%s' $?)"

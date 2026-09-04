@@ -83,20 +83,14 @@ def pr_base(d, by_id, default_branch):
     return prereq.get("branch_alias") or prereq["branch"], None
 
 
-SECTIONS = ("Story Reference", "Theory", "Boundaries")
+SECTIONS = ("Story Reference", "Boundaries")
 
 
 def pr_body(tasks_file):
     """The breakdown's Story Reference and Boundaries are written to describe the
     deliverable standalone, which is exactly what a PR description has to do. Taking them
     verbatim beats generating prose about a diff, and it puts the out-of-scope list in
-    front of the reviewer rather than leaving it in a file they will not open.
-
-    Theory sits between them when the run wrote one: the design it settled on, stated
-    before the diff a reviewer is about to read. Reviewing a diff against a stated theory
-    and reconstructing the theory from the diff are different jobs, and only the first is
-    affordable on work nobody watched being built. Absent — an older breakdown, or a run
-    that skipped it — the section is simply missing and the body reads as it always did."""
+    front of the reviewer rather than leaving it in a file they will not open."""
     if not tasks_file:
         return None
     try:

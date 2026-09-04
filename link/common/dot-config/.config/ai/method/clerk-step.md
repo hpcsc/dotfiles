@@ -21,7 +21,7 @@ A clerk refusal enforced these rules:
 Prose alone carried the rest: the request record, `prepare`, `guidelines` and the caller
 pattern, the branch or worktree, `lint certainty-unevidenced`, the plan table, tests first,
 `lint --staged` before each commit, the commit skill, the criteria ticks, the gears pauses,
-the audit, the second audit round, the story validation, the Theory section, `verify`, and
+the audit, the second audit round, the story validation, `verify`, and
 the learnings. That is about five enforced transitions against about fifteen that depend
 on the model.
 
@@ -167,9 +167,9 @@ the `.md`, `.json`, `.yaml` and `.yml` files there. Code under a directory that 
 to be called `tasks/` still counts as code.
 
 Receipts, audit acceptance, validation and the cached verify pass bind to the code tree,
-not to the SHA. Reason: the Theory section and the archive are `tasks/`-only commits that
-come after the last receipt. The land checks and `verify` compared the receipt SHA to HEAD, so in a
-repository that tracks `tasks/` the Theory commit made the receipt stale, and `land`
+not to the SHA. Reason: the archive is a `tasks/`-only commit that comes after the last
+receipt. The land checks and `verify` compared the receipt SHA to HEAD, so in a
+repository that tracks `tasks/` that commit made the receipt stale, and `land`
 refused until the model ran the suite again for a docs-only change. Both now compare by
 code tree, through one helper in clerk: `prepare` reports the tree at HEAD and whether
 the recorded receipt still describes it, and `clerk step` reads both from there rather
@@ -197,7 +197,6 @@ category as well made a caller learn two words to reach the same line of the rep
 | 5 | `suite` | the receipt passed, and its code tree equals the HEAD code tree | `clerk receipt` | derived |
 | 6 | `audit` | `accepted` is present at this code tree | `clerk audit run --rounds N`; for each round `clerk audit round --report <json>`, which refuses on a stale receipt, a dirty tree, or more rounds than planned without `--replan`; then `clerk audit accept [--early "<why>"]`. `step` prints the request from `run.json` as `request`, with `base` and `test_commands` | asserted for `accept`, derived for the rest |
 | 7 | `match-request` | the run's `match_request` is at this code tree | `clerk step --done match-request`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions | asserted |
-| 8 | `theory` | the breakdown contains `## Theory`, and the file is committed when `tasks_tracked` is true | the model writes it. A `tasks/`-only commit does not disturb rows 5 to 7 | derived |
 | 9 | `verify-run` | `clerk verify` is clean, and `not_checked` is empty or `--done verify-run` is recorded. `hints` — what the check could not run for want of a flag — never holds the row | `step` runs verify itself when it reaches the row, and caches a pass in the run's `done` at its code tree so the archive commit does not run it again | derived, then asserted |
 | 10 | `land` | the run's `land` says `landed`, or `archived.json` exists and integration is off or done. From the main checkout: the slug is merged and its worktree and branch are gone | `clerk land`. It asks `clerk step` and refuses unless the run is at this row, so `--audit-accepted` is not needed and a `land` called directly cannot walk past any row; land keeps the checks the table does not make — a clean tree, every task done, a fresh receipt. The exit, fast-forward and remove sequence for a worktree becomes printed instructions from the main checkout | derived |
 | 11 | `learn` | a `learn` run wrote an entry, or `--done learn --none` | `clerk learn … --feature <slug>`. `step` prints `breakdown_signals` computed from the log | derived, or asserted |

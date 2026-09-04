@@ -18,7 +18,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-STEPS = ["ground", "decompose", "build", "suite", "audit", "match-request", "theory",
+STEPS = ["ground", "decompose", "build", "suite", "audit", "match-request",
          "verify-run", "land", "learn"]
 
 
@@ -124,7 +124,6 @@ def windows(run):
     rounds = aud.get("rounds") or []
     audit_end = parse_at(accepted) if accepted else None
     match_end = parse_at(match.get("at"))
-    theory_end = first("verify", after=match_end) if match_end else None
     verify_stamps = [parse_at((done.get(k) or {}).get("at")) for k in ("verify-run", "verify-clean")]
     verify_stamps = [v for v in verify_stamps if v]
     ends = {
@@ -134,7 +133,6 @@ def windows(run):
         "suite": suite_end,
         "audit": audit_end,
         "match-request": match_end,
-        "theory": theory_end,
         "verify-run": max(verify_stamps) if verify_stamps else None,
         "land": parse_at(land.get("at")),
         "learn": tend,

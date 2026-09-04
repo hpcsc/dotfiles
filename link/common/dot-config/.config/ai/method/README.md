@@ -13,7 +13,7 @@ lives in `clerk`, a shell tool both harnesses call.
     │   ├── body.md             the skill: the shape, the loop, the flags
     │   ├── steps/<id>.md       the method, one step per file — ground, isolate,
     │   │                       decompose, build, suite, audit, match-request,
-    │   │                       theory, verify-run, land, learn
+    │   │                       verify-run, land, learn
     │   └── variants/{claude,opencode}/
     │       ├── start.md        how the run is opened (opencode names the harness)
     │       ├── invocation.md   how the request arrives
@@ -128,15 +128,14 @@ flowchart TD
   BUILD -->|"none open"| SUITE
   SUITE["suite<br/>receipt green at this code tree"] --> AUDIT
   AUDIT["audit<br/>clerk audit run · round · accept"] --> VALIDATE
-  VALIDATE["match-request<br/>clerk step --done match-request"] --> THEORY
-  THEORY["theory<br/>## Theory in the breakdown, committed"] --> VERIFY
+  VALIDATE["match-request<br/>clerk step --done match-request"] --> VERIFY
   VERIFY["verify-run<br/>clerk verify clean · not_checked reviewed"] --> LAND
   LAND["land<br/>clerk land · the checks read the acceptance<br/>fast-forward from the main checkout"] --> LEARN
   LEARN["learn<br/>a clerk learn write, or --done learn --none"] --> FIN["finished"]
   classDef derived fill:#D8E6E0,stroke:#2F5D50,stroke-width:2px,color:#132520
   classDef asserted fill:#F2DFD3,stroke:#A8501E,stroke-width:2px,color:#3A1A08
   classDef checked fill:#EFD9E4,stroke:#8A2E5D,stroke-width:2px,color:#3A1024
-  class START,GROUND,ISOLATE,TASK,BUILD,SUITE,THEORY,VERIFY,LAND,FIN derived
+  class START,GROUND,ISOLATE,TASK,BUILD,SUITE,VERIFY,LAND,FIN derived
   class PLAN,AUDIT,VALIDATE,LEARN asserted
   class TESTS checked
 ```
@@ -217,17 +216,14 @@ from these figures, which the step text points at rather than repeats.
   spanning both its languages and dropped nothing.
 
 Then the step no machine does: re-read the request verbatim against the finished branch
-and ask what it asked for that the branch does not do. Then write the theory down — the
-run is the last reader of the branch that understands it without reading it, and a
-reviewer handed a diff and nothing else has to reconstruct from scratch what the run
-could state in five sentences. `clerk verify` handles the mechanical checks and reports
+and ask what it asked for that the branch does not do. `clerk verify` handles the mechanical checks and reports
 what it could not settle; `run-verifier` works only what it left in `not_checked`. `clerk land` checks,
 archives on the feature branch, and integrates only when asked.
 
 ### The order is clerk's
 
 The phases above are a table `clerk step` evaluates from the top — ground, isolate, plan,
-build, suite, audit, match-request, theory, verify-run, land, learn — against the repository and a
+build, suite, audit, match-request, verify-run, land, learn — against the repository and a
 ledger under `<git-common-dir>/clerk/runs/<slug>/`. It returns the first row that is not
 done with the method text for it, and the skill is one loop: `clerk step`, do that, `clerk
 step`. Position is recomputed on every call, so a stopped run continues with the same call
@@ -241,7 +237,7 @@ stamps what it decided, `learn` writes the entry. The rest are **asserted**, the
 land takes `--audit-accepted`: the breakdown is bound, the tests were shown, the request was
 re-read, what the verifier left in `not_checked` was reviewed — recorded with `clerk step --done`, stamped
 with the code tree they apply to. Receipts and acceptances compare by code tree, the HEAD
-tree minus the breakdown files under `tasks/`, so the Theory and archive commits do not stale a
+tree minus the breakdown files under `tasks/`, so the archive commit does not stale a
 green. The method text lives one step per file under `implement/steps/`, read by the
 generator for the whole document and by `clerk step` one at a time.
 

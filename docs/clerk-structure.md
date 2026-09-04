@@ -98,8 +98,7 @@ flowchart TD
   build -->|"no task left open"| suite
   suite["suite<br/>a passing receipt at this code tree"] -->|"clerk receipt --passed"| audit
   audit["audit<br/>accepted at this code tree"] -->|"clerk audit round … accept"| match
-  match["match-request<br/>the request re-read, no open mismatch"] -->|"clerk step --done match-request"| theory
-  theory["theory<br/>## Theory in the breakdown, committed"] -->|"write it, commit it"| verify
+  match["match-request<br/>the request re-read against the branch"] -->|"clerk step --done match-request"| verify
   verify["verify-run<br/>clerk verify clean, not_checked reviewed"] -->|"step runs verify itself<br/>--done verify-run"| land
   land["land<br/>archived; integrated when asked"] -->|"clerk land"| learn
   learn["learn<br/>an entry written, or --done learn --none"] -->|"clerk learn"| fin["finished<br/>run.json: finished true"]
@@ -107,7 +106,7 @@ flowchart TD
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
   classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
   classDef file fill:#FFFFFF,stroke:#9AA39D,stroke-width:1px,color:#1B1F1D
-  class start,ground,isolate,build,suite,audit,theory,verify,land,fin clerk
+  class start,ground,isolate,build,suite,audit,verify,land,fin clerk
   class decompose,match,learn you
 ```
 
@@ -159,7 +158,7 @@ flowchart LR
   step -->|appends, at the verify-run row| vl
   audit["clerk audit"]:::clerk --> aj
   run["clerk run · clerk audit run"]:::clerk --> pl
-  model["the model"]:::you -->|ticks criteria, writes Theory| bd
+  model["the model"]:::you -->|ticks criteria| bd
   model -->|clerk learn| lp
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08

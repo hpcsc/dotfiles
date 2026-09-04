@@ -200,7 +200,7 @@ _BREAKDOWN_FILE = re.compile(r"\ttasks/.*\.(md|json|ya?ml)$")
 def code_tree(rev, cwd=None):
     """The identity of the code at a revision: its tree listing minus the breakdown files
     under tasks/. The receipt and the acceptance compare by this rather than by SHA, so a
-    tasks/-only commit — the Theory, the archive — does not make a green stale."""
+    tasks/-only commit — the archive — does not make a green stale."""
     listing = gitout("ls-tree", "-r", rev, cwd=cwd)
     if listing is None:
         return None

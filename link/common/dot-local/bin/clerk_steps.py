@@ -5,7 +5,7 @@ why and what does it.
 method text for it. There is no counter: position is recomputed on every call from git
 state and the ledger, so a stopped run continues with the same call and the model cannot
 move past a step by saying so. Receipts and acceptances are compared by code tree, the
-HEAD tree minus the breakdown files under tasks/, so a tasks/-only commit — the Theory
+HEAD tree minus the breakdown files under tasks/, so a tasks/-only commit — the
 section, the archive — does not send a run back to the suite.
 """
 
@@ -338,27 +338,10 @@ def row_match_request(ctx):
                done_by="clerk step --done match-request", **fields)
 
 
-def row_theory(ctx):
-    tf, _, archived = breakdown_files(ctx)
-    if tf is None:
-        return row("theory", False, why_not_done="no breakdown is bound to this run")
-    text = tf.read_text() if tf.exists() else ""
-    if not re.search(r"^## Theory\b", text, re.M):
-        return row("theory", False, tasks_file=str(tf),
-                   why_not_done=f"no `## Theory` section in {tf}",
-                   done_by="write the section; commit it when the breakdown is tracked; then clerk step")
-    if ctx.prepare.get("tasks_tracked") and not archived:
-        dirty = git("status", "--porcelain", "--", str(tf), cwd=ctx.cwd).stdout.strip()
-        if dirty:
-            return row("theory", False, tasks_file=str(tf),
-                       why_not_done="the Theory is written but not committed",
-                       done_by="commit the breakdown as its own commit; then clerk step")
-    return row("theory", True, tasks_file=str(tf))
-
 
 def row_verify_run(ctx):
     # A pass is recorded at its code tree, so the tasks/-only commits that follow — the
-    # Theory, the archive — do not send the run back through the checks, and a run that
+    # archive — does not send the run back through the checks, and a run that
     # has landed is not re-verified.
     passed = ctx.run.done.get("verify-clean")
     if passed and passed.get("code_tree") == ctx.head_ct:
@@ -463,7 +446,7 @@ def row_learn(ctx):
 
 
 ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("build", row_build),
-        ("suite", row_suite), ("audit", row_audit), ("match-request", row_match_request), ("theory", row_theory),
+        ("suite", row_suite), ("audit", row_audit), ("match-request", row_match_request),
         ("verify-run", row_verify_run), ("land", row_land), ("learn", row_learn)]
 
 

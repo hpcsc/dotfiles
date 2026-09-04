@@ -191,8 +191,6 @@ The markdown:
 - Total tasks, ordering rationale, which of the deliverable's acceptance criteria are covered.
 ```
 
-**Do not write a `## Theory` section.** The run that builds the deliverable appends one when it finishes, describing the design it actually settled on, and `clerk story stack --create` lifts it into the PR body. A theory written before any code exists is a prediction, and it would be indistinguishable in the PR from the account of what was really built.
-
 The tasks within a deliverable follow all the `decompose-to-tasks` rules (baby steps, vertical, each independently committable and green, tests in the same task as their behavior, `Testable: Yes` only when testable through a public API, and both assessments on every task). Cross-deliverable dependencies are captured in `plan.yaml`, not inside a deliverable's task file — a deliverable's `tasks.md` never references another deliverable.
 
 **Boundaries carries the story's non-goals plus the cut you just made.** Splitting a story creates boundaries that did not exist in it: each deliverable now stops somewhere the story did not. Write those down here, because this is the section the audit reads to ask whether anything out of scope was built, and a boundary nobody wrote cannot be checked.

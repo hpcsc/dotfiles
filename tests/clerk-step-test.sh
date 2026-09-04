@@ -316,28 +316,21 @@ V=$(run "$WT" step)
 eq "match-request hands over the request and the log" "Add a widget --gears|true" \
    "$(printf '%s' "$V" | jq -r '[.request, ((.log|length) > 3 | tostring)] | join("|")')"
 eq "and the four questions" "4" "$(printf '%s' "$V" | jq -r '.questions | length')"
-run "$WT" step --done match-request >/dev/null
-eq "asserted, the run moves to theory" "theory" "$(run "$WT" step | field .step)"
-
-# --------------------------------------------------------------------------------
-printf '\nexplain — the breakdown carries a Theory section, committed when tracked\n'
-
-eq "no section: the reason names the file" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("## Theory")')"
-printf '## Theory\n\nOne abstraction.\n\n' | cat - "$WT/tasks/w1.md" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.md"
-eq "written but not committed is not done" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("not committed")')"
-commit_all "$WT" "Theory"
-
-# Residue for the section below: a task whose every file another task also recorded
-# cannot be judged for scattered-task, and saying so is what holds the row.
+# Residue for the section below, seeded before the step that closes match-request: a
+# `--done` computes the next row too, and a clean verify-run caches its pass.
 WTREC="$(git -C "$WT" rev-parse --absolute-git-dir)/clerk/tasks/w1"
 jq '.files = ["a.go", "b.go"]' "$WTREC/2.json" > "$WTREC/2.tmp" && /bin/mv -f "$WTREC/2.tmp" "$WTREC/2.json"
 
-eq "committed, the run moves on" "verify-run" "$(run "$WT" step | field .step)"
+run "$WT" step --done match-request >/dev/null
+eq "asserted, the run moves on" "verify-run" "$(run "$WT" step | field .step)"
+
+# A tasks/-only commit still must not stale the receipt — the archive is one.
+printf '\nnotes again\n' >> "$WT/tasks/w1.md"; commit_all "$WT" "Breakdown notes"
 
 # --------------------------------------------------------------------------------
 printf '\nverify-run — clerk verify runs; blocks hold, residue is asserted reviewed\n'
 
-eq "verify-run is reached with the receipt still fresh — the Theory commit touched only tasks/" "verify-run|true" \
+eq "verify-run is reached with the receipt still fresh — that commit touched only tasks/" "verify-run|true" \
    "$(run "$WT" step | jq -r '[.step, (.verify.clean | tostring)] | join("|")')"
 Y=$(run "$WT" step)
 eq "clean with residue holds the step: not_checked is non-empty" "verify-run|true" \
@@ -374,7 +367,7 @@ eq "which the ledger records" "true" "$(jq -r .finished "$R/.git/clerk/runs/w1/r
 printf '\nstats — where the run went, from the ledger; tokens from the transcript once the session is known\n'
 
 S=$(run "$WT" stats --run w1 --json)
-eq "every step of the table is listed, in order" "ground,decompose,build,suite,audit,match-request,theory,verify-run,land,learn" \
+eq "every step of the table is listed, in order" "ground,decompose,build,suite,audit,match-request,verify-run,land,learn" \
    "$(printf '%s' "$S" | jq -r '[.steps[].step] | join(",")')"
 eq "the steps the run stamped have a span, and they add up to the run" "true" \
    "$(printf '%s' "$S" | jq -r '(.total_seconds >= 0) and ([.steps[] | select(.step | IN("build","suite","audit","land","learn")) | .seconds >= 0] | all) and (([.steps[].seconds // 0] | add) == .total_seconds) | tostring')"
@@ -475,7 +468,6 @@ build_tasks "$WL"
 receipt_ok "$WL" true >/dev/null
 run "$WL" audit round --report "$REP" >/dev/null; run "$WL" audit accept >/dev/null
 run "$WL" step --done match-request >/dev/null
-printf '## Theory\n\nX.\n\n' | cat - "$WL/tasks/lz.md" > "$WL/tasks/lz.tmp" && /bin/mv -f "$WL/tasks/lz.tmp" "$WL/tasks/lz.md"; commit_all "$WL" "Theory"
 receipt_ok "$WL" true >/dev/null
 run "$WL" step --done verify-run >/dev/null
 eq "the worktree run reaches land" "land" "$(run "$WL" step | field .step)"
@@ -582,7 +574,6 @@ build_tasks "$RJ"
 receipt_ok "$RJ" true >/dev/null
 run "$RJ" audit round --report "$REP" >/dev/null; run "$RJ" audit accept >/dev/null
 run "$RJ" step --done match-request >/dev/null
-printf '## Theory\n\nX.\n\n' | cat - "$RJ/tasks/ij.md" > "$RJ/tasks/ij.tmp" && /bin/mv -f "$RJ/tasks/ij.tmp" "$RJ/tasks/ij.md"; commit_all "$RJ" "Theory"
 receipt_ok "$RJ" true >/dev/null
 run "$RJ" step --done verify-run >/dev/null
 eq "the in-place run reaches land" "land" "$(run "$RJ" step | field .step)"

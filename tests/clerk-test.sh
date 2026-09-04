@@ -530,9 +530,9 @@ receipt_ok "$R4" "task test" >/dev/null
 eq "re-running the suite clears it" "true" \
    "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
-# The Theory section and the archive land as tasks/-only commits after the last green.
-printf '\n## Theory\n\nOne abstraction.\n' >> "$R4/tasks/story.md"
-git -C "$R4" add -A && git -C "$R4" commit -qm "Write the theory"
+# The archive lands as a tasks/-only commit after the last green.
+printf '\nnotes\n' >> "$R4/tasks/story.md"
+git -C "$R4" add -A && git -C "$R4" commit -qm "Note the breakdown"
 eq "a commit that touches only the plan files keeps the receipt fresh" "true" \
    "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 eq "and verify does not call it vacuous either" "0" \

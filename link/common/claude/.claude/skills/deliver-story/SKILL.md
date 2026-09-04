@@ -172,13 +172,7 @@ A deliverable sitting at `waiting` is usually blocked on a permission prompt, no
 
 ### When a wave finishes: review it, then refresh the stack
 
-**Read each deliverable's `## Theory` section before its diff.** The run appends it to that deliverable's `tasks.md` when it finishes: the abstractions it added, the design decision it took and the alternative it rejected, and what it thinks is most likely to be wrong. Nobody watched the branch being built, so without it every reviewer's first job is reconstructing a theory from a diff — the most expensive way to acquire one, repeated per reviewer. Checking a diff against a stated theory is a different job and a far cheaper one.
-
-Read it as a claim, not as documentation. It was written by the run that wrote the code, so it says what that run *believed* it built — which is exactly what makes a disagreement with the diff worth finding.
-
-A deliverable with no Theory section is one whose run stopped before finishing. Check it against the sidecar rather than reviewing it as complete.
-
-Then review the branch (its `tasks.md` and commits describe it by domain behavior — no "PR N" leaks in), and show the stack:
+Review the branch (its `tasks.md` and commits describe it by domain behavior — no "PR N" leaks in), and show the stack:
 
 ```
 clerk story stack tasks/<slug>/plan.yaml
@@ -192,7 +186,7 @@ The plan already decided the stack: `base: <sibling-id>` means that deliverable'
 clerk story stack tasks/<slug>/plan.yaml --create
 ```
 
-Each PR's title is the deliverable's, and its body is that deliverable's own **Story Reference**, **Theory** and **Boundaries** taken verbatim out of its `tasks.md` — a description written to stand alone, the design stated before the diff, and the out-of-scope list in front of the reviewer rather than in a file nobody opens.
+Each PR's title is the deliverable's, and its body is that deliverable's own **Story Reference** and **Boundaries** taken verbatim out of its `tasks.md` — a description written to stand alone, and the out-of-scope list in front of the reviewer rather than in a file nobody opens.
 
 **Show it again after every merge.** A deliverable whose prerequisite has landed is **retargeted** onto the default branch, because a PR still pointing at a merged branch diffs against code already in the mainline. Merged deliverables, branchless ones and branches carrying no commits are skipped with the reason named, so a re-run is cheap and reads as a status board for the stack.
 

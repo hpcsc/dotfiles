@@ -155,8 +155,6 @@ case "$step" in
             printf 'package main\n' > "$f"
             clerk finish "$n" -- "$f" >/dev/null && git commit -qm "Task $n" ;;
   match-request) clerk step --done match-request >/dev/null ;;
-  theory)  printf '\n## Theory\nIt is a fixture.\n' >> tasks/story.md
-            git add tasks/story.md && git commit -qm "Theory" ;;
   verify-run) clerk step --done verify-run >/dev/null ;;
   learn)    clerk step --done learn --none >/dev/null ;;
 esac

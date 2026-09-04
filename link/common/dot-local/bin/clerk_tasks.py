@@ -205,7 +205,22 @@ def cmd_finish(n, files, tasks_override=None):
             "next_step": "invoke the commit skill — the message is judgment, not mechanics"}
 
 
-def cmd_receipt(command, passed, output_file=None):
+_EXIT_MARKER = re.compile(r"(?mi)^\s*clerk_exit=(\d+)\s*$")
+
+
+def _recorded_exit(tail):
+    """The exit code the run wrote into its own output, or None. The last marker wins: a
+    command that tees several stages appends one per stage and the suite's is the last."""
+    found = _EXIT_MARKER.findall(tail)
+    return int(found[-1]) if found else None
+
+
+def cmd_receipt(command, passed, output_file):
+    """Record a suite run against the code tree it describes.
+
+    The output file is the evidence and is required. Without it `passed` is an assertion
+    with nothing behind it, and the vacuity check downstream degrades to a hint — which is
+    the one shape a receipt exists to make impossible."""
     sha = gitout("rev-parse", "HEAD")
     if not sha:
         die("cannot resolve HEAD")
@@ -213,11 +228,38 @@ def cmd_receipt(command, passed, output_file=None):
     if not state:
         die("not a git repository")
     Path(state).mkdir(parents=True, exist_ok=True)
-    tail = ""
-    if output_file and Path(output_file).is_file():
-        data = Path(output_file).read_bytes()
-        tail = data[-4000:].decode("utf-8", errors="replace")
-    rec = {"sha": sha, "command": command, "passed": passed, "at": now(), "output_tail": tail}
+    if not output_file:
+        die("--output-file is required: capture the suite's output and pass the file. A "
+            "receipt with no output cannot be checked, and an unfalsifiable green is what "
+            "this command exists to refuse")
+    p = Path(output_file)
+    if not p.is_file():
+        die(f"no output file at {output_file} — pass the file the suite's output was captured to", 1)
+    data = p.read_bytes()
+    if not data.strip():
+        die(f"{output_file} is empty — that is not evidence the suite ran", 1)
+    tail = data[-4000:].decode("utf-8", errors="replace")
+
+    # The suite must have run against the tree being described. An output file older than
+    # HEAD was written before this commit existed, so whatever it proves, it is not this.
+    head_time = gitout("show", "-s", "--format=%ct", "HEAD")
+    mtime = int(p.stat().st_mtime)
+    if head_time and mtime < int(head_time):
+        die(f"{output_file} was last written {int(head_time) - mtime}s before HEAD ({sha[:8]}) was "
+            f"committed, so it describes an earlier tree. Re-run the suite and capture it again", 1)
+
+    # A run that reported its own exit code settles pass/fail; a claim against it is wrong
+    # rather than arguable.
+    rc = _recorded_exit(tail)
+    if rc is not None:
+        if passed and rc != 0:
+            die(f"the output records clerk_exit={rc} but --passed was given. Do not record a green "
+                f"the run itself did not report", 1)
+        if not passed and rc == 0:
+            die("the output records clerk_exit=0 but --failed was given", 1)
+
+    rec = {"sha": sha, "command": command, "passed": passed, "at": now(), "output_tail": tail,
+           "output_file": str(p), "output_bytes": len(data), "exit_code": rc}
     try:
         (Path(state) / "receipt.json").write_text(json.dumps(rec) + "\n")
     except OSError:

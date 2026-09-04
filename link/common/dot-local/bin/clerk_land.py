@@ -179,7 +179,8 @@ def land_checks(audit_accepted=False, tasks_override=None):
     else:
         ok, detail = False, rs["why"] or ""
         if not rs["recorded"]:
-            detail += " — run the suite and 'clerk receipt --command ... --passed'"
+            detail += (" — run the suite, capture its output, and "
+                       "'clerk receipt --command ... --passed --output-file <f>'")
     checks.append({"name": "receipt-fresh", "ok": ok, "detail": detail})
 
     # The judgment one — asserted, never inferred. In a run driven by `clerk step` the

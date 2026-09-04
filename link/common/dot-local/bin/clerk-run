@@ -307,6 +307,10 @@ def do_suite(st, row):
     with log.open("w") as fh:
         rc = subprocess.run(cmd, shell=True, cwd=work, stdout=fh,
                             stderr=subprocess.STDOUT).returncode
+    # The runner ran it, so the runner records what it exited. `clerk receipt` reads this
+    # and refuses a claim that disagrees — here the claim and the fact have one source.
+    with log.open("a") as fh:
+        fh.write(f"\nclerk_exit={rc}\n")
     if rc != 0:
         st.out.note(f"  · suite failed (exit {rc})")
         tail = log.read_text()[-4000:]

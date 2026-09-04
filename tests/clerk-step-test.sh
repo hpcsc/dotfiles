@@ -34,6 +34,22 @@ new_repo() {
   printf '%s' "$d"
 }
 run() { (cd "$1" && shift && "$CLERK" "$@"); }
+
+# A receipt now needs its evidence file, and the file must not sit in the repo or the
+# tree it describes goes dirty. These build a throwaway green log outside it; the cases
+# that assert receipt semantics build their own output instead.
+receipt_ok() {
+  local d=$1 cmd=${2:-"go test ./..."} f
+  f=$(mktemp); printf 'ok  \tt/a\t0.1s\nclerk_exit=0\n' > "$f"
+  run "$d" receipt --command "$cmd" --passed --output-file "$f"; local rc=$?
+  rm -f "$f"; return $rc
+}
+receipt_failed() {
+  local d=$1 cmd=${2:-"go test ./..."} f
+  f=$(mktemp); printf 'FAIL\tt/a\t0.1s\nclerk_exit=1\n' > "$f"
+  run "$d" receipt --command "$cmd" --failed --output-file "$f"; local rc=$?
+  rm -f "$f"; return $rc
+}
 # Exit code of a command whose output is not wanted.
 rc() { run "$@" >/dev/null 2>&1; printf '%s' $?; }
 field() { jq -r "$1"; }
@@ -221,9 +237,9 @@ printf '\nsuite — the receipt must be green at this code tree; a tasks/-only c
 
 eq "no receipt: suite, with the reason" "suite|no suite receipt recorded" \
    "$(run "$WT" step | jq -r '[.step, .why_not_done] | join("|")')"
-run "$WT" receipt --command "go test ./..." --failed >/dev/null
+receipt_failed "$WT" "go test ./..." >/dev/null
 eq "a failed receipt does not open it" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("failed")')"
-run "$WT" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$WT" "go test ./..." >/dev/null
 eq "a green receipt at HEAD moves to audit" "audit" "$(run "$WT" step | field .step)"
 printf '\nnotes\n' >> "$WT/tasks/w1.md"; commit_all "$WT" "Breakdown notes"
 eq "a commit touching only tasks/ leaves the receipt fresh" "audit" "$(run "$WT" step | field .step)"
@@ -235,7 +251,7 @@ mkdir -p "$WT/web" && printf 'export function widget() {}\n' > "$WT/web/widget.j
 printf 'c\n' > "$WT/c.go"; commit_all "$WT" "Code after the suite"
 eq "a commit touching code sends the run back to suite" "suite|true" \
    "$(run "$WT" step | jq -r '[.step, (.why_not_done | contains("code changed") | tostring)] | join("|")')"
-run "$WT" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$WT" "go test ./..." >/dev/null
 
 # --------------------------------------------------------------------------------
 printf '\naudit — rounds are recorded against a fresh receipt and a clean tree; acceptance is asserted\n'
@@ -253,7 +269,7 @@ eq "a round on a dirty tree is refused — a verifier's residue is not the branc
 rm "$WT/probe.txt"
 printf 'd\n' > "$WT/d.go"; commit_all "$WT" "More code"
 eq "a round on a stale receipt is refused — the suite comes first" "3" "$(rc "$WT" audit round --report "$REP")"
-run "$WT" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$WT" "go test ./..." >/dev/null
 eq "accepting with no round recorded is refused" "3" "$(rc "$WT" audit accept)"
 run "$WT" audit begin --base main --rounds 1 >/dev/null 2>&1
 eq "a file with no findings in it, top level or under report, is not a report and is refused" "2" \
@@ -287,7 +303,7 @@ eq "and sums the audit up for the reader: rounds, findings per round, incidents"
 eq "and returns the step that follows under next" "match-request" "$(printf '%s' "$A" | jq -r '.next.step')"
 eq "and the run moves to match-request" "match-request" "$(run "$WT" step | field .step)"
 printf 'e\n' > "$WT/e.go"; commit_all "$WT" "Fix after acceptance"
-run "$WT" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$WT" "go test ./..." >/dev/null
 eq "code changed after acceptance reopens the audit" "audit|true" \
    "$(run "$WT" step | jq -r '[.step, (.why_not_done | contains("earlier code tree") | tostring)] | join("|")')"
 eq "accept with no round at this tree needs --early and a reason" "3" "$(rc "$WT" audit accept)"
@@ -454,11 +470,11 @@ run "$RL" step --start lz --request "Land it" >/dev/null; run "$RL" step --done 
 WL=$(run "$RL" isolate lz --worktree | field .path)
 seed "$WL" lz; run "$WL" step --done decompose --tasks-file tasks/lz.md >/dev/null; commit_all "$WL" "Breakdown"
 build_tasks "$WL"
-run "$WL" receipt --command true --passed >/dev/null
+receipt_ok "$WL" true >/dev/null
 run "$WL" audit round --report "$REP" >/dev/null; run "$WL" audit accept >/dev/null
 run "$WL" step --done match-request >/dev/null
 printf '## Theory\n\nX.\n\n' | cat - "$WL/tasks/lz.md" > "$WL/tasks/lz.tmp" && /bin/mv -f "$WL/tasks/lz.tmp" "$WL/tasks/lz.md"; commit_all "$WL" "Theory"
-run "$WL" receipt --command true --passed >/dev/null
+receipt_ok "$WL" true >/dev/null
 run "$WL" step --done verify-run >/dev/null
 eq "the worktree run reaches land" "land" "$(run "$WL" step | field .step)"
 eq "land --integrate inside a worktree stops before the fast-forward" "3" "$(rc "$WL" land --audit-accepted --integrate)"
@@ -507,13 +523,13 @@ eq "or the opencode one" "true" \
 printf '\nevents — the commands that produce evidence log their run to the ledger on the way out\n'
 
 RE=$(new_repo)
-run "$RE" receipt --command x --passed >/dev/null
+receipt_ok "$RE" x >/dev/null
 eq "without a run, nothing is logged and nothing is created" "false" "$([ -d "$RE/.git/clerk/runs" ] && echo true || echo false)"
 run "$RE" step --start ev --request "Events" >/dev/null
-run "$RE" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$RE" "go test ./..." >/dev/null
 EV="$RE/.git/clerk/runs/ev/events.jsonl"
 eq "from the default branch, the one open run is the ledger" "receipt|--command go test ./... --passed|0" \
-   "$(tail -1 "$EV" | jq -r '[.cmd, (.argv | join(" ")), (.exit|tostring)] | join("|")')"
+   "$(tail -1 "$EV" | jq -r '[.cmd, (.argv | (index("--output-file") as $i | if $i then .[0:$i] else . end) | join(" ")), (.exit|tostring)] | join("|")')"
 eq "and the event carries the HEAD it ran at" "$(git -C "$RE" rev-parse HEAD)" "$(tail -1 "$EV" | jq -r .head)"
 run "$RE" lint --rule certainty-unevidenced --json README.md >/dev/null 2>&1
 eq "a logged plugin is recorded too" "lint|0" "$(tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
@@ -524,10 +540,10 @@ eq "a usage error dies before the log and is not evidence" "land|1" \
 eq "reads are not logged" "3" "$(run "$RE" prepare >/dev/null; run "$RE" status >/dev/null 2>&1; run "$RE" step >/dev/null; wc -l < "$EV" | tr -d ' ')"
 WE=$(run "$RE" isolate ev --worktree | field .path)
 eq "isolate is logged against the run it isolates" "isolate|ev" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[0]] | join("|")')"
-run "$WE" receipt --command inner --passed >/dev/null
+receipt_ok "$WE" inner >/dev/null
 eq "inside the worktree the branch names the ledger" "receipt|inner" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[1]] | join("|")')"
 run "$RE" step --start ev2 --request "Second" >/dev/null
-run "$RE" receipt --command ambiguous --passed >/dev/null
+receipt_ok "$RE" ambiguous >/dev/null
 eq "two open runs from the default branch: nothing is logged rather than the wrong ledger" "0" \
    "$(cat "$EV" "$RE/.git/clerk/runs/ev2/events.jsonl" 2>/dev/null | grep -c ambiguous)"
 
@@ -538,11 +554,11 @@ run "$RJ" step --start ij --request "In place, integrated" >/dev/null; run "$RJ"
 run "$RJ" isolate ij --in-place >/dev/null
 seed "$RJ" ij; run "$RJ" step --done decompose --tasks-file tasks/ij.md >/dev/null; commit_all "$RJ" "Breakdown"
 build_tasks "$RJ"
-run "$RJ" receipt --command true --passed >/dev/null
+receipt_ok "$RJ" true >/dev/null
 run "$RJ" audit round --report "$REP" >/dev/null; run "$RJ" audit accept >/dev/null
 run "$RJ" step --done match-request >/dev/null
 printf '## Theory\n\nX.\n\n' | cat - "$RJ/tasks/ij.md" > "$RJ/tasks/ij.tmp" && /bin/mv -f "$RJ/tasks/ij.tmp" "$RJ/tasks/ij.md"; commit_all "$RJ" "Theory"
-run "$RJ" receipt --command true --passed >/dev/null
+receipt_ok "$RJ" true >/dev/null
 run "$RJ" step --done verify-run >/dev/null
 eq "the in-place run reaches land" "land" "$(run "$RJ" step | field .step)"
 LJ=$(run "$RJ" land --audit-accepted)

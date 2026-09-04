@@ -36,6 +36,22 @@ new_repo() {
 
 run() { (cd "$1" && shift && "$CLERK" "$@"); }
 
+# A receipt now needs its evidence file, and the file must not sit in the repo or the
+# tree it describes goes dirty. These build a throwaway green log outside it; the cases
+# that assert receipt semantics build their own output instead.
+receipt_ok() {
+  local d=$1 cmd=${2:-"go test ./..."} f
+  f=$(mktemp); printf 'ok  \tt/a\t0.1s\nclerk_exit=0\n' > "$f"
+  run "$d" receipt --command "$cmd" --passed --output-file "$f"; local rc=$?
+  rm -f "$f"; return $rc
+}
+receipt_failed() {
+  local d=$1 cmd=${2:-"go test ./..."} f
+  f=$(mktemp); printf 'FAIL\tt/a\t0.1s\nclerk_exit=1\n' > "$f"
+  run "$d" receipt --command "$cmd" --failed --output-file "$f"; local rc=$?
+  rm -f "$f"; return $rc
+}
+
 # --------------------------------------------------------------------------------
 printf '\nprepare\n'
 
@@ -470,7 +486,7 @@ eq "and never a test function, which by definition has no caller" "0" \
 eq "the finding names where the symbol is declared, not the first file to mention it" "y.go" \
    "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | .detail | capture("\\((?<f>[^)]*)\\)").f')"
 
-run "$R7" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$R7" "go test ./..." >/dev/null
 V=$(run "$R7" verify)
 eq "a fresh passing receipt is not vacuous" "0" \
    "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="vacuous-receipt")] | length')"
@@ -497,7 +513,7 @@ run "$R7" receipt --command "go test ./..." --passed --output-file "$R7/out.txt"
 eq "and one where no package ran anything still is" "block" \
    "$(run "$R7" verify | jq -r '.findings[] | select(.check=="vacuous-receipt") | .severity')"
 rm -f "$R7/out.txt"
-run "$R7" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$R7" "go test ./..." >/dev/null
 
 # Neither a type nor a function gates the run. A type is reached through values, fields,
 # constructors and wrapper types, none of which spell it with word boundaries; a function
@@ -536,7 +552,7 @@ git -C "$R4" add -A && git -C "$R4" commit -qm "Finish task 2"
 eq "gate accepts a fully done breakdown" "true" \
    "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
 
-run "$R4" receipt --command "task test" --passed >/dev/null
+receipt_ok "$R4" "task test" >/dev/null
 eq "a receipt at HEAD is fresh" "true" \
    "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
@@ -549,7 +565,7 @@ case "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh
   *) bad "and says why" "mentions the tree changing" "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .detail')" ;;
 esac
 
-run "$R4" receipt --command "task test" --passed >/dev/null
+receipt_ok "$R4" "task test" >/dev/null
 eq "re-running the suite clears it" "true" \
    "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
@@ -564,7 +580,7 @@ printf 'package p\n' > "$R4/tasks/code.go"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Code under a directory called tasks"
 eq "code under tasks/ still counts as code" "false" \
    "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
-run "$R4" receipt --command "task test" --passed >/dev/null
+receipt_ok "$R4" "task test" >/dev/null
 eq "prepare reports the code tree the gate compares by" "40" \
    "$(run "$R4" prepare | jq -r '.code_tree | length')"
 
@@ -597,12 +613,44 @@ eq "and the gate exits zero"                  "0"    "$RC"
 # --------------------------------------------------------------------------------
 printf '\nreceipt guards\n'
 
-run "$R4" receipt --command "task test" --failed >/dev/null
+receipt_failed "$R4" "task test" >/dev/null
 eq "a failed receipt does not satisfy the gate" "false" \
    "$(run "$R4" land --check --audit-accepted | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 
 run "$R4" receipt >/dev/null 2>&1
 eq "receipt requires --command" "2" "$?"
+
+# The output is the evidence. Without it `--passed` is an assertion with nothing behind
+# it, and the vacuity check downstream degrades from a block to a hint — the one shape a
+# receipt exists to make impossible.
+run "$R4" receipt --command "task test" --passed >/dev/null 2>&1
+eq "receipt requires --output-file" "2" "$?"
+
+run "$R4" receipt --command "task test" --passed --output-file "$R4/../nope.log" >/dev/null 2>&1
+eq "and refuses a file that is not there" "1" "$?"
+
+EMPTY=$(mktemp)
+run "$R4" receipt --command "task test" --passed --output-file "$EMPTY" >/dev/null 2>&1
+eq "and refuses an empty one, which is not evidence" "1" "$?"
+rm -f "$EMPTY"
+
+# The run's own exit code outranks the caller's claim about it.
+MIS=$(mktemp); printf 'FAIL\tt/a\nclerk_exit=1\n' > "$MIS"
+run "$R4" receipt --command "task test" --passed --output-file "$MIS" >/dev/null 2>&1
+eq "a green claimed over a clerk_exit=1 is refused" "1" "$?"
+printf 'ok  \tt/a\t0.1s\nclerk_exit=0\n' > "$MIS"
+run "$R4" receipt --command "task test" --failed --output-file "$MIS" >/dev/null 2>&1
+eq "and a red claimed over clerk_exit=0 likewise" "1" "$?"
+eq "the recorded receipt keeps the exit code it read" "0" \
+   "$(run "$R4" receipt --command "task test" --passed --output-file "$MIS" | jq -r '.exit_code')"
+rm -f "$MIS"
+
+# An output file older than the commit it claims to describe was written before that tree
+# existed, so whatever it proves, it is not this.
+OLD=$(mktemp); printf 'ok  \tt/a\t0.1s\n' > "$OLD"; touch -t 200001010000 "$OLD"
+run "$R4" receipt --command "task test" --passed --output-file "$OLD" >/dev/null 2>&1
+eq "and output written before HEAD is refused as describing an earlier tree" "1" "$?"
+rm -f "$OLD"
 
 
 # --------------------------------------------------------------------------------
@@ -632,7 +680,7 @@ printf '{"n":9,"at":"2026-01-01T00:00:00Z","files":["tasks/feature.md"]}' > "$R8
 eq "and verify reads only the breakdown it was given" "0" \
    "$(run "$R8" verify --tasks-file tasks/feature.md | jq -r '[.findings[] | select(.check=="commit-boundary")] | length')"
 git -C "$R8" add -A && git -C "$R8" commit -qm "Do task 1"
-run "$R8" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$R8" "go test ./..." >/dev/null
 
 L=$(run "$R8" land --audit-accepted)
 eq "archives the breakdown onto the feature branch" "tasks/completed/feature.md" \
@@ -664,11 +712,11 @@ done
 printf 'package a\n' > "$RAMB/a.go"
 git -C "$RAMB" add -A && git -C "$RAMB" commit -qm "Three breakdowns"
 git -C "$RAMB" checkout -q -b feature
-run "$RAMB" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$RAMB" "go test ./..." >/dev/null
 eq "fixture: naming one archives it and records that it did" "tasks/completed/alpha.md" \
    "$(run "$RAMB" land --no-integrate --audit-accepted --tasks-file tasks/alpha.md | jq -r '.archived')"
 
-run "$RAMB" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$RAMB" "go test ./..." >/dev/null
 A=$(run "$RAMB" land --no-integrate --audit-accepted 2>&1); RC=$?
 eq "land refuses while tasks/ still holds several" "2" "$RC"
 eq "and names them rather than archiving nothing" "1" \
@@ -676,7 +724,7 @@ eq "and names them rather than archiving nothing" "1" \
 eq "both breakdowns are still there to be named" "2" \
    "$(ls "$RAMB"/tasks/beta.md "$RAMB"/tasks/gamma.md 2>/dev/null | wc -l | tr -d ' ')"
 
-run "$R8" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$R8" "go test ./..." >/dev/null
 L=$(run "$R8" land --integrate --audit-accepted)
 eq "lands with --integrate"          "true"    "$(printf '%s' "$L" | jq -r '.landed')"
 eq "onto the default branch"         "main"    "$(printf '%s' "$L" | jq -r '.base_branch')"
@@ -701,7 +749,7 @@ git -C "$RCFG" add -A && git -C "$RCFG" commit -qm "Plan"
 git -C "$RCFG" switch -qc feature
 run "$RCFG" finish 1 -- a.go >/dev/null 2>&1
 git -C "$RCFG" commit -qm "Do task 1" -q
-run "$RCFG" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$RCFG" "go test ./..." >/dev/null
 E=$(run "$RCFG" land --audit-accepted 2>"$RCFG.err")
 eq "land with nothing typed integrates because the repo says to" "true" \
    "$(printf '%s' "$E" | jq -r '.landed')"
@@ -720,7 +768,7 @@ git -C "$R23" add -A && git -C "$R23" commit -qm "Plan"
 WT5="$R23/.wt/feat"
 git -C "$R23" worktree add -q -b feat "$WT5" >/dev/null 2>&1
 printf 'x\n' > "$WT5/x.txt"; git -C "$WT5" add -A && git -C "$WT5" commit -qm "Work"
-run "$WT5" receipt --command "true" --passed >/dev/null
+receipt_ok "$WT5" "true" >/dev/null
 L=$(run "$WT5" land --integrate --audit-accepted)
 eq "landing from inside a worktree does not land"  "false" "$(printf '%s' "$L" | jq -r '.landed')"
 eq "it names the worktree standing in the way"     "$WT5"  "$(printf '%s' "$L" | jq -r '.worktree')"
@@ -748,7 +796,7 @@ printf '{"story":"beta","tasks":[{"n":1,"title":"B","depends_on":[],"done":false
 git -C "$R25" add -A && git -C "$R25" commit -qm "Two breakdowns"
 git -C "$R25" switch -qc feat
 printf 'x\n' > "$R25/x.txt"; git -C "$R25" add -A && git -C "$R25" commit -qm "Work"
-run "$R25" receipt --command "true" --passed >/dev/null
+receipt_ok "$R25" "true" >/dev/null
 
 run "$R25" land --audit-accepted --tasks-file tasks/alpha.md >/dev/null 2>&1
 eq "land accepts --tasks-file like every other command" "0" "$?"
@@ -787,7 +835,7 @@ eq "the main checkout's task record is untouched" "false" \
    "$(jq -r '.tasks[0].done' "$R13/tasks/wt.json")"
 
 git -C "$WT2" commit -qm "Task 1"
-run "$WT2" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$WT2" "go test ./..." >/dev/null
 eq "gate reads the worktree breakdown" "true" \
    "$(run "$WT2" land --check --audit-accepted | jq -r '.checks[] | select(.name=="tasks-complete") | .ok')"
 
@@ -796,7 +844,7 @@ eq "land archives inside the worktree" "tasks/completed/wt.md" "$(printf '%s' "$
 eq "and the archive landed on the worktree branch" "1" \
    "$(git -C "$WT2" log --oneline -1 --name-only | grep -c 'tasks/completed/wt.md' | tr -d ' ')"
 
-run "$WT2" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$WT2" "go test ./..." >/dev/null
 L=$(run "$WT2" land --integrate --audit-accepted)
 eq "integrating from inside a worktree stops before the merge" "false" "$(printf '%s' "$L" | jq -r '.landed')"
 case "$(printf '%s' "$L" | jq -r '.command')" in
@@ -927,7 +975,7 @@ eq "flags a task marked done with a criterion unwalked" "1" \
 git -C "$R17" commit -qm "Task 1"
 printf 'more\n' >> "$R17/a.go"
 run "$R17" finish 2 -- a.go >/dev/null && git -C "$R17" commit -qm "Task 2"
-run "$R17" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$R17" "go test ./..." >/dev/null
 eq "an unticked criterion does not shut the gate" "true" \
    "$(run "$R17" land --check --audit-accepted | jq -r '.ok')"
 eq "though status still says so"                  "2" \
@@ -1068,7 +1116,7 @@ git -C "$WT2" commit -qm "Task 2" >/dev/null
 eq "status reads progress from the excluded task record" "2|2" \
    "$(run "$WT2" status | jq -r '[.total, .done] | join("|")')"
 
-run "$WT2" receipt --command "true" --passed >/dev/null
+receipt_ok "$WT2" "true" >/dev/null
 L=$(run "$WT2" land --audit-accepted)
 eq "land archives the breakdown by moving it, not committing it" \
    "$R19/tasks/completed/story.md" "$(printf '%s' "$L" | jq -r '.archived')"
@@ -2220,15 +2268,24 @@ git -C "$R36B" add -A && git -C "$R36B" commit -qm "Change only Go"
 eq "a branch that changed none is not asked to sweep the language anyway" "0" \
    "$(run "$R36B" verify --all-closed | jq -r '[.not_checked[]? | select(test("JavaScript/TypeScript"))] | length')"
 
-# A receipt recorded without --output-file: the check could not run, and the fix is the
-# flag. Nothing there for a reader to judge, so it must not hold the verify-run row.
+# `clerk receipt` refuses to record one without its output, so a tail-less receipt can now
+# only arrive from an older clerk or a hand-written file — written directly here, because
+# the branch still has to hold. The check could not run, and the fix is the flag. Nothing
+# there for a reader to judge, so it must not hold the verify-run row.
 R36C=$(new_repo)
 git -C "$R36C" switch -qc feature
 printf 'package p\n' > "$R36C/a.go"
 git -C "$R36C" add -A && git -C "$R36C" commit -qm "One commit"
-run "$R36C" receipt --command "go test ./..." --passed >/dev/null
+receipt_ok "$R36C" "go test ./..." >/dev/null
+python3 - "$R36C" <<'EOF'
+import json, pathlib, subprocess, sys
+d = pathlib.Path(sys.argv[1], ".git", "clerk", "receipt.json")
+r = json.loads(d.read_text())
+r["output_tail"] = ""          # the shape an older clerk left behind
+d.write_text(json.dumps(r) + "\n")
+EOF
 H=$(run "$R36C" verify)
-eq "an uncaptured receipt is a hint, not residue" "1|0" \
+eq "a receipt with no output tail is a hint, not residue" "1|0" \
    "$(printf '%s' "$H" | jq -r '[([.hints[]? | select(test("no output tail"))] | length), ([.not_checked[]? | select(test("no output tail"))] | length)] | map(tostring) | join("|")')"
 
 # Prose is not a caller: a symbol named only in docs or the breakdown is still reported.

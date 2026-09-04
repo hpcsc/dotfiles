@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """clerk receipt — record a suite run against the SHA it describes.
 
-    clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
+    clerk receipt --command <cmd> (--passed|--failed) --output-file <f>
 
 The file that did not exist: without it a green run taken before the audit's fixes could
 still satisfy a check that said "the full suite green". That check and the verify check
 compare it to HEAD by code tree, and the output tail is what the vacuity check reads.
+
+--output-file is required. The output is the evidence, and a receipt without it records an
+assertion nothing can check. It is refused when the file is missing, empty, older than the
+commit it claims to describe, or records a `clerk_exit=` that contradicts --passed.
 """
 
 import sys
@@ -22,6 +26,8 @@ if __name__ == "__main__":
         die(f"unknown argument '{rest[0]}'")
     if not o["--command"]:
         die("--command is required")
+    if not o["--output-file"]:
+        die("--output-file is required: capture the suite's output and pass the file")
     if o["--passed"] == o["--failed"]:
         die("pass --passed or --failed")
     emit(cmd_receipt(o["--command"], bool(o["--passed"]), o["--output-file"]))

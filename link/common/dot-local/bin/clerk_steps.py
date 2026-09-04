@@ -291,7 +291,7 @@ def row_suite(ctx):
         return row("suite", True, receipt={"sha": rec["sha"], "command": rec["command"], "at": rec.get("at")})
     cmd = ctx.prepare.get("test_command")
     return row("suite", False, why_not_done=why, test_command=cmd, build_tree=ctx.build_tree,
-               done_by=f"run `{cmd}` in {ctx.build_tree}; clerk receipt --command \"{cmd}\" --passed --output-file <file>")
+               done_by=f"run `{cmd}` in {ctx.build_tree}, capturing output and appending clerk_exit=$? to it; clerk receipt --command \"{cmd}\" --passed --output-file <file>")
 
 
 def row_audit(ctx):

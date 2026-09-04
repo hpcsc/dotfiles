@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from clerk_lib import die, emit, git, gitout
-from clerk_repo import ledger_read, prepare, run_section
+from clerk_repo import breakdown_side, ledger_read, prepare, run_section
 
 CALLERS = ("ui", "inbound", "outbound", "async", "exported")
 
@@ -114,7 +114,8 @@ def runs_root(common):
 def run_summary(run, cwd):
     bd = run.section("breakdown")
     progress = None
-    side_path = Path(bd["task_record"]) if bd else None
+    side = breakdown_side(bd)
+    side_path = Path(side) if side else None
     if side_path and not side_path.exists():
         cand = side_path.parent / "completed" / side_path.name
         side_path = cand if cand.exists() else side_path

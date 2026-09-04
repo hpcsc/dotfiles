@@ -167,6 +167,16 @@ def run_section(directory, name, default=None):
     return default if legacy is None else legacy
 
 
+def breakdown_side(bd):
+    """The task record a run's breakdown points at. Ledgers written before the record was
+    renamed hold the path under `sidecar`, and three callers indexed the new name straight
+    — so a run started by an older clerk crashed `clerk step` rather than resolving. Drop
+    the fallback once no such ledger is open."""
+    if not bd:
+        return None
+    return bd.get("task_record") or bd.get("sidecar")
+
+
 def ledger_log(directory, cmd, rc, argv, cwd=None):
     """Appends one event. Never fails the command it records: a logging error must not
     turn a finished task into a failed one."""

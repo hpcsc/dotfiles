@@ -17,6 +17,7 @@ from pathlib import Path
 
 from clerk_lib import clerk, die, git, gitout, worktree_for
 from clerk_method import Renderer
+from clerk_repo import breakdown_side
 from clerk_tasks import load_task_record, next_task
 from clerk_verify import verify
 from clerk_ledger import (age_seconds, fixup_ambiguities, gear, guidelines_read, is_ancestor,
@@ -117,7 +118,7 @@ def breakdown_files(ctx):
     bd = ctx.run.section("breakdown")
     if not bd:
         return None, None, False
-    tf, side = Path(bd["tasks_file"]), Path(bd["task_record"])
+    tf, side = Path(bd["tasks_file"]), Path(breakdown_side(bd))
     if tf.exists():
         return tf, side, False
     home = Path(ctx.prepare.get("tasks_home") or ctx.cwd)
@@ -241,7 +242,7 @@ def row_decompose(ctx):
         return row("decompose", False, stop=True, tasks_file=bd["tasks_file"],
                    why_not_done="review_breakdown is on and the breakdown is not approved",
                    done_by=f"show the breakdown and wait for approval; then clerk step --done decompose --tasks-file {bd['tasks_file']} --approved")
-    return row("decompose", True, tasks_file=bd["tasks_file"], task_record=bd["task_record"])
+    return row("decompose", True, tasks_file=bd["tasks_file"], task_record=breakdown_side(bd))
 
 
 def row_build(ctx):

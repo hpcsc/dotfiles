@@ -330,7 +330,7 @@ with `--audit-accepted`. Without either, land refuses.
 | `isolate <kebab-name> [--worktree\|--in-place] [--base <ref>]` | This run's worktree under `.worktrees/` (`.claude/worktrees/` under Claude Code), with that directory written to `info/exclude` so it does not read as a dirty tree — or, with `in_place` on, a feature branch in the main checkout. Adopts an existing worktree or orphaned branch of that name; refuses the main checkout's own branch | 0 · **2** refused |
 | `status [--all]` | Progress from the task record and, under `next`, the first task whose dependencies are done, plus acceptance criteria walked per task and each task's assessed certainty and blast radius rolled up as `gears`; `--all` walks every breakdown in the repo, in flight and archived | 0 |
 | `finish <n> -- <files>` | Task marked done in the task record, named paths staged with it | 0 · **2** refused |
-| `receipt` | A suite run bound to the SHA it describes | 0 |
+| `receipt` | A suite run bound to the code tree it describes | 0 |
 | `land --check` | The four landing predicates, each with its evidence, without landing | 0 open · **1** shut |
 | `fixup [--onto <sha>] -- <files>` · `fixup --replay [--force]` | Marks a fix for the commit that introduced it, refusing when several commits in range touch the file or when the files' targets differ; then one autosquash replay, aborted and reverted on conflict, refused on a published range | 0 · **3** needs your judgment |
 | `learn --type <t> --title <s> --learning <s> --apply-when <s>` · `learn --list` | Appends the block to the learnings file resolved from the **repo root**, not the worktree the run is standing in; refuses an exact title collision, leaving dedup on substance to the caller | 0 · **3** title exists |

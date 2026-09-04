@@ -264,4 +264,6 @@ def cmd_receipt(command, passed, output_file):
         (Path(state) / "receipt.json").write_text(json.dumps(rec) + "\n")
     except OSError:
         die(f"cannot write {state}/receipt.json")
-    return rec
+    # Everything but the tail. The vacuity check reads that from the file; echoing it
+    # back spends a thousand tokens replaying output the caller just watched run.
+    return {k: v for k, v in rec.items() if k != "output_tail"}

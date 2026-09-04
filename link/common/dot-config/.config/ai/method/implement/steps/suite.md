@@ -18,4 +18,4 @@ clerk receipt --command "<the command you ran>" --passed --output-file /tmp/suit
 
 Read the output yourself as well. The receipt checks that a green was possible, not that the branch is right.
 
-The receipt is bound to the SHA it describes. That is what lets `clerk land` refuse a green taken before later changes, which is otherwise indistinguishable from a green taken after them.
+The receipt is bound to the code tree it describes. That is what lets `clerk land` refuse a green taken before later changes, which is otherwise indistinguishable from a green taken after them — while a commit touching only `tasks/` leaves it standing, because the code it ran against did not move.

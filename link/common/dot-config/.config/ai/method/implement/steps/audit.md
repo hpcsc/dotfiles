@@ -56,7 +56,7 @@ This is also what keeps `clerk verify` meaningful rather than noisy. Its scatter
 
 **Fold only what folds cleanly, and it stops rather than forcing it.** A conflicted replay is aborted and the branch left exactly as it was — keep the fix as its own commit there, saying why in the message, because untangling a conflicted replay of your own branch costs more than the tidier history is worth. A range with commits already pushed is refused for the same reason: rewriting it would rewrite history someone else may have, and `--force` is you asserting the branch is yours alone. And a file no commit in range touches is reported as new work rather than a correction, which also wants its own commit.
 
-**Do this before the receipt, not after.** The replay rewrites every SHA from the target commit onward, and a receipt is bound to the SHA it describes; one recorded before the fold describes commits that no longer exist.
+**A fold does not invalidate the receipt.** The replay rewrites every SHA from the target commit onward, but a receipt is bound to the code tree it describes rather than to a SHA, and an autosquash rewrites history without changing content — so a green taken before the fold still stands after it. What sends the run back to the suite is the fixes themselves.
 
 **Then re-run the suite and record a new receipt.** The suite step's receipt describes a tree that no longer exists. Capture the output and its `clerk_exit=` again — `clerk receipt` refuses without them. This is the one place in the skill where code changes land after the last green, which is exactly the unproven-suite shape the audit itself hunts for. If you changed nothing, say so and keep the existing receipt.
 

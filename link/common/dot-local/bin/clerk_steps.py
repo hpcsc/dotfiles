@@ -361,8 +361,8 @@ def row_theory(ctx):
 
 def row_verify_run(ctx):
     # A pass is recorded at its code tree, so the tasks/-only commits that follow — the
-    # Theory, the archive — do not send the run back through git grep, and a run that has
-    # landed is not re-verified against a receipt `clerk verify` still compares by SHA.
+    # Theory, the archive — do not send the run back through the checks, and a run that
+    # has landed is not re-verified.
     passed = ctx.run.done.get("verify-clean")
     if passed and passed.get("code_tree") == ctx.head_ct:
         return row("verify-run", True, cached=True)

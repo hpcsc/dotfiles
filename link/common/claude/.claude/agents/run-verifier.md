@@ -35,7 +35,7 @@ These are the parts no script settles, and the reason this agent still exists.
 
 2. **Anything else `not_checked` names.** Read the gap, do what settles it, and say what you found.
 
-Also read the run's learnings file if present (it may be out-of-tree per the run's own resolution) and return its path — informational, not a finding.
+Also read the run's learnings file if present (`tasks/learnings.md` in the main checkout) and return its path — informational, not a finding.
 
 ## Output contract
 

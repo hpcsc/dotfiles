@@ -8,11 +8,6 @@
 set -uo pipefail
 
 CLERK="$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-local/bin/clerk"
-# The out-of-tree learnings path is keyed on the repo path, and these repos are throwaways
-# — left pointing at the real home, every run of this suite deposited another directory
-# there. 262 had accumulated against five real projects.
-CLERK_LEARNINGS_HOME="$(mktemp -d)"; export CLERK_LEARNINGS_HOME
-trap 'rm -rf "$CLERK_LEARNINGS_HOME"' EXIT
 MODELS="$(cd "$(dirname "$0")/.." && pwd)/scripts/agent-models.py"
 PASS=0
 FAIL=0
@@ -199,21 +194,16 @@ eq "and the request still outranks it" "false" \
 printf '\nlearnings path\n'
 
 R2=$(new_repo)
-eq "in-tree when tasks/ is not ignored" \
+eq "beside the breakdowns, in the repo the learnings are about" \
    "$R2/tasks/learnings.md" "$(run "$R2" prepare | jq -r '.learnings_path')"
 
 printf 'tasks/\n' > "$R2/.gitignore"
 git -C "$R2" add -A && git -C "$R2" commit -qm "Ignore tasks"
-case "$(run "$R2" prepare | jq -r '.learnings_path')" in
-  "$CLERK_LEARNINGS_HOME"/*/learnings.md) ok "out-of-tree when tasks/ is gitignored" ;;
-  *) bad "out-of-tree when tasks/ is gitignored" "under \$CLERK_LEARNINGS_HOME" \
-         "$(run "$R2" prepare | jq -r '.learnings_path')" ;;
-esac
-case "$(run "$R2" prepare | jq -r '.learnings_path')" in
-  "$HOME"/*) bad "the out-of-tree home is relocatable, so a suite never writes to the real one" \
-                 "not under \$HOME" "$(run "$R2" prepare | jq -r '.learnings_path')" ;;
-  *) ok "the out-of-tree home is relocatable, so a suite never writes to the real one" ;;
-esac
+# One location, tracked or not. Keying an out-of-tree store on the repo's path meant a
+# rename orphaned it silently: one project had three generations of its own learnings
+# sitting under three different keys, and only the newest was being read.
+eq "and in the same place when tasks/ is gitignored — the location does not move" \
+   "$R2/tasks/learnings.md" "$(run "$R2" prepare | jq -r '.learnings_path')"
 eq "and says it resolved the path itself" "resolved" \
    "$(run "$R2" prepare | jq -r '.learnings_path_source')"
 
@@ -1919,7 +1909,7 @@ eq "and both are joined by it" "- Observed: task 5 — US-015 wiring" \
         --task 5 --feature "US-015 wiring" >/dev/null; \
       grep -A3 '^## Both' "$RL/tasks/learnings.md" | grep '^- Observed:')"
 
-eq "an out-of-tree file says nothing here dirties the tree" "false" \
+eq "a file git will not keep says nothing here dirties the tree" "false" \
    "$(run "$RL2" learn --type pattern --title "Outside" --learning "x" \
         --apply-when "y" | jq -r '.in_tree')"
 

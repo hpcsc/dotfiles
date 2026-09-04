@@ -8,14 +8,14 @@ Read the values rather than re-deriving them. Three carry precedence rules subtl
 
 - **`test_command`** — `tasks/test-commands.json` (tracked, a team decision) beats `tasks/.environment` (a gitignored machine-local cache) beats detection. A cached command must never shadow one the team committed. Use the entry for the task's language while working on it; use `default` before committing anything that spans languages, and again in Phase 3.
 - **`go_tool_prefix`** — whether *this machine* runs Go through mise. Decided once, applied to every Go command, never double-wrapped on a project command that already says `mise exec --`.
-- **`learnings_path`** — in-tree when the repo tracks `tasks/`, out-of-tree per-project when it gitignores it, so a shared repo gets steering without polluting teammates' checkouts.
+- **`learnings_path`** — always `tasks/learnings.md` in the repo the learnings are about, beside the breakdowns. It hangs off the main checkout, so every worktree of one repo reads and writes the same file. A repo that gitignores `tasks/` keeps its learnings all the same; they simply stay local instead of reaching teammates.
 - **`flags`** — the run's flags, request first, then `tasks/clerk.json` (tracked, a team decision), then `tasks/.environment` (gitignored, machine-local), then off. `flag_sources` names what decided each, `request` included. Only whole tokens count, so a description that happens to say "integrate" is prose and not an instruction, and a request carrying both `--integrate` and `--no-integrate` reads as off — off is what a run does with nothing set, so an ambiguous signal must never be what changes it.
 
 The request is the top layer of the last two, and it needs no passing: `--start` recorded it verbatim, and every resolution since reads it from there.
 
 **Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
 
-**`learnings_path` honours a `--learnings-path` in the request**, and `learnings_path_source` says which you got. That override exists because the path is keyed on the repository, and every worktree of one repo shares a git-common-dir — so several runs dispatched over one story would read and append to a single file at once, each overwriting what the others just added. A caller that fans runs out gives each its own path for that reason. Use the resolved value for both the read here and the write at the end.
+**`learnings_path` honours a `--learnings-path` in the request**, and `learnings_path_source` says which you got. That override exists because the path is one per repository, and every worktree of one repo resolves to it — so several runs dispatched over one story would read and append to a single file at once, each overwriting what the others just added. A caller that fans runs out gives each its own path for that reason. Use the resolved value for both the read here and the write at the end.
 
 ### Check whether this run already exists
 

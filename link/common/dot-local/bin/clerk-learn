@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """clerk learn — append a run's learning to the file the next run reads.
 
-The block's shape is fixed, and so is where it goes. Neither was the hard part: the
-learnings path hangs off the *repo root*, and by the time this step runs the session is
-standing in a worktree, which is not that directory. A run that resolves it by hand from
-its cwd writes a file nothing will ever read again, and nothing about the result says so
-— the append succeeds, the text is there, and the next run reads the real file and finds
-it empty.
+The block's shape is fixed, and so is where it goes: `tasks/learnings.md`, beside the
+breakdowns, in the repo the learnings are about. That path hangs off the *repo root*, and
+by the time this step runs the session is standing in a worktree, which is not that
+directory. A run that resolves it by hand from its cwd writes a file nothing will ever
+read again, and nothing about the result says so — the append succeeds, the text is
+there, and the next run reads the real file and finds it empty.
 
 So the path is asked for rather than derived, defaulting to what `clerk prepare` resolves
 (from the repo root, whatever the cwd) and taking --path for the case that override
@@ -213,9 +213,9 @@ def main():
 
     # Whether to commit it is a decision and stays with the caller: writing changes what
     # your next run reads, committing changes what everyone's does. Containment is asked
-    # first — `git check-ignore` answers "not ignored" for a path outside the repo
-    # entirely, which is the out-of-tree learnings file, and reading that as "tracked"
-    # would tell the caller to commit a file git has never heard of.
+    # first, because `git check-ignore` answers "not ignored" for a path outside the repo
+    # entirely, and reading that as "tracked" would tell the caller to commit a file git
+    # has never heard of.
     tracked = in_repo_history(path)
     emit({"ok": True, "path": str(path), "title": args.title, "type": args.type,
           "replaced": replaced, "entries": len(existing_titles(path)),
@@ -223,7 +223,8 @@ def main():
           "note": ("this file is in the repo and not ignored, so committing it is what makes "
                    "teammates inherit the learning — and leaving it uncommitted leaves the "
                    "tree dirty for the next run" if tracked else
-                   "this file is outside the repo's history, so nothing here dirties the tree")})
+                   "git will not keep this file — it is ignored, or outside the repo — so "
+                   "nothing here dirties the tree and nothing here reaches a teammate")})
 
 
 if __name__ == "__main__":

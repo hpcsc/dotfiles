@@ -336,15 +336,9 @@ def resolve_go_prefix(root):
 
 
 def resolve_learnings_path(root):
-    """In-tree when the repo tracks tasks/, out-of-tree per project when it gitignores it.
-
-    CLERK_LEARNINGS_HOME relocates the out-of-tree half. The suites needed it: their
-    throwaway repos gitignore tasks/ to exercise this branch, and every run of them left
-    a directory in the real home — 262 of them, against five real projects."""
-    if is_ignored(root, "tasks/learnings.md"):
-        home = os.environ.get("CLERK_LEARNINGS_HOME") or f"{Path.home()}/.claude/implement-learnings"
-        slug = str(root).replace("/", "-").lstrip("-")
-        return f"{home}/{slug}/learnings.md"
+    """Beside the breakdowns, in the repo the learnings are about. `root` is the main
+    checkout even when the caller stands in a worktree, and an ignored tasks/ is never
+    checked out into one, so every worktree of a repo reads and writes the one file."""
     return f"{root}/tasks/learnings.md"
 
 

@@ -128,7 +128,7 @@ flowchart TD
   BUILD -->|"none open"| SUITE
   SUITE["suite<br/>receipt green at this code tree"] --> AUDIT
   AUDIT["audit<br/>clerk audit run · round · accept"] --> VALIDATE
-  VALIDATE["match-request<br/>clerk step --done match-request [--mismatch]<br/>blocked until --resolved"] --> THEORY
+  VALIDATE["match-request<br/>clerk step --done match-request"] --> THEORY
   THEORY["theory<br/>## Theory in the breakdown, committed"] --> VERIFY
   VERIFY["verify-run<br/>clerk verify clean · not_checked reviewed"] --> LAND
   LAND["land<br/>clerk land · the checks read the acceptance<br/>fast-forward from the main checkout"] --> LEARN

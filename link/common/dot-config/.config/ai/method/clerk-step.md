@@ -41,7 +41,7 @@ There are three kinds of result:
   the land checks. clerk records the assertion with the code tree it applies to, but does not infer
   it.
 - **Blocked:** something needs a decision. `step` returns `blocked: true` with a reason,
-  and the instruction is to stop and ask: a dirty tree at `ground`, an open story mismatch,
+  and the instruction is to stop and ask: a dirty tree at `ground`,
   a dependency cycle. A pause returns `stop: true`: the model ends its turn, and the
   next `clerk step` is the reader's approval.
 
@@ -90,7 +90,7 @@ The ledger lives in the common git dir, not in the git dir of the worktree:
                     done          the asserted completions: ground, pause, verify-run,
                                   verify-run, learn
                     breakdown     {tasks_file, task_record, approved, lint_hash}
-                    match_request {code_tree, mismatches, resolved}
+                    match_request {code_tree, at}
                     land          {archived, integrate, integrate_source, landed}
   events.jsonl      one line for each logged clerk command: {cmd, argv, exit, at, head}
   audit.json        {rounds_planned, rounds: [{n, code_tree, findings, refuted, coverage_gaps}],
@@ -196,7 +196,7 @@ category as well made a caller learn two words to reach the same line of the rep
 | 4a | `pause N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done pause N`. `step` prints `stop: true` before it | asserted, a pause |
 | 5 | `suite` | the receipt passed, and its code tree equals the HEAD code tree | `clerk receipt` | derived |
 | 6 | `audit` | `accepted` is present at this code tree | `clerk audit run --rounds N`; for each round `clerk audit round --report <json>`, which refuses on a stale receipt, a dirty tree, or more rounds than planned without `--replan`; then `clerk audit accept [--early "<why>"]`. `step` prints the request from `run.json` as `request`, with `base` and `test_commands` | asserted for `accept`, derived for the rest |
-| 7 | `match-request` | the run's `match_request` is at this code tree, with no open mismatch | `clerk step --done match-request [--mismatch "…"]…`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions. A recorded mismatch is **blocked** until `--resolved` | asserted |
+| 7 | `match-request` | the run's `match_request` is at this code tree | `clerk step --done match-request`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions | asserted |
 | 8 | `theory` | the breakdown contains `## Theory`, and the file is committed when `tasks_tracked` is true | the model writes it. A `tasks/`-only commit does not disturb rows 5 to 7 | derived |
 | 9 | `verify-run` | `clerk verify` is clean, and `not_checked` is empty or `--done verify-run` is recorded. `hints` — what the check could not run for want of a flag — never holds the row | `step` runs verify itself when it reaches the row, and caches a pass in the run's `done` at its code tree so the archive commit does not run it again | derived, then asserted |
 | 10 | `land` | the run's `land` says `landed`, or `archived.json` exists and integration is off or done. From the main checkout: the slug is merged and its worktree and branch are gone | `clerk land`. It asks `clerk step` and refuses unless the run is at this row, so `--audit-accepted` is not needed and a `land` called directly cannot walk past any row; land keeps the checks the table does not make — a clean tree, every task done, a fresh receipt. The exit, fast-forward and remove sequence for a worktree becomes printed instructions from the main checkout | derived |

@@ -33,7 +33,7 @@ Three fields change what you do. The rest the reply explains itself — `step` a
 
 - **`instructions`** — the method for this step, in full the first time this session reaches it. While the step is unchanged — every task of the build loop, a pause for tests — it is a one-line pointer and `instructions_elided` is `true`, because the text is already in your context. After a compaction, or whenever it is no longer in view, `clerk step --full` prints it again.
 - **`stop: true`** — a pause: the step wants a person. Show what it asks for, say what you would do next, and **end your turn**. The next `clerk step` is the reader's go; do not reason your way past it.
-- **`blocked: true`** — something needs a decision: a dirty tree at the start, a recorded request mismatch, a dependency cycle. Stop and say what `reason` says. Do not route around a block.
+- **`blocked: true`** — something needs a decision: a dirty tree at the start, a dependency cycle. Stop and say what `reason` says. Do not route around a block.
 
 **The commands that close a step hand you the next one** under `next`, exactly as `clerk step` would print it: `--start`, every `--done`, `clerk audit accept`, `clerk isolate`, `clerk land` and `clerk learn`. `clerk finish` returns it as `after_commit`, because its own next move is the commit, which clerk cannot make for you. Act on that object rather than asking again — and call `clerk step` when you have no such reply in hand: after `clerk guidelines`, after entering a worktree, after a receipt, after a commit that did not land, or whenever you are unsure where the run stands.
 

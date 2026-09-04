@@ -97,17 +97,8 @@ def done_pause(ctx, argv):
 
 
 def done_match_request(ctx, argv):
-    o, _ = parse(argv, {"--mismatch": "list", "--resolved": "bool"})
-    rec = ctx.run.section("match_request") or {}
-    if o["--resolved"]:
-        if rec.get("code_tree") != ctx.head_ct:
-            die("nothing to resolve: nothing is recorded at this code tree", 1)
-        rec["resolved"] = True
-        rec["resolved_at"] = now()
-    else:
-        rec = {"code_tree": ctx.head_ct, "at": now(), "mismatches": o["--mismatch"], "resolved": False}
-    ctx.run.put(match_request=rec)
-    return {"done": "match-request", "mismatches": rec["mismatches"], "resolved": rec["resolved"]}
+    ctx.run.put(match_request={"code_tree": ctx.head_ct, "at": now()})
+    return {"done": "match-request"}
 
 
 def done_verify_run(ctx, argv):

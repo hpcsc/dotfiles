@@ -332,14 +332,10 @@ def row_match_request(ctx):
     log = gitout("log", "--oneline", f"{base}..HEAD", cwd=ctx.cwd) if base else gitout("log", "--oneline", "-20", cwd=ctx.cwd)
     fields = dict(request=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=MATCH_QUESTIONS)
     if rec and rec.get("code_tree") == ctx.head_ct:
-        if rec.get("mismatches") and not rec.get("resolved"):
-            return row("match-request", False, blocked=True, stop=True,
-                       reason="mismatches were recorded; put them to the user and stop. After the decision: clerk step --done match-request --resolved",
-                       mismatches=rec["mismatches"], why_not_done="unresolved mismatches", **fields)
-        return row("match-request", True, mismatches=rec.get("mismatches", []))
+        return row("match-request", True)
     why = "the request was not re-read against this code tree" if not rec else "matched at an earlier code tree — the code changed since"
     return row("match-request", False, why_not_done=why,
-               done_by="clerk step --done match-request [--mismatch \"<quoted words>\"]...", **fields)
+               done_by="clerk step --done match-request", **fields)
 
 
 def row_theory(ctx):

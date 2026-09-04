@@ -310,18 +310,14 @@ eq "accept with no round at this tree needs --early and a reason" "3" "$(rc "$WT
 eq "given one, it is recorded" "trivial fix" "$(run "$WT" audit accept --early "trivial fix" | field .early)"
 
 # --------------------------------------------------------------------------------
-printf '\nmatch-request — the request is re-read against the branch; a mismatch parks the run\n'
+printf '\nmatch-request — the request is re-read against the branch, and the reading is asserted\n'
 
 V=$(run "$WT" step)
 eq "match-request hands over the request and the log" "Add a widget --gears|true" \
    "$(printf '%s' "$V" | jq -r '[.request, ((.log|length) > 3 | tostring)] | join("|")')"
 eq "and the four questions" "4" "$(printf '%s' "$V" | jq -r '.questions | length')"
-eq "--resolved with nothing recorded is refused" "1" "$(rc "$WT" step --done match-request --resolved)"
-run "$WT" step --done match-request --mismatch "no widget colour" >/dev/null
-eq "a recorded mismatch blocks the run until the user decides" "match-request|true|true" \
-   "$(run "$WT" step | jq -r '[.step, (.blocked|tostring), (.stop|tostring)] | join("|")')"
-run "$WT" step --done match-request --resolved >/dev/null
-eq "resolved, the run moves to theory" "theory" "$(run "$WT" step | field .step)"
+run "$WT" step --done match-request >/dev/null
+eq "asserted, the run moves to theory" "theory" "$(run "$WT" step | field .step)"
 
 # --------------------------------------------------------------------------------
 printf '\nexplain — the breakdown carries a Theory section, committed when tracked\n'

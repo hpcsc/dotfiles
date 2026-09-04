@@ -16,9 +16,6 @@ trap 'rm -rf "$CLERK_LEARNINGS_HOME"' EXIT
 MODELS="$(cd "$(dirname "$0")/.." && pwd)/scripts/agent-models.py"
 PASS=0
 FAIL=0
-MODELS="$(cd "$(dirname "$0")/.." && pwd)/scripts/agent-models.py"
-PASS=0
-FAIL=0
 
 ok()   { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
 bad()  { FAIL=$((FAIL + 1)); printf '  FAIL %s\n     expected: %s\n     actual:   %s\n' "$1" "$2" "$3"; }
@@ -1883,6 +1880,19 @@ eq "--show returns the body of the one worth reading" "true|folded wording" \
 eq "a title nothing recorded is named rather than silently empty" "3" \
    "$(run "$RL" learn --show "No such entry" >/dev/null 2>&1; printf '%s' $?)"
 
+# Nothing could retire an entry, so a learning written against code since rewritten stayed
+# true-sounding forever and every later run in the repo read it as fact.
+BEFORE=$(grep -c '^## ' "$RL/tasks/learnings.md")
+eq "--drop retires an entry" "Second thing" "$(run "$RL" learn --drop "Second thing" | jq -r '.dropped')"
+eq "and it is gone from the file" "true" \
+   "$([ "$(grep -c '^## ' "$RL/tasks/learnings.md")" -eq "$((BEFORE - 1))" ] && echo true || echo false)"
+eq "with its body gone too, not just its heading" "0" "$(grep -c 'folded wording' "$RL/tasks/learnings.md")"
+eq "dropping what is not there is refused rather than reported as done" "3" \
+   "$(run "$RL" learn --drop "Never recorded" >/dev/null 2>&1; printf '%s' $?)"
+eq "an entry records the date it was written, so age is answerable" "true" \
+   "$(run "$RL" learn --type pattern --title "Dated" --learning "x" --apply-when "y" >/dev/null; \
+      run "$RL" learn --index | jq -r '[.index[] | select(.title == "Dated") | .recorded != null] | first')"
+
 eq "an entry missing a field is refused, since it is the one nobody can act on" "2" \
    "$(run "$RL" learn --type pattern --title "Partial" --learning "x" >/dev/null 2>&1; printf '%s' $?)"
 eq "and so is a type outside the four" "2" \
@@ -1899,15 +1909,15 @@ printf 'tasks/\n' > "$RL2/.gitignore" && git -C "$RL2" add -A && git -C "$RL2" c
 eq "a feature without a task number carries no dangling dash" "- Observed: US-014 formatting" \
    "$(run "$RL" learn --type constraint --title "Feature only" --learning "x" --apply-when "y" \
         --feature "US-014 formatting" >/dev/null; \
-      grep -A2 '^## Feature only' "$RL/tasks/learnings.md" | grep '^- Observed:')"
+      grep -A3 '^## Feature only' "$RL/tasks/learnings.md" | grep '^- Observed:')"
 eq "a task without a feature still reads as one" "- Observed: task 4" \
    "$(run "$RL" learn --type constraint --title "Task only" --learning "x" --apply-when "y" \
         --task 4 >/dev/null; \
-      grep -A2 '^## Task only' "$RL/tasks/learnings.md" | grep '^- Observed:')"
+      grep -A3 '^## Task only' "$RL/tasks/learnings.md" | grep '^- Observed:')"
 eq "and both are joined by it" "- Observed: task 5 — US-015 wiring" \
    "$(run "$RL" learn --type constraint --title "Both" --learning "x" --apply-when "y" \
         --task 5 --feature "US-015 wiring" >/dev/null; \
-      grep -A2 '^## Both' "$RL/tasks/learnings.md" | grep '^- Observed:')"
+      grep -A3 '^## Both' "$RL/tasks/learnings.md" | grep '^- Observed:')"
 
 eq "an out-of-tree file says nothing here dirties the tree" "false" \
    "$(run "$RL2" learn --type pattern --title "Outside" --learning "x" \

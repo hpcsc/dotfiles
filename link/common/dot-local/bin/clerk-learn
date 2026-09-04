@@ -19,17 +19,20 @@ settles the mechanical half of that second one: an exact title collision, refuse
 than appended twice. `--list` prints what is already there so substance can be judged
 before writing.
 
-The file only ever grows, and it is read whole by the run that plans the next story: at 225
-entries one was 40k words, so a decompose carried sixty-five thousand tokens of history
-before it saw the story. `--index` answers that — every entry's title, type and apply-when,
-which is a third of the bytes and the whole of what picking needs — and `--show` fetches
-the bodies worth reading.
+The file only ever grew, and it is read whole by the run that plans the next story: at 225
+entries one was 40k words, so a decompose carried fifty thousand tokens of history before
+it saw the story. `--index` answers that — every entry's title, type and apply-when, which
+is a sixth of the bytes and the whole of what picking needs — and `--show` fetches the
+bodies worth reading. `--drop` is the other half: nothing could retire an entry that had
+gone stale, so a learning written against code since rewritten stayed true-sounding
+forever.
 
 Dispatched to by `clerk` when invoked as `clerk learn`, and runnable on its own.
 """
 
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -88,6 +91,19 @@ def entries(path):
     return out
 
 
+def cut(path, title):
+    """Remove one entry, returning its block or None."""
+    lines = path.read_text().splitlines(keepends=True)
+    starts = [i for i, l in enumerate(lines) if (m := TITLE.match(l)) and m.group(1) == title]
+    if not starts:
+        return None
+    start = starts[0]
+    end = next((i for i in range(start + 1, len(lines)) if TITLE.match(lines[i])), len(lines))
+    block = "".join(lines[start:end])
+    path.write_text("".join(lines[:start]) + "".join(lines[end:]))
+    return block.rstrip("\n")
+
+
 def main():
     ap = Parser()
     ap.add_argument("--type", choices=TYPES)
@@ -102,6 +118,7 @@ def main():
     ap.add_argument("--index", action="store_true", help="title, type and apply-when per entry")
     ap.add_argument("--show", action="append", default=[], metavar="TITLE",
                     help="the full entry with this title; repeatable")
+    ap.add_argument("--drop", metavar="TITLE", help="remove the entry with this title")
     args = ap.parse_args()
 
     if args.help:
@@ -111,6 +128,7 @@ def main():
               "\n  clerk learn --list [--path <f>]           titles only"
               "\n  clerk learn --index [--path <f>]          title, type and apply-when: what picking needs"
               "\n  clerk learn --show <title> [--show <t>]   the full entry for the ones worth reading"
+              "\n  clerk learn --drop <title>                retire an entry that has gone stale"
               f"\n\nTYPES\n  {' · '.join(TYPES)}")
         return 0
 
@@ -135,6 +153,18 @@ def main():
         missing = [t_ for t_ in args.show if t_ not in by_title]
         emit({"ok": not missing, "path": str(path), "entries": found, "not_found": missing},
              0 if not missing else 3)
+
+    if args.drop:
+        if not path.is_file():
+            die(f"no learnings file at {path}", 1)
+        block = cut(path, args.drop)
+        if block is None:
+            emit({"ok": False, "reason": "no-such-title", "title": args.drop,
+                  "detail": "nothing recorded under that title; read --index for what is there"}, 3)
+        emit({"ok": True, "path": str(path), "dropped": args.drop, "block": block,
+              "entries": len(existing_titles(path)),
+              "note": "retiring a learning changes what every later run in this repo reads, "
+                      "the same as writing one — commit it if the file is tracked"})
 
     missing = [n for n, v in (("--type", args.type), ("--title", args.title),
                               ("--learning", args.learning),
@@ -161,6 +191,7 @@ def main():
 
     block = (f"\n## {args.title}\n"
              f"- Type: {args.type}\n"
+             f"- Recorded: {datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n"
              f"- Observed: {observed}\n"
              f"- Learning: {args.learning}\n"
              f"- Apply when: {args.apply_when}\n")

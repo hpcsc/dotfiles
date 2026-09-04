@@ -14,7 +14,9 @@ A breakdown with no `tasks/<story>.json` beside it cannot be bound: `clerk step`
 
 It does the codebase exploration and dependency analysis that makes the breakdown worth having. It writes `tasks/[story-name].md` describing each task, and `tasks/[story-name].json` beside it — the task record that carries the dependency graph and the run's progress. The task record is the durable one; the markdown is prose and nothing rewrites it.
 
-**Carry the learnings forward.** Pass the learnings file's contents as `Accumulated project learnings`: "These are durable conventions, recurring review findings and constraints from earlier runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover."
+**Carry the learnings forward — the index, not the file.** `clerk learn --index` lists every recorded learning as its title, type and apply-when; `clerk learn --show "<title>"` returns the body of one. Read the index, pick by apply-when, and pass the picked bodies as `Accumulated project learnings`: "These are durable conventions, recurring review findings and constraints from earlier runs in this repo. Fold them into each task's `patterns_to_follow`, and do not re-propose work they already cover."
+
+Pass the index rather than the whole file, because the file only ever grows and the planner reads all of it. One repo's had reached 225 entries and 40,000 words — sixty-five thousand tokens of history arriving before the story did, on every run. The index is a third of that, and the bodies you actually fetch are a handful.
 
 **Pass the guidelines** as `Required Reading` — the text `clerk guidelines` printed you, not a list of paths to go and fetch. Add: "The unit-of-behavior section is the one to decide each task against: whether it delivers independently testable behaviour, or is only meaningful through a downstream consumer."
 

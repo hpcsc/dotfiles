@@ -1868,6 +1868,21 @@ eq "and the new wording is what is there" "1" \
    "$(grep -c 'folded wording' "$RL/tasks/learnings.md")"
 eq "with the old wording gone" "0" "$(grep -c 'superseded wording' "$RL/tasks/learnings.md")"
 
+# The file is read whole by the run that plans the next story, and it only ever grew: one
+# repo's had 225 entries and 40,000 words. The index is what picking needs and a third of
+# the bytes; the bodies come one at a time.
+IDX=$(run "$RL" learn --index)
+eq "--index gives every entry its picking key, and no body" "true|true|false" \
+   "$(printf '%s' "$IDX" | jq -r '[(.index | length) == (.entries),
+                                   (.index[0] | has("apply_when")),
+                                   (.index[0] | has("learning"))] | map(tostring) | join("|")')"
+eq "and it carries none of the bodies, which is where the bytes are" "0" \
+   "$(printf '%s' "$IDX" | grep -c 'folded wording')"
+eq "--show returns the body of the one worth reading" "true|folded wording" \
+   "$(run "$RL" learn --show "Second thing" | jq -r '[(.ok|tostring), (.entries["Second thing"] | test("folded wording") | tostring | sub("true";"folded wording"))] | join("|")')"
+eq "a title nothing recorded is named rather than silently empty" "3" \
+   "$(run "$RL" learn --show "No such entry" >/dev/null 2>&1; printf '%s' $?)"
+
 eq "an entry missing a field is refused, since it is the one nobody can act on" "2" \
    "$(run "$RL" learn --type pattern --title "Partial" --learning "x" >/dev/null 2>&1; printf '%s' $?)"
 eq "and so is a type outside the four" "2" \

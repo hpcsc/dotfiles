@@ -19,6 +19,12 @@ settles the mechanical half of that second one: an exact title collision, refuse
 than appended twice. `--list` prints what is already there so substance can be judged
 before writing.
 
+The file only ever grows, and it is read whole by the run that plans the next story: at 225
+entries one was 40k words, so a decompose carried sixty-five thousand tokens of history
+before it saw the story. `--index` answers that — every entry's title, type and apply-when,
+which is a third of the bytes and the whole of what picking needs — and `--show` fetches
+the bodies worth reading.
+
 Dispatched to by `clerk` when invoked as `clerk learn`, and runnable on its own.
 """
 
@@ -34,6 +40,7 @@ TYPES = ["convention", "recurring-finding", "constraint", "pattern"]
 HEADER = "# Implementation learnings\n"
 
 TITLE = re.compile(r"^## +(.*?)\s*$")
+FIELD = re.compile(r"^- ([A-Za-z ]+): (.*)$", re.M)
 
 
 def resolve_path(explicit):
@@ -64,6 +71,23 @@ def existing_titles(path):
     return [m.group(1) for line in path.read_text().splitlines() if (m := TITLE.match(line))]
 
 
+def entries(path):
+    """Each recorded entry as (title, field dict, raw block). The file is append-only
+    markdown, so a block runs from its heading to the next one."""
+    if not path.is_file():
+        return []
+    lines = path.read_text().splitlines(keepends=True)
+    starts = [i for i, l in enumerate(lines) if TITLE.match(l)]
+    out = []
+    for n, i in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        block = "".join(lines[i:end])
+        fields = {m.group(1).strip().lower().replace(" ", "_"): m.group(2).strip()
+                  for m in FIELD.finditer(block)}
+        out.append((TITLE.match(lines[i]).group(1), fields, block.rstrip("\n")))
+    return out
+
+
 def main():
     ap = Parser()
     ap.add_argument("--type", choices=TYPES)
@@ -75,13 +99,19 @@ def main():
     ap.add_argument("--path", help="the learnings file; defaults to what clerk prepare resolves")
     ap.add_argument("--replace", action="store_true", help="rewrite an entry with this title")
     ap.add_argument("--list", action="store_true", help="what is already recorded")
+    ap.add_argument("--index", action="store_true", help="title, type and apply-when per entry")
+    ap.add_argument("--show", action="append", default=[], metavar="TITLE",
+                    help="the full entry with this title; repeatable")
     args = ap.parse_args()
 
     if args.help:
         print(__doc__.strip())
         print("\nUSAGE\n  clerk learn --type <t> --title <s> --learning <s> --apply-when <s>"
               "\n              [--task N[,M]] [--feature <s>] [--path <f>] [--replace]"
-              f"\n  clerk learn --list [--path <f>]\n\nTYPES\n  {' · '.join(TYPES)}")
+              "\n  clerk learn --list [--path <f>]           titles only"
+              "\n  clerk learn --index [--path <f>]          title, type and apply-when: what picking needs"
+              "\n  clerk learn --show <title> [--show <t>]   the full entry for the ones worth reading"
+              f"\n\nTYPES\n  {' · '.join(TYPES)}")
         return 0
 
     path = resolve_path(args.path)
@@ -89,6 +119,22 @@ def main():
     if args.list:
         emit({"ok": True, "path": str(path), "exists": path.is_file(),
               "titles": existing_titles(path)})
+
+    if args.index:
+        rows = [{"title": ttl, "type": f.get("type"), "apply_when": f.get("apply_when"),
+                 "recorded": f.get("recorded"), "observed": f.get("observed")}
+                for ttl, f, _ in entries(path)]
+        emit({"ok": True, "path": str(path), "exists": path.is_file(), "entries": len(rows),
+              "index": rows,
+              "note": "read `apply_when` to pick, then `clerk learn --show <title>` for the "
+                      "bodies. Passing every body to a planner costs far more than it teaches"})
+
+    if args.show:
+        by_title = {ttl: block for ttl, _, block in entries(path)}
+        found = {t_: by_title[t_] for t_ in args.show if t_ in by_title}
+        missing = [t_ for t_ in args.show if t_ not in by_title]
+        emit({"ok": not missing, "path": str(path), "entries": found, "not_found": missing},
+             0 if not missing else 3)
 
     missing = [n for n, v in (("--type", args.type), ("--title", args.title),
                               ("--learning", args.learning),

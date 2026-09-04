@@ -488,7 +488,7 @@ const VERIFY_SCHEMA = {
         additionalProperties: false,
         required: ['check', 'severity', 'detail'],
         properties: {
-          check: { type: 'string', enum: ['staged-tail', 'vacuous-receipt', 'dead-code', 'commit-boundary'] },
+          check: { type: 'string', enum: ['uncommitted-work', 'unproven-suite', 'scattered-task'] },
           severity: { type: 'string', enum: ['block', 'warn'] },
           detail: { type: 'string', description: 'file/symbol/commit + the concrete problem and its fix' },
         },
@@ -753,12 +753,10 @@ const redecomposePrompt = (story, completed, remaining, reason, tasksFilePath) =
   )
 }
 
-const verifyBrief = (allClosed) =>
+const verifyBrief = () =>
   `Verify this just-finished implementation run. Work in the tree that holds its commits ` +
   `(resolve with \`git rev-parse --show-toplevel\` — do NOT assume the main checkout), scoped to the run's commits ` +
-  `(\`git merge-base HEAD <default-branch>\`..HEAD). Run all your checks and return the structured verdict. ` +
-  `This run reports all tasks ${allClosed ? 'CLOSED' : 'NOT all closed'} — treat an uncalled new public symbol as ` +
-  `\`block\` only when all tasks closed; otherwise \`warn\` (a later task may wire it).`
+  `(\`git merge-base HEAD <default-branch>\`..HEAD). Run all your checks and return the structured verdict.`
 
 const validatePrompt = (story, doubts) =>
   `Every task in this run is committed. Your job is VALIDATION, and it is the only pass in this run that does it.\n\n` +
@@ -1226,7 +1224,7 @@ while (remaining.length) {
   }
 
   // Retry this one hardest: the task has already CLOSED on evidence, so a dead commit
-  // agent is the one failure that strands proven work as a staged tail — the very
+  // agent is the one failure that strands proven work uncommitted — the very
   // shape the run-verifier reports as a block.
   r.commit = await agentOrRetry(commitPrompt(task, ticket, planFile), { label: `task-${task.n}:commit`, phase: 'Finalize', agentType: 'commit', schema: COMMIT_SCHEMA }, `task ${task.n} commit`)
   if (!r.commit) {
@@ -1318,15 +1316,15 @@ const allClosed = results.length > 0 && remaining.length === 0 && results.every(
 // Two independent read-only passes over the finished branch, asking different
 // questions, so they run concurrently rather than stacking on the critical path:
 //
-//   verify   — VERIFICATION. Does the run's "done" hold? Staged-but-uncommitted tails,
-//              new public symbols with no live caller, a vacuous full-suite, collapsed
-//              commit boundaries. A block-severity finding stops the branch landing.
+//   verify   — VERIFICATION. Does the run's "done" hold? Work left uncommitted, a
+//              full-suite receipt that is missing, stale or hollow, and a task whose work
+//              did not stay in one commit. A block-severity finding stops the branch landing.
 //   validate — VALIDATION. Was it the right thing to build? Reads the story against the
 //              branch and returns questions. It NEVER blocks and is deliberately absent
 //              from the integration gate below: it produces no evidence, so gating on it
 //              would let an agent's opinion halt a run, which is worse than the problem.
 const [verify, validation] = await parallel([
-  () => agent(verifyBrief(allClosed), { label: 'verify', phase: 'Finalize', agentType: 'run-verifier', schema: VERIFY_SCHEMA }),
+  () => agent(verifyBrief(), { label: 'verify', phase: 'Finalize', agentType: 'run-verifier', schema: VERIFY_SCHEMA }),
   () => agent(validatePrompt(story, allPremiseDoubts), { label: 'validate', phase: 'Finalize', schema: VALIDATION_SCHEMA }),
 ])
 if (verify && !verify.clean) log(`verify: ${verify.findings.filter((f) => f.severity === 'block').length} blocking finding(s) — ${verify.findings.map((f) => f.check).join(', ') || 'none'}`)

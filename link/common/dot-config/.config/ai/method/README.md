@@ -290,7 +290,7 @@ flowchart LR
     m3["what may be staged,<br/>and the task marked done with it"]
     m4["whether the green<br/>describes this tree"]
     m5["whether the branch<br/>may land"]
-    m6["staged tails, vacuous<br/>receipts, unreferenced symbols"]
+    m6["uncommitted work, unproven<br/>suites, scattered tasks"]
     m7["which sections of which<br/>guideline a language needs"]
     m8["which commit a fix belongs to,<br/>when only one touched the file"]
     m9["whether a precedent was named,<br/>and whether it is really there"]
@@ -335,7 +335,7 @@ with `--audit-accepted`. Without either, land refuses.
 | `fixup [--onto <sha>] -- <files>` · `fixup --replay [--force]` | Marks a fix for the commit that introduced it, refusing when several commits in range touch the file or when the files' targets differ; then one autosquash replay, aborted and reverted on conflict, refused on a published range | 0 · **3** needs your judgment |
 | `learn --type <t> --title <s> --learning <s> --apply-when <s>` · `learn --list` | Appends the block to the learnings file resolved from the **repo root**, not the worktree the run is standing in; refuses an exact title collision, leaving dedup on substance to the caller | 0 · **3** title exists |
 | `lint [--staged] [--rule <r>]... [<paths>]` | The conventions a regex settles: a comment naming code by its position in the breakdown, scenario-named sibling tests, a method apart from its type — and, over a breakdown's task record, a certainty assessed `high` or `medium` with no precedent behind it | 0 clean · **1** findings |
-| `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
+| `verify` | Uncommitted work, unproven suites, scattered tasks, plus `not_checked` | 0 clean · **1** block |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 | `step [--start <slug> --request <text>] [--done <step> …] [--status] [--run <slug>] [--rm <slug>]` | The first step of the run that is not done, with the method text for it, computed from the repository and the run's ledger on every call; `--start` opens a run and records the request verbatim; `--done` records the steps whose completion is a judgment | 0 · **3** several open runs |
 | `audit run [--rounds <n>] …` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and land read | 0 · **3** refused |

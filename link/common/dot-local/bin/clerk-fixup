@@ -4,7 +4,7 @@
 A finding is almost always a defect in one task's work, and the honest place for the
 correction is that task's commit. Collecting every fix into a trailing "address audit
 findings" commit leaves the branch reading as though each task was right when it landed
-and something unnamed happened afterwards, and it trips `clerk verify`'s commit-boundary
+and something unnamed happened afterwards, and it trips `clerk verify`'s scattered-task
 check by construction — that check counts the commits touching each task's recorded
 files and warns above one.
 

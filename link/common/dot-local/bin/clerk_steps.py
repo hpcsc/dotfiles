@@ -367,7 +367,7 @@ def row_verify_run(ctx):
     if passed and passed.get("code_tree") == ctx.head_ct:
         return row("verify-run", True, cached=True)
     tf, _, archived = breakdown_files(ctx)
-    data = verify(True, str(tf) if tf is not None and not archived else None, ctx.cwd)
+    data = verify(str(tf) if tf is not None and not archived else None, ctx.cwd)
     clean = bool(data.get("clean"))
     not_checked = data.get("not_checked", [])
     if not ctx.read_only:

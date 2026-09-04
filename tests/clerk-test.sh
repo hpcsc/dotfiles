@@ -460,43 +460,15 @@ eq "resolves a default branch without a remote" "main" "$(run "$R7" prepare | jq
 eq "and a base that is not HEAD" "false" \
    "$(run "$R7" prepare | jq -r '.base == null or (.base == "'"$(git -C "$R7" rev-parse HEAD)"'")')"
 
-# A fixture package is consumed by _test.go files and nothing else, so discounting them
-# leaves it unable to prove the thing the check asks for — every symbol in it blocks.
-mkdir -p "$R7/internal/test"
-printf 'package test\n\nfunc Fixture() {}\n' > "$R7/internal/test/kit.go"
-printf 'package x\n\nimport "t/internal/test"\n\nvar _ = test.Fixture\n' > "$R7/use_test.go"
-# A consumer sorting ahead of the declaration. Resolving the definition as "the first
-# file that mentions the symbol" names this file instead of the fixture package, which
-# reads the wrong directory and puts the exemption above out of reach.
-printf 'package x\n\nimport (\n\t"testing"\n\n\t"t/internal/test"\n)\n\nfunc TestThing(t *testing.T) { test.LateFixture() }\n' > "$R7/a_test.go"
-printf 'package test\n\nfunc LateFixture() {}\n' > "$R7/internal/test/late.go"
-git -C "$R7" add -A && git -C "$R7" commit -qm "Add a fixture kit"
-
-V=$(run "$R7" verify --all-closed)
-eq "flags an exported symbol with no non-test caller" "Orphan" \
-   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | split(" ")[0]] | join(",")')"
-eq "but not one in a fixture package, whose callers are all tests" "0" \
-   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | test("Fixture")] | map(select(.)) | length')"
-eq "nor one whose consumer sorts ahead of its declaration" "0" \
-   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | test("LateFixture")] | map(select(.)) | length')"
-# `go test` finds a test function by name and nothing references it, so the rule asks it
-# for the one thing it can never show. Every new one blocked the gate.
-eq "and never a test function, which by definition has no caller" "0" \
-   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code") | .detail | test("TestThing")] | map(select(.)) | length')"
-eq "the finding names where the symbol is declared, not the first file to mention it" "y.go" \
-   "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | .detail | capture("\\((?<f>[^)]*)\\)").f')"
-
 receipt_ok "$R7" "go test ./..." >/dev/null
 V=$(run "$R7" verify)
 eq "a fresh passing receipt is not vacuous" "0" \
-   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="vacuous-receipt")] | length')"
-eq "warns when the symbol may still be wired later" "warn" \
-   "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | .severity' | head -1)"
+   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="unproven-suite")] | length')"
 
 printf 'runner: no files changed, skip running tests\n' > "$R7/out.txt"
 run "$R7" receipt --command "task test" --passed --output-file "$R7/out.txt" >/dev/null
 eq "a green receipt whose output shows nothing ran is vacuous" "block" \
-   "$(run "$R7" verify | jq -r '.findings[] | select(.check=="vacuous-receipt") | .severity')"
+   "$(run "$R7" verify | jq -r '.findings[] | select(.check=="unproven-suite") | .severity')"
 rm -f "$R7/out.txt"
 
 # A package that built and ran with none of its tests matching — every test in it behind
@@ -505,30 +477,19 @@ rm -f "$R7/out.txt"
 printf 'ok  \tt/a\t0.2s\nok  \tt/b\t[no tests to run]\nok  \tt/c\t0.1s\n' > "$R7/out.txt"
 run "$R7" receipt --command "go test ./..." --passed --output-file "$R7/out.txt" >/dev/null
 eq "a package with no tests to run beside packages that ran is not vacuous" "0" \
-   "$(run "$R7" verify | jq -r '[.findings[] | select(.check=="vacuous-receipt")] | length')"
+   "$(run "$R7" verify | jq -r '[.findings[] | select(.check=="unproven-suite")] | length')"
 
 # ...but a suite where nothing ran at all still is.
 printf 'ok  \tt/b\t[no tests to run]\n' > "$R7/out.txt"
 run "$R7" receipt --command "go test ./..." --passed --output-file "$R7/out.txt" >/dev/null
 eq "and one where no package ran anything still is" "block" \
-   "$(run "$R7" verify | jq -r '.findings[] | select(.check=="vacuous-receipt") | .severity')"
+   "$(run "$R7" verify | jq -r '.findings[] | select(.check=="unproven-suite") | .severity')"
 rm -f "$R7/out.txt"
 receipt_ok "$R7" "go test ./..." >/dev/null
 
-# Neither a type nor a function gates the run. A type is reached through values, fields,
-# constructors and wrapper types, none of which spell it with word boundaries; a function
-# may simply be waiting on a consumer the next deliverable brings. Both are reported.
-printf 'package x\n\ntype Orphaned struct{}\n' > "$R7/t.go"
-git -C "$R7" add -A && git -C "$R7" commit -qm "Add a type"
-V=$(run "$R7" verify --all-closed)
-eq "an unreferenced type warns rather than blocking" "warn" \
-   "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | select(.detail | test("Orphaned")) | .severity')"
-eq "and an unreferenced function is reported, not gated on" "warn" \
-   "$(printf '%s' "$V" | jq -r '.findings[] | select(.check=="dead-code") | select(.detail | test("^Orphan ")) | .severity')"
-
 printf 'staged\n' > "$R7/tail.go"; git -C "$R7" add "$R7/tail.go"
 eq "staged-but-uncommitted work blocks" "block" \
-   "$(run "$R7" verify | jq -r '.findings[] | select(.check=="staged-tail") | .severity')"
+   "$(run "$R7" verify | jq -r '.findings[] | select(.check=="uncommitted-work") | .severity')"
 
 # --------------------------------------------------------------------------------
 printf '\nreceipt and gate\n'
@@ -575,7 +536,7 @@ git -C "$R4" add -A && git -C "$R4" commit -qm "Write the theory"
 eq "a commit that touches only the plan files keeps the receipt fresh" "true" \
    "$(run "$R4" land --check | jq -r '.checks[] | select(.name=="receipt-fresh") | .ok')"
 eq "and verify does not call it vacuous either" "0" \
-   "$(run "$R4" verify | jq -r '[.findings[] | select(.check == "vacuous-receipt")] | length')"
+   "$(run "$R4" verify | jq -r '[.findings[] | select(.check == "unproven-suite")] | length')"
 printf 'package p\n' > "$R4/tasks/code.go"
 git -C "$R4" add -A && git -C "$R4" commit -qm "Code under a directory called tasks"
 eq "code under tasks/ still counts as code" "false" \
@@ -678,7 +639,7 @@ eq "finish files a task's record under its own breakdown" "1" \
 mkdir -p "$R8DIR/elsewhere"
 printf '{"n":9,"at":"2026-01-01T00:00:00Z","files":["tasks/feature.md"]}' > "$R8DIR/elsewhere/9.json"
 eq "and verify reads only the breakdown it was given" "0" \
-   "$(run "$R8" verify --tasks-file tasks/feature.md | jq -r '[.findings[] | select(.check=="commit-boundary")] | length')"
+   "$(run "$R8" verify --tasks-file tasks/feature.md | jq -r '[.findings[] | select(.check=="scattered-task")] | length')"
 git -C "$R8" add -A && git -C "$R8" commit -qm "Do task 1"
 receipt_ok "$R8" "go test ./..." >/dev/null
 
@@ -2218,7 +2179,7 @@ run "$R34" finish 2 --tasks-file tasks/story.md -- shared.go only2.go >/dev/null
 git -C "$R34" add -A && git -C "$R34" commit -qm "Task 2"
 
 eq "a file two tasks both recorded is not a split boundary" "0" \
-   "$(run "$R34" verify --tasks-file tasks/story.md | jq -r '[.findings[] | select(.check=="commit-boundary")] | length')"
+   "$(run "$R34" verify --tasks-file tasks/story.md | jq -r '[.findings[] | select(.check=="scattered-task")] | length')"
 
 # A task whose every file is shared cannot be judged at all, and saying so is the point:
 # silence there reads exactly like a task that stayed inside one commit.
@@ -2235,38 +2196,7 @@ printf 'package a\n\nfunc One() {}\nfunc Two() { One() }\n' > "$R35/shared.go"
 run "$R35" finish 2 --tasks-file tasks/story.md -- shared.go >/dev/null 2>&1
 git -C "$R35" add -A && git -C "$R35" commit -qm "Task 2"
 eq "a task with no file of its own is reported as unjudgeable, not as clean" "2" \
-   "$(run "$R35" verify --tasks-file tasks/story.md | jq -r '[.not_checked[] | select(test("commit-boundary — every file task"))] | length')"
-
-# A binding is called from the language it is bound into and from no Go file anywhere.
-# Blocking there stops a correct run on a wrong finding, which is a block the reader
-# routes around rather than fixes.
-R36=$(new_repo)
-git -C "$R36" switch -qc feature
-printf 'package desktop\n\ntype S struct{}\n\nfunc (s *S) SetModified(v bool) {}\n' > "$R36/service.go"
-mkdir -p "$R36/frontend"
-printf 'export function mark(v) { return WindowService.SetModified(v); }\n' > "$R36/frontend/platform.js"
-git -C "$R36" add -A && git -C "$R36" commit -qm "Add the binding and its caller"
-V=$(run "$R36" verify --all-closed)
-eq "a symbol called only from another language does not block" "true" \
-   "$(printf '%s' "$V" | jq -r '[.findings[] | select(.check=="dead-code" and .severity=="block")] | length == 0')"
-eq "and it is reported as ground the check cannot cover" "1" \
-   "$(printf '%s' "$V" | jq -r '[.not_checked[] | select(test("SetModified"))] | length')"
-eq "the caller it found is named" "true" \
-   "$(printf '%s' "$V" | jq -r '[.not_checked[] | select(test("frontend/platform.js"))] | length == 1')"
-
-# The residue is what a reader has to judge; a flag this call was not given is not that.
-# Every gap that spawned the verifier over twelve measured runs was the second kind.
-eq "a branch that changed JS says so, so the sweep has something to read" "1" \
-   "$(printf '%s' "$V" | jq -r '[.not_checked[] | select(test("JavaScript/TypeScript symbols this branch adds"))] | length')"
-R36B=$(new_repo)
-mkdir -p "$R36B/frontend" && printf 'export function untouched() {}\n' > "$R36B/frontend/app.js"
-printf 'module main\n' > "$R36B/go.mod"
-git -C "$R36B" add -A && git -C "$R36B" commit -qm "A repo that holds JS"
-git -C "$R36B" switch -qc feature
-printf 'package p\n\nfunc Thing() {}\n' > "$R36B/thing.go"
-git -C "$R36B" add -A && git -C "$R36B" commit -qm "Change only Go"
-eq "a branch that changed none is not asked to sweep the language anyway" "0" \
-   "$(run "$R36B" verify --all-closed | jq -r '[.not_checked[]? | select(test("JavaScript/TypeScript"))] | length')"
+   "$(run "$R35" verify --tasks-file tasks/story.md | jq -r '[.not_checked[] | select(test("scattered-task — every file task"))] | length')"
 
 # `clerk receipt` refuses to record one without its output, so a tail-less receipt can now
 # only arrive from an older clerk or a hand-written file — written directly here, because
@@ -2288,21 +2218,12 @@ H=$(run "$R36C" verify)
 eq "a receipt with no output tail is a hint, not residue" "1|0" \
    "$(printf '%s' "$H" | jq -r '[([.hints[]? | select(test("no output tail"))] | length), ([.not_checked[]? | select(test("no output tail"))] | length)] | map(tostring) | join("|")')"
 
-# Prose is not a caller: a symbol named only in docs or the breakdown is still reported.
-R37=$(new_repo)
-git -C "$R37" switch -qc feature
-printf 'package desktop\n\nfunc Orphan() {}\n' > "$R37/orphan.go"
-printf 'Orphan is described here but called nowhere.\n' > "$R37/README.md"
-git -C "$R37" add -A && git -C "$R37" commit -qm "Add an orphan and describe it"
-eq "a symbol named only in prose is still reported" "1" \
-   "$(run "$R37" verify --all-closed | jq -r '[.findings[] | select(.check=="dead-code") | select(.detail | test("Orphan"))] | length')"
-
 # --------------------------------------------------------------------------------
 printf '\nbreakdown resolution from the ledger\n'
 
 # A repo that keeps several stories under tasks/ makes every command given no
 # --tasks-file ambiguous. Measured over ten runs, a third of `clerk verify` calls
-# arrived without it and silently skipped commit-boundary — the one check verify alone
+# arrived without it and silently skipped scattered-task — the one check verify alone
 # can do. The ledger has known which breakdown the run is building since `--done decompose`.
 R33=$(new_repo)
 mkdir -p "$R33/tasks"
@@ -2328,7 +2249,7 @@ printf '%s\n' "$R33META" | jq --arg t "$R33/tasks/alpha.md" --arg s "$R33/tasks/
 
 eq "with the run's ledger, the bound breakdown resolves it" "alpha.md" \
    "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
-eq "and verify runs commit-boundary instead of hinting" "0" \
+eq "and verify runs scattered-task instead of hinting" "0" \
    "$(run "$R33" verify | jq -r '[.hints[]? | select(test("no single breakdown"))] | length')"
 eq "an explicit --tasks-file still outranks the ledger" "beta.md" \
    "$(run "$R33" status --tasks-file tasks/beta.md | jq -r '.tasks_file | split("/") | last')"
@@ -2352,6 +2273,6 @@ eq "an archived breakdown falls through rather than resolving to a path that is 
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R13" "$R14" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36" "$R37" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R13" "$R14" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36C" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

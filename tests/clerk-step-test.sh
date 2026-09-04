@@ -330,6 +330,12 @@ eq "no section: the reason names the file" "true" "$(run "$WT" step | jq -r '.wh
 printf '## Theory\n\nOne abstraction.\n\n' | cat - "$WT/tasks/w1.md" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.md"
 eq "written but not committed is not done" "true" "$(run "$WT" step | jq -r '.why_not_done | contains("not committed")')"
 commit_all "$WT" "Theory"
+
+# Residue for the section below: a task whose every file another task also recorded
+# cannot be judged for scattered-task, and saying so is what holds the row.
+WTREC="$(git -C "$WT" rev-parse --absolute-git-dir)/clerk/tasks/w1"
+jq '.files = ["a.go", "b.go"]' "$WTREC/2.json" > "$WTREC/2.tmp" && /bin/mv -f "$WTREC/2.tmp" "$WTREC/2.json"
+
 eq "committed, the run moves on" "verify-run" "$(run "$WT" step | field .step)"
 
 # --------------------------------------------------------------------------------

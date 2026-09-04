@@ -1,6 +1,6 @@
 ---
 name: verify-run
-description: Post-run verification of an autonomous implementation run (implement-flow / implement). Runs the run-verifier agent to catch the failure modes the evidence gate can't see — staged tails, dead code, vacuous receipts, collapsed commits — and, with --fix, remediates them. Use after an unattended run, before trusting its "done".
+description: Post-run verification of an autonomous implementation run (implement-flow / implement). Runs the run-verifier agent to catch the failure modes the evidence gate can't see — work left uncommitted, an unproven suite, tasks scattered across commits — and, with --fix, remediates them. Use after an unattended run, before trusting its "done".
 ---
 
 Independently verify what an autonomous run produced — before trusting its result or opening the PR: $ARGUMENTS
@@ -17,9 +17,9 @@ Why this exists: these runs close tasks on **executed evidence**, but "a test ex
 
 2. **Present the verdict:**
    - **`clean: true`** → one line: `verified · <N> commits on <branch> · no blocking findings`. Surface `learnings_path` if set (it may be out-of-tree and invisible in the diff). Stop.
-   - **findings** → list them most-severe first, each with the exact file/symbol/commit and the fix. A `block` (`staged-tail`, `vacuous-receipt`, `dead-code`) means the run's "done" does **not** hold; a `warn` (`commit-boundary`) is cosmetic history.
+   - **findings** → list them most-severe first, each with the exact file/symbol/commit and the fix. A `block` (`uncommitted-work`, `unproven-suite`) means the run's "done" does **not** hold; a `warn` (`scattered-task`) is cosmetic history.
 
-3. **`--fix` only** (never otherwise — default is advisory): remediate the mechanical findings yourself — finish a staged tail's commit (repo's own conventions, one commit, explicit-path staging), delete confirmed dead code, or re-split a collapsed commit — then re-spawn `run-verifier` to confirm.
+3. **`--fix` only** (never otherwise — default is advisory): remediate the mechanical findings yourself — commit the uncommitted work (repo's own conventions, one commit, explicit-path staging), re-run the suite and record a fresh receipt, or re-split a collapsed commit — then re-spawn `run-verifier` to confirm.
 
 ## Notes
 

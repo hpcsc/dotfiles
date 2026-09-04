@@ -9,6 +9,7 @@ command reads the answer rather than deriving its own.
 
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -335,10 +336,15 @@ def resolve_go_prefix(root):
 
 
 def resolve_learnings_path(root):
-    """In-tree when the repo tracks tasks/, out-of-tree per project when it gitignores it."""
+    """In-tree when the repo tracks tasks/, out-of-tree per project when it gitignores it.
+
+    CLERK_LEARNINGS_HOME relocates the out-of-tree half. The suites needed it: their
+    throwaway repos gitignore tasks/ to exercise this branch, and every run of them left
+    a directory in the real home — 262 of them, against five real projects."""
     if is_ignored(root, "tasks/learnings.md"):
+        home = os.environ.get("CLERK_LEARNINGS_HOME") or f"{Path.home()}/.claude/implement-learnings"
         slug = str(root).replace("/", "-").lstrip("-")
-        return f"{Path.home()}/.claude/implement-learnings/{slug}/learnings.md"
+        return f"{home}/{slug}/learnings.md"
     return f"{root}/tasks/learnings.md"
 
 

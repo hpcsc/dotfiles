@@ -7,8 +7,8 @@ receipt at HEAD before landing — and nothing enforced the transitions between 
 model that does not hold long instructions well skipped a step and nothing noticed.
 
 This command holds the order: the table in clerk_steps.py, evaluated against the ledger
-in clerk_ledger.py. Steps whose completion is a judgment — the plan is bound, the story
-was re-read — are recorded here with `--done`, the way `gate` takes `--audit-accepted`:
+in clerk_ledger.py. Steps whose completion is a judgment — the breakdown is bound, the request
+was re-read — are recorded here with `--done`, the way `land` takes `--audit-accepted`:
 asserted and stamped with the code tree it applies to, never inferred.
 """
 
@@ -21,7 +21,7 @@ from clerk_lib import clerk, die, emit, git, gitout, parse, resolve_tasks_arg  #
 from clerk_ledger import (CALLERS, Run, build_ctx, detect_harness, now, open_run_summaries,  # noqa: E402
                           run_summary, runs_root, session_id)
 from clerk_steps import (ROWS, active_rows, facts_for, file_hash, instructions_for,  # noqa: E402
-                         lint_sidecar, next_step)
+                         lint_task_record, next_step)
 from clerk_tasks import status_of  # noqa: E402
 
 
@@ -72,18 +72,18 @@ def done_decompose(ctx, argv):
     tf = tf.resolve()
     side = tf.with_suffix(".json")
     if not side.exists():
-        emit({"bound": False, "reason": f"no sidecar beside {tf} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections"}, 1)
-    findings = lint_sidecar(side, ctx.cwd)
+        emit({"bound": False, "reason": f"no task record beside {tf} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections"}, 1)
+    findings = lint_task_record(side, ctx.cwd)
     if findings:
         emit({"bound": False, "reason": "lint certainty-unevidenced reports findings — correct the assessment, do not delete the reference",
               "findings": findings}, 1)
     prev = ctx.run.section("breakdown") or {}
     approved = bool(o["--approved"]) or bool(prev.get("approved"))
-    ctx.run.put(breakdown={"tasks_file": str(tf), "sidecar": str(side), "approved": approved,
+    ctx.run.put(breakdown={"tasks_file": str(tf), "task_record": str(side), "approved": approved,
                            "lint_hash": file_hash(side), "at": now()})
     st = status_of(str(tf), str(side), False)
     return {"bound": True, "tasks_file": str(tf), "approved": approved,
-            "plan": st.get("progress"), "gears": st.get("gears")}
+            "breakdown": st.get("progress"), "gears": st.get("gears")}
 
 
 def done_pause(ctx, argv):
@@ -110,9 +110,9 @@ def done_match_request(ctx, argv):
     return {"done": "match-request", "mismatches": rec["mismatches"], "resolved": rec["resolved"]}
 
 
-def done_verify_residue(ctx, argv):
-    ctx.run.mark("verify-residue", {"at": now(), "code_tree": ctx.head_ct})
-    return {"done": "verify-residue"}
+def done_verify_run(ctx, argv):
+    ctx.run.mark("verify-run", {"at": now(), "code_tree": ctx.head_ct})
+    return {"done": "verify-run"}
 
 
 def done_learn(ctx, argv):
@@ -123,7 +123,7 @@ def done_learn(ctx, argv):
 
 # The steps whose completion is a judgment: recorded with `--done`, never derived.
 DONE = {"ground": done_ground, "decompose": done_decompose, "pause": done_pause, "match-request": done_match_request,
-        "verify-residue": done_verify_residue, "learn": done_learn}
+        "verify-run": done_verify_run, "learn": done_learn}
 
 
 def cmd_done(ctx, step_id, argv):

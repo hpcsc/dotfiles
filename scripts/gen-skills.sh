@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Generate the per-tool SKILL.md files from the shared method body plus its seams.
+# Generate the per-tool SKILL.md files from the shared method body plus its variants.
 #
 # A procedure the agent must follow in full is concatenated, not referenced: splitting
 # it into "now read these six files" adds six reads and invites partial compliance,
 # which is the failure class this whole arrangement exists to remove. Guidelines are
 # the opposite — consulted on demand, read partially by design — and stay referenced.
 #
-# The `model:` line is deliberately absent from every seam: agent-models.json owns it
+# The `model:` line is deliberately absent from every variant: agent-models.json owns it
 # for both trees at once, and two writers for one field means whichever ran last wins.
 # Run scripts/gen-agent-models.sh after this one — `task common:gen` does both in order.
 #
@@ -60,17 +60,17 @@ stamp_header() {
 }
 
 render() {
-  local method=$1 tool=$2 body="$METHOD/$1/body.md" seams="$METHOD/$1/seams/$2"
+  local method=$1 tool=$2 body="$METHOD/$1/body.md" variants="$METHOD/$1/variants/$2"
   [ -f "$body" ]  || { printf 'gen-skills: missing body %s\n' "$body" >&2; return 1; }
-  [ -d "$seams" ] || { printf 'gen-skills: missing seams %s\n' "$seams" >&2; return 1; }
+  [ -d "$variants" ] || { printf 'gen-skills: missing variants %s\n' "$variants" >&2; return 1; }
 
-  # Every {{seam:name}} becomes seams/<tool>/<name>.md, every {{include:path}} the file
+  # Every {{variant:name}} becomes variants/<tool>/<name>.md, every {{include:path}} the file
   # under the method root, {{quote:path}} the same as a block quote, and {{var}} a value
-  # from the seam directory's vars.tsv. The resolver is clerk's own: the step files under
+  # from the variant directory's vars.tsv. The resolver is clerk's own: the step files under
   # implement/steps/ are read here for the whole document and by `clerk step` one at a
   # time, and one resolver is what keeps the two readings the same. It exits 3 naming an
   # unresolved marker rather than leaving a silent hole.
-  python3 "$RENDER" "$METHOD" "$seams" "$body" | stamp_header "${body#$ROOT/}"
+  python3 "$RENDER" "$METHOD" "$variants" "$body" | stamp_header "${body#$ROOT/}"
 }
 
 printf '%s\n' "$TARGETS" | while read -r method tool out; do

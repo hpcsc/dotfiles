@@ -38,7 +38,7 @@ run() { (cd "$1" && shift && "$CLERK" "$@"); }
 rc() { run "$@" >/dev/null 2>&1; printf '%s' $?; }
 field() { jq -r "$1"; }
 
-# A two-task breakdown whose sidecar takes extra per-task fields as a JSON object.
+# A two-task breakdown whose task record takes extra per-task fields as a JSON object.
 seed() {  # repo slug t1-extra t2-extra
   local repo=$1 slug=$2 x1=${3:-{\}} x2=${4:-{\}}
   mkdir -p "$repo/tasks"
@@ -140,7 +140,7 @@ printf '\nplan — a breakdown is bound, and its assessments are linted before i
 
 eq "--done decompose needs --tasks-file" "2" "$(rc "$WT" step --done decompose)"
 mkdir -p "$WT/tasks" && printf '### Task 1: Only\n' > "$WT/tasks/w1.md"
-eq "a breakdown without a sidecar is refused" "1" "$(rc "$WT" step --done decompose --tasks-file tasks/w1.md)"
+eq "a breakdown without a task record is refused" "1" "$(rc "$WT" step --done decompose --tasks-file tasks/w1.md)"
 eq "and says what recovers one" "true" \
    "$(run "$WT" step --done decompose --tasks-file tasks/w1.md 2>/dev/null | jq -r '.reason | contains("tasks/<story>.json")')"
 seed "$WT" w1 '{"certainty": "high", "blast_radius": "low", "patterns_to_follow": []}'
@@ -152,15 +152,15 @@ seed "$WT" w1 '{"certainty": "low", "blast_radius": "low"}' '{"certainty": "high
 B=$(run "$WT" step --done decompose --tasks-file tasks/w1.md)
 eq "--done decompose returns the first task under next — here pausing for its tests" "pause|1" \
    "$(printf '%s' "$B" | jq -r '[.next.step, (.next.n|tostring)] | join("|")')"
-eq "a clean sidecar binds" "true|2" "$(printf '%s' "$B" | jq -r '[(.bound|tostring), (.plan|length|tostring)] | join("|")')"
+eq "a clean task record binds" "true|2" "$(printf '%s' "$B" | jq -r '[(.bound|tostring), (.breakdown|length|tostring)] | join("|")')"
 eq "and the reply is the plan table, certainty and blast radius included" "1:low/low 2:high/high" \
-   "$(printf '%s' "$B" | jq -r '[.plan[] | "\(.n):\(.certainty)/\(.blast_radius)"] | join(" ")')"
+   "$(printf '%s' "$B" | jq -r '[.breakdown[] | "\(.n):\(.certainty)/\(.blast_radius)"] | join(" ")')"
 eq "the bound path is absolute" "$WT/tasks/w1.md" "$(jq -r .breakdown.tasks_file "$R/.git/clerk/runs/w1/run.json")"
 eq "--status shows decompose done" "true" "$(run "$WT" step --status | jq -r '.rows[] | select(.step == "decompose") | .done')"
 
-# The lint is re-run when the sidecar changes under the binding.
+# The lint is re-run when the task record changes under the binding.
 jq '.tasks[1].patterns_to_follow = []' "$WT/tasks/w1.json" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.json"
-eq "a sidecar edited into a finding reopens decompose" "decompose|1" \
+eq "a task record edited into a finding reopens decompose" "decompose|1" \
    "$(run "$WT" step | jq -r '[.step, (.findings|length|tostring)] | join("|")')"
 jq '.tasks[1].patterns_to_follow = ["task:1"]' "$WT/tasks/w1.json" > "$WT/tasks/w1.tmp" && /bin/mv -f "$WT/tasks/w1.tmp" "$WT/tasks/w1.json"
 commit_all "$WT" "Breakdown"
@@ -305,7 +305,7 @@ run "$WT" step --done match-request --mismatch "no widget colour" >/dev/null
 eq "a recorded mismatch blocks the run until the user decides" "match-request|true|true" \
    "$(run "$WT" step | jq -r '[.step, (.blocked|tostring), (.stop|tostring)] | join("|")')"
 run "$WT" step --done match-request --resolved >/dev/null
-eq "resolved, the run moves to explain" "explain" "$(run "$WT" step | field .step)"
+eq "resolved, the run moves to theory" "theory" "$(run "$WT" step | field .step)"
 
 # --------------------------------------------------------------------------------
 printf '\nexplain — the breakdown carries a Theory section, committed when tracked\n'
@@ -324,8 +324,8 @@ eq "verify-run is reached with the receipt still fresh — the Theory commit tou
 Y=$(run "$WT" step)
 eq "clean with residue holds the step: not_checked is non-empty" "verify-run|true" \
    "$(printf '%s' "$Y" | jq -r '[.step, ((.verify.not_checked|length) > 0 | tostring)] | join("|")')"
-run "$WT" step --done verify-residue >/dev/null
-eq "--done verify-residue opens it" "land" "$(run "$WT" step | field .step)"
+run "$WT" step --done verify-run >/dev/null
+eq "--done verify-run opens it" "land" "$(run "$WT" step | field .step)"
 
 # What fired, kept per call. The event log says `clerk verify` ran and what it exited,
 # which is not enough to answer whether the step earns its blocks.
@@ -356,7 +356,7 @@ eq "which the ledger records" "true" "$(jq -r .finished "$R/.git/clerk/runs/w1/r
 printf '\nstats — where the run went, from the ledger; tokens from the transcript once the session is known\n'
 
 S=$(run "$WT" stats --run w1 --json)
-eq "every step of the table is listed, in order" "ground,decompose,build,suite,audit,match-request,explain,verify-run,land,learn" \
+eq "every step of the table is listed, in order" "ground,decompose,build,suite,audit,match-request,theory,verify-run,land,learn" \
    "$(printf '%s' "$S" | jq -r '[.steps[].step] | join(",")')"
 eq "the steps the run stamped have a span, and they add up to the run" "true" \
    "$(printf '%s' "$S" | jq -r '(.total_seconds >= 0) and ([.steps[] | select(.step | IN("build","suite","audit","land","learn")) | .seconds >= 0] | all) and (([.steps[].seconds // 0] | add) == .total_seconds) | tostring')"
@@ -459,7 +459,7 @@ run "$WL" audit round --report "$REP" >/dev/null; run "$WL" audit accept >/dev/n
 run "$WL" step --done match-request >/dev/null
 printf '## Theory\n\nX.\n\n' | cat - "$WL/tasks/lz.md" > "$WL/tasks/lz.tmp" && /bin/mv -f "$WL/tasks/lz.tmp" "$WL/tasks/lz.md"; commit_all "$WL" "Theory"
 run "$WL" receipt --command true --passed >/dev/null
-run "$WL" step --done verify-residue >/dev/null
+run "$WL" step --done verify-run >/dev/null
 eq "the worktree run reaches land" "land" "$(run "$WL" step | field .step)"
 eq "land --integrate inside a worktree stops before the fast-forward" "3" "$(rc "$WL" land --audit-accepted --integrate)"
 eq "its stamp records that integration was asked for, by the request" "true|false|request" \
@@ -474,34 +474,34 @@ eq "merged and gone, the run moves to learn in the main checkout" "learn" "$(run
 eq "whose learnings path is reported" "$RL/tasks/learnings.md" "$(run "$RL" step | field .learnings_path)"
 
 # --------------------------------------------------------------------------------
-printf '\ninstructions — the method step file is printed when it exists, seams resolved per harness\n'
+printf '\ninstructions — the method step file is printed when it exists, variants resolved per harness\n'
 
-MD=$(mktemp -d); mkdir -p "$MD/implement/steps" "$MD/implement/seams/claude" "$MD/implement/seams/opencode" "$MD/shared"
-printf 'Ground yourself.\n{{seam:enter}}\n{{include:shared/note.md}}\n' > "$MD/implement/steps/ground.md"
-printf 'EnterWorktree\n' > "$MD/implement/seams/claude/enter.md"
-printf 'cd into it\n' > "$MD/implement/seams/opencode/enter.md"
+MD=$(mktemp -d); mkdir -p "$MD/implement/steps" "$MD/implement/variants/claude" "$MD/implement/variants/opencode" "$MD/shared"
+printf 'Ground yourself.\n{{variant:enter}}\n{{include:shared/note.md}}\n' > "$MD/implement/steps/ground.md"
+printf 'EnterWorktree\n' > "$MD/implement/variants/claude/enter.md"
+printf 'cd into it\n' > "$MD/implement/variants/opencode/enter.md"
 printf 'shared note\n' > "$MD/shared/note.md"
 RM=$(new_repo); run "$RM" step --start m --request "Method" >/dev/null
-eq "the step file replaces the built-in text, with the claude seam" "Ground yourself.|EnterWorktree|shared note" \
+eq "the step file replaces the built-in text, with the claude variant" "Ground yourself.|EnterWorktree|shared note" \
    "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step --full | jq -r '.instructions | split("\n") | join("|")')"
 # The text travels once per step per session; the same step asked again is a pointer.
 eq "the same step asked again is a pointer that names --full" "true|true" \
    "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step | jq -r '[(.instructions_elided|tostring), (.instructions | contains("clerk step --full") | tostring)] | join("|")')"
 eq "another session is sent the text" "false|Ground yourself." \
    "$(CLAUDE_CODE_SESSION_ID=elsewhere CLERK_METHOD_DIR="$MD/implement" run "$RM" step | jq -r '[(.instructions_elided|tostring), (.instructions | split("\n") | .[0])] | join("|")')"
-eq "and the opencode seam when asked" "cd into it" \
+eq "and the opencode variant when asked" "cd into it" \
    "$(CLERK_METHOD_DIR="$MD/implement" run "$RM" step --harness opencode --full | jq -r '.instructions | split("\n") | .[1]')"
 
 # The real method: the step files the generator concatenates are the ones step prints.
-REAL="$(cd "$BIN/../dot-config/.config/ai/method/implement" && pwd -P)"
-eq "ground prints Phase 0 of the method, with the shared prepare fragment resolved" "true|true" \
-   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --full | jq -r '[(.instructions | contains("## Phase 0: Ground yourself") | tostring), (.instructions | contains("### Read the environment off the step") | tostring)] | join("|")')"
+REAL="$(cd "$BIN/../../dot-config/.config/ai/method/implement" && pwd -P)"
+eq "ground prints its step file, with the shared prepare fragment resolved" "true|true" \
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --full | jq -r '[(.instructions | contains("## Load the guidelines") | tostring), (.instructions | contains("### Read the environment off the step") | tostring)] | join("|")')"
 eq "a step change prints the new step's text in full, unasked" "isolate|false" \
    "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --done ground --caller ui | jq -r '[.next.step, (.next.instructions_elided|tostring)] | join("|")')"
-eq "isolate prints the claude worktree seam" "true" \
-   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --full | jq -r '.instructions | contains("### Set up an isolated worktree")')"
+eq "isolate prints the claude worktree variant" "true" \
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --full | jq -r '.instructions | contains("call **EnterWorktree** with its `path`")')"
 eq "or the opencode one" "true" \
-   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --harness opencode --full | jq -r '.instructions | contains("### Isolate the work")')"
+   "$(CLERK_METHOD_DIR="$REAL" run "$RM" step --harness opencode --full | jq -r '.instructions | contains("`cd` to its `path` and carry on")')"
 
 # --------------------------------------------------------------------------------
 printf '\nevents — the commands that produce evidence log their run to the ledger on the way out\n'
@@ -543,7 +543,7 @@ run "$RJ" audit round --report "$REP" >/dev/null; run "$RJ" audit accept >/dev/n
 run "$RJ" step --done match-request >/dev/null
 printf '## Theory\n\nX.\n\n' | cat - "$RJ/tasks/ij.md" > "$RJ/tasks/ij.tmp" && /bin/mv -f "$RJ/tasks/ij.tmp" "$RJ/tasks/ij.md"; commit_all "$RJ" "Theory"
 run "$RJ" receipt --command true --passed >/dev/null
-run "$RJ" step --done verify-residue >/dev/null
+run "$RJ" step --done verify-run >/dev/null
 eq "the in-place run reaches land" "land" "$(run "$RJ" step | field .step)"
 LJ=$(run "$RJ" land --audit-accepted)
 eq "land --integrate in place fast-forwards and deletes the branch" "true|ij" \

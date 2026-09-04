@@ -320,7 +320,7 @@ eq "a branch without it falls back, whatever the main checkout has" "pcommit" \
 # --------------------------------------------------------------------------------
 printf '\nresume\n'
 
-# The sidecar carries `done`; a breakdown that has started and not finished is the run
+# The task record carries `done`; a breakdown that has started and not finished is the run
 # to adopt rather than decompose over.
 seed_breakdown() {
   local repo=$1 slug=$2 d1=$3 d2=$4
@@ -399,8 +399,8 @@ eq "still names the next task with work in flight — the step row reports the d
 
 C=$(run "$R5" finish 1 -- a.go)
 eq "finish stages exactly the named files" "a.go" "$(printf '%s' "$C" | jq -r '.staged | join(",")')"
-eq "and marks it done in the sidecar"        "true" "$(jq -r '.tasks[0].done' "$R5/tasks/story.json")"
-eq "and stages the sidecar with the code"    "2"    "$(git -C "$R5" diff --cached --name-only | wc -l | tr -d ' ')"
+eq "and marks it done in the task record"        "true" "$(jq -r '.tasks[0].done' "$R5/tasks/story.json")"
+eq "and stages the task record with the code"    "2"    "$(git -C "$R5" diff --cached --name-only | wc -l | tr -d ' ')"
 
 run "$R5" finish 1 -- a.go >/dev/null 2>&1
 eq "a done task is never redone" "2" "$?"
@@ -423,9 +423,9 @@ eq "reports done when every task is done" "true" "$(printf '%s' "$J" | jq -r '.n
 eq "and hands back no task"                  "null" "$(printf '%s' "$J" | jq -r '.next.task')"
 
 R6=$(new_repo); mkdir -p "$R6/tasks"; printf -- '- [ ] Task 1: x\n' > "$R6/tasks/s.md"
-git -C "$R6" add -A && git -C "$R6" commit -qm "No sidecar"
+git -C "$R6" add -A && git -C "$R6" commit -qm "No task record"
 run "$R6" status >/dev/null 2>&1
-eq "status refuses without a sidecar rather than parsing prose" "2" "$?"
+eq "status refuses without a task record rather than parsing prose" "2" "$?"
 
 # --------------------------------------------------------------------------------
 printf '\nverify\n'
@@ -617,7 +617,7 @@ git -C "$R8" switch -qc feature
 
 L=$(run "$R8" land); RC=$?
 eq "land refuses while the gate is shut" "false" "$(printf '%s' "$L" | jq -r '.landed')"
-eq "and says the gate is why"            "gate did not open" "$(printf '%s' "$L" | jq -r '.reason')"
+eq "and says which check is why"        "a land check failed" "$(printf '%s' "$L" | jq -r '.reason')"
 eq "and exits non-zero"                  "1" "$RC"
 
 run "$R8" finish 1 -- tasks/feature.md >/dev/null 2>&1
@@ -639,7 +639,7 @@ eq "archives the breakdown onto the feature branch" "tasks/completed/feature.md"
    "$(printf '%s' "$L" | jq -r '.archived')"
 eq "the archive commit is on the branch, not the default one" "feature" \
    "$(git -C "$R8" rev-parse --abbrev-ref HEAD)"
-eq "the sidecar is archived alongside it" "1" \
+eq "the task record is archived alongside it" "1" \
    "$(ls "$R8"/tasks/completed/feature.json 2>/dev/null | wc -l | tr -d ' ')"
 eq "and it does not land without being asked" "false" "$(printf '%s' "$L" | jq -r '.landed')"
 eq "but it says how to land it"               "true"  \
@@ -754,7 +754,7 @@ run "$R25" land --audit-accepted --tasks-file tasks/alpha.md >/dev/null 2>&1
 eq "land accepts --tasks-file like every other command" "0" "$?"
 L=$(run "$R25" land --audit-accepted --tasks-file tasks/alpha.md)
 eq "its gate resolves the breakdown it was named" "true" \
-   "$(printf '%s' "$L" | jq -r '[.gate.checks[]? | select(.name=="tasks-complete") | .ok] | first // true')"
+   "$(printf '%s' "$L" | jq -r '[.land_checks.checks[]? | select(.name=="tasks-complete") | .ok] | first // true')"
 eq "and it archives that one"      "yes" "$([ -f "$R25/tasks/completed/alpha.md" ] && echo yes || echo no)"
 eq "leaving the other where it was" "yes" "$([ -f "$R25/tasks/beta.md" ] && echo yes || echo no)"
 
@@ -775,15 +775,15 @@ git -C "$R13" worktree add -q -b flow "$WT2" >/dev/null 2>&1
 
 eq "prepare finds the breakdown in the worktree" "$(cd "$WT2" && pwd -P)/tasks/wt.md" \
    "$(run "$WT2" prepare | jq -r '.tasks_file')"
-eq "status reads the worktree's sidecar" "1" "$(run "$WT2" status | jq -r '.next.task.n')"
+eq "status reads the worktree's task record" "1" "$(run "$WT2" status | jq -r '.next.task.n')"
 
 printf 'edit\n' >> "$WT2/a.go"
 C=$(run "$WT2" finish 1 -- a.go); RC=$?
 eq "complete succeeds inside a worktree" "0" "$RC"
-eq "and stages the worktree's sidecar" "2" "$(git -C "$WT2" diff --cached --name-only | wc -l | tr -d ' ')"
+eq "and stages the worktree's task record" "2" "$(git -C "$WT2" diff --cached --name-only | wc -l | tr -d ' ')"
 eq "and records its state under the worktree git dir, filed under the breakdown" "1" \
    "$(ls "$(git -C "$WT2" rev-parse --absolute-git-dir)/clerk/tasks/wt"/*.json 2>/dev/null | wc -l | tr -d ' ')"
-eq "the main checkout's sidecar is untouched" "false" \
+eq "the main checkout's task record is untouched" "false" \
    "$(jq -r '.tasks[0].done' "$R13/tasks/wt.json")"
 
 git -C "$WT2" commit -qm "Task 1"
@@ -832,12 +832,12 @@ eq "and status follows"                          "1|1" \
 eq "status names what still blocks a task"       "" \
    "$(run "$R14" status | jq -r '.progress[1].blocked_by | join(",")')"
 
-# The markdown is never rewritten now, so a task commit carries only code and sidecar.
+# The markdown is never rewritten now, so a task commit carries only code and task record.
 eq "the breakdown itself is not touched" "0" \
    "$(git -C "$R14" diff --cached --name-only | grep -c 'one.md' | tr -d ' ')"
 
 # Formatting must match between the two writers or the first finish reformats the file.
-eq "finish does not reformat the sidecar it read" "2" \
+eq "finish does not reformat the task record it read" "2" \
    "$(git -C "$R14" diff --cached -- tasks/one.json | grep -cE '^[-+][^-+]' | tr -d ' ')"
 
 
@@ -939,7 +939,7 @@ printf '\ncertainty and blast radius\n'
 
 # Reported whatever the gears flag says. The flag decides whether a run changes how it
 # drives; it must never decide whether the assessment can be read — a wave whose riskiest
-# task is only findable by opening the sidecar is one where nobody will find it.
+# task is only findable by opening the task record is one where nobody will find it.
 RC1=$(new_repo); mkdir -p "$RC1/tasks"
 printf -- '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n' > "$RC1/tasks/story.md"
 cat > "$RC1/tasks/story.json" <<'EOF'
@@ -997,8 +997,8 @@ eq "marking which are archived"                    "1" \
    "$(printf '%s' "$A" | jq -r '[.breakdowns[] | select(.archived)] | length')"
 eq "and carries each task through"                 "4" \
    "$(printf '%s' "$A" | jq -r '[.breakdowns[].progress[]] | length')"
-eq "with the sidecar it read"                      "true" \
-   "$(printf '%s' "$A" | jq -r '.breakdowns[0].sidecar | endswith(".json")')"
+eq "with the task record it read"                      "true" \
+   "$(printf '%s' "$A" | jq -r '.breakdowns[0].task_record | endswith(".json")')"
 
 # Paths must be work-tree relative. A consumer walking tasks/ has relative paths, and an
 # absolute one silently fails to join — which reads as "this breakdown has no progress"
@@ -1057,7 +1057,7 @@ printf 'package a2\n' > "$WT2/a.go"
 C=$(run "$WT2" finish 1 -- a.go)
 eq "finish reports the breakdown as untracked" "false" "$(printf '%s' "$C" | jq -r '.breakdown_tracked')"
 eq "still marks the task done"                 "true"  "$(jq -r '.tasks[0].done' "$R19/tasks/story.json")"
-eq "and stages only the code, never the sidecar" "a.go" \
+eq "and stages only the code, never the task record" "a.go" \
    "$(git -C "$WT2" diff --cached --name-only | tr '\n' ',' | sed 's/,$//')"
 
 git -C "$WT2" commit -qm "Task 1" >/dev/null
@@ -1065,7 +1065,7 @@ printf 'package b2\n' > "$WT2/b.go"
 run "$WT2" finish 2 -- b.go >/dev/null 2>&1
 eq "a second task in the worktree also succeeds" "0" "$?"
 git -C "$WT2" commit -qm "Task 2" >/dev/null
-eq "status reads progress from the excluded sidecar" "2|2" \
+eq "status reads progress from the excluded task record" "2|2" \
    "$(run "$WT2" status | jq -r '[.total, .done] | join("|")')"
 
 run "$WT2" receipt --command "true" --passed >/dev/null
@@ -1074,12 +1074,12 @@ eq "land archives the breakdown by moving it, not committing it" \
    "$R19/tasks/completed/story.md" "$(printf '%s' "$L" | jq -r '.archived')"
 eq "the archived breakdown is where it was moved to" "yes" \
    "$([ -f "$R19/tasks/completed/story.md" ] && echo yes || echo no)"
-eq "its sidecar moved with it"                       "yes" \
+eq "its task record moved with it"                       "yes" \
    "$([ -f "$R19/tasks/completed/story.json" ] && echo yes || echo no)"
 eq "and no archive commit was made"                  "Task 2" \
    "$(git -C "$WT2" log -1 --format=%s)"
 
-# The tracked regime must keep staging the sidecar with the code — the guard against a
+# The tracked regime must keep staging the task record with the code — the guard against a
 # progress record landing in a different commit from the work it stands for.
 R20=$(new_repo)
 mkdir -p "$R20/tasks"
@@ -1090,7 +1090,7 @@ git -C "$R20" add -A && git -C "$R20" commit -qm "Add plan"
 printf 'package a2\n' > "$R20/a.go"
 C=$(run "$R20" finish 1 -- a.go)
 eq "a tracked breakdown is still reported as tracked" "true" "$(printf '%s' "$C" | jq -r '.breakdown_tracked')"
-eq "and its sidecar still lands with the code"        "a.go,tasks/story.json" \
+eq "and its task record still lands with the code"        "a.go,tasks/story.json" \
    "$(git -C "$R20" diff --cached --name-only | sort | tr '\n' ',' | sed 's/,$//')"
 
 # A local default branch left unpulled sits behind the remote, and every branch cut from
@@ -1226,12 +1226,12 @@ printf 'two\n' > "$R22/b.txt"; git -C "$R22" add -A; git -C "$R22" commit -qm "H
 git -C "$R22" checkout -q main && git -C "$R22" checkout -q -b br-finished
 printf 'three\n' > "$R22/f.txt"; git -C "$R22" add -A; git -C "$R22" commit -qm "All done"
 git -C "$R22" checkout -q main
-# gone: branch br-gone never created, sidecar says 2/2
+# gone: branch br-gone never created, task record says 2/2
 
 S=$(run "$R22" story)
 st() { printf '%s' "$S" | jq -r --arg i "$1" '.[0].deliverables[] | select(.id == $i) | .state'; }
 eq "a rebase-merged branch reads as merged, not as unmerged work" "merged"         "$(st rebased)"
-eq "a branch deleted after merging is settled by its sidecar"     "merged"         "$(st gone)"
+eq "a branch deleted after merging is settled by its task record"     "merged"         "$(st gone)"
 eq "part-done work in flight is in-progress"                      "in-progress"    "$(st building)"
 eq "all tasks done but nothing landed is awaiting-merge"          "awaiting-merge" "$(st finished)"
 eq "a deliverable whose dependency is still building is blocked"  "blocked"        "$(st waiting)"
@@ -1257,7 +1257,7 @@ git -C "$R22" branch waiting-something-else main
 eq "a branch that is not the planned name is called out" "waiting-something-else" \
    "$(run "$R22" story | jq -r '.[0].deliverables[] | select(.id=="waiting") | .branch_alias')"
 
-# A worktree exists but nothing is committed in it yet. Branch and sidecar both say
+# A worktree exists but nothing is committed in it yet. Branch and task record both say
 # untouched; only the worktree says a run already has this deliverable.
 WT4="$R22/.wt/unblocked"
 eq "before it is scaffolded, it reads as ready" "ready" "$(st unblocked)"
@@ -2099,7 +2099,7 @@ eq "but not to a task the breakdown does not have" "1" \
 # elsewhere, and a check that silently passes on a path it did not recognise is worse
 # than one that is off.
 printf '{"name":"x","version":"1.0.0"}\n' > "$R31/package.json"
-eq "a json file that is not a sidecar is passed over" "0" \
+eq "a json file that is not a task record is passed over" "0" \
    "$(run "$R31" lint --rule certainty-unevidenced --json package.json | jq 'length')"
 eq "and so is one that is not json at all" "0" \
    "$(run "$R31" lint --rule certainty-unevidenced --json internal/events/order.go | jq 'length')"
@@ -2134,7 +2134,7 @@ printf 'package p\n\nfunc A() {}\n' > "$R32/a.go"
 F=$(run "$R32" finish 1 -- a.go)
 eq "fixed, the same finish marks it done and says the lint was clean" "true|clean" \
    "$(printf '%s' "$F" | jq -r '[(.done|tostring), .lint] | join("|")')"
-eq "and the sidecar agrees" "true" "$(jq -r '.tasks[0].done' "$R32/tasks/story.json")"
+eq "and the task record agrees" "true" "$(jq -r '.tasks[0].done' "$R32/tasks/story.json")"
 
 # One task in flight: a finish whose commit never happened leaves its paths staged, and
 # the next finish must not sweep them into its own commit.
@@ -2260,14 +2260,14 @@ run "$R33" status >/dev/null 2>&1; RC=$?
 eq "several breakdowns and no ledger: status still cannot resolve one" "2" "$RC"
 eq "and verify hints at the breakdown it could not identify" "1" \
    "$(run "$R33" verify | jq -r '[.hints[]? | select(test("no single breakdown"))] | length')"
-eq "which is a missing flag, not judgment, so it never reaches the residue" "0" \
+eq "which is a missing flag, not judgment, so it never reaches the judgment" "0" \
    "$(run "$R33" verify | jq -r '[.not_checked[]? | select(test("no single breakdown"))] | length')"
 
 R33RUNS="$(git -C "$R33" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/alpha"
 R33META='{"slug":"alpha","request":"x","started_at":"2026-01-01T00:00:00Z","finished":false}'
 mkdir -p "$R33RUNS"
 printf '%s\n' "$R33META" | jq --arg t "$R33/tasks/alpha.md" --arg s "$R33/tasks/alpha.json" \
-   '.breakdown = {tasks_file: $t, sidecar: $s}' > "$R33RUNS/run.json"
+   '.breakdown = {tasks_file: $t, task_record: $s}' > "$R33RUNS/run.json"
 
 eq "with the run's ledger, the bound breakdown resolves it" "alpha.md" \
    "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
@@ -2279,7 +2279,7 @@ eq "an explicit --tasks-file still outranks the ledger" "beta.md" \
 # A ledger written by an older clerk holds its breakdown in a file of its own. The fallback
 # that still reads it is what keeps a run already in flight working.
 printf '%s\n' "$R33META" > "$R33RUNS/run.json"
-printf '{"tasks_file":"%s","sidecar":"%s"}\n' "$R33/tasks/alpha.md" "$R33/tasks/alpha.json" > "$R33RUNS/breakdown.json"
+printf '{"tasks_file":"%s","task_record":"%s"}\n' "$R33/tasks/alpha.md" "$R33/tasks/alpha.json" > "$R33RUNS/breakdown.json"
 eq "a ledger written before the records merged still resolves its breakdown" "alpha.md" \
    "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
 

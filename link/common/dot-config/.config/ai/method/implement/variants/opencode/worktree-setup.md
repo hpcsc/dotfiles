@@ -1,4 +1,4 @@
-### Isolate the work
+### Isolate the run in a worktree
 
 `facts.clean` says whether the tree is clean. If it is not, stop and ask — never build on top of someone else's loose work.
 

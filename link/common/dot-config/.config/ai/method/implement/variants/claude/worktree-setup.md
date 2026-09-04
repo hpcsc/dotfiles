@@ -1,4 +1,4 @@
-### Set up an isolated worktree
+### Isolate the run in a worktree
 
 `facts.clean` says whether the tree is clean. If it is not, stop and ask — never build on top of someone else's loose work.
 
@@ -16,7 +16,7 @@ It puts the tree beside the git dir — under `.claude/worktrees/` when it can s
 
 Then call **EnterWorktree** with that `path` (this skill is the explicit instruction that tool requires). It switches the session's working directory into the worktree — same window, same session, no new tmux anything. Every command from here runs there, and relative paths work normally.
 
-**Pass `path`, never `name`.** `name` is the tool's own creation mode: it takes its base ref from `worktree.baseRef` — `fresh`, meaning `origin/<default-branch>`, unless the repo says otherwise — and it has no notion of adopting the tree a stopped run left behind, so a resume through it opens a second one and strands the first's commits. `clerk isolate` decides both. The tool accepts any path registered in `git worktree list` for this repo when you enter from the launch directory, which is where this phase runs.
+**Pass `path`, never `name`.** `name` is the tool's own creation mode: it takes its base ref from `worktree.baseRef` — `fresh`, meaning `origin/<default-branch>`, unless the repo says otherwise — and it has no notion of adopting the tree a stopped run left behind, so a resume through it opens a second one and strands the first's commits. `clerk isolate` decides both. The tool accepts any path registered in `git worktree list` for this repo when you enter from the launch directory, which is where this step runs.
 
 **A path outside `.claude/worktrees/` asks before entering, and that is not a fault to route around.** The tool waves through anything under that directory and prompts for everything else — a safety check no permission rule can allowlist and auto mode may not approve. `clerk` puts new trees there under this harness, so the prompt means you are entering a tree some other harness made, which a resume legitimately does. Approve it. Creating a second tree to dodge the dialog is how a run loses the commits it already has.
 

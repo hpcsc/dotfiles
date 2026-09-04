@@ -47,7 +47,7 @@ flowchart TD
 
 That is the split the two fills mark on every diagram below: green where clerk decides, terracotta where the model does. It is also why an assertion is never a bare flag — a claim with no code attached could never be taken back.
 
-The same instinct runs through the rest. `clerk finish` asks which files a task owns rather than reading `git status`, because "what I meant to change" is not observable either. The plan lives in two files — a **breakdown**, `tasks/<story>.md`, written by a person, and a **sidecar**, `tasks/<story>.json`, where clerk keeps per-task state — so clerk never edits prose it did not write. A **receipt** records that the suite passed *and* what it passed against, because "the tests pass" without that is a claim about a moment, not about the branch.
+The same instinct runs through the rest. `clerk finish` asks which files a task owns rather than reading `git status`, because "what I meant to change" is not observable either. The plan lives in two files — a **breakdown**, `tasks/<story>.md`, written by a person, and a **task record**, `tasks/<story>.json`, where clerk keeps per-task state — so clerk never edits prose it did not write. A **receipt** records that the suite passed *and* what it passed against, because "the tests pass" without that is a claim about a moment, not about the branch.
 
 ## One call, repeated
 
@@ -85,33 +85,33 @@ sequenceDiagram
 
 The eleven, in order. `clerk step` reads them from the top and returns the first one not done.
 
-Where a claim is stamped with the *code tree* it was made about, that means the file listing at HEAD minus the plan files under `tasks/`, hashed. Comparing by that rather than by commit is what lets the run commit its own plan — the archive, the write-up — without making a green suite stale, while any touch of the code still does.
+Where a claim is stamped with the *code tree* it was made about, that means the file listing at HEAD minus the breakdown files under `tasks/`, hashed. Comparing by that rather than by commit is what lets the run commit its own breakdown — the archive, the write-up — without making a green suite stale, while any touch of the code still does.
 
 ```mermaid
 flowchart TD
   start["start<br/>run.json exists"] -->|"clerk step --start"| ground
   ground["ground<br/>a guidelines --caller run is in the event log<br/>tree clean, else blocked"] -->|"clerk guidelines --caller"| isolate
   isolate["isolate<br/>the current branch is the slug"] -->|"clerk isolate"| decompose
-  decompose["decompose<br/>breakdown bound, sidecar lint clean<br/>approved when review_breakdown is on"] -->|"clerk step --done decompose --tasks-file"| build
-  build["build N, once per task<br/>done in the sidecar and the tree clean"] -->|"clerk finish N -- files, then the commit"| build
+  decompose["decompose<br/>breakdown bound, task record lint clean<br/>approved when review_breakdown is on"] -->|"clerk step --done decompose --tasks-file"| build
+  build["build N, once per task<br/>done in the task record and the tree clean"] -->|"clerk finish N -- files, then the commit"| build
   build -. "gears on and the task is hard:<br/>pause N until --done pause N" .-> build
   build -->|"no task left open"| suite
   suite["suite<br/>a passing receipt at this code tree"] -->|"clerk receipt --passed"| audit
   audit["audit<br/>accepted at this code tree"] -->|"clerk audit round … accept"| match
-  match["match-request<br/>the request re-read, no open mismatch"] -->|"clerk step --done match-request"| explain
-  explain["explain<br/>## Theory in the breakdown, committed"] -->|"write it, commit it"| verify
-  verify["verify-run<br/>clerk verify clean, residue reviewed"] -->|"step runs verify itself<br/>--done verify-residue"| land
+  match["match-request<br/>the request re-read, no open mismatch"] -->|"clerk step --done match-request"| theory
+  theory["theory<br/>## Theory in the breakdown, committed"] -->|"write it, commit it"| verify
+  verify["verify-run<br/>clerk verify clean, not_checked reviewed"] -->|"step runs verify itself<br/>--done verify-run"| land
   land["land<br/>archived; integrated when asked"] -->|"clerk land"| learn
   learn["learn<br/>an entry written, or --done learn --none"] -->|"clerk learn"| fin["finished<br/>run.json: finished true"]
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
   classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
   classDef file fill:#FFFFFF,stroke:#9AA39D,stroke-width:1px,color:#1B1F1D
-  class start,ground,isolate,build,suite,audit,explain,verify,land,fin clerk
+  class start,ground,isolate,build,suite,audit,theory,verify,land,fin clerk
   class decompose,match,learn you
 ```
 
-Two labels on it are worth spelling out. *Gears* is an optional flag: with it on, a task the plan called hard stops once its tests are red, so a person sees them before any code is written. *Residue* is what `clerk verify` ran but could not judge — a symbol only prose mentions, a task owning no file of its own — left for a person rather than counted as clean.
+Two labels on it are worth spelling out. *Gears* is an optional flag: with it on, a task the breakdown called low certainty or high blast radius stops once its tests are red, so a person sees them before any code is written. *`not_checked`* is what `clerk verify` ran but could not judge — a symbol only prose mentions, a task owning no file of its own — left for a person rather than counted as clean.
 
 **Where it lives:** clerk_steps.py: ROWS and the row_* functions · clerk-step: the DONE handlers · method/clerk-step.md, section "The step table"
 
@@ -127,7 +127,7 @@ What clerk records is neither. Tracking it would dirty the tree on every write �
 flowchart LR
   subgraph T["tasks/ — tracked, team decisions"]
     bd["story.md<br/>the breakdown"]
-    sc["story.json<br/>sidecar: depends_on, done"]
+    sc["story.json<br/>task record: depends_on, done"]
     cj["clerk.json<br/>flag defaults"]
     tc["test-commands.json"]
     lp["learnings.md"]
@@ -216,7 +216,7 @@ The audit keeps a file of its own because it wants both halves at once. Its list
 
 ## Files, and which imports which
 
-One dispatcher, an executable per command, and a set of modules beside them. Where a command needs what another one knows, it imports it rather than running it: the repo's facts, the sidecar, the checks, the landing and the step table are all modules, imported by path so they work whether the tree is stowed or not.
+One dispatcher, an executable per command, and a set of modules beside them. Where a command needs what another one knows, it imports it rather than running it: the repo's facts, the task record, the checks, the landing and the step table are all modules, imported by path so they work whether the tree is stowed or not.
 
 That leaves git, the harness, and the few places a command deliberately runs another as a program — `clerk-lint` from `finish`, the executables from the dispatcher. Nothing calls back up the stack, so a failure is one stack trace rather than a reply parsed back out of another command's stdout.
 
@@ -235,12 +235,12 @@ flowchart LR
   subgraph S["shared modules: clerk_*.py"]
     lib["clerk_lib<br/>die, emit, git, parse, plugin_bin"]
     repo["clerk_repo<br/>the repo's facts, prepare, the event log"]
-    tasks["clerk_tasks<br/>the sidecar: status, next task, finish, receipt"]
+    tasks["clerk_tasks<br/>the task record: status, next task, finish, receipt"]
     verify["clerk_verify<br/>the mechanical checks"]
-    landm["clerk_land<br/>isolate, the gate, landing"]
+    landm["clerk_land<br/>isolate, the land checks, landing"]
     ledger["clerk_ledger<br/>Run, Ctx, build_ctx, event readers"]
     steps["clerk_steps<br/>the row table, instructions"]
-    method["clerk_method<br/>seam and include renderer"]
+    method["clerk_method<br/>variant and include renderer"]
     panel["clerk_audit_panel<br/>lenses, remits, refuters"]
     harness["clerk_harness<br/>spawn claude -p or opencode"]
     render["clerk_render<br/>progress lines, beat file"]
@@ -338,28 +338,28 @@ stateDiagram-v2
 
 ## Where the words the model reads come from
 
-Everything the model reads is generated from sources under `method/`. The skill file the *harness* — the tool running the model, Claude Code or opencode — loads at the start holds only what is true before any step runs. Each step's method is its own file, rendered at the moment the step is reached. Both readings go through one resolver, so a *seam* — a piece of prose that differs by harness, kept apart so the shared text stays one copy — renders the same way in the skill and in the reply.
+Everything the model reads is generated from sources under `method/`. The skill file the *harness* — the tool running the model, Claude Code or opencode — loads at the start holds only what is true before any step runs. Each step's method is its own file, rendered at the moment the step is reached. Both readings go through one resolver, so a *variant* — a piece of prose that differs by harness, kept apart so the shared text stays one copy — renders the same way in the skill and in the reply.
 
 ```mermaid
 flowchart LR
   body["method/implement/body.md<br/>the shape, the loop, the flags"]:::file
-  seams["method/implement/seams/&lt;harness&gt;/*.md<br/>what differs per harness"]:::file
+  variants["method/implement/variants/&lt;harness&gt;/*.md<br/>what differs per harness"]:::file
   shared["method/shared/*.md<br/>prepare, injection defence"]:::file
   stepsf["method/implement/steps/&lt;step&gt;.md<br/>one file per row"]:::file
   gen["scripts/gen-skills.sh<br/>strict: an unresolved marker fails"]:::clerk
   cs["clerk step<br/>lenient: a missing fragment is named in place"]:::clerk
-  method["clerk_method.py<br/>seam · include · quote · var"]:::clerk
+  method["clerk_method.py<br/>variant · include · quote · var"]:::clerk
   skillc[".claude/skills/implement/SKILL.md<br/>generated, do not edit"]:::file
   skillo[".config/opencode/skills/implement/SKILL.md<br/>generated, do not edit"]:::file
   reply["instructions in the step reply<br/>full text once per session, then a pointer"]:::you
   body --> gen
-  seams --> gen
+  variants --> gen
   shared --> gen
   gen --> method
   gen --> skillc
   gen --> skillo
   stepsf --> cs
-  seams --> cs
+  variants --> cs
   shared --> cs
   cs --> method
   cs --> reply
@@ -371,7 +371,7 @@ flowchart LR
 
 **Where it lives:** scripts/gen-skills.sh · clerk_method.py · clerk_steps.py: instructions_for, instructions_text · Taskfile: `task common:gen` and `gen:skills:check`
 
-**When you would change it:** Edit the source under method/, never the SKILL.md, then run `task common:gen`. A step's text changes without regenerating anything; a change to body.md or a seam needs the generator, and `--check` fails the build until it has run.
+**When you would change it:** Edit the source under method/, never the SKILL.md, then run `task common:gen`. A step's text changes without regenerating anything; a change to body.md or a variant needs the generator, and `--check` fails the build until it has run.
 
 ## Contributing a change
 

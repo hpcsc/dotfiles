@@ -1,4 +1,4 @@
-### 7. Reflect and persist learnings
+## Reflect and persist learnings
 
 Distil what generalises: a codebase convention, a recurring finding, a constraint, a reusable pattern. **Falsifiable filter** — keep a candidate only if you can name in one sentence the specific future mistake it prevents. Otherwise it is noise.
 
@@ -8,7 +8,7 @@ Distil what generalises: a codebase convention, a recurring finding, a constrain
 
 - **A task the breakdown called high certainty that took several attempts to get right**, or arrived with a lint finding. Whatever the breakdown thought made it routine, does not.
 - **A task the breakdown called low certainty that was boring.** This one is worth as much and gets recorded far less, because nothing went wrong to prompt it. Left unwritten, the next story over the same ground pauses on it again for nothing, and the pause keeps costing until someone notices.
-- **A `clerk fixup` that came back `ambiguous`** in step 2. Several commits in range touched one file, which is a task boundary drawn across something the codebase treats as one thing.
+- **A `clerk fixup` that came back `ambiguous`** at the audit step. Several commits in range touched one file, which is a task boundary drawn across something the codebase treats as one thing.
 
 Each is a fact about *this repo's* work rather than about this story, which is what makes it worth a durable line. Write it so the next breakdown can act on it: name the kind of task, not the task.
 

@@ -19,7 +19,7 @@ The request is the top layer of the last two, and it needs no passing: `--start`
 
 ### Check whether this run already exists
 
-Stopping and restarting is the normal case, not an edge one, and the two ways of getting it wrong are both expensive: a second worktree strands the first one's commits somewhere nobody looks, and decomposing again produces a different breakdown against code the first run already changed, so the sidecar recording what was built no longer describes it.
+Stopping and restarting is the normal case, not an edge one, and the two ways of getting it wrong are both expensive: a second worktree strands the first one's commits somewhere nobody looks, and decomposing again produces a different breakdown against code the first run already changed, so the task record recording what was built no longer describes it.
 
 **`facts.resume`** settles it, and is either null or the run you are rejoining:
 

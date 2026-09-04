@@ -59,8 +59,8 @@ def load_plan(path):
         die(f"{path} is not valid YAML")
 
 
-def sidecar_progress(tasks_home, tasks_rel):
-    """(total, done) from the breakdown's sidecar, which is the run's own record of what
+def task_record_progress(tasks_home, tasks_rel):
+    """(total, done) from the breakdown's task record, which is the run's own record of what
     it finished — written in the same commit as the code it stands for."""
     if not tasks_rel:
         return 0, 0
@@ -119,7 +119,7 @@ def describe(deliverable, tasks_home, ref, worktrees):
     did = d.get("id") or ""
     branch = d.get("branch") or ""
     tasks_rel = d.get("tasks") or ""
-    total, done = sidecar_progress(tasks_home, tasks_rel)
+    total, done = task_record_progress(tasks_home, tasks_rel)
 
     alias = None
     effective = branch
@@ -160,7 +160,7 @@ def describe(deliverable, tasks_home, ref, worktrees):
 
 def settle(deliverables):
     """Merged first, because it decides what unblocks everything else. A branch deleted
-    after merging leaves nothing to compare, so its sidecar answers for it."""
+    after merging leaves nothing to compare, so its task record answers for it."""
     for d in deliverables:
         if d["branch_exists"]:
             d["merged"] = (d["total"] > 0 and d["done"] >= d["total"]) if d["ahead"] == 0 else d["unmerged_commits"] == 0
@@ -187,7 +187,7 @@ def settle(deliverables):
         if not d["merged"]:
             d["evidence"] = None
         elif not d["branch_exists"]:
-            d["evidence"] = f"branch {d['branch']} is gone and the sidecar reports {d['done']}/{d['total']}"
+            d["evidence"] = f"branch {d['branch']} is gone and the task record reports {d['done']}/{d['total']}"
         elif d["ahead"] == 0:
             d["evidence"] = "branch carries no commit the default branch lacks"
         else:

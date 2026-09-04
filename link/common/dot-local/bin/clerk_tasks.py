@@ -1,8 +1,8 @@
-"""The breakdown's sidecar, and the two commands that read and write it.
+"""The breakdown's task record, and the two commands that read and write it.
 
 `status` is progress for a human plus the next unblocked task for the step table; `finish`
-marks one task done and stages its files with the sidecar, so the record and the change
-land in one commit. Completion lives in the sidecar and nowhere else: mirrored into a
+marks one task done and stages its files with the task record, so the record and the change
+land in one commit. Completion lives in the task record and nowhere else: mirrored into a
 markdown checkbox as well, two files carried the one fact a resumed run depends on and
 could disagree.
 """
@@ -13,14 +13,14 @@ import subprocess
 from pathlib import Path
 
 from clerk_lib import die, emit, git, gitout, plugin_bin
-from clerk_repo import (breakdown_for, is_ignored, now, run_records_dir, sidecar_for, state_dir,
+from clerk_repo import (breakdown_for, is_ignored, now, run_records_dir, task_record_for, state_dir,
                         tasks_home, tasks_hint, work_tree)
 
 _TASK_HEADING = re.compile(r"^###\s+Task\s+(\d+):")
 _CHECKBOX = re.compile(r"^\s*- \[([ xX])\]")
 
 
-def load_sidecar(side):
+def load_task_record(side):
     try:
         return json.loads(Path(side).read_text())
     except (OSError, json.JSONDecodeError) as e:
@@ -63,7 +63,7 @@ def status_of(tasks_file, side, archived, label=None):
     """Progress, for a human, plus the per-task assessment rolled up as `gears` — reported
     whatever the flag says, since the flag decides how a run drives, never whether the
     assessment is available to read."""
-    tasks = load_sidecar(side).get("tasks") or []
+    tasks = load_task_record(side).get("tasks") or []
     crit = criteria_counts(tasks_file)
     done_n = {t["n"] for t in tasks if t.get("done") is True}
     total_c = sum(c["total"] for c in crit.values())
@@ -78,7 +78,7 @@ def status_of(tasks_file, side, archived, label=None):
                          "certainty": t.get("certainty"), "blast_radius": t.get("blast_radius"),
                          "criteria": {"total": k["total"], "ticked": k["ticked"], "unticked": k["total"] - k["ticked"]},
                          "blocked_by": [d for d in (t.get("depends_on") or []) if d not in done_n]})
-    return {"tasks_file": label or tasks_file, "sidecar": side, "archived": archived,
+    return {"tasks_file": label or tasks_file, "task_record": side, "archived": archived,
             "total": len(tasks), "done": len(done_n), "remaining": len(tasks) - len(done_n),
             "criteria": {"total": total_c, "ticked": ticked_c, "unticked": total_c - ticked_c},
             "done_with_unticked_criteria": unwalked,
@@ -95,7 +95,7 @@ def cmd_status(o):
         wt = work_tree() or ""
         out = []
         for f in breakdown_paths(th, include_archived=True):
-            side = sidecar_for(f)
+            side = task_record_for(f)
             if not side:
                 continue
             arch = "/completed/" in f
@@ -106,9 +106,9 @@ def cmd_status(o):
     tasks, rc = breakdown_for(o["--tasks-file"])
     if rc != 0:
         die(tasks_hint(th, "status"))
-    side = sidecar_for(tasks)
+    side = task_record_for(tasks)
     if not side:
-        die(f"no sidecar beside {tasks} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections")
+        die(f"no task record beside {tasks} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections")
     return status_of(tasks, side, False)
 
 
@@ -119,10 +119,10 @@ def cmd_finish(n, files, tasks_override=None):
         die(tasks_hint(th, "finish"))
     if not Path(tasks).is_file():
         die(f"task file not found: {tasks}")
-    side = sidecar_for(tasks)
+    side = task_record_for(tasks)
     if not side:
-        die(f"no sidecar beside {tasks} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections")
-    data = load_sidecar(side)
+        die(f"no task record beside {tasks} — a breakdown is bound with its tasks/<story>.json; decompose again, or write one by hand from the task sections")
+    data = load_task_record(side)
     entry = next((t for t in data.get("tasks") or [] if t.get("n") == n), None)
     if entry is None:
         die(f"no Task {n} in {Path(side).name}")
@@ -186,7 +186,7 @@ def cmd_finish(n, files, tasks_override=None):
 
     # Tracked tasks/: the modified breakdown rides with the commit too, or its ticks are
     # stranded outside it and the dirty tree blocks the next step. Excluded tasks/: neither
-    # file is ever committed, so rewriting the sidecar is the whole of the job.
+    # file is ever committed, so rewriting the task record is the whole of the job.
     staged_tasks, tracked = False, True
     if is_ignored(str(Path(side).parent), Path(side).name):
         tracked = False
@@ -196,11 +196,11 @@ def cmd_finish(n, files, tasks_override=None):
                 die("could not stage the modified breakdown")
             staged_tasks = True
         if git("add", "--", side).returncode != 0:
-            die("could not stage the sidecar — report this and stop. Marking the task done and staging it with its code is precisely what this command exists to do in one step")
+            die("could not stage the task record — report this and stop. Marking the task done and staging it with its code is precisely what this command exists to do in one step")
 
     records.mkdir(parents=True, exist_ok=True)
     (records / f"{n}.json").write_text(json.dumps({"n": n, "at": now(), "files": list(files)}) + "\n")
-    return {"task": n, "done": True, "sidecar": side, "breakdown_staged": staged_tasks,
+    return {"task": n, "done": True, "task_record": side, "breakdown_staged": staged_tasks,
             "breakdown_tracked": tracked, "lint": lint_state, "staged": list(files),
             "next_step": "invoke the commit skill — the message is judgment, not mechanics"}
 

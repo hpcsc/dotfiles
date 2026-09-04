@@ -5,10 +5,10 @@
                [--tasks-file <f>] [--check]
 
 With a run ledger it asks `clerk step` first and refuses unless the run has reached the
-land row. Then the gate: every task done, a clean tree, a passing receipt at this code
+land row. Then the land checks: every task done, a clean tree, a passing receipt at this code
 tree, and the audit's acceptance — vouched for by step, or asserted with --audit-accepted
-on a branch landed without a ledger. `--check` prints the gate and stops. Exit 1 when the
-gate is shut, 3 after a live rebase or from inside a worktree, where the fast-forward has
+on a branch landed without a ledger. `--check` prints the checks and stops. Exit 1 when one
+of them fails, 3 after a live rebase or from inside a worktree, where the fast-forward has
 to finish from the main checkout.
 """
 

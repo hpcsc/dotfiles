@@ -283,7 +283,7 @@ def extract_json(text):
 def validate(obj, schema):
     """Enough of JSON Schema to catch what a model actually gets wrong here: the wrong
     top-level type, a missing required key, an array where an object belongs. Not a
-    validator — a gate that turns a malformed reply into a retry with a reason."""
+    validator — a check that turns a malformed reply into a retry with a reason."""
     if schema is None:
         return None
     t = schema.get("type")

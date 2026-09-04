@@ -1,4 +1,4 @@
-### 4. Explain the branch to its reviewer
+## Explain the branch to its reviewer
 
 You are the last reader of this branch who understands it without reading it. Everything that made the design what it is — the alternative you rejected in task 2, the constraint that forced the shape of task 5 — is in your context and in no file. Whoever reviews the branch has the diff and nothing else, and reconstructing a theory from a diff is a different and far more expensive job than checking a diff against one.
 

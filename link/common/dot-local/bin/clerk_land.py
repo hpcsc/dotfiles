@@ -17,7 +17,7 @@ from clerk_lib import die, emit, git, gitout
 from clerk_ledger import Run
 from clerk_repo import (breakdown_for, common_dir, current_branch, default_branch, env_get, head_sha,
                         is_ignored, ledger_dir, now, receipt_state, repo_root, resolve_flag,
-                        run_records_dir, sidecar_for, state_dir, tasks_home, tasks_hint, work_tree)
+                        run_records_dir, task_record_for, state_dir, tasks_home, tasks_hint, work_tree)
 
 
 def stamp_land(record):
@@ -138,10 +138,10 @@ def isolate(name, in_place=None, base=None):
 
 
 # --------------------------------------------------------------------------------
-# The gate: what the step table does not look at
+# The land checks: what the step table does not look at
 # --------------------------------------------------------------------------------
 
-def gate(audit_accepted=False, tasks_override=None):
+def land_checks(audit_accepted=False, tasks_override=None):
     wt = work_tree()
     state = state_dir()
     head = head_sha()
@@ -150,7 +150,7 @@ def gate(audit_accepted=False, tasks_override=None):
     tasks, _ = breakdown_for(tasks_override)
     archived = Path(state) / "archived.json"
     if not tasks and archived.is_file():
-        # Archiving is gated on every task closing, so the archive record IS that evidence,
+        # Archiving needs every task closed, so the archive record IS that evidence,
         # and a second `land` after a rebase does not refuse a run that already satisfied it.
         ok, detail = True, f"breakdown already archived at {json.loads(archived.read_text()).get('path')}"
     elif not tasks:
@@ -158,7 +158,7 @@ def gate(audit_accepted=False, tasks_override=None):
     elif not Path(tasks).is_file():
         ok, detail = False, f"task file not found: {tasks}"
     else:
-        side = sidecar_for(tasks)
+        side = task_record_for(tasks)
         if side:
             open_ = [t for t in (json.loads(Path(side).read_text()).get("tasks") or []) if t.get("done") is not True]
             if not open_:
@@ -166,7 +166,7 @@ def gate(audit_accepted=False, tasks_override=None):
             else:
                 ok, detail = False, f"{len(open_)} task(s) still open in {Path(side).name}"
         else:
-            ok, detail = False, f"no sidecar beside {tasks} — a breakdown is bound with its tasks/<story>.json"
+            ok, detail = False, f"no task record beside {tasks} — a breakdown is bound with its tasks/<story>.json"
     checks.append({"name": "tasks-complete", "ok": ok, "detail": detail})
 
     dirty = [ln for ln in (gitout("status", "--porcelain") or "").split("\n") if ln]
@@ -210,9 +210,9 @@ def step_says(cwd=None):
 
 def land(integrate=None, audit=False, name=None, tasks_override=None, check=False):
     # In a run driven by `clerk step`, whether the branch may land is step's answer: the
-    # land row is reached only past the audit's acceptance, the story re-read and the
+    # land row is reached only past the audit's acceptance, the request re-read and the
     # verify pass at this code tree, so a `land` typed directly cannot walk past any of
-    # them. The gate then keeps what the table does not look at — a dirty tree, a stale
+    # them. These checks then keep what the table does not look at — a dirty tree, a stale
     # receipt — and the acceptance it would ask to be asserted is step's to vouch for.
     row = step_says()
     if row is not None:
@@ -223,16 +223,16 @@ def land(integrate=None, audit=False, name=None, tasks_override=None, check=Fals
                             f"{row.get('reason') or row.get('why_not_done') or 'clerk step could not answer'}"}, 1)
         audit = True
 
-    g = gate(audit, tasks_override)
+    g = land_checks(audit, tasks_override)
     if check:
         emit(g, 0 if g["ok"] else 1)
     if not g["ok"]:
-        emit({"landed": False, "reason": "gate did not open", "gate": g}, 1)
+        emit({"landed": False, "reason": "a land check failed", "land_checks": g}, 1)
 
     root, wt, th, state = repo_root(), work_tree(), tasks_home(), state_dir()
     default, branch = default_branch(), current_branch()
 
-    # Nothing typed means the repo decides, after the gate: a config file cannot change
+    # Nothing typed means the repo decides, after those checks: a config file cannot change
     # whether the branch is fit to land, only whether a fit branch goes on to be merged.
     integrate_src = "request"
     if integrate is None:

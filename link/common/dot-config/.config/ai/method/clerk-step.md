@@ -15,7 +15,7 @@ A clerk refusal enforced these rules:
 
 - one task in flight: `next` exits 3 on a dirty tree
 - only the named paths staged: `finish`
-- every task done, tree clean, receipt at HEAD before the branch lands: `gate`
+- every task done, tree clean, receipt at HEAD before the branch lands: the land checks
 - a new receipt after a live rebase: `land`
 
 Prose alone carried the rest: the request record, `prepare`, `guidelines` and the caller
@@ -38,11 +38,11 @@ There are three kinds of result:
   again.
 - **Asserted:** completion is a judgment. The model records it with
   `clerk step --done <id>`. This is the same mechanism as the `--audit-accepted` flag on
-  `gate`. clerk records the assertion with the code tree it applies to, but does not infer
+  the land checks. clerk records the assertion with the code tree it applies to, but does not infer
   it.
 - **Blocked:** something needs a decision. `step` returns `blocked: true` with a reason,
   and the instruction is to stop and ask: a dirty tree at `ground`, an open story mismatch,
-  a dependency cycle. A human gate returns `stop: true`: the model ends its turn, and the
+  a dependency cycle. A pause returns `stop: true`: the model ends its turn, and the
   next `clerk step` is the reader's approval.
 
 The command surface:
@@ -88,8 +88,8 @@ The ledger lives in the common git dir, not in the git dir of the worktree:
   run.json          the run's whole record, one key per section:
                     {slug, request, started_at, launch_cwd, launch_branch, harness, finished}
                     done          the asserted completions: ground, pause, verify-run,
-                                  verify-residue, learn
-                    breakdown     {tasks_file, sidecar, approved, lint_hash}
+                                  verify-run, learn
+                    breakdown     {tasks_file, task_record, approved, lint_hash}
                     match_request {code_tree, mismatches, resolved}
                     land          {archived, integrate, integrate_source, landed}
   events.jsonl      one line for each logged clerk command: {cmd, argv, exit, at, head}
@@ -125,7 +125,7 @@ command, is not logged: a mistyped invocation is not evidence of anything.
 - **ground:** a `guidelines` run that exited 0 with `--caller <pattern>`
 - **the gears signals:** `finish N --retried`, or a `finish N` that exited 1 (a lint refusal)
 - **learn:** a `learn` run that exited 0 with `--title`
-- **the plan signals for the reflection:** the tasks the plan called `high` that showed a
+- **the breakdown signals for the reflection:** the tasks the breakdown called `high` that showed a
   signal, the `low` ones that did not, and the `fixup` calls that exited 3
 
 ### Why the common git dir
@@ -138,7 +138,7 @@ The repository has three tiers of state. The ledger is the third tier:
 
 | Tier | Where | Examples | Properties |
 |---|---|---|---|
-| Team decisions | `tasks/`, tracked | the breakdown and its sidecar, `clerk.json`, `test-commands.json` | shared, reviewed, goes into the task commit |
+| Team decisions | `tasks/`, tracked | the breakdown and its task record, `clerk.json`, `test-commands.json` | shared, reviewed, goes into the task commit |
 | Machine-local preferences | `tasks/.environment`, gitignored | the test command cache, flag defaults | written by hand |
 | Internal records | `<git-dir>/clerk/`, `<git-common-dir>/clerk/runs/` | the receipt, the archive record, the ledger | written by commands only, never committed, the model cannot write to it |
 
@@ -146,8 +146,8 @@ The alternatives, and what each costs:
 
 - **`tasks/`:** the step table uses "tree clean" as the signal that a task is committed. A
   tracked ledger makes the tree dirty on every write, so `step` and `next` need path
-  exemptions everywhere. The sidecar design avoids that dependency: `finish` stages the
-  sidecar with the code, so progress and change go into one commit. A tracked ledger also
+  exemptions everywhere. The task record design avoids that dependency: `finish` stages the
+  task record with the code, so progress and change go into one commit. A tracked ledger also
   puts session evidence into pull requests, where the model can edit it.
 - **`.clerk/` at the repository root:** a directory in the work tree belongs to one
   worktree, so `git worktree remove` deletes it. A directory at `repo_root` survives, but
@@ -162,13 +162,13 @@ submodules.
 
 ## Code tree
 
-The code tree is the hash of the HEAD tree listing minus the plan files under `tasks/`:
+The code tree is the hash of the HEAD tree listing minus the breakdown files under `tasks/`:
 the `.md`, `.json`, `.yaml` and `.yml` files there. Code under a directory that happens
 to be called `tasks/` still counts as code.
 
 Receipts, audit acceptance, validation and the cached verify pass bind to the code tree,
 not to the SHA. Reason: the Theory section and the archive are `tasks/`-only commits that
-come after the last receipt. `gate` and `verify` compared the receipt SHA to HEAD, so in a
+come after the last receipt. The land checks and `verify` compared the receipt SHA to HEAD, so in a
 repository that tracks `tasks/` the Theory commit made the receipt stale, and `land`
 refused until the model ran the suite again for a docs-only change. Both now compare by
 code tree, through one helper in clerk: `prepare` reports the tree at HEAD and whether
@@ -191,22 +191,22 @@ category as well made a caller learn two words to reach the same line of the rep
 | 0 | `start` | `run.json` exists | `clerk step --start <slug> --request "…"`. Refuses when an unfinished ledger exists for the slug | input |
 | 1 | `ground` | a `guidelines --caller <pattern>` run exited 0, or `--done ground --caller` for a repo with no guidelines directory. `prepare.clean` is true, else **blocked** | the event log. The output of `step` includes the `prepare` JSON as `facts`, so there is no prepare step to skip | derived |
 | 2 | `isolate` | the current branch is the slug. `mode` says worktree or in-place; `fallback` says in-place without `in_place` on | `clerk isolate <slug>`. From the main checkout, `step` prints "enter `<path>`" until the cwd is the worktree | derived |
-| 3 | `decompose` | the run's `breakdown` is bound, the sidecar exists, `lint certainty-unevidenced` is clean at the sidecar's present hash, and `approved` is set when `review_breakdown` is on | `clerk step --done decompose --tasks-file <md> [--approved]`. It runs the lint itself and refuses on findings. On success it prints the task table. An archived breakdown reads from `tasks/completed/` | asserted for the bind, derived for the lint |
-| 4 | `build N` (repeats) | `done` for N in the sidecar, and the tree is clean | `clerk finish N [--retried] -- <files>` lints the staged set before it sets `done` and refuses with exit 1 on findings. The commit makes the tree clean. The output carries `certainty`, `blast_radius`, `gear`, `pause_after_tests`, the last task's signals, and progress | derived |
+| 3 | `decompose` | the run's `breakdown` is bound, the task record exists, `lint certainty-unevidenced` is clean at the task record's present hash, and `approved` is set when `review_breakdown` is on | `clerk step --done decompose --tasks-file <md> [--approved]`. It runs the lint itself and refuses on findings. On success it prints the task table. An archived breakdown reads from `tasks/completed/` | asserted for the bind, derived for the lint |
+| 4 | `build N` (repeats) | `done` for N in the task record, and the tree is clean | `clerk finish N [--retried] -- <files>` lints the staged set before it sets `done` and refuses with exit 1 on findings. The commit makes the tree clean. The output carries `certainty`, `blast_radius`, `gear`, `pause_after_tests`, the last task's signals, and progress | derived |
 | 4a | `pause N` (gears on, and the task is `low` certainty, `high` blast radius, or the run downshifted) | `tests_shown` for N | `clerk step --done pause N`. `step` prints `stop: true` before it | asserted, a pause |
 | 5 | `suite` | the receipt passed, and its code tree equals the HEAD code tree | `clerk receipt` | derived |
 | 6 | `audit` | `accepted` is present at this code tree | `clerk audit run --rounds N`; for each round `clerk audit round --report <json>`, which refuses on a stale receipt, a dirty tree, or more rounds than planned without `--replan`; then `clerk audit accept [--early "<why>"]`. `step` prints the request from `run.json` as `request`, with `base` and `test_commands` | asserted for `accept`, derived for the rest |
 | 7 | `match-request` | the run's `match_request` is at this code tree, with no open mismatch | `clerk step --done match-request [--mismatch "…"]…`. `step` prints the request verbatim, `git log --oneline base..HEAD`, and the four questions. A recorded mismatch is **blocked** until `--resolved` | asserted |
-| 8 | `explain` | the breakdown contains `## Theory`, and the file is committed when `tasks_tracked` is true | the model writes it. A `tasks/`-only commit does not disturb rows 5 to 7 | derived |
-| 9 | `verify-run` | `clerk verify --all-closed` is clean, and `not_checked` is empty or `--done verify-residue` is recorded. `hints` — what the check could not run for want of a flag — never holds the row | `step` runs verify itself when it reaches the row, and caches a pass in the run's `done` at its code tree so the archive commit does not run it again | derived, then asserted |
-| 10 | `land` | the run's `land` says `landed`, or `archived.json` exists and integration is off or done. From the main checkout: the slug is merged and its worktree and branch are gone | `clerk land`. It asks `clerk step` and refuses unless the run is at this row, so `--audit-accepted` is not needed and a `land` called directly cannot walk past any row; the gate keeps the checks the table does not make — a clean tree, every task done, a fresh receipt. The exit, fast-forward and remove sequence for a worktree becomes printed instructions from the main checkout | derived |
+| 8 | `theory` | the breakdown contains `## Theory`, and the file is committed when `tasks_tracked` is true | the model writes it. A `tasks/`-only commit does not disturb rows 5 to 7 | derived |
+| 9 | `verify-run` | `clerk verify --all-closed` is clean, and `not_checked` is empty or `--done verify-run` is recorded. `hints` — what the check could not run for want of a flag — never holds the row | `step` runs verify itself when it reaches the row, and caches a pass in the run's `done` at its code tree so the archive commit does not run it again | derived, then asserted |
+| 10 | `land` | the run's `land` says `landed`, or `archived.json` exists and integration is off or done. From the main checkout: the slug is merged and its worktree and branch are gone | `clerk land`. It asks `clerk step` and refuses unless the run is at this row, so `--audit-accepted` is not needed and a `land` called directly cannot walk past any row; land keeps the checks the table does not make — a clean tree, every task done, a fresh receipt. The exit, fast-forward and remove sequence for a worktree becomes printed instructions from the main checkout | derived |
 | 11 | `learn` | a `learn` run wrote an entry, or `--done learn --none` | `clerk learn … --feature <slug>`. `step` prints `breakdown_signals` computed from the log | derived, or asserted |
 | end | `finished` | every row above | `step` writes `finished: true` into `run.json` | |
 
 ## Output
 
 One JSON object. The `instructions` field holds the method text for that step, with the
-seams resolved for the harness clerk detects:
+variants resolved for the harness clerk detects:
 
 ```json
 {"run": "poller-retry", "step": "task", "n": 3, "title": "…",
@@ -228,15 +228,15 @@ variable means opencode, else claude. `--harness` overrides one call.
 `implement/body.md` holds only what is true before any step runs: the shape of the run,
 "The loop", the flags, and the injection defense. Everything step-local — including how
 each command refuses — lives one step per file under `implement/steps/<id>.md`, with the
-seams inside them, so it arrives when it is usable rather than ten steps early. Two
+variants inside them, so it arrives when it is usable rather than ten steps early. Two
 readers use those files:
 
 - `gen-skills.sh` renders a whole body, resolving the markers inside an included file
-  up to three levels down, so a step file can carry its seams.
-- `clerk step` prints one step file, with the seams resolved at run time.
+  up to three levels down, so a step file can carry its variants.
+- `clerk step` prints one step file, with the variants resolved at run time.
   `CLERK_METHOD_DIR` points it at another method directory, which the tests use.
 
-Both go through `clerk_method.py`, the one resolver for seam, include, quote and var
+Both go through `clerk_method.py`, the one resolver for variant, include, quote and var
 markers. The generator runs it strict, so an unresolved marker fails the build; `clerk
 step` runs it lenient, so a missing fragment is named in place rather than ending a run.
 
@@ -312,7 +312,7 @@ Everything is Python, standard library only, stowed to `~/.local/bin` from
 logs the ones whose exit is evidence, and computes the next step in its own process for
 the four replies that carry one. Each command is an executable that parses arguments and
 calls a module beside it — `clerk_repo` for the repo's facts and the event log,
-`clerk_tasks` for the sidecar, `clerk_verify` for the checks, `clerk_land` for isolating
+`clerk_tasks` for the task record, `clerk_verify` for the checks, `clerk_land` for isolating
 and landing, `clerk_ledger` for the run ledger, `clerk_steps` for the row table — so
 another command imports what it needs rather than running it. The subprocesses left are
 git, the harness, and a command another command deliberately runs as a program: `clerk
@@ -329,7 +329,7 @@ built-in at a time. Rules that still hold:
 ## Open questions
 
 - Facts for each task that a reviewer must see, `lint_findings_first_pass` and `retried`,
-  can go into the sidecar at `finish` time. They then go into the task commit, where
+  can go into the task record at `finish` time. They then go into the task commit, where
   `profile-run` and `clerk story stack` can read them.
 - The opencode environment variable for harness detection, or a `--harness` flag in its
   command wrapper.

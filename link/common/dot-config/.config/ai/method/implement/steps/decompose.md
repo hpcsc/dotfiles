@@ -1,18 +1,18 @@
-## Phase 1: Decompose
+## Decompose the story into tasks
 
 ### Adopt an existing breakdown if there is one
 
-If the request names a file in `tasks/`, or the step reported a `resume`, read that breakdown, present it with `clerk status`, and skip decomposing. Tasks with `done: true` in the sidecar are finished — `clerk step` resumes at the first unblocked one that is not.
+If the request names a file in `tasks/`, or the step reported a `resume`, read that breakdown, present it with `clerk status`, and skip decomposing. Tasks with `done: true` in the task record are finished — `clerk step` resumes at the first unblocked one that is not.
 
-**Do not decompose a story that already has a breakdown in progress.** Decomposing again produces a different breakdown against the same code, and the sidecar recording what was already built no longer describes it. `clerk status` tells you where the previous run stopped.
+**Do not decompose a story that already has a breakdown in progress.** Decomposing again produces a different breakdown against the same code, and the task record recording what was already built no longer describes it. `clerk status` tells you where the previous run stopped.
 
-A breakdown with no `tasks/<story>.json` beside it cannot be bound: `clerk step` refuses rather than guessing at dependencies from prose. Decompose it again, or write the sidecar by hand from the task sections — one entry per task with its `n`, `title`, `depends_on` and `done` — and commit it alongside the breakdown it describes.
+A breakdown with no `tasks/<story>.json` beside it cannot be bound: `clerk step` refuses rather than guessing at dependencies from prose. Decompose it again, or write the task record by hand from the task sections — one entry per task with its `n`, `title`, `depends_on` and `done` — and commit it alongside the breakdown it describes.
 
 ### Otherwise decompose
 
-{{seam:decompose}}
+{{variant:decompose}}
 
-It does the codebase exploration and dependency analysis that makes the breakdown worth having. It writes `tasks/[story-name].md` describing each task, and `tasks/[story-name].json` beside it — the sidecar that carries the dependency graph and the run's progress. The sidecar is the durable record; the markdown is prose and nothing rewrites it.
+It does the codebase exploration and dependency analysis that makes the breakdown worth having. It writes `tasks/[story-name].md` describing each task, and `tasks/[story-name].json` beside it — the task record that carries the dependency graph and the run's progress. The task record is the durable one; the markdown is prose and nothing rewrites it.
 
 **Carry the learnings forward.** Pass the learnings file's contents as `Accumulated project learnings`: "These are durable conventions, recurring review findings and constraints from earlier runs in this repo. Fold the relevant ones into each task's `patterns_to_follow`, and do not re-propose work they already cover."
 
@@ -28,7 +28,7 @@ It does the codebase exploration and dependency analysis that makes the breakdow
 clerk step --done decompose --tasks-file <the breakdown>
 ```
 
-Before it binds anything it runs `clerk lint --rule certainty-unevidenced` over the sidecar and refuses on a finding. Seconds, no agent, and it settles the one thing about an assessment that is not a matter of opinion: a task called `high` or `medium` certainty with no precedent named, or one citing a file that is not there. Both mean the same thing — a confidence with nothing behind it, which is how the field drifts to `high` on everything and stops being worth reading. Fix a finding by correcting the assessment, not by deleting the reference: a precedent you cannot produce is a task that is `low`. An adopted breakdown goes through the same check, which tells you whether the one you are about to build was checked when it was written.
+Before it binds anything it runs `clerk lint --rule certainty-unevidenced` over the task record and refuses on a finding. Seconds, no agent, and it settles the one thing about an assessment that is not a matter of opinion: a task called `high` or `medium` certainty with no precedent named, or one citing a file that is not there. Both mean the same thing — a confidence with nothing behind it, which is how the field drifts to `high` on everything and stops being worth reading. Fix a finding by correcting the assessment, not by deleting the reference: a precedent you cannot produce is a task that is `low`. An adopted breakdown goes through the same check, which tells you whether the one you are about to build was checked when it was written.
 
 **A breakdown planned before these fields existed carries neither**, and `clerk status` lists those under `gears.unassessed`. Read them as medium certainty and low blast radius — but **say that you did**, because "not assessed" and "assessed as routine" are otherwise the same silence. Do not re-decompose a run in progress to acquire them.
 

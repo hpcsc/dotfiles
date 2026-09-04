@@ -1,4 +1,4 @@
-{{seam:frontmatter}}
+{{variant:frontmatter}}
 
 # Task Decomposition Agent
 
@@ -121,7 +121,7 @@ A table of contents, one numbered line per task:
 3. Task 3: [title]
 ```
 
-**Numbered, not checkboxes.** Progress lives in the sidecar and nowhere else, so this section is a way to see the shape of the breakdown without scrolling it, and nothing ever updates it. A checklist here would be a second copy of the one fact a resumed run depends on — and two copies can disagree while the stale one still reads as the answer to whoever opens the file.
+**Numbered, not checkboxes.** Progress lives in the task record and nowhere else, so this section is a way to see the shape of the breakdown without scrolling it, and nothing ever updates it. A checklist here would be a second copy of the one fact a resumed run depends on — and two copies can disagree while the stale one still reads as the answer to whoever opens the file.
 
 ### 2. Story Reference
 Which user story this breakdown is derived from (file path or inline summary).
@@ -193,7 +193,7 @@ Every acceptance criterion must be checkable by someone standing in the working 
 - **Location:** `tasks/`
 - **Filename:** `[story-name].md` (kebab-case, derived from the story title or feature name)
 
-### Save the machine-readable sidecar
+### Save the machine-readable task record
 
 Write `tasks/[story-name].json` beside the markdown, with the same stem. The markdown
 stays the human-readable artifact and the progress record; the JSON is what tooling
@@ -229,7 +229,7 @@ task numbers (`[]` when a task has none); it is the dependency edge the markdown
 as **Depends on:**, so the two must agree.
 
 `certainty` and `blast_radius` are the two assessments, as bare values — the reason
-beside each in the markdown stays there. They are duplicated into the sidecar for the
+beside each in the markdown stays there. They are duplicated into the task record for the
 same reason `depends_on` is: a run reads them per task, from `clerk next`, and a regex
 over prose is not how a run should learn how hard to drive. Emit both on every task,
 never omitted and never null; a missing field means "planned before these existed", and
@@ -281,7 +281,7 @@ Before saving, verify:
 - [ ] No test plans included — Behavior and Acceptance Criteria are sufficient
 - [ ] Every task with `Testable: Yes` includes its tests — no separate "add tests" tasks
 - [ ] Dependencies between tasks are explicit
-- [ ] Every task carries a `Certainty` and a `Blast radius`, each with its one-clause reason, in both the markdown and the sidecar
+- [ ] Every task carries a `Certainty` and a `Blast radius`, each with its one-clause reason, in both the markdown and the task record
 - [ ] No task is `Certainty: high` without a named precedent in its `Patterns to Follow`
 - [ ] No task is `Certainty: medium` without naming the variation the precedent does not cover
 - [ ] The certainties are not all one value — all-`medium` means the step was skipped, all-`high` means it did not look

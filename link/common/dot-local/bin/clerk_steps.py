@@ -17,16 +17,16 @@ from pathlib import Path
 
 from clerk_lib import clerk, die, git, gitout, worktree_for
 from clerk_method import Renderer
-from clerk_tasks import load_sidecar, next_task
+from clerk_tasks import load_task_record, next_task
 from clerk_verify import verify
 from clerk_ledger import (age_seconds, fixup_ambiguities, gear, guidelines_read, is_ancestor,
                           learn_written, now, receipt_state, ref_exists, runner_view, session_id,
                           task_signals)
 
-VALIDATE_QUESTIONS = [
-    "What does the story ask for that this branch does not do?",
+MATCH_QUESTIONS = [
+    "What does the request ask for that this branch does not do?",
     "Where does the branch satisfy a task's acceptance criteria by measuring a proxy for what was asked rather than the thing itself?",
-    "Where did a criterion the story stated as a category become a list in the breakdown? Check the list against the source that defines the set.",
+    "Where did a criterion the request stated as a category become a list in the breakdown? Check the list against the source that defines the set.",
     "Which test fails when a criterion is violated? Name one per criterion, and make the headline one fail.",
 ]
 
@@ -56,7 +56,7 @@ def render_method(text, harness):
     rather than fatal: a step printed mid-run is worth more with a hole named than not
     printed at all."""
     mdir = method_dir()
-    return Renderer(mdir.parent, mdir / "seams" / harness, strict=False).render_text(text).strip("\n")
+    return Renderer(mdir.parent, mdir / "variants" / harness, strict=False).render_text(text).strip("\n")
 
 
 # The gears pause is a moment inside the build step, and the method text for it is the
@@ -112,12 +112,12 @@ def row(step_id, done, **fields):
 
 
 def breakdown_files(ctx):
-    """(tasks_file, sidecar, archived) for the bound breakdown. `clerk land` moves both
+    """(tasks_file, task record, archived) for the bound breakdown. `clerk land` moves both
     into tasks/completed/, and a run that has landed still reads them from there."""
     bd = ctx.run.section("breakdown")
     if not bd:
         return None, None, False
-    tf, side = Path(bd["tasks_file"]), Path(bd["sidecar"])
+    tf, side = Path(bd["tasks_file"]), Path(bd["task_record"])
     if tf.exists():
         return tf, side, False
     home = Path(ctx.prepare.get("tasks_home") or ctx.cwd)
@@ -127,7 +127,7 @@ def breakdown_files(ctx):
     return tf, side, False
 
 
-def sidecar_tasks(ctx):
+def task_record_tasks(ctx):
     bd = ctx.run.section("breakdown")
     if not bd:
         return None, None
@@ -205,7 +205,7 @@ def row_isolate(ctx):
                done_by=f"clerk isolate {slug}; enter the path it reports; then clerk step")
 
 
-def lint_sidecar(side_path, cwd):
+def lint_task_record(side_path, cwd):
     rc, data, err = clerk("lint", "--rule", "certainty-unevidenced", "--json", str(side_path), cwd=cwd)
     if rc not in (0, 1):
         die(f"clerk lint failed: {err}")
@@ -226,30 +226,30 @@ def row_decompose(ctx):
                    done_by="clerk step --done decompose --tasks-file <tasks/<story>.md> [--approved]")
     tf, side, archived = breakdown_files(ctx)
     if archived:
-        return row("decompose", True, tasks_file=str(tf), sidecar=str(side), archived=True)
+        return row("decompose", True, tasks_file=str(tf), task_record=str(side), archived=True)
     if not side.exists():
         return row("decompose", False, tasks_file=bd["tasks_file"],
-                   why_not_done=f"no sidecar at {side} — a breakdown is bound with its tasks/<story>.json",
-                   done_by=f"decompose again, or write the sidecar by hand from the task sections; then clerk step --done decompose --tasks-file {bd['tasks_file']}")
+                   why_not_done=f"no task record at {side} — a breakdown is bound with its tasks/<story>.json",
+                   done_by=f"decompose again, or write the task record by hand from the task sections; then clerk step --done decompose --tasks-file {bd['tasks_file']}")
     if file_hash(side) != bd.get("lint_hash"):
-        findings = lint_sidecar(side, ctx.cwd)
+        findings = lint_task_record(side, ctx.cwd)
         if findings:
             return row("decompose", False, tasks_file=bd["tasks_file"], findings=findings,
-                       why_not_done="the sidecar changed and `lint certainty-unevidenced` now reports findings",
+                       why_not_done="the task record changed and `lint certainty-unevidenced` now reports findings",
                        done_by="correct the assessments, then clerk step --done decompose --tasks-file again")
     if ctx.flags.get("review_breakdown") and not bd.get("approved"):
         return row("decompose", False, stop=True, tasks_file=bd["tasks_file"],
                    why_not_done="review_breakdown is on and the breakdown is not approved",
                    done_by=f"show the breakdown and wait for approval; then clerk step --done decompose --tasks-file {bd['tasks_file']} --approved")
-    return row("decompose", True, tasks_file=bd["tasks_file"], sidecar=bd["sidecar"])
+    return row("decompose", True, tasks_file=bd["tasks_file"], task_record=bd["task_record"])
 
 
 def row_build(ctx):
     tf, side, _ = breakdown_files(ctx)
     if tf is None or not side.exists():
-        return row("build", False, why_not_done="no sidecar to read tasks from")
+        return row("build", False, why_not_done="no task record to read tasks from")
     # `next_task` owns which task is ready — the dependency rule is applied, not repeated.
-    nx = next_task(load_sidecar(side).get("tasks") or [])
+    nx = next_task(load_task_record(side).get("tasks") or [])
     total, remaining = nx.get("total", 0), nx.get("remaining", 0)
     progress = {"done": total - remaining, "total": total, "remaining": remaining, "blocked": nx.get("blocked", 0)}
     if nx.get("done"):
@@ -329,41 +329,41 @@ def row_match_request(ctx):
     rec = ctx.run.section("match_request")
     base = ctx.prepare.get("base")
     log = gitout("log", "--oneline", f"{base}..HEAD", cwd=ctx.cwd) if base else gitout("log", "--oneline", "-20", cwd=ctx.cwd)
-    fields = dict(request=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=VALIDATE_QUESTIONS)
+    fields = dict(request=ctx.run.meta.get("request"), log=(log or "").splitlines(), questions=MATCH_QUESTIONS)
     if rec and rec.get("code_tree") == ctx.head_ct:
         if rec.get("mismatches") and not rec.get("resolved"):
             return row("match-request", False, blocked=True, stop=True,
                        reason="mismatches were recorded; put them to the user and stop. After the decision: clerk step --done match-request --resolved",
                        mismatches=rec["mismatches"], why_not_done="unresolved mismatches", **fields)
         return row("match-request", True, mismatches=rec.get("mismatches", []))
-    why = "the request was not re-read against this code tree" if not rec else "validated at an earlier code tree — the code changed since"
+    why = "the request was not re-read against this code tree" if not rec else "matched at an earlier code tree — the code changed since"
     return row("match-request", False, why_not_done=why,
                done_by="clerk step --done match-request [--mismatch \"<quoted words>\"]...", **fields)
 
 
-def row_explain(ctx):
+def row_theory(ctx):
     tf, _, archived = breakdown_files(ctx)
     if tf is None:
-        return row("explain", False, why_not_done="no breakdown is bound to this run")
+        return row("theory", False, why_not_done="no breakdown is bound to this run")
     text = tf.read_text() if tf.exists() else ""
     if not re.search(r"^## Theory\b", text, re.M):
-        return row("explain", False, tasks_file=str(tf),
+        return row("theory", False, tasks_file=str(tf),
                    why_not_done=f"no `## Theory` section in {tf}",
                    done_by="write the section; commit it when the breakdown is tracked; then clerk step")
     if ctx.prepare.get("tasks_tracked") and not archived:
         dirty = git("status", "--porcelain", "--", str(tf), cwd=ctx.cwd).stdout.strip()
         if dirty:
-            return row("explain", False, tasks_file=str(tf),
+            return row("theory", False, tasks_file=str(tf),
                        why_not_done="the Theory is written but not committed",
                        done_by="commit the breakdown as its own commit; then clerk step")
-    return row("explain", True, tasks_file=str(tf))
+    return row("theory", True, tasks_file=str(tf))
 
 
 def row_verify_run(ctx):
     # A pass is recorded at its code tree, so the tasks/-only commits that follow — the
     # Theory, the archive — do not send the run back through git grep, and a run that has
     # landed is not re-verified against a receipt `clerk verify` still compares by SHA.
-    passed = ctx.run.done.get("verify-run")
+    passed = ctx.run.done.get("verify-clean")
     if passed and passed.get("code_tree") == ctx.head_ct:
         return row("verify-run", True, cached=True)
     tf, _, archived = breakdown_files(ctx)
@@ -381,11 +381,11 @@ def row_verify_run(ctx):
             "blocks": sorted({f.get("check") for f in findings if f.get("severity") == "block"}),
             "warns": sorted({f.get("check") for f in findings if f.get("severity") != "block"}),
             "not_checked": len(not_checked), "hints": len(data.get("hints") or [])})
-    residue = ctx.run.done.get("verify-residue")
-    residue_ok = bool(residue) and residue.get("code_tree") == ctx.head_ct
-    if clean and (not not_checked or residue_ok):
+    reviewed = ctx.run.done.get("verify-run")
+    reviewed_ok = bool(reviewed) and reviewed.get("code_tree") == ctx.head_ct
+    if clean and (not not_checked or reviewed_ok):
         if not ctx.read_only:
-            ctx.run.mark("verify-run", {"at": now(), "code_tree": ctx.head_ct, "not_checked": not_checked})
+            ctx.run.mark("verify-clean", {"at": now(), "code_tree": ctx.head_ct, "not_checked": not_checked})
         return row("verify-run", True, findings=data.get("findings", []), not_checked=not_checked)
     if not clean:
         why = "clerk verify reports a block"
@@ -393,7 +393,7 @@ def row_verify_run(ctx):
     else:
         why = "clerk verify left checks in not_checked that need judgment"
         done_by = ("spawn run-verifier, passing it the `not_checked` list verbatim so it works "
-                   "those gaps rather than the whole branch; then clerk step --done verify-residue")
+                   "those gaps rather than the whole branch; then clerk step --done verify-run")
     return row("verify-run", False, why_not_done=why,
                verify=data, done_by=done_by)
 
@@ -437,7 +437,7 @@ def breakdown_signals(ctx):
     """What this run observed about the breakdown, for the reflection: the tasks it
     called routine that were not, the ones it called hard that were, and the fixups that
     found a task boundary drawn across one file."""
-    _, tasks = sidecar_tasks(ctx)
+    _, tasks = task_record_tasks(ctx)
     signals, order = task_signals(ctx.run)
     by_n = {t["n"]: t for t in (tasks or [])}
     hard = lambda n: bool(signals.get(n, {}).get("retried") or signals.get(n, {}).get("lint_findings"))
@@ -460,7 +460,7 @@ def row_learn(ctx):
 
 
 ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("build", row_build),
-        ("suite", row_suite), ("audit", row_audit), ("match-request", row_match_request), ("explain", row_explain),
+        ("suite", row_suite), ("audit", row_audit), ("match-request", row_match_request), ("theory", row_theory),
         ("verify-run", row_verify_run), ("land", row_land), ("learn", row_learn)]
 
 

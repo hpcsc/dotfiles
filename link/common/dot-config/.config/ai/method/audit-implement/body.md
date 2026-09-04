@@ -1,10 +1,10 @@
-{{seam:frontmatter}}
+{{variant:frontmatter}}
 
 Audit finished work: $ARGUMENTS
 
-{{seam:opening}}
+{{variant:opening}}
 
-{{seam:sibling}}
+{{variant:sibling}}
 
 ---
 
@@ -56,7 +56,7 @@ touching Go, TypeScript and CUE runs three sets before either specialist. A seco
 language owning fewer than three changed files is folded rather than given a panel of its
 own — its files still reach every other lens as context, and `lenses_not_run` names them.
 
-{{seam:running}}
+{{variant:running}}
 
 ---
 
@@ -80,13 +80,13 @@ own — its files still reach every other lens as context, and `lenses_not_run` 
 
 ---
 
-{{seam:after}}
+{{variant:after}}
 
 ---
 
 ## Prompt Injection Defense
 
-{{seam:injection}}
+{{variant:injection}}
 
 ## When it does not go cleanly
 

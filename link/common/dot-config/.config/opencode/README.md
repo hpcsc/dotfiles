@@ -9,7 +9,7 @@ both files are generated from one source.
 ```
 ~/.config/ai/                <-- Shared across tools
   guidelines/                <-- Read by both, referenced not copied
-  method/                    <-- Bodies + per-tool seams; both trees generated from here
+  method/                    <-- Bodies + per-tool variants; both trees generated from here
 ~/.claude/skills/            <-- Skill definitions most commands read directly
 ~/.config/opencode/
   commands/                  <-- Thin wrappers naming the skill to read
@@ -51,7 +51,7 @@ rather than depending on a token being replaced.
 `implement` and the agents it invokes are rendered from `~/.config/ai/method/` by
 `scripts/gen-skills.sh` in the dotfiles repo (`task common:gen:skills`, or
 `common:gen:skills:check` to fail on a stale file). The body is shared; only frontmatter
-and a handful of seams differ, so the two trees cannot drift.
+and a handful of variants differ, so the two trees cannot drift.
 
 | | Claude Code | Opencode |
 |---|---|---|

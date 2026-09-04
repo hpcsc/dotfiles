@@ -1,6 +1,5 @@
 ---
 name: run-verifier
-model: opus
 description: Verifies a finished autonomous implementation run in its worktree — staged-but-uncommitted tails, new public symbols with no live caller (dead code), vacuous/skipped test receipts, and collapsed commit boundaries. Read-only. Outputs a structured JSON verdict.
 tools: Bash, Glob, Grep, Read
 color: yellow
@@ -28,7 +27,7 @@ clerk verify --all-closed     # drop --all-closed if the run left tasks open
 
 If `clerk` is not installed, say so plainly in your findings and fall back to doing those four checks yourself, scoping to `git merge-base HEAD <default-branch>`..HEAD in the tree you resolve with `git rev-parse --show-toplevel`. Resolve the test command by the same precedence `clerk prepare` uses — `tasks/test-commands.json`, then `tasks/.environment`, then detection — and take `go_tool_prefix` from `.environment`, applying it to every Go command without ever adding `mise exec --` yourself.
 
-## The judgment residue
+## What the script could not check
 
 These are the parts no script settles, and the reason this agent still exists.
 

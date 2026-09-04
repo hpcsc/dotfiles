@@ -141,7 +141,7 @@
       "step": "Review \u00b7 surviving mutants as test gaps"
     },
     "run-verifier": {
-      "step": "Phase 3 \u00b7 the judgment residue clerk verify leaves in not_checked"
+      "step": "the judgment clerk verify leaves in not_checked"
     },
     "go-expert": {
       "step": "Advisory \u00b7 Go architecture and design questions"

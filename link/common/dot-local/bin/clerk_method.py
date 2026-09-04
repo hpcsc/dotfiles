@@ -1,7 +1,7 @@
 """The method's markup, resolved one way for both of its readers.
 
-A method body and its step files carry four markers: `{{seam:name}}` pulls in the
-per-harness fragment `seams/<harness>/name.md`, `{{include:path.md}}` pulls in a file
+A method body and its step files carry four markers: `{{variant:name}}` pulls in the
+per-harness fragment `variants/<harness>/name.md`, `{{include:path.md}}` pulls in a file
 under the method root, `{{quote:path.md}}` pulls one in as a block quote, and `{{var}}`
 is filled from the harness's `vars.tsv`. `gen-skills.sh` renders whole bodies into
 SKILL.md files and `clerk step` renders one step file at a time, and until this module
@@ -15,10 +15,10 @@ from pathlib import Path
 
 MAX_DEPTH = 3
 
-_SEAM = re.compile(r"^\{\{seam:([a-z-]+)\}\}$")
+_VARIANT = re.compile(r"^\{\{variant:([a-z-]+)\}\}$")
 _INCLUDE = re.compile(r"^\{\{include:([a-z0-9/-]+\.md)\}\}$")
 _QUOTE = re.compile(r"^\{\{quote:([a-z0-9/-]+\.md)\}\}$")
-_ANY = re.compile(r"\{\{(seam|include|quote):")
+_ANY = re.compile(r"\{\{(variant|include|quote):")
 
 
 class MethodError(Exception):
@@ -41,14 +41,14 @@ def read_vars(path):
 class Renderer:
     """`strict` raises on a missing fragment or an unresolved marker, which is what a
     generator wants; otherwise the hole is marked in place, which is what a step printed
-    to a model wants — a comment naming the missing seam beats a crash mid-run."""
+    to a model wants — a comment naming the missing variant beats a crash mid-run."""
 
-    def __init__(self, root, seams, strict=True):
+    def __init__(self, root, variants, strict=True):
         """`root` is the method root that `{{include:}}` and `{{quote:}}` paths hang off;
-        `seams` is the one harness's seam directory, with its `vars.tsv`."""
+        `variants` is the one harness's variant directory, with its `vars.tsv`."""
         self.method = Path(root)
-        self.seams = Path(seams)
-        self.vars = read_vars(self.seams / "vars.tsv")
+        self.variants = Path(variants)
+        self.vars = read_vars(self.variants / "vars.tsv")
         self.strict = strict
 
     def render_text(self, text, origin="<body>"):
@@ -73,9 +73,9 @@ class Renderer:
     def _lines(self, lines, origin, depth):
         out = []
         for line in lines:
-            m = _SEAM.match(line)
+            m = _VARIANT.match(line)
             if m and depth < MAX_DEPTH:
-                out += self._fragment(self.seams / f"{m.group(1)}.md", depth + 1)
+                out += self._fragment(self.variants / f"{m.group(1)}.md", depth + 1)
                 continue
             m = _INCLUDE.match(line)
             if m and depth < MAX_DEPTH:
@@ -103,14 +103,14 @@ class Renderer:
 
 
 def main(argv):
-    """clerk_method.py <method-root> <seams-dir> <body-file>: the body rendered to
+    """clerk_method.py <method-root> <variants-dir> <body-file>: the body rendered to
     stdout, exit 3 with the reason on stderr when a marker cannot be resolved."""
     if len(argv) != 3:
-        print("usage: clerk_method.py <method-root> <seams-dir> <body-file>", file=sys.stderr)
+        print("usage: clerk_method.py <method-root> <variants-dir> <body-file>", file=sys.stderr)
         return 2
-    root, seams, body = argv
+    root, variants, body = argv
     try:
-        text = Renderer(root, seams).render_file(body)
+        text = Renderer(root, variants).render_file(body)
     except MethodError as e:
         print(f"gen-skills: {e}", file=sys.stderr)
         return 3

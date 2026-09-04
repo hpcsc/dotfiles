@@ -1,6 +1,6 @@
-## Phase 2: Build, task by task
+## Build, task by task
 
-**You write the code for every task.** Review happens once, over the finished branch, in Phase 3 — so nothing here waits on a reviewer.
+**You write the code for every task.** Review happens once, over the finished branch, at the audit step — so nothing here waits on a reviewer.
 
 ### The loop
 
@@ -10,7 +10,7 @@ Announce which task you are starting, **with its `certainty` and `blast_radius`*
 
 If a task turns out to be unnecessary or wrong once you are in the code, **stop and say so**. The breakdown is the shared contract; revise it with the user rather than quietly building something else.
 
-If its *assessment* is obviously wrong once you are in the code, drive on what you found rather than on what the breakdown said — a `high` that is plainly `low` is a reason to slow down even with `gears` off. Record it in step 7; it is a fact about how this repo gets planned wrong.
+If its *assessment* is obviously wrong once you are in the code, drive on what you found rather than on what the breakdown said — a `high` that is plainly `low` is a reason to slow down even with `gears` off. Record it at the learn step; it is a fact about how this repo gets planned wrong.
 
 ### 1. Tests first, where they apply
 
@@ -49,17 +49,17 @@ Four checks earlier runs paid for, each of which shipped a defect that a passing
 clerk finish <n> [--retried] -- <every file this task changed>
 ```
 
-It stages exactly those paths, lints the staged set, and only then sets `done: true` on the task in the sidecar and stages it alongside, so the progress record and the change it stands for land in one commit. **A lint finding refuses the whole step** — exit 1, the findings in the reply, the paths still staged. Each is a rule from the guidelines you already read: a comment that names code by its position in the breakdown or cites a ticket, sibling tests that belong under one umbrella, a method living apart from the file declaring its type. Each is settled by looking rather than weighing, so a finding is a defect, not an opinion to argue with: fix it and run the same `clerk finish` again. If a finding is genuinely wrong, that is a bug in the rule — say so, and fix the rule rather than working around it.
+It stages exactly those paths, lints the staged set, and only then sets `done: true` on the task in the task record and stages it alongside, so the progress record and the change it stands for land in one commit. **A lint finding refuses the whole step** — exit 1, the findings in the reply, the paths still staged. Each is a rule from the guidelines you already read: a comment that names code by its position in the breakdown or cites a ticket, sibling tests that belong under one umbrella, a method living apart from the file declaring its type. Each is settled by looking rather than weighing, so a finding is a defect, not an opinion to argue with: fix it and run the same `clerk finish` again. If a finding is genuinely wrong, that is a bug in the rule — say so, and fix the rule rather than working around it.
 
 Run into it here rather than at review: the audit would raise the same defects, and there each costs a lens to find, a verifier to confirm and a `--fixup` rebase to fold back into the commit that introduced it — against seconds now, while you are still holding the code in mind.
 
 Pass `--retried` when the implementation needed more than one attempt to go green for a reason other than a typo or a missing import — not the count itself, the fact that the first shape you reached for was the wrong one. It is recorded, and with `gears` on it is one of the two signals that downshift the run.
 
-The sidecar is the only place completion is recorded; the breakdown is prose, and is not rewritten. `clerk status` prints progress when you want to read it. A sidecar committed without its code makes a later run skip work it never did; code committed without the sidecar makes it redo work. `clerk finish` refuses a path that does not exist and refuses a task already done, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
+The task record is the only place completion is recorded; the breakdown is prose, and is not rewritten. `clerk status` prints progress when you want to read it. A task record committed without its code makes a later run skip work it never did; code committed without the task record makes it redo work. `clerk finish` refuses a path that does not exist and refuses a task already done, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
 
 Then write the message, which is judgment rather than mechanics:
 
-{{seam:commit}}
+{{variant:commit}}
 
 The message obeys the `commit` agent's rules: imperative subject, ≤50 chars, capitalised, no trailing period, blank line before a body wrapped at 72 explaining **what and why**; no AI/Claude mention, no `Co-Authored-By`, no generated-with footer, no generic file lists. Apply the repo's own conventions too — read the project's instructions file and any committing guideline, and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one.
 
@@ -70,7 +70,7 @@ Two rules `clerk` cannot enforce for you:
 
 ### 5. Report and continue
 
-Tick the acceptance criteria you actually walked in this task's section of the breakdown — that is the only per-criterion evidence a reviewer of the finished branch gets, and `clerk finish` stages the file for you once you have edited it. `clerk status` counts them and flags any task marked done that still carries an unwalked criterion; it never gates on that, because whether a criterion is genuinely met is your judgment rather than a box count.
+Tick the acceptance criteria you actually walked in this task's section of the breakdown — that is the only per-criterion evidence a reviewer of the finished branch gets, and `clerk finish` stages the file for you once you have edited it. `clerk status` counts them and flags any task marked done that still carries an unwalked criterion; it never refuses on that, because whether a criterion is genuinely met is your judgment rather than a box count.
 
 Say what landed in one or two lines and act on finish's `after_commit`. **Write those lines for someone reading the whole window afterwards rather than watching it arrive** — this run may be one of a wave firing in parallel, and the only reader may be someone scrolling back hours later.
 

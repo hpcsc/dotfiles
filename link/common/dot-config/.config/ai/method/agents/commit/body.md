@@ -1,4 +1,4 @@
-{{seam:frontmatter}}
+{{variant:frontmatter}}
 
 # Commit Agent
 

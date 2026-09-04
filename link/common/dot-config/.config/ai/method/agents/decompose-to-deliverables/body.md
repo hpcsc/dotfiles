@@ -1,4 +1,4 @@
-{{seam:frontmatter}}
+{{variant:frontmatter}}
 
 # PR Decomposition Agent
 
@@ -134,11 +134,11 @@ Deliverable count is a result, not a plan. If you have more deliverables than th
 For every deliverable, write **two files** in the **exact `decompose-to-tasks` format** so `implement-flow` adopts them unchanged:
 
 - `tasks/<story-slug>/<deliverable-slug>/tasks.md` — the tasks in prose
-- `tasks/<story-slug>/<deliverable-slug>/tasks.json` — the sidecar beside it, carrying each task's `n`, `title`, `language`, `testable`, `certainty`, `blast_radius`, `patterns_to_follow`, `depends_on` and `done: false`
+- `tasks/<story-slug>/<deliverable-slug>/tasks.json` — the task record beside it, carrying each task's `n`, `title`, `language`, `testable`, `certainty`, `blast_radius`, `patterns_to_follow`, `depends_on` and `done: false`
 
-`patterns_to_follow` in the sidecar is the references alone, as an array — `internal/events/order.go:40-70`, or `task:2` for a precedent an earlier task in the same deliverable creates. Run `clerk lint --rule certainty-unevidenced <each tasks.json>` before returning and fix what it reports: an assessment of `high` or `medium` with no precedent, or one citing a file that is not there, is a claim with nothing behind it.
+`patterns_to_follow` in the task record is the references alone, as an array — `internal/events/order.go:40-70`, or `task:2` for a precedent an earlier task in the same deliverable creates. Run `clerk lint --rule certainty-unevidenced <each tasks.json>` before returning and fix what it reports: an assessment of `high` or `medium` with no precedent, or one citing a file that is not there, is a claim with nothing behind it.
 
-The sidecar is where a run records progress, so a deliverable without one forces its run through a recovery parse before it can start. Both files describe the same tasks; revise them together.
+The task record is where a run records progress, so a deliverable without one forces its run through a recovery parse before it can start. Both files describe the same tasks; revise them together.
 
 The markdown:
 

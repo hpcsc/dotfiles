@@ -1,4 +1,4 @@
-### 6. Close out and land
+## Close out and land
 
 ```
 clerk land                    # archive the breakdown; integrate if the repo says so
@@ -6,7 +6,7 @@ clerk land --integrate        # …and put it on the default branch regardless
 clerk land --no-integrate     # …and leave the branch standing regardless
 ```
 
-`land` asks `clerk step` first and refuses unless the run has reached this step — the audit's acceptance, the story re-read and the verify pass are all read from the ledger at this code tree, never re-asserted. Then it runs the gate on what the table does not look at, and refuses if it does not open: every task checked off, the tree clean, a passing receipt **at the current code tree**. Only a branch landed without a run ledger needs `--audit-accepted`, because there the acceptance has nowhere else to live.
+`land` asks `clerk step` first and refuses unless the run has reached this step — the audit's acceptance, the request re-read and the verify pass are all read from the ledger at this code tree, never re-asserted. Then it checks what the table does not look at, and refuses on any of them: every task checked off, the tree clean, a passing receipt **at the current code tree**. Only a branch landed without a run ledger needs `--audit-accepted`, because there the acceptance has nowhere else to live.
 
 It archives the breakdown to `tasks/completed/` **on the feature branch, before any integration**, so the archive commit rides with the work it belongs to rather than landing on the default branch behind it. That order is also the only one that works: `git mv` leaves a dirty tree and a dirty tree blocks the rebase.
 
@@ -16,5 +16,5 @@ A repo that sets `integrate: true` has decided that trade for itself, and `land`
 
 With `--integrate` it rebases onto the default branch, and **stops if the rebase actually replayed commits onto a moved base** — green-before-rebase is not green-after, so it returns exit 3 and asks for a fresh suite run and receipt before it will fast-forward. On conflict it aborts the rebase and leaves the branch exactly as it was; do not resolve someone else's merge for them. It never pushes.
 
-{{seam:worktree-teardown}}
+{{variant:worktree-teardown}}
 

@@ -114,7 +114,7 @@ def runs_root(common):
 def run_summary(run, cwd):
     bd = run.section("breakdown")
     progress = None
-    side_path = Path(bd["sidecar"]) if bd else None
+    side_path = Path(bd["task_record"]) if bd else None
     if side_path and not side_path.exists():
         cand = side_path.parent / "completed" / side_path.name
         side_path = cand if cand.exists() else side_path
@@ -322,7 +322,7 @@ def age_seconds(at):
 
 def receipt_state(ctx):
     """(fresh, receipt, why) as `clerk prepare` judged it — fresh when the receipt passed
-    and describes HEAD's code tree. The same judgment gate and verify make."""
+    and describes HEAD's code tree. The same judgment land and verify make."""
     rs = ctx.prepare.get("receipt") or {}
     rec = rs if rs.get("recorded") else None
     return bool(rs.get("fresh")), rec, rs.get("why")

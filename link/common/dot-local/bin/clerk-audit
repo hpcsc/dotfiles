@@ -333,7 +333,7 @@ def audit_begin(ctx, aud, o):
     prior = None
     if aud.get("rounds"):
         prior = (aud.get("last_scope") or None)
-        # A round that passed the gate is a round the plan holds: refusing it again at
+        # A round the severity rule allowed is a round the plan holds: refusing it again at
         # record time, for a count set before anything was found, would ask for the
         # same decision twice.
         aud["rounds_planned"] = max(aud.get("rounds_planned") or 0, len(aud["rounds"]) + 1)
@@ -356,7 +356,7 @@ def job_tools(test_commands, isolation="none"):
     """What a headless agent may run without asking. A `-p` session has nobody to answer
     a permission prompt, so anything not on this list is silently refused — which is how
     every `clerk lint` and `clerk guidelines` in a round came back "refused by the
-    permission gate" while the lens went on reading guideline files by hand. The repo's
+    permission check" while the lens went on reading guideline files by hand. The repo's
     test commands are allowed by their leading words; an agent given a worktree of its
     own may also edit it."""
     tools = list(READ_TOOLS)

@@ -1,3 +1,0 @@
-What `clerk verify` leaves in `not_checked` is the residue that still needs judgment — whether a commit mixes unrelated concerns, and reachability for a language whose exported symbols it does not extract. Spawn the `run-verifier` agent only when `not_checked` is non-empty, and **pass it that list verbatim**: the agent works the gaps it is given, and without them it sweeps the whole branch for questions the script already closed.
-
-`hints` is the other half of the same reply and is **not** a reason to spawn anything. It names what the check could not run for want of a flag or a record — a breakdown it could not identify, a receipt recorded without `--output-file`. Read them, say what you would pass next time, and carry on.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """clerk finish — stage the named paths, lint the staged set, and only then mark the task
-done in the sidecar and stage it alongside; exit 1 on a lint finding, 3 while another
+done in the task record and stage it alongside; exit 1 on a lint finding, 3 while another
 task's files sit staged.
 
     clerk finish <n> [--retried] [--tasks-file <f>] -- <files...>

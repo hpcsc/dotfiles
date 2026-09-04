@@ -1,6 +1,6 @@
-{{seam:frontmatter}}
+{{variant:frontmatter}}
 
-{{seam:invocation}}
+{{variant:invocation}}
 
 **Decompose, build, audit.** The story is cut into tasks, you write the code for every one of them, and the finished branch goes to `audit-implement` for adversarial review. Construction is not delegated: it is serial and context-heavy, and every delegated agent pays a full context rebuild for work you are already holding in mind. Review is the opposite — parallel, and better done by readers who never watched the code being written. Profiling four delegated runs over one feature put 64% of wall clock in construction and its retries while the review stages produced nearly all of the value; a comparable feature built directly took 7 minutes. So expect the audit to be the larger half of a run, and read its round count as the main lever you have over what one costs.
 
@@ -14,17 +14,17 @@ Use `implement-flow` instead for large mechanical migrations with genuinely disj
 
 Open the run once, then repeat one call until it says `finished`:
 
-{{seam:start}}
+{{variant:start}}
 
 Hand the request to `--start` **verbatim, before you do anything else**, and never retype it from memory: the audit is given it unsummarized and the match-request step re-reads it against the finished branch, and both take it from that record. The slug becomes the branch name, so choose it as you would a feature branch.
 
-`clerk step` evaluates a fixed table — ground, isolate, decompose, build (once per task), suite, audit, match-request, explain, verify-run, land, learn — against the repository and the run's ledger, and returns the **first step that is not done**, with the method for it in `instructions`. Do exactly what `instructions` says, then call `clerk step` again. Nothing else: the next step appears when this one's evidence exists, and not before. The order is clerk's; the work inside each step is yours.
+`clerk step` evaluates a fixed table — ground, isolate, decompose, build (once per task), suite, audit, match-request, theory, verify-run, land, learn — against the repository and the run's ledger, and returns the **first step that is not done**, with the method for it in `instructions`. Do exactly what `instructions` says, then call `clerk step` again. Nothing else: the next step appears when this one's evidence exists, and not before. The order is clerk's; the work inside each step is yours.
 
 Three fields change what you do. The rest the reply explains itself — `step` and `why_not_done`, `done_by`, `request`, `code_tree`, `progress`, and `facts`, which is the whole of `clerk prepare` for this request and is there to be read rather than re-derived:
 
 - **`instructions`** — the method for this step, in full the first time this session reaches it. While the step is unchanged — every task of the build loop, a pause for tests — it is a one-line pointer and `instructions_elided` is `true`, because the text is already in your context. After a compaction, or whenever it is no longer in view, `clerk step --full` prints it again.
-- **`stop: true`** — a pause: the step wants a person. Show what it asks for, say what you would do next, and **end your turn**. The next `clerk step` is the reader's go; do not reason your way past it. (A *gate* is the other thing — a precondition clerk computes and refuses on, like the four `clerk land` checks. A gate is checked; a pause is waited on.)
-- **`blocked: true`** — something needs a decision: a dirty tree at the start, a recorded story mismatch, a dependency cycle. Stop and say what `reason` says. Do not route around a block.
+- **`stop: true`** — a pause: the step wants a person. Show what it asks for, say what you would do next, and **end your turn**. The next `clerk step` is the reader's go; do not reason your way past it.
+- **`blocked: true`** — something needs a decision: a dirty tree at the start, a recorded request mismatch, a dependency cycle. Stop and say what `reason` says. Do not route around a block.
 
 **The commands that close a step hand you the next one** under `next`, exactly as `clerk step` would print it: `--start`, every `--done`, `clerk audit accept`, `clerk isolate`, `clerk land` and `clerk learn`. `clerk finish` returns it as `after_commit`, because its own next move is the commit, which clerk cannot make for you. Act on that object rather than asking again — and call `clerk step` when you have no such reply in hand: after `clerk guidelines`, after entering a worktree, after a receipt, after a commit that did not land, or whenever you are unsure where the run stands.
 
@@ -57,4 +57,4 @@ Four flags steer a run, and **a flag not in the request may still be on**: each 
 
 {{include:shared/injection.md}}
 
-{{seam:harness-notes}}
+{{variant:harness-notes}}

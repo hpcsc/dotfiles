@@ -184,17 +184,17 @@ def ledger_log(directory, cmd, rc, argv, cwd=None):
 # The code tree and the receipt
 # --------------------------------------------------------------------------------
 
-_PLAN_FILE = re.compile(r"\ttasks/.*\.(md|json|ya?ml)$")
+_BREAKDOWN_FILE = re.compile(r"\ttasks/.*\.(md|json|ya?ml)$")
 
 
 def code_tree(rev, cwd=None):
-    """The identity of the code at a revision: its tree listing minus the plan files
+    """The identity of the code at a revision: its tree listing minus the breakdown files
     under tasks/. The receipt and the acceptance compare by this rather than by SHA, so a
     tasks/-only commit — the Theory, the archive — does not make a green stale."""
     listing = gitout("ls-tree", "-r", rev, cwd=cwd)
     if listing is None:
         return None
-    kept = [ln for ln in listing.split("\n") if not _PLAN_FILE.search(ln)]
+    kept = [ln for ln in listing.split("\n") if not _BREAKDOWN_FILE.search(ln)]
     return hashlib.sha1("\n".join(kept).encode()).hexdigest()
 
 
@@ -487,7 +487,7 @@ def breakdown_for(override, cwd=None):
     return None, rc
 
 
-def sidecar_for(tasks_file):
+def task_record_for(tasks_file):
     j = str(tasks_file).removesuffix(".md") + ".json"
     return j if Path(j).is_file() else None
 
@@ -500,10 +500,10 @@ def list_breakdowns(home):
         if isinstance(data, dict):
             tasks = data.get("tasks") or []
             done = sum(1 for t in tasks if t.get("done") is True)
-            out.append({"path": f, "sidecar": side, "total": len(tasks), "done": done,
+            out.append({"path": f, "task_record": side, "total": len(tasks), "done": done,
                         "started": done > 0, "finished": all(t.get("done") is True for t in tasks)})
         else:
-            out.append({"path": f, "sidecar": None, "total": None, "done": None, "started": None, "finished": None})
+            out.append({"path": f, "task_record": None, "total": None, "done": None, "started": None, "finished": None})
     return out
 
 

@@ -4,7 +4,7 @@
     clerk receipt --command <cmd> (--passed|--failed) [--output-file <f>]
 
 The file that did not exist: without it a green run taken before the audit's fixes could
-still satisfy a gate that said "the full suite green". The gate and the verify check
+still satisfy a check that said "the full suite green". That check and the verify check
 compare it to HEAD by code tree, and the output tail is what the vacuity check reads.
 """
 

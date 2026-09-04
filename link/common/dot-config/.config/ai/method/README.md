@@ -13,8 +13,8 @@ lives in `clerk`, a shell tool both harnesses call.
     │   ├── body.md             the skill: the shape, the loop, the flags
     │   ├── steps/<id>.md       the method, one step per file — ground, isolate,
     │   │                       decompose, build, suite, audit, match-request,
-    │   │                       explain, verify-run, land, learn
-    │   └── seams/{claude,opencode}/
+    │   │                       theory, verify-run, land, learn
+    │   └── variants/{claude,opencode}/
     │       ├── start.md        how the run is opened (opencode names the harness)
     │       ├── invocation.md   how the request arrives
     │       ├── worktree-setup.md
@@ -25,12 +25,12 @@ lives in `clerk`, a shell tool both harnesses call.
     │       ├── verify.md
     │       └── harness-notes.md
     └── agents/
-        ├── decompose-to-tasks/{body.md,seams/*/frontmatter.md}
+        ├── decompose-to-tasks/{body.md,variants/*/frontmatter.md}
         ├── commit/
         └── run-verifier/
 ```
 
-Edit `body.md`, a step or a seam, then run `task common:gen` — **not `common:gen:skills`
+Edit `body.md`, a step or a variant, then run `task common:gen` — **not `common:gen:skills`
 alone**, which rewrites each agent file from its body and so drops the `model:` line that
 `gen-agent-models.sh` stamps in afterwards. Never edit a generated `SKILL.md` or agent
 file — each carries a header saying so, and `task common:check` fails when one is stale.
@@ -51,7 +51,7 @@ Two defects made the case concretely.
   the feature in it, so the suite tests the wrong tree and passes for the wrong reason,
   and the verifier finds no commits and reports clean.
 - The suite ran before the audit, fixes were applied after, and nothing re-ran it — so
-  the gate read "full suite green" off a receipt describing a tree that no longer
+  the land checks read "full suite green" off a receipt describing a tree that no longer
   existed.
 
 Both are stated correctly in prose, and stating them is not enough. `clerk` makes them
@@ -113,14 +113,14 @@ flowchart LR
 The table `clerk step` walks, top to bottom. Green rows are **derived** — clerk checks the
 world and the record; orange rows are **asserted** — completion is a judgment, recorded
 with `clerk step --done` and stamped with the code tree it applies to; pink is a human
-gate. A row names the command that supplies its evidence.
+checked. A row names the command that supplies its evidence.
 
 ```mermaid
 flowchart TD
   START["start<br/>run.json holds the request verbatim"] --> GROUND
   GROUND["ground<br/>a clerk guidelines --caller run exited 0<br/>blocked while the tree is dirty"] --> ISOLATE
   ISOLATE["isolate<br/>branch == slug<br/>clerk isolate"] --> PLAN
-  PLAN["decompose<br/>breakdown bound · sidecar present · lint clean<br/>clerk step --done decompose --tasks-file"] --> TASK
+  PLAN["decompose<br/>breakdown bound · task record present · lint clean<br/>clerk step --done decompose --tasks-file"] --> TASK
   TASK{"task N<br/>first open task with its<br/>dependencies done"} -->|"gears on, and low certainty /<br/>high blast radius / downshifted"| TESTS
   TESTS["pause N · stop: true<br/>clerk step --done pause N"] --> BUILD
   TASK --> BUILD["clerk finish N -- files<br/>stages · lints · marks done<br/>the commit leaves the tree clean"]
@@ -129,16 +129,16 @@ flowchart TD
   SUITE["suite<br/>receipt green at this code tree"] --> AUDIT
   AUDIT["audit<br/>clerk audit run · round · accept"] --> VALIDATE
   VALIDATE["match-request<br/>clerk step --done match-request [--mismatch]<br/>blocked until --resolved"] --> THEORY
-  THEORY["explain<br/>## Theory in the breakdown, committed"] --> VERIFY
-  VERIFY["verify-run<br/>clerk verify clean · residue reviewed"] --> LAND
-  LAND["land<br/>clerk land · the gate reads the acceptance<br/>fast-forward from the main checkout"] --> LEARN
+  THEORY["theory<br/>## Theory in the breakdown, committed"] --> VERIFY
+  VERIFY["verify-run<br/>clerk verify clean · not_checked reviewed"] --> LAND
+  LAND["land<br/>clerk land · the checks read the acceptance<br/>fast-forward from the main checkout"] --> LEARN
   LEARN["learn<br/>a clerk learn write, or --done learn --none"] --> FIN["finished"]
   classDef derived fill:#D8E6E0,stroke:#2F5D50,stroke-width:2px,color:#132520
   classDef asserted fill:#F2DFD3,stroke:#A8501E,stroke-width:2px,color:#3A1A08
-  classDef gate fill:#EFD9E4,stroke:#8A2E5D,stroke-width:2px,color:#3A1024
+  classDef checked fill:#EFD9E4,stroke:#8A2E5D,stroke-width:2px,color:#3A1024
   class START,GROUND,ISOLATE,TASK,BUILD,SUITE,THEORY,VERIFY,LAND,FIN derived
   class PLAN,AUDIT,VALIDATE,LEARN asserted
-  class TESTS gate
+  class TESTS checked
 ```
 
 The middle band is the loop: `clerk step` → build → `clerk finish` → commit agent → back
@@ -165,11 +165,11 @@ that got shortened under time pressure.
 
 `decompose-to-tasks` writes `tasks/<story>.md` and, beside it, `tasks/<story>.json`.
 The markdown describes the tasks in prose
-and the sidecar carries the dependency graph and the run's progress. Nothing rewrites
-the markdown afterwards. Then the only gate before code.
+and the task record carries the dependency graph and the run's progress. Nothing rewrites
+the markdown afterwards. Then the only check before code.
 
-A breakdown with no sidecar cannot be bound: `clerk step --done decompose` refuses
-rather than guessing at dependencies from prose. Decompose it again, or write the sidecar
+A breakdown with no task record cannot be bound: `clerk step --done decompose` refuses
+rather than guessing at dependencies from prose. Decompose it again, or write the task record
 by hand from the task sections.
 
 ### Phase 2 — build, task by task
@@ -179,7 +179,7 @@ returning it until its commit leaves the tree clean — one task in flight at a 
 what keeps a run resumable. (`clerk status` still answers the same question on its own, under `next`.)
 
 `clerk finish N -- <files>` stages exactly those paths, lints the staged set, and only
-then marks the task done in the sidecar and stages it alongside, so the progress record
+then marks the task done in the task record and stages it alongside, so the progress record
 and the change it stands for land in one commit. A lint finding refuses the whole step
 with the paths left staged; the same `finish` is run again after the fix. It also stages the breakdown **if the run has modified it** — each task section
 carries its acceptance criteria as checkboxes, ticked by hand as they are verified, and
@@ -207,7 +207,7 @@ from these figures, which the step text points at rather than repeats.
   forty-two more findings and not one of them high: eleven medium and thirty-one low,
   for roughly 37% of the whole audit budget. Two runs kept going to four and five rounds
   and bought low-severity quality findings at full price.
-- Over every round that had a successor, a gate of "medium or higher" would have let
+- Over every round that had a successor, a rule of "medium or higher" would have let
   through 78% of them; requiring the medium to be `runtime` let through 33%.
 - Over four measured runs, all 47 later-round findings landed in a file some fix had
   touched, and both later-round `high` defects — including the one a previous round's
@@ -221,13 +221,13 @@ and ask what it asked for that the branch does not do. Then write the theory dow
 run is the last reader of the branch that understands it without reading it, and a
 reviewer handed a diff and nothing else has to reconstruct from scratch what the run
 could state in five sentences. `clerk verify` handles the mechanical checks and reports
-what it could not settle; `run-verifier` works only that residue. `clerk land` gates,
+what it could not settle; `run-verifier` works only what it left in `not_checked`. `clerk land` checks,
 archives on the feature branch, and integrates only when asked.
 
 ### The order is clerk's
 
 The phases above are a table `clerk step` evaluates from the top — ground, isolate, plan,
-build, suite, audit, match-request, explain, verify-run, land, learn — against the repository and a
+build, suite, audit, match-request, theory, verify-run, land, learn — against the repository and a
 ledger under `<git-common-dir>/clerk/runs/<slug>/`. It returns the first row that is not
 done with the method text for it, and the skill is one loop: `clerk step`, do that, `clerk
 step`. Position is recomputed on every call, so a stopped run continues with the same call
@@ -238,10 +238,10 @@ that produces evidence appends its run to the ledger's `events.jsonl` on the way
 `guidelines --caller` grounds the run, `finish` lints the staged set before it marks a task
 done, `receipt` binds the green, `audit round` and `audit accept` record the audit, `land`
 stamps what it decided, `learn` writes the entry. The rest are **asserted**, the way the
-gate takes `--audit-accepted`: the breakdown is bound, the tests were shown, the story was
-re-read, the verifier's residue was reviewed — recorded with `clerk step --done`, stamped
+land takes `--audit-accepted`: the breakdown is bound, the tests were shown, the request was
+re-read, what the verifier left in `not_checked` was reviewed — recorded with `clerk step --done`, stamped
 with the code tree they apply to. Receipts and acceptances compare by code tree, the HEAD
-tree minus the plan files under `tasks/`, so the Theory and archive commits do not stale a
+tree minus the breakdown files under `tasks/`, so the Theory and archive commits do not stale a
 green. The method text lives one step per file under `implement/steps/`, read by the
 generator for the whole document and by `clerk step` one at a time.
 
@@ -305,7 +305,7 @@ flowchart LR
     j5["whether one commit<br/>mixes two concerns"]
     j6["which commit a defect came in with,<br/>when several touched the file"]
     j7["how sure to be, and what<br/>being wrong would cost"]
-    j8["that the plan is bound, the tests shown,<br/>the story re-read, the residue reviewed"]
+    j8["that the breakdown is bound, the tests shown,<br/>the request re-read, not_checked reviewed"]
   end
   M -.->|"facts, refusals, the next step,<br/>and what it could not settle"| J
   J -.->|"assertions it cannot infer<br/>clerk audit accept · clerk step --done"| M
@@ -319,7 +319,7 @@ The right-to-left arrow matters as much as the other one. "The audit's findings 
 fixed or accepted" is a judgment, so nothing infers it — `clerk audit accept` records it
 once against the code tree it applies to, `clerk land` reads it through `clerk step`'s
 answer along with every other row, and a branch landed without a run ledger asserts it
-with `--audit-accepted`. Without either, the gate stays shut.
+with `--audit-accepted`. Without either, land refuses.
 
 ### Command surface
 
@@ -328,17 +328,17 @@ with `--audit-accepted`. Without either, the gate stays shut.
 | `prepare [--request <text>]` | Repo facts as JSON: languages, test commands, go prefix, learnings path, repo root vs work tree, base, clean, which commit skill to invoke, resolved run flags with their sources, every existing worktree and breakdown with its progress, and `resume` — the part-built run to rejoin, paired with its worktree. Given the request, it applies the flags and `--learnings-path` typed in it as the top layer | 0 |
 | `guidelines [--language <L>]... [--caller <p>] [--file FILE]... [--section FILE:HEADING]... [--only]` | The required reading for those languages as text: short files whole, long ones cut to the sections a run must have loaded, plus any file or section named outright; `--only` narrows it to exactly what was named, for an agent that wants its own guideline rather than its language's. A "Not loaded" report for anything a reorganised guideline no longer satisfies | 0 · **2** no guidelines dir |
 | `isolate <kebab-name> [--worktree\|--in-place] [--base <ref>]` | This run's worktree under `.worktrees/` (`.claude/worktrees/` under Claude Code), with that directory written to `info/exclude` so it does not read as a dirty tree — or, with `in_place` on, a feature branch in the main checkout. Adopts an existing worktree or orphaned branch of that name; refuses the main checkout's own branch | 0 · **2** refused |
-| `status [--all]` | Progress from the sidecar and, under `next`, the first task whose dependencies are done, plus acceptance criteria walked per task and each task's assessed certainty and blast radius rolled up as `gears`; `--all` walks every breakdown in the repo, in flight and archived | 0 |
-| `finish <n> -- <files>` | Task marked done in the sidecar, named paths staged with it | 0 · **2** refused |
+| `status [--all]` | Progress from the task record and, under `next`, the first task whose dependencies are done, plus acceptance criteria walked per task and each task's assessed certainty and blast radius rolled up as `gears`; `--all` walks every breakdown in the repo, in flight and archived | 0 |
+| `finish <n> -- <files>` | Task marked done in the task record, named paths staged with it | 0 · **2** refused |
 | `receipt` | A suite run bound to the SHA it describes | 0 |
 | `land --check` | The four landing predicates, each with its evidence, without landing | 0 open · **1** shut |
 | `fixup [--onto <sha>] -- <files>` · `fixup --replay [--force]` | Marks a fix for the commit that introduced it, refusing when several commits in range touch the file or when the files' targets differ; then one autosquash replay, aborted and reverted on conflict, refused on a published range | 0 · **3** needs your judgment |
 | `learn --type <t> --title <s> --learning <s> --apply-when <s>` · `learn --list` | Appends the block to the learnings file resolved from the **repo root**, not the worktree the run is standing in; refuses an exact title collision, leaving dedup on substance to the caller | 0 · **3** title exists |
-| `lint [--staged] [--rule <r>]... [<paths>]` | The conventions a regex settles: a comment naming code by its plan position, scenario-named sibling tests, a method apart from its type — and, over a breakdown's sidecar, a certainty assessed `high` or `medium` with no precedent behind it | 0 clean · **1** findings |
+| `lint [--staged] [--rule <r>]... [<paths>]` | The conventions a regex settles: a comment naming code by its position in the breakdown, scenario-named sibling tests, a method apart from its type — and, over a breakdown's task record, a certainty assessed `high` or `medium` with no precedent behind it | 0 clean · **1** findings |
 | `verify` | Staged tails, vacuous receipts, dead code, boundary arithmetic, plus `not_checked` | 0 clean · **1** block |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 | `step [--start <slug> --request <text>] [--done <step> …] [--status] [--run <slug>] [--rm <slug>]` | The first step of the run that is not done, with the method text for it, computed from the repository and the run's ledger on every call; `--start` opens a run and records the request verbatim; `--done` records the steps whose completion is a judgment | 0 · **3** several open runs |
-| `audit run [--rounds <n>] …` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and the gate read | 0 · **3** refused |
+| `audit run [--rounds <n>] …` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and land read | 0 · **3** refused |
 
 Every command takes `--tasks-file` when `tasks/` holds more than one breakdown. Exit 2
 is a usage error throughout.
@@ -392,7 +392,7 @@ does.
 
 | File | Holds | Written by |
 |---|---|---|
-| `tasks/<story>.json` | The dependency graph, each task's assessed certainty and blast radius with the precedent behind them, and **`done` per task** — the only record of progress | `decompose-to-tasks`, `clerk sidecar`, `clerk finish` |
+| `tasks/<story>.json` | The dependency graph, each task's assessed certainty and blast radius with the precedent behind them, and **`done` per task** — the only record of progress | `decompose-to-tasks`, `clerk finish` |
 | `tasks/<story>.md` | The tasks in prose: behaviour, criteria, affected files, dependencies | `decompose-to-tasks`; nothing rewrites it afterwards |
 | `<git-dir>/clerk/*` | The suite receipt, the archive record, each task's file list | `clerk receipt`, `clerk land`, `clerk finish` |
 | `<git-common-dir>/clerk/runs/<slug>/` | The run's ledger: the request, the events every logged command appended, the bound breakdown, the audit rounds and acceptance, the validation, what `land` decided | `clerk step`, `clerk audit`, every logged command |
@@ -401,7 +401,7 @@ does.
 flowchart LR
   subgraph REPO["in the repository"]
     direction TB
-    T1["tasks/ · tracked<br/>breakdown + sidecar (done per task)<br/>clerk.json · test-commands.json"]
+    T1["tasks/ · tracked<br/>breakdown + task record (done per task)<br/>clerk.json · test-commands.json"]
     T2["tasks/.environment · gitignored<br/>machine-local preferences"]
   end
   subgraph GD["&lt;git-dir&gt;/clerk/ · per worktree"]
@@ -428,7 +428,7 @@ flowchart LR
 **One place, deliberately.** The breakdown used to carry a `- [ ]` checklist as well, and
 two files holding the one fact a resumed run depends on can disagree — while a mirror
 that has gone stale still reads as the answer to whoever opens it. `clerk status` prints
-progress when a human wants it; `clerk finish` stages the sidecar with the code, so the
+progress when a human wants it; `clerk finish` stages the task record with the code, so the
 progress record and the change it stands for land in the same commit.
 
 The files under `<git-dir>/clerk` are internal bookkeeping, not an interface. They sit
@@ -438,7 +438,7 @@ failed command cannot be "finished" by hand. That refusal is the guard working, 
 problem to route around: the guarantees come from a command performing its steps
 together, and a tree that merely ends up looking similar has none of them.
 
-### Acceptance criteria are reported, never gated
+### Acceptance criteria are reported, never refused on
 
 A breakdown's task sections carry their acceptance criteria as checkboxes, ticked by
 hand as each is verified. Those are not run progress — they are the record of which
@@ -449,14 +449,14 @@ finished branch can read.
 `done_with_unticked_criteria` — tasks marked done that still carry an unwalked
 criterion, which is the combination worth looking at.
 
-It is reported and never gated on. Whether a criterion is genuinely met is judgment, and
-a script counting boxes would be the wrong authority for it — `gate` reads `done` from
-the sidecar and nothing else.
+It is reported and never refused on. Whether a criterion is genuinely met is judgment, and
+a script counting boxes would be the wrong authority for it — the land checks read `done`
+from the task record and nothing else.
 
 ### Reading the format from outside
 
 `clerk status --all` walks every breakdown in the repo and returns each task with its
-`done` flag. That exists so nothing else has to learn the sidecar's schema: the global
+`done` flag. That exists so nothing else has to learn the task record's schema: the global
 `task -g progress` reporter calls it and flattens the result, rather than reaching into
 `tasks/*.json` itself and becoming a second thing to update when the shape moves.
 
@@ -476,7 +476,7 @@ worktree to enter, and inside it continues at the step the evidence reaches.
 - **`next` exits 3 on a dirty tree.** Not a warning — the next task cannot start while
   the current one is uncommitted. `--allow-dirty` exists, but using it to get past
   unfinished work is the failure it was built to stop.
-- **`gate` will not open without the acceptance.** Three predicates are computed; the
+- **The land checks refuse without the acceptance.** Three predicates are computed; the
   fourth is asserted — `clerk audit accept` recorded at this code tree, or
   `--audit-accepted` — because no program decides whether accepting a finding was right.
 - **`land --integrate` exits 3 after a real rebase.** Green-before-rebase is not
@@ -491,15 +491,15 @@ A shared prompt is only as portable as the model reading it. A shell command beh
 identically on both tools *by construction*, so every rule moved into `clerk` stops
 being a portability problem at all.
 
-What remains genuinely differs between the harnesses, and that residue is small enough
+What remains genuinely differs between the harnesses, and what is left is small enough
 to enumerate.
 
 ```mermaid
 flowchart TD
   BODY["implement/body.md<br/>the loop · the field reference<br/>the background · the error table"]
-  STEPS["implement/steps/&lt;id&gt;.md<br/>the method, one step per file,<br/>seams inside"]
-  SC["seams/claude<br/>start · invocation · worktree · decompose<br/>commit · audit · verify"]
-  SO["seams/opencode<br/>the same"]
+  STEPS["implement/steps/&lt;id&gt;.md<br/>the method, one step per file,<br/>variants inside"]
+  SC["variants/claude<br/>start · invocation · worktree · decompose<br/>commit · audit · verify"]
+  SO["variants/opencode<br/>the same"]
   BODY --> GEN["gen-skills.sh<br/>task common:gen:skills"]
   STEPS --> GEN
   SC --> GEN
@@ -514,7 +514,7 @@ flowchart TD
   OO2 --> OK
   CC --> STEP["clerk step<br/>one Python file on PATH"]
   OK --> STEP
-  STEPS -. "read at run time,<br/>seams resolved for the run's harness" .-> STEP
+  STEPS -. "read at run time,<br/>variants resolved for the run's harness" .-> STEP
   CLERK["clerk<br/>one script on PATH, plus the clerk-* plugins"] --> CC
   CLERK --> OK
   GUIDE["~/.config/ai/guidelines/<br/>referenced, never copied"] --> CC
@@ -532,7 +532,7 @@ flowchart TD
 ```
 
 The step files are the one text with two readers: the generator concatenates them into
-the document a human reads, and `clerk step` prints one of them at a time, with the seams
+the document a human reads, and `clerk step` prints one of them at a time, with the variants
 resolved for the harness the run recorded at `--start`.
 
 A procedure the agent must follow in full is **concatenated, not referenced**: splitting
@@ -540,7 +540,7 @@ it into "now read these six files" adds six reads and invites the partial compli
 arrangement exists to remove. Guidelines are the opposite — consulted on demand, read
 partially by design — so they stay referenced.
 
-### The seams
+### The variants
 
 | Seam | Claude Code | opencode |
 |---|---|---|
@@ -551,7 +551,7 @@ partially by design — so they stay referenced.
 | commit | Skill tool → `commit` / `pcommit` | `task` tool → the `commit` subagent |
 | audit | `clerk audit run` in the background; `clerk audit round --report <json>` | `clerk audit run` where a tool timeout cannot kill it; the report piped to `clerk audit round --report -` |
 
-Agent definitions add one more seam — frontmatter — and their bodies render
+Agent definitions add one more variant — frontmatter — and their bodies render
 byte-identical across both trees.
 
 ### The substitution trap
@@ -573,7 +573,7 @@ request to the audit unsummarized — and all three work the same way on both to
 - **Telling the harnesses apart.** clerk cannot see which harness called it from the
   shell alone: Claude Code sets `CLAUDECODE`, opencode sets nothing clerk relies on. So
   the opencode skill names it once, `--harness opencode` at `--start`, and the run
-  records it for every later step. Without that the seams would render for Claude Code.
+  records it for every later step. Without that the variants would render for Claude Code.
 - **Tool restriction.** `run-verifier` is structurally read-only on Claude, because no
   write tool appears in its `tools` allowlist. On opencode the same guarantee rests on
   the prose in its body, since no agent there restricts tools.

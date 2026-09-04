@@ -342,7 +342,7 @@ def check_type_methods(root, path, seen_pkgs, scope):
 # ---------------------------------------------------------------------------
 # certainty-unevidenced — a plan's assessment with nothing behind it.
 #
-# The other three rules read code. This one reads the breakdown's sidecar, before any code
+# The other three rules read code. This one reads the breakdown's task record, before any code
 # exists, because that is where the mistake it catches is made and where fixing it costs a
 # line rather than a run.
 #
@@ -362,8 +362,8 @@ NEEDS_PRECEDENT = ("high", "medium")
 LINE_RANGE = re.compile(r":\d+(?:-\d+)?$")
 
 
-def sidecar_tasks(root, path):
-    """The task array, if this file is a breakdown sidecar. Shape rather than location:
+def task_record_tasks(root, path):
+    """The task array, if this file is a breakdown task record. Shape rather than location:
     `tasks/` is conventional but a repo may hold breakdowns elsewhere, and a rule that
     silently checks nothing because a path did not match is worse than one that is off."""
     if not path.endswith(".json"):
@@ -401,7 +401,7 @@ def certainty_lines(root, path):
 
 
 def check_certainty(root, path):
-    tasks = sidecar_tasks(root, path)
+    tasks = task_record_tasks(root, path)
     if tasks is None:
         return []
     lines = certainty_lines(root, path)

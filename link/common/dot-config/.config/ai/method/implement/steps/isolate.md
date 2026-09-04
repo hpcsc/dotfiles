@@ -1,2 +1,2 @@
-{{seam:worktree-setup}}
+{{variant:worktree-setup}}
 

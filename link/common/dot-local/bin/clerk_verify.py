@@ -91,7 +91,7 @@ def dead_code(base, all_closed, cwd=None):
                 gaps.append(f"dead-code — {sym} has no Go caller but is named in {foreign[0]}; a caller in "
                             f"another language is not something this check can follow")
             elif all_closed and kind == "func":
-                # Reported, never gated on: a deliverable in a stack is finished with its
+                # Reported, never refused on: a deliverable in a stack is finished with its
                 # first consumer still one PR away, and the check cannot tell that from dead code.
                 findings.append({"check": "dead-code", "severity": "warn",
                                  "detail": f"{sym} is defined but referenced nowhere outside its own file and the tests — dead, or waiting on a consumer this branch does not contain ({deffile})"})
@@ -160,7 +160,7 @@ def verify(all_closed=False, tasks_override=None, cwd=None):
                          "detail": f"tracked files modified but not staged: {';'.join(dirty)}"})
 
     # 2. vacuous-receipt — judged from the recorded receipt, because the receipt is what
-    #    the gate trusts and it is what must not be hollow.
+    #    land trusts and it is what must not be hollow.
     rs = receipt_state(state, head, cwd)
     if not rs["fresh"]:
         findings.append({"check": "vacuous-receipt", "severity": "block", "detail": rs["why"]})

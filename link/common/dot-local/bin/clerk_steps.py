@@ -454,6 +454,12 @@ def row_learn(ctx):
     rec = learn_written(ctx.run) or ctx.run.done.get("learn")
     if rec:
         return row("learn", True, none=bool(rec.get("none")), source=rec.get("source", "asserted"))
+    # Merged and deleted without clerk ever being told: nobody is coming back to write a
+    # learning for a run they finished elsewhere, and holding it open is how a ledger
+    # stays open for months. A run that DID reach `land` keeps its learn step, because
+    # land hands it over as the next thing to do and the reader is still there.
+    if not ctx.run.section("land") and not run_branch(ctx)["exists"] and landed_elsewhere(ctx):
+        return row("learn", True, none=False, source="skipped: merged and deleted outside clerk")
     return row("learn", False, why_not_done="no learning was written for this run",
                learnings_path=ctx.prepare.get("learnings_path"), breakdown_signals=breakdown_signals(ctx),
                done_by=f"clerk learn --list; clerk learn --type ... --title ... --learning ... --apply-when ... --feature {ctx.run.slug}; "

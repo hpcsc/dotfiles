@@ -495,6 +495,29 @@ git -C "$RL" merge -q --ff-only lz && git -C "$RL" worktree remove "$WL" && git 
 eq "merged and gone, the run moves to learn in the main checkout" "learn" "$(run "$RL" step | field .step)"
 eq "whose learnings path is reported" "$RL/tasks/learnings.md" "$(run "$RL" step | field .learnings_path)"
 
+# A branch merged and deleted without clerk ever being told: nobody comes back to write a
+# learning for a run they finished elsewhere, and the ledger reads as open for months.
+# Nine such runs were open on one machine, the oldest for eleven days.
+RX=$(new_repo); mkdir -p "$RX/tasks"
+printf -- '### Task 1: Only\n' > "$RX/tasks/x.md"
+printf '{"tasks":[{"n":1,"title":"Only","depends_on":[],"done":true}]}\n' > "$RX/tasks/x.json"
+git -C "$RX" add -A && git -C "$RX" commit -qm "Plan"
+RXRUNS="$(git -C "$RX" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/x"
+mkdir -p "$RXRUNS"
+jq -n --arg t "$RX/tasks/x.md" --arg s "$RX/tasks/x.json" \
+   '{slug:"x", request:"y", started_at:"2026-01-01T00:00:00Z", finished:false,
+     breakdown:{tasks_file:$t, task_record:$s}}' > "$RXRUNS/run.json"
+git -C "$RX" switch -qc x && printf 'a\n' > "$RX/a.go" && commit_all "$RX" "Work"
+git -C "$RX" switch -q master 2>/dev/null || git -C "$RX" switch -q main
+git -C "$RX" merge -q --ff-only x && git -C "$RX" branch -qd x
+eq "merged and deleted with no land record, the run is finished not held at learn" "finished" \
+   "$(run "$RX" step | field .step)"
+eq "and the ledger says so, so it stops counting as open" "true" \
+   "$(jq -r '.finished' "$RXRUNS/run.json")"
+# A run that DID reach land keeps its learn step: land hands it over and the reader is there.
+jq '.finished = false | .land = {landed: true}' "$RXRUNS/run.json" > "$RXRUNS/tmp" && /bin/mv -f "$RXRUNS/tmp" "$RXRUNS/run.json"
+eq "but a run that reached land still gets its learn step" "learn" "$(run "$RX" step | field .step)"
+
 # --------------------------------------------------------------------------------
 printf '\ninstructions — the method step file is printed when it exists, variants resolved per harness\n'
 

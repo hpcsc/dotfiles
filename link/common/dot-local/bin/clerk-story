@@ -6,7 +6,7 @@ a file. Whether a deliverable has started, finished or landed is an observation,
 observation copied into the plan is a mirror that goes stale while still reading as
 authoritative. Nothing below reads `status:`.
 
-`clerk story stack [<plan.yaml>] [--create]` opens the deliverables as stacked draft PRs,
+`clerk story stack create [<plan.yaml>]` opens the deliverables as stacked draft PRs,
 in dependency order; see clerk_stack.py.
 
 Dispatched to by `clerk` when invoked as `clerk story`, and runnable on its own.
@@ -224,7 +224,9 @@ def main(argv):
     args = ap.parse_args(argv)
     if args.help:
         print(__doc__.strip())
-        print("\nUSAGE\n  clerk story [<plan.yaml>] [--table]\n  clerk story stack [<plan.yaml>] [--create] [--json]")
+        print("\nUSAGE\n  clerk story [<plan.yaml>] [--table]"
+              "\n  clerk story stack [<plan.yaml>] [--json]          print the stack"
+              "\n  clerk story stack create [<plan.yaml>] [--json]   open and retarget the PRs")
         return 0
     table, plan_arg = args.table, args.plan
 

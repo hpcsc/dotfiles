@@ -128,7 +128,7 @@ def remit_for(scope, lang):
 
 
 def _is_fixed(path, fixed):
-    """Paths arrive from `clerk fixup` repo-relative and from the scope pass however it
+    """Paths arrive from `clerk fixup mark` repo-relative and from the scope pass however it
     resolved them. Compare by suffix so one form does not silently match nothing."""
     return any(path == p or path.endswith("/" + p) or p.endswith("/" + path) for p in fixed)
 

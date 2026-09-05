@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import Parser, clerk, die, facts  # noqa: E402
+from clerk_lib import Parser, clerk, die, facts, take_verb  # noqa: E402
 
 
 def run(*args, cwd=None):
@@ -242,9 +242,12 @@ def render(story, rows, will_create):
         print("  nothing was opened — pass --create to act on this")
 
 
+VERBS = ("create",)
+
+
 def main(argv):
+    verb, argv = take_verb(argv, VERBS, {})
     ap = Parser()
-    ap.add_argument("--create", action="store_true", help="open and retarget the PRs; without it, only print the stack")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("plan", nargs="?", help="a plan.yaml; default: every live plan under tasks/")
     args = ap.parse_args(argv)
@@ -252,7 +255,7 @@ def main(argv):
         print(__doc__.strip())
         print("\nUSAGE\n  clerk story stack [<plan.yaml>] [--create] [--json]")
         return 0
-    create, as_json, plan_arg = args.create, args.json, args.plan
+    create, as_json, plan_arg = verb == "create", args.json, args.plan
 
     repo_root = facts().get("repo_root")
     if not repo_root:

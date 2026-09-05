@@ -1318,7 +1318,7 @@ eq "the stack is emitted bottom-first, so a base exists before the PR that targe
    "true" "$(printf '%s' "$SK" | jq -r '[.[0].deliverables[] | .id] | index("building") < index("stacked")')"
 
 eq "creating without an origin refuses rather than opening half a stack" "2" \
-   "$(run "$R22" story stack --create >/dev/null 2>&1; echo $?)"
+   "$(run "$R22" story stack create >/dev/null 2>&1; echo $?)"
 
 # The retarget that makes a stack survive its own merges. Two real branches: `high` sits
 # on `low`, and once `low` lands, a PR still pointing at br-low diffs against code that
@@ -1360,7 +1360,7 @@ printf 'story: Two\nstory_slug: two\ndeliverables:\n  - id: b\n    branch: br-b\
 git -C "$R26" remote add origin git@github.com:example/repo.git
 eq "two plans is fine to look at" "2" "$(run "$R26" story stack --json | jq 'length')"
 eq "and refused for --create, which would open another story's PRs" "2" \
-   "$(run "$R26" story stack --create >/dev/null 2>&1; echo $?)"
+   "$(run "$R26" story stack create >/dev/null 2>&1; echo $?)"
 
 # --------------------------------------------------------------------------------
 printf '\nguidelines — required reading, loaded not looked up\n'
@@ -1610,44 +1610,44 @@ done
 BASE=$(git -C "$RX" rev-parse main)
 
 printf 'task 2 fixed\n' > "$RX/task2.go"
-F=$(run "$RX" fixup --base "$BASE" --dry-run -- task2.go)
+F=$(run "$RX" fixup mark --base "$BASE" --dry-run -- task2.go)
 eq "one commit in range means nothing to weigh" "Add task 2" "$(printf '%s' "$F" | jq -r '.subject')"
 eq "and --dry-run leaves the tree alone" "1" \
    "$(git -C "$RX" status --porcelain | grep -c 'task2.go')"
 
-F=$(run "$RX" fixup --base "$BASE" -- task2.go)
+F=$(run "$RX" fixup mark --base "$BASE" -- task2.go)
 eq "the fix is marked for that commit" "true" "$(printf '%s' "$F" | jq -r '.ok')"
 eq "as a fixup, not a fresh commit" "1" \
    "$(git -C "$RX" log --format=%s -1 | grep -c '^fixup! Add task 2')"
 
 # The whole reason this refuses rather than taking the newest.
 printf 'entry 4\n' >> "$RX/catalog.txt"
-X=$(run "$RX" fixup --base "$BASE" -- catalog.txt)
+X=$(run "$RX" fixup mark --base "$BASE" -- catalog.txt)
 eq "a file several tasks touched is refused, not guessed at" "ambiguous" \
    "$(printf '%s' "$X" | jq -r '.reason')"
 eq "and every candidate is named, newest first" "Add task 3|Add task 1" \
    "$(printf '%s' "$X" | jq -r '[.candidates["catalog.txt"][0].subject, .candidates["catalog.txt"][-1].subject] | join("|")')"
 eq "refusing exits 3, not 0" "3" \
-   "$(run "$RX" fixup --base "$BASE" -- catalog.txt >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RX" fixup mark --base "$BASE" -- catalog.txt >/dev/null 2>&1; printf '%s' $?)"
 eq "nothing was staged by the refusal" "0" \
    "$(git -C "$RX" diff --cached --name-only | grep -c 'catalog.txt')"
 
 # The judgment escape hatch: the caller read the evidence and names the commit.
 T1=$(git -C "$RX" log --format=%H --grep='Add task 1' -1)
 eq "--onto takes the caller's answer" "Add task 1" \
-   "$(run "$RX" fixup --base "$BASE" --onto "$T1" -- catalog.txt | jq -r '.subject')"
+   "$(run "$RX" fixup mark --base "$BASE" --onto "$T1" -- catalog.txt | jq -r '.subject')"
 
 # Staging is whole-file, so a fix in a file that later commits also touched carries
 # whatever else is uncommitted there, and can only fold hunks whose surrounding lines
 # already exist at the target. Saying so when the fixup is made costs a regrouping;
 # leaving it to the rebase costs the round trip that got you there.
-W=$(run "$RX" fixup --base "$BASE" --onto "$T1" --dry-run -- catalog.txt)
+W=$(run "$RX" fixup mark --base "$BASE" --onto "$T1" --dry-run -- catalog.txt)
 eq "a file later commits also touched is flagged" "1" \
    "$(printf '%s' "$W" | jq -r '.also_touched_later["catalog.txt"] | length >= 1' | grep -c true)"
 eq "naming the commits that came after the target" "1" \
    "$(printf '%s' "$W" | jq -r '.also_touched_later["catalog.txt"] | join(" ")' | grep -c 'Add task 3')"
 eq "and a file only its own commit touched is not" "null" \
-   "$(run "$RX" fixup --base "$BASE" --dry-run -- task2.go | jq -r '.also_touched_later')"
+   "$(run "$RX" fixup mark --base "$BASE" --dry-run -- task2.go | jq -r '.also_touched_later')"
 
 
 # Replaying that one would conflict: it appends to a file every later task also appends
@@ -1655,10 +1655,10 @@ eq "and a file only its own commit touched is not" "null" \
 # has to come back untouched.
 BEFORE=$(git -C "$RX" rev-parse HEAD)
 eq "a conflicted replay exits 3" "3" \
-   "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RX" fixup replay --base "$BASE"  >/dev/null 2>&1; printf '%s' $?)"
 eq "and leaves the branch exactly as it was" "$BEFORE" "$(git -C "$RX" rev-parse HEAD)"
 eq "and names where it conflicted, which is how to regroup" "conflicted|catalog.txt" \
-   "$(run "$RX" fixup --base "$BASE" --replay 2>/dev/null | jq -r '[.reason, (.conflicted | join(","))] | join("|")')"
+   "$(run "$RX" fixup replay --base "$BASE"  2>/dev/null | jq -r '[.reason, (.conflicted | join(","))] | join("|")')"
 eq "with no rebase left half-done" "false" \
    "$([ -d "$RX/.git/rebase-merge" ] || [ -d "$RX/.git/rebase-apply" ] && echo true || echo false)"
 git -C "$RX" reset -q --hard HEAD~1
@@ -1666,7 +1666,7 @@ git -C "$RX" reset -q --hard HEAD~1
 # Files whose targets differ decompose into one fixup each, which is worth saying.
 git -C "$RX" reset -q --hard HEAD
 printf 'task 1 edit\n' > "$RX/task1.go"; printf 'task 3 edit\n' > "$RX/task3.go"
-S=$(run "$RX" fixup --base "$BASE" -- task1.go task3.go)
+S=$(run "$RX" fixup mark --base "$BASE" -- task1.go task3.go)
 eq "a fix spanning two task commits says so" "spans-commits" "$(printf '%s' "$S" | jq -r '.reason')"
 eq "and groups the files by the commit each belongs to" "2" \
    "$(printf '%s' "$S" | jq -r '.groups | length')"
@@ -1674,11 +1674,11 @@ eq "and groups the files by the commit each belongs to" "2" \
 git -C "$RX" reset -q --hard HEAD
 printf 'brand new\n' > "$RX/newfile.go"
 eq "a file no commit in range touches is new work, not a correction" "3" \
-   "$(run "$RX" fixup --base "$BASE" -- newfile.go >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RX" fixup mark --base "$BASE" -- newfile.go >/dev/null 2>&1; printf '%s' $?)"
 rm "$RX/newfile.go"
 
 # The replay.
-R=$(run "$RX" fixup --base "$BASE" --replay)
+R=$(run "$RX" fixup replay --base "$BASE" )
 eq "the marked fixup is folded" "1" "$(printf '%s' "$R" | jq -r '.folded')"
 eq "leaving one commit per task" "3" \
    "$(git -C "$RX" rev-list --count "$BASE"..HEAD)"
@@ -1688,18 +1688,18 @@ eq "the fix is in the task commit it belonged to" "task 2 fixed" \
    "$(git -C "$RX" show "$(git -C "$RX" log --format=%H --grep='Add task 2' -1)":task2.go)"
 
 eq "replaying with nothing marked is a no-op, not an error" "0" \
-   "$(run "$RX" fixup --base "$BASE" --replay | jq -r '.folded')"
+   "$(run "$RX" fixup replay --base "$BASE"  | jq -r '.folded')"
 
 printf 'loose\n' > "$RX/task1.go"
 eq "a dirty tree is refused before any rebase starts" "3" \
-   "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RX" fixup replay --base "$BASE"  >/dev/null 2>&1; printf '%s' $?)"
 eq "and the refusal names the way through" "1" \
-   "$(run "$RX" fixup --base "$BASE" --replay 2>&1 | grep -c -- '--autostash')"
+   "$(run "$RX" fixup replay --base "$BASE"  2>&1 | grep -c -- '--autostash')"
 
 # A repo with unrelated work always in flight would otherwise never be able to replay.
 printf 'task 2 more\n' > "$RX/task2.go"
-run "$RX" fixup --base "$BASE" -- task2.go >/dev/null
-A=$(run "$RX" fixup --base "$BASE" --replay --autostash)
+run "$RX" fixup mark --base "$BASE" -- task2.go >/dev/null
+A=$(run "$RX" fixup replay --base "$BASE"  --autostash)
 eq "--autostash replays around the loose work" "1|true" \
    "$(printf '%s|%s' "$(printf '%s' "$A" | jq -r '.folded')" "$(printf '%s' "$A" | jq -r '.autostashed')")"
 eq "and the loose work is still there afterwards" "loose" "$(cat "$RX/task1.go")"
@@ -1722,9 +1722,9 @@ printf 'one\n' > "$RUP/work/a.txt"; git -C "$RUP/work" add -A; git -C "$RUP/work
 printf 'two\n' > "$RUP/work/b.txt"; git -C "$RUP/work" add -A; git -C "$RUP/work" commit -qm "Work two"
 printf 'one fixed\n' > "$RUP/work/a.txt"
 eq "on the default branch the base comes from the upstream" "Work one" \
-   "$(run "$RUP/work" fixup -- a.txt | jq -r '.subject')"
+   "$(run "$RUP/work" fixup mark -- a.txt | jq -r '.subject')"
 eq "and the replay folds against it" "1" \
-   "$(run "$RUP/work" fixup --replay --force | jq -r '.folded')"
+   "$(run "$RUP/work" fixup replay --force | jq -r '.folded')"
 eq "leaving the two commits it started with" "2" \
    "$(git -C "$RUP/work" rev-list --count origin/main..HEAD)"
 
@@ -1734,14 +1734,14 @@ git -C "$RM" init -q --bare
 git -C "$RX" remote add origin "$RM"
 git -C "$RX" push -q -u origin feature
 printf 'task 3 fixed\n' > "$RX/task3.go"
-run "$RX" fixup --base "$BASE" -- task3.go >/dev/null 2>&1
-P=$(run "$RX" fixup --base "$BASE" --replay 2>&1)
+run "$RX" fixup mark --base "$BASE" -- task3.go >/dev/null 2>&1
+P=$(run "$RX" fixup replay --base "$BASE"  2>&1)
 eq "a published range refuses the replay" "3" \
-   "$(run "$RX" fixup --base "$BASE" --replay >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RX" fixup replay --base "$BASE"  >/dev/null 2>&1; printf '%s' $?)"
 eq "and says how much of it is already out there" "1" \
    "$(printf '%s' "$P" | grep -c 'already on origin/feature')"
 eq "--force is the caller asserting the branch is theirs alone" "1" \
-   "$(run "$RX" fixup --base "$BASE" --replay --force | jq -r '.folded')"
+   "$(run "$RX" fixup replay --base "$BASE"  --force | jq -r '.folded')"
 
 # A repo whose commit-msg hook validates every subject rejects `fixup!` outright, which
 # costs the fold entirely: the marker is the only thing --replay can find. The hook is
@@ -1760,7 +1760,7 @@ EOF
 chmod +x "$RH/.git/hooks/commit-msg"
 
 printf 'one fixed\n' > "$RH/a.txt"
-H=$(run "$RH" fixup --base "$HB" -- a.txt)
+H=$(run "$RH" fixup mark --base "$HB" -- a.txt)
 eq "a hook that refuses fixup! subjects does not cost the fold" "true" \
    "$(printf '%s' "$H" | jq -r '.ok')"
 eq "and the caller is told which check was stepped around" "true" \
@@ -1768,7 +1768,7 @@ eq "and the caller is told which check was stepped around" "true" \
 eq "the marker is there for the replay to find" "1" \
    "$(git -C "$RH" log --format=%s -1 | grep -c '^fixup! Add a')"
 eq "and it folds like any other" "1" \
-   "$(run "$RH" fixup --base "$HB" --replay | jq -r '.folded')"
+   "$(run "$RH" fixup replay --base "$HB"  | jq -r '.folded')"
 eq "leaving the fix in the commit it belonged to" "one fixed" \
    "$(git -C "$RH" show HEAD:a.txt)"
 
@@ -1782,9 +1782,9 @@ EOF
 chmod +x "$RH/.git/hooks/pre-commit"
 printf 'one fixed twice\n' > "$RH/a.txt"
 eq "a pre-commit hook's objection still stops the fixup" "2" \
-   "$(run "$RH" fixup --base "$HB" -- a.txt >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RH" fixup mark --base "$HB" -- a.txt >/dev/null 2>&1; printf '%s' $?)"
 eq "and its complaint is what comes back" "1" \
-   "$(run "$RH" fixup --base "$HB" -- a.txt 2>&1 | grep -c 'content rejected')"
+   "$(run "$RH" fixup mark --base "$HB" -- a.txt 2>&1 | grep -c 'content rejected')"
 eq "with no commit made" "1" "$(git -C "$RH" rev-list --count "$HB"..HEAD)"
 rm "$RH/.git/hooks/pre-commit"
 
@@ -1796,9 +1796,9 @@ printf 'AGE-747 %s' "$(cat "$1")" > "$1.t" && mv "$1.t" "$1"
 EOF
 chmod +x "$RH/.git/hooks/prepare-commit-msg"
 eq "a hook that rewrites the subject is caught, not marked and left inert" "3" \
-   "$(run "$RH" fixup --base "$HB" -- a.txt >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RH" fixup mark --base "$HB" -- a.txt >/dev/null 2>&1; printf '%s' $?)"
 eq "naming the subject that came out instead" "subject-rewritten|AGE-747 fixup! Add a" \
-   "$(run "$RH" fixup --base "$HB" -- a.txt 2>/dev/null | jq -r '[.reason, .subject] | join("|")')"
+   "$(run "$RH" fixup mark --base "$HB" -- a.txt 2>/dev/null | jq -r '[.reason, .subject] | join("|")')"
 eq "the commit it made is undone" "1" "$(git -C "$RH" rev-list --count "$HB"..HEAD)"
 eq "and the fix left staged, where the caller can still commit it" "1" \
    "$(git -C "$RH" diff --cached --name-only | grep -c 'a.txt')"
@@ -1807,7 +1807,7 @@ eq "and the fix left staged, where the caller can still commit it" "1" \
 printf '\nlearn — what the next run reads\n'
 
 RL=$(new_repo)
-L=$(run "$RL" learn --type convention --title "Handlers own their decoding" \
+L=$(run "$RL" learn add --type convention --title "Handlers own their decoding" \
       --learning "Every inbound handler decodes its own payload." \
       --apply-when "Adding a handler that takes a request body." --task 3 --feature "sso")
 eq "written to the path clerk resolves" "$RL/tasks/learnings.md" "$(printf '%s' "$L" | jq -r '.path')"
@@ -1821,7 +1821,7 @@ eq "task and feature land in one Observed line" "- Observed: task 3 — sso" \
 eq "a file created here gets a heading, not a bare block" "1" \
    "$(head -1 "$RL/tasks/learnings.md" | grep -c '^# ')"
 
-run "$RL" learn --type pattern --title "Second thing" --learning "superseded wording" --apply-when "y" >/dev/null
+run "$RL" learn add --type pattern --title "Second thing" --learning "superseded wording" --apply-when "y" >/dev/null
 eq "a second entry appends rather than replacing" "2" \
    "$(grep -c '^## ' "$RL/tasks/learnings.md")"
 
@@ -1830,24 +1830,24 @@ LWT="$RL/../wt-l-$(basename "$RL")"
 git -C "$RL" add -A && git -C "$RL" commit -qm "Learnings"
 git -C "$RL" worktree add -q -b learner "$LWT" >/dev/null 2>&1
 eq "resolved from the repo root even when called from a worktree" "$RL/tasks/learnings.md" \
-   "$(run "$LWT" learn --type constraint --title "From the worktree" --learning "x" \
+   "$(run "$LWT" learn add --type constraint --title "From the worktree" --learning "x" \
         --apply-when "y" | jq -r '.path')"
 eq "so the entry lands in the file the next run reads" "3" \
    "$(grep -c '^## ' "$RL/tasks/learnings.md")"
 
 # Fanned-out runs share a git-common-dir, so each is given its own file.
 eq "--path overrides for a run that was given one" "$RL/other.md" \
-   "$(run "$RL" learn --path "$RL/other.md" --type pattern --title "Elsewhere" \
+   "$(run "$RL" learn add --path "$RL/other.md" --type pattern --title "Elsewhere" \
         --learning "x" --apply-when "y" | jq -r '.path')"
 eq "and the default file is untouched by it" "3" "$(grep -c '^## ' "$RL/tasks/learnings.md")"
 
 # Substance is the caller's to judge; an exact title collision is not.
 eq "a repeated title is refused rather than doubled" "3" \
-   "$(run "$RL" learn --type pattern --title "Second thing" --learning "z" \
+   "$(run "$RL" learn add --type pattern --title "Second thing" --learning "z" \
         --apply-when "w" >/dev/null 2>&1; printf '%s' $?)"
 eq "--list is how substance gets judged before writing" "3" \
-   "$(run "$RL" learn --list | jq -r '.titles | length')"
-R=$(run "$RL" learn --replace --type pattern --title "Second thing" \
+   "$(run "$RL" learn list | jq -r '.titles | length')"
+R=$(run "$RL" learn add --replace --type pattern --title "Second thing" \
       --learning "folded wording" --apply-when "y")
 eq "--replace rewrites in place" "true|3" \
    "$(printf '%s|%s' "$(printf '%s' "$R" | jq -r '.replaced')" "$(grep -c '^## ' "$RL/tasks/learnings.md")")"
@@ -1858,7 +1858,7 @@ eq "with the old wording gone" "0" "$(grep -c 'superseded wording' "$RL/tasks/le
 # The file is read whole by the run that plans the next story, and it only ever grew: one
 # repo's had 225 entries and 40,000 words. The index is what picking needs and a third of
 # the bytes; the bodies come one at a time.
-IDX=$(run "$RL" learn --index)
+IDX=$(run "$RL" learn index)
 eq "--index gives every entry its picking key, and no body" "true|true|false" \
    "$(printf '%s' "$IDX" | jq -r '[(.index | length) == (.entries),
                                    (.index[0] | has("apply_when")),
@@ -1866,30 +1866,30 @@ eq "--index gives every entry its picking key, and no body" "true|true|false" \
 eq "and it carries none of the bodies, which is where the bytes are" "0" \
    "$(printf '%s' "$IDX" | grep -c 'folded wording')"
 eq "--show returns the body of the one worth reading" "true|folded wording" \
-   "$(run "$RL" learn --show "Second thing" | jq -r '[(.ok|tostring), (.entries["Second thing"] | test("folded wording") | tostring | sub("true";"folded wording"))] | join("|")')"
+   "$(run "$RL" learn show "Second thing" | jq -r '[(.ok|tostring), (.entries["Second thing"] | test("folded wording") | tostring | sub("true";"folded wording"))] | join("|")')"
 eq "a title nothing recorded is named rather than silently empty" "3" \
-   "$(run "$RL" learn --show "No such entry" >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RL" learn show "No such entry" >/dev/null 2>&1; printf '%s' $?)"
 
 # Nothing could retire an entry, so a learning written against code since rewritten stayed
 # true-sounding forever and every later run in the repo read it as fact.
 BEFORE=$(grep -c '^## ' "$RL/tasks/learnings.md")
-eq "--drop retires an entry" "Second thing" "$(run "$RL" learn --drop "Second thing" | jq -r '.dropped')"
+eq "--drop retires an entry" "Second thing" "$(run "$RL" learn drop "Second thing" | jq -r '.dropped')"
 eq "and it is gone from the file" "true" \
    "$([ "$(grep -c '^## ' "$RL/tasks/learnings.md")" -eq "$((BEFORE - 1))" ] && echo true || echo false)"
 eq "with its body gone too, not just its heading" "0" "$(grep -c 'folded wording' "$RL/tasks/learnings.md")"
 eq "dropping what is not there is refused rather than reported as done" "3" \
-   "$(run "$RL" learn --drop "Never recorded" >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RL" learn drop "Never recorded" >/dev/null 2>&1; printf '%s' $?)"
 eq "an entry records the date it was written, so age is answerable" "true" \
-   "$(run "$RL" learn --type pattern --title "Dated" --learning "x" --apply-when "y" >/dev/null; \
-      run "$RL" learn --index | jq -r '[.index[] | select(.title == "Dated") | .recorded != null] | first')"
+   "$(run "$RL" learn add --type pattern --title "Dated" --learning "x" --apply-when "y" >/dev/null; \
+      run "$RL" learn index | jq -r '[.index[] | select(.title == "Dated") | .recorded != null] | first')"
 
 eq "an entry missing a field is refused, since it is the one nobody can act on" "2" \
-   "$(run "$RL" learn --type pattern --title "Partial" --learning "x" >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RL" learn add --type pattern --title "Partial" --learning "x" >/dev/null 2>&1; printf '%s' $?)"
 eq "and so is a type outside the four" "2" \
-   "$(run "$RL" learn --type invention --title "P" --learning "x" --apply-when "y" >/dev/null 2>&1; printf '%s' $?)"
+   "$(run "$RL" learn add --type invention --title "P" --learning "x" --apply-when "y" >/dev/null 2>&1; printf '%s' $?)"
 
 eq "a tracked file says committing is what shares it" "true" \
-   "$(run "$RL" learn --type pattern --title "Tracked check" --learning "x" \
+   "$(run "$RL" learn add --type pattern --title "Tracked check" --learning "x" \
         --apply-when "y" | jq -r '.in_tree')"
 
 RL2=$(new_repo)
@@ -1897,20 +1897,20 @@ printf 'tasks/\n' > "$RL2/.gitignore" && git -C "$RL2" add -A && git -C "$RL2" c
 # A run that names its feature and not a task is ordinary — the learning came from the
 # whole of it. The dash joins two parts, so it has to disappear when there is one.
 eq "a feature without a task number carries no dangling dash" "- Observed: US-014 formatting" \
-   "$(run "$RL" learn --type constraint --title "Feature only" --learning "x" --apply-when "y" \
+   "$(run "$RL" learn add --type constraint --title "Feature only" --learning "x" --apply-when "y" \
         --feature "US-014 formatting" >/dev/null; \
       grep -A3 '^## Feature only' "$RL/tasks/learnings.md" | grep '^- Observed:')"
 eq "a task without a feature still reads as one" "- Observed: task 4" \
-   "$(run "$RL" learn --type constraint --title "Task only" --learning "x" --apply-when "y" \
+   "$(run "$RL" learn add --type constraint --title "Task only" --learning "x" --apply-when "y" \
         --task 4 >/dev/null; \
       grep -A3 '^## Task only' "$RL/tasks/learnings.md" | grep '^- Observed:')"
 eq "and both are joined by it" "- Observed: task 5 — US-015 wiring" \
-   "$(run "$RL" learn --type constraint --title "Both" --learning "x" --apply-when "y" \
+   "$(run "$RL" learn add --type constraint --title "Both" --learning "x" --apply-when "y" \
         --task 5 --feature "US-015 wiring" >/dev/null; \
       grep -A3 '^## Both' "$RL/tasks/learnings.md" | grep '^- Observed:')"
 
 eq "a file git will not keep says nothing here dirties the tree" "false" \
-   "$(run "$RL2" learn --type pattern --title "Outside" --learning "x" \
+   "$(run "$RL2" learn add --type pattern --title "Outside" --learning "x" \
         --apply-when "y" | jq -r '.in_tree')"
 
 # --------------------------------------------------------------------------------

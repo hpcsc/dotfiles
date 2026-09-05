@@ -37,7 +37,7 @@ Fix findings **directly**. Do not delegate them — you have the context and the
 Mark each fix for the commit it corrects:
 
 ```
-clerk fixup -- <only the files this fix touched>
+clerk fixup mark -- <only the files this fix touched>
 ```
 
 It finds the commits in `<base>..HEAD` that touch those files, stages them and commits the `fixup!`. Where a file has one commit in range there is nothing to weigh and it just does it.
@@ -49,7 +49,7 @@ It finds the commits in `<base>..HEAD` that touch those files, stages them and c
 When every fix is marked, replay once:
 
 ```
-clerk fixup --replay
+clerk fixup replay
 ```
 
 This is also what keeps `clerk verify` meaningful rather than noisy. Its scattered-task check counts how many commits in the branch touch each task's recorded files and warns when the answer is more than one — so a trailing commit that fixes something in task 3's file trips that check by construction, and you would be reading a warning you caused on purpose. Folded, each task's commit stays the whole of that task.

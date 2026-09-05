@@ -8,17 +8,17 @@ Distil what generalises: a codebase convention, a recurring finding, a constrain
 
 - **A task the breakdown called high certainty that took several attempts to get right**, or arrived with a lint finding. Whatever the breakdown thought made it routine, does not.
 - **A task the breakdown called low certainty that was boring.** This one is worth as much and gets recorded far less, because nothing went wrong to prompt it. Left unwritten, the next story over the same ground pauses on it again for nothing, and the pause keeps costing until someone notices.
-- **A `clerk fixup` that came back `ambiguous`** at the audit step. Several commits in range touched one file, which is a task boundary drawn across something the codebase treats as one thing.
+- **A `clerk fixup mark` that came back `ambiguous`** at the audit step. Several commits in range touched one file, which is a task boundary drawn across something the codebase treats as one thing.
 
 Each is a fact about *this repo's* work rather than about this story, which is what makes it worth a durable line. Write it so the next breakdown can act on it: name the kind of task, not the task.
 
-Dedup against the learnings file on substance, not wording — `clerk learn --index` is the cheap read for that, and `--show` opens the one you suspect. And if this run proved an existing entry wrong, retire it with `clerk learn --drop "<title>"`: nothing else ever will, and every later run in the repo reads it as true.
+Dedup against the learnings file on substance, not wording — `clerk learn index` is the cheap read for that, and `--show` opens the one you suspect. And if this run proved an existing entry wrong, retire it with `clerk learn drop "<title>"`: nothing else ever will, and every later run in the repo reads it as true.
 
 **Write what survives the filter, then show what you appended.** Nothing here waits on approval — the filter is the quality bar, and a learning that turns out to be wrong is cheaper to delete later than one that was never recorded.
 
 ```
-clerk learn --index         # every entry's title, type and apply-when, to dedup against
-clerk learn --type convention --title "<short title>" \
+clerk learn index         # every entry's title, type and apply-when, to dedup against
+clerk learn add --type convention --title "<short title>" \
             --learning "<the durable fact, 1–2 sentences>" \
             --apply-when "<the future situation where this is relevant>" \
             --task 3 --feature "<feature name>"

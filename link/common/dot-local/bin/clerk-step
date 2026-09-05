@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, emit, git, gitout, parse, resolve_tasks_arg  # noqa: E402
+from clerk_lib import clerk, die, emit, git, gitout, parse, resolve_tasks_arg, take_verb  # noqa: E402
 from clerk_ledger import (CALLERS, Run, build_ctx, detect_harness, now, open_run_summaries,  # noqa: E402
                           run_summary, runs_root, session_id)
 from clerk_steps import (ROWS, active_rows, facts_for, file_hash, instructions_for,  # noqa: E402
@@ -196,18 +196,7 @@ usage: clerk step                        the next step, computed from the repo a
 
 def main_step(argv):
     """Every branch ends in emit(), which prints and exits; nothing falls through."""
-    # The verb wherever it sits: `clerk step --run x status` and `clerk step status --run x`
-    # are the same request, and a caller that has to remember which order is one more rule.
-    verb, rest_argv = None, list(argv)
-    for i, a in enumerate(argv):
-        if a in VERBS and not (i and argv[i - 1] in ("--run", "--harness", "--request")):
-            verb, rest_argv = a, list(argv[:i]) + list(argv[i + 1:])
-            break
-    else:
-        bare = [a for i, a in enumerate(argv)
-                if not a.startswith("-") and not (i and argv[i - 1] in ("--run", "--harness", "--request"))]
-        if bare:
-            die(f"unknown verb '{bare[0]}' — clerk step takes {', '.join(VERBS)}, or nothing for the next step")
+    verb, rest_argv = take_verb(argv, VERBS, STEP_SPEC)
 
     if verb == "done":
         # The step's own flags are its business, not step's. Only the two that name which

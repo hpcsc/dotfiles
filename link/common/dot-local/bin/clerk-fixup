@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import Parser, die, emit, facts  # noqa: E402
+from clerk_lib import take_verb, Parser, die, emit, facts  # noqa: E402
 from clerk_lib import git as git_raw  # noqa: E402
 
 
@@ -77,8 +77,8 @@ def mark_fixup(target, subject):
 
     A repo whose commit-msg hook validates every subject — conventional commits, a ticket
     prefix, a house linter — rejects `fixup!` outright, and there the whole fold is
-    unavailable, because the marker is the only thing `--replay` can find. The hook is not
-    wrong about the history it guards: a fixup commit never becomes part of it. `--replay`
+    unavailable, because the marker is the only thing `replay` can find. The hook is not
+    wrong about the history it guards: a fixup commit never becomes part of it. `replay`
     squashes it into the target, whose message the hook already passed, and rebase runs no
     commit-msg hook. So the rejection is of a string that will not exist.
 
@@ -107,14 +107,14 @@ def mark_fixup(target, subject):
 
 
 def confirm_marker(subject):
-    """`--replay` finds fixups by subject, so a subject that is not one folds nothing."""
+    """`replay` finds fixups by subject, so a subject that is not one folds nothing."""
     head = git("log", "-1", "--format=%s").stdout.strip()
     if head.startswith(f"fixup! {subject}"):
         return
     git("reset", "--soft", "HEAD~1", check=False)
     emit({"ok": False, "reason": "subject-rewritten", "subject": head,
           "detail": f"the commit was made but its subject is {head!r} rather than 'fixup! "
-                    f"{subject}' — a prepare-commit-msg hook rewrote it. `--replay` finds fixups "
+                    f"{subject}' — a prepare-commit-msg hook rewrote it. `replay` finds fixups "
                     f"by subject, so the fold would silently never happen. The commit is undone "
                     f"and the files are staged again: keep this fix as its own commit, saying in "
                     f"the message which commit it corrects."}, 3)
@@ -194,7 +194,7 @@ def cmd_apply(args):
     # the caller needs to know the index was already touched.
     bypassed = mark_fixup(target, subject)
     out_payload = {"ok": True, "target": target[:12], "subject": subject, "files": files,
-                   "next_step": "clerk fixup --replay, once every fix is marked"}
+                   "next_step": "clerk fixup replay, once every fix is marked"}
     if bypassed:
         out_payload["commit_msg_hook_bypassed"] = True
         out_payload["hook_note"] = (
@@ -274,22 +274,25 @@ def cmd_replay(args):
                     "before this describes commits that no longer exist"}
 
 
+VERBS = ("mark", "replay")
+
+
 def main():
+    verb, rest = take_verb(sys.argv[1:], VERBS, {"--base": "value", "--onto": "value"})
     ap = Parser()
     ap.add_argument("--base")
     ap.add_argument("--onto", help="name the target commit yourself when several are plausible")
-    ap.add_argument("--replay", action="store_true", help="autosquash every marked fixup")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true", help="replay even if the range is published")
     ap.add_argument("--autostash", action="store_true",
                     help="set unrelated working-tree changes aside and restore them after")
     ap.add_argument("files", nargs="*")
-    args = ap.parse_args()
+    args = ap.parse_args(rest)
 
     if args.help:
         print(__doc__.strip())
-        print("\nUSAGE\n  clerk fixup [--base <ref>] [--onto <sha>] [--dry-run] -- <files...>"
-              "\n  clerk fixup --replay [--base <ref>] [--force] [--autostash]")
+        print("\nUSAGE\n  clerk fixup mark [--base <ref>] [--onto <sha>] [--dry-run] -- <files...>"
+              "\n  clerk fixup replay [--base <ref>] [--force] [--autostash]")
         return 0
 
     if git("rev-parse", "--git-dir", check=False).returncode != 0:
@@ -297,7 +300,10 @@ def main():
 
     # --force is asserted, not inferred: only the caller knows whether the branch is
     # shared, so cmd_replay refuses a published range unless told otherwise.
-    if args.replay:
+    if verb is None:
+        die("clerk fixup <verb> — mark to fold a fix onto the commit it corrects, replay to "
+            "autosquash every marked fixup")
+    if verb == "replay":
         emit(cmd_replay(args))
     emit(cmd_apply(args))
 

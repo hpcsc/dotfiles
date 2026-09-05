@@ -441,7 +441,7 @@ def row_learn(ctx):
         return row("learn", True, none=False, source="skipped: merged and deleted outside clerk")
     return row("learn", False, why_not_done="no learning was written for this run",
                learnings_path=ctx.prepare.get("learnings_path"), breakdown_signals=breakdown_signals(ctx),
-               done_by=f"clerk learn --list; clerk learn --type ... --title ... --learning ... --apply-when ... --feature {ctx.run.slug}; "
+               done_by=f"clerk learn list; clerk learn add --type ... --title ... --learning ... --apply-when ... --feature {ctx.run.slug}; "
                        f"or, for a run with nothing that generalises: clerk step done learn --none")
 
 

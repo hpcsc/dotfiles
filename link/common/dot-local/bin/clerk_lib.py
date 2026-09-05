@@ -120,6 +120,23 @@ def worktree_for(branch, worktrees):
     return None
 
 
+def take_verb(argv, verbs, spec=None):
+    """(verb, argv-without-it). An operation is a verb, the way `clerk audit round` and
+    `clerk step done` spell theirs; flags are for what modifies one. The verb may sit
+    either side of a modifier, because which order a caller has to remember is one more
+    rule than a command needs — so a token is only the verb when it is not the value of a
+    flag that takes one. Returns (None, argv) when no verb is present, and dies naming
+    them when the leading token is a word that is not one."""
+    takes_value = {k for k, v in (spec or {}).items() if v in ("value", "list")}
+    for i, a in enumerate(argv):
+        if a in verbs and not (i and argv[i - 1] in takes_value):
+            return a, list(argv[:i]) + list(argv[i + 1:])
+    for i, a in enumerate(argv):
+        if not a.startswith("-") and not (i and argv[i - 1] in takes_value):
+            die(f"unknown verb '{a}' — expected one of {', '.join(verbs)}")
+    return None, list(argv)
+
+
 def parse(argv, spec):
     """Tiny flag parser: spec maps --flag to 'bool' | 'value' | 'list'. Returns the
     options and the positional rest; an unknown --flag dies as `clerk <name>`."""

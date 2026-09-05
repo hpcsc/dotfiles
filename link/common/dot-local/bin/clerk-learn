@@ -21,9 +21,9 @@ before writing.
 
 The file only ever grew, and it is read whole by the run that plans the next story: at 225
 entries one was 40k words, so a decompose carried fifty thousand tokens of history before
-it saw the story. `--index` answers that — every entry's title, type and apply-when, which
+it saw the story. `index` answers that — every entry's title, type and apply-when, which
 is a sixth of the bytes and the whole of what picking needs — and `--show` fetches the
-bodies worth reading. `--drop` is the other half: nothing could retire an entry that had
+bodies worth reading. `drop` is the other half: nothing could retire an entry that had
 gone stale, so a learning written against code since rewritten stayed true-sounding
 forever.
 
@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import Parser, die, emit, facts, git  # noqa: E402
+from clerk_lib import Parser, die, emit, facts, git, take_verb  # noqa: E402
 
 TYPES = ["convention", "recurring-finding", "constraint", "pattern"]
 
@@ -104,7 +104,13 @@ def cut(path, title):
     return block.rstrip("\n")
 
 
+VERBS = ("add", "list", "index", "show", "drop")
+VALUE_FLAGS = {"--type": "value", "--title": "value", "--learning": "value",
+               "--apply-when": "value", "--task": "value", "--feature": "value", "--path": "value"}
+
+
 def main():
+    verb, rest = take_verb(sys.argv[1:], VERBS, VALUE_FLAGS)
     ap = Parser()
     ap.add_argument("--type", choices=TYPES)
     ap.add_argument("--title")
@@ -114,54 +120,59 @@ def main():
     ap.add_argument("--feature", default="", help="the feature the run was building")
     ap.add_argument("--path", help="the learnings file; defaults to what clerk prepare resolves")
     ap.add_argument("--replace", action="store_true", help="rewrite an entry with this title")
-    ap.add_argument("--list", action="store_true", help="what is already recorded")
-    ap.add_argument("--index", action="store_true", help="title, type and apply-when per entry")
-    ap.add_argument("--show", action="append", default=[], metavar="TITLE",
-                    help="the full entry with this title; repeatable")
-    ap.add_argument("--drop", metavar="TITLE", help="remove the entry with this title")
-    args = ap.parse_args()
+    ap.add_argument("titles", nargs="*", help="for show and drop: which entries")
+    args = ap.parse_args(rest)
 
     if args.help:
         print(__doc__.strip())
-        print("\nUSAGE\n  clerk learn --type <t> --title <s> --learning <s> --apply-when <s>"
-              "\n              [--task N[,M]] [--feature <s>] [--path <f>] [--replace]"
-              "\n  clerk learn --list [--path <f>]           titles only"
-              "\n  clerk learn --index [--path <f>]          title, type and apply-when: what picking needs"
-              "\n  clerk learn --show <title> [--show <t>]   the full entry for the ones worth reading"
-              "\n  clerk learn --drop <title>                retire an entry that has gone stale"
+        print("\nUSAGE\n  clerk learn add --type <t> --title <s> --learning <s> --apply-when <s>"
+              "\n                  [--task N[,M]] [--feature <s>] [--replace]"
+              "\n  clerk learn list             titles only"
+              "\n  clerk learn index            title, type and apply-when: what picking needs"
+              "\n  clerk learn show <title>...  the full entry for the ones worth reading"
+              "\n  clerk learn drop <title>     retire an entry that has gone stale"
+              "\n\n  [--path <f>] names the learnings file; it defaults to what clerk prepare resolves."
               f"\n\nTYPES\n  {' · '.join(TYPES)}")
         return 0
 
     path = resolve_path(args.path)
 
-    if args.list:
+    if verb is None:
+        die(f"clerk learn <verb> — one of {', '.join(VERBS)}; `clerk learn --help` describes each")
+
+    if verb == "list":
         emit({"ok": True, "path": str(path), "exists": path.is_file(),
               "titles": existing_titles(path)})
 
-    if args.index:
+    if verb == "index":
         rows = [{"title": ttl, "type": f.get("type"), "apply_when": f.get("apply_when"),
                  "recorded": f.get("recorded"), "observed": f.get("observed")}
                 for ttl, f, _ in entries(path)]
         emit({"ok": True, "path": str(path), "exists": path.is_file(), "entries": len(rows),
               "index": rows,
-              "note": "read `apply_when` to pick, then `clerk learn --show <title>` for the "
+              "note": "read `apply_when` to pick, then `clerk learn show <title>` for the "
                       "bodies. Passing every body to a planner costs far more than it teaches"})
 
-    if args.show:
+    if verb == "show":
+        if not args.titles:
+            die("clerk learn show <title>... — name at least one; `clerk learn index` lists them")
         by_title = {ttl: block for ttl, _, block in entries(path)}
-        found = {t_: by_title[t_] for t_ in args.show if t_ in by_title}
-        missing = [t_ for t_ in args.show if t_ not in by_title]
+        found = {t_: by_title[t_] for t_ in args.titles if t_ in by_title}
+        missing = [t_ for t_ in args.titles if t_ not in by_title]
         emit({"ok": not missing, "path": str(path), "entries": found, "not_found": missing},
              0 if not missing else 3)
 
-    if args.drop:
+    if verb == "drop":
+        if len(args.titles) != 1:
+            die("clerk learn drop <title> — exactly one")
+        title = args.titles[0]
         if not path.is_file():
             die(f"no learnings file at {path}", 1)
-        block = cut(path, args.drop)
+        block = cut(path, title)
         if block is None:
-            emit({"ok": False, "reason": "no-such-title", "title": args.drop,
-                  "detail": "nothing recorded under that title; read --index for what is there"}, 3)
-        emit({"ok": True, "path": str(path), "dropped": args.drop, "block": block,
+            emit({"ok": False, "reason": "no-such-title", "title": title,
+                  "detail": "nothing recorded under that title; read `clerk learn index` for what is there"}, 3)
+        emit({"ok": True, "path": str(path), "dropped": title, "block": block,
               "entries": len(existing_titles(path)),
               "note": "retiring a learning changes what every later run in this repo reads, "
                       "the same as writing one — commit it if the file is tracked"})
@@ -177,8 +188,8 @@ def main():
     if args.title in titles and not args.replace:
         emit({"ok": False, "reason": "duplicate-title", "title": args.title,
               "detail": "already recorded. Dedup on substance is yours to judge — read it with "
-                        "--list, then either fold your wording into it with --replace or give "
-                        "this one its own title"}, 3)
+                        "`clerk learn index`, then either fold your wording into it with --replace "
+                        "or give this one its own title"}, 3)
 
     # The dash joins two parts, so it only belongs when there are two. A run that names
     # its feature and not a task is ordinary — the learning came from the whole of it

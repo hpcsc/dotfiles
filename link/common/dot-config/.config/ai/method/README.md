@@ -119,16 +119,16 @@ checked. A row names the command that supplies its evidence.
 flowchart TD
   START["start<br/>run.json holds the request verbatim"] --> GROUND
   GROUND["ground<br/>a clerk guidelines --caller run exited 0<br/>blocked while the tree is dirty"] --> ISOLATE
-  ISOLATE["isolate<br/>branch == slug<br/>clerk isolate"] --> PLAN
-  PLAN["decompose<br/>breakdown bound · task record present · lint clean<br/>clerk step --done decompose --tasks-file"] --> TASK
-  TASK{"task N<br/>first open task with its<br/>dependencies done"} -->|"gears on, and low certainty /<br/>high blast radius / downshifted"| TESTS
-  TESTS["pause N · stop: true<br/>clerk step --done pause N"] --> BUILD
+  ISOLATE["isolate<br/>branch == slug<br/>clerk isolate"] --> DECOMPOSE
+  DECOMPOSE["decompose<br/>breakdown bound · task record present · lint clean<br/>clerk step --done decompose --tasks-file"] --> TASK
+  TASK{"task N<br/>first open task with its<br/>dependencies done"} -->|"gears on, and low certainty /<br/>high blast radius / downshifted"| PAUSE
+  PAUSE["pause N · stop: true<br/>clerk step --done pause N"] --> BUILD
   TASK --> BUILD["clerk finish N -- files<br/>stages · lints · marks done<br/>the commit leaves the tree clean"]
   BUILD -->|"tasks open"| TASK
   BUILD -->|"none open"| SUITE
   SUITE["suite<br/>receipt green at this code tree"] --> AUDIT
-  AUDIT["audit<br/>clerk audit run · round · accept"] --> VALIDATE
-  VALIDATE["match-request<br/>clerk step --done match-request"] --> VERIFY
+  AUDIT["audit<br/>clerk audit run · round · accept"] --> MATCH
+  MATCH["match-request<br/>clerk step --done match-request"] --> VERIFY
   VERIFY["verify-run<br/>clerk verify clean · not_checked reviewed"] --> LAND
   LAND["land<br/>clerk land · the checks read the acceptance<br/>fast-forward from the main checkout"] --> LEARN
   LEARN["learn<br/>a clerk learn write, or --done learn --none"] --> FIN["finished"]
@@ -136,8 +136,8 @@ flowchart TD
   classDef asserted fill:#F2DFD3,stroke:#A8501E,stroke-width:2px,color:#3A1A08
   classDef checked fill:#EFD9E4,stroke:#8A2E5D,stroke-width:2px,color:#3A1024
   class START,GROUND,ISOLATE,TASK,BUILD,SUITE,VERIFY,LAND,FIN derived
-  class PLAN,AUDIT,VALIDATE,LEARN asserted
-  class TESTS checked
+  class DECOMPOSE,AUDIT,MATCH,LEARN asserted
+  class PAUSE checked
 ```
 
 The middle band is the loop: `clerk step` → build → `clerk finish` → commit agent → back

@@ -19,7 +19,7 @@ return {
 					fetchDeps = false,
 				}),
 				on_attach = function(client, bufnr)
-					require("config.lsp").on_attach(bufnr)
+					require("config.lsp").on_attach(client, bufnr)
 
 					local map = vim.keymap.set
 					map("n", "<leader>ef", ":ElixirFromPipe<cr>", { buffer = bufnr, desc = "Elixir: from pipe" })

@@ -32,6 +32,7 @@ opt.mouse = "a" -- enable mouse for scrolling and resizing
 opt.scrolloff = 1 -- always keep 1 line above and below the cursor for context
 opt.background = "dark"
 opt.complete:remove("i") -- disable scanning included files for keyword completion
+opt.completeopt = { "menu", "menuone", "noselect", "popup", "fuzzy" } -- LSP autocompletion menu: always show, never preselect
 -- Open new split panes to right and bottom, which feels more natural
 opt.splitbelow = true
 opt.splitright = true

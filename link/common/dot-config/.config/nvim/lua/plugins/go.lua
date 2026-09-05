@@ -66,7 +66,7 @@ return {
 					return
 				end
 
-				require("config.lsp").on_attach(args.buf)
+				require("config.lsp").on_attach(client, args.buf)
 
 				vim.keymap.set(
 					"n",

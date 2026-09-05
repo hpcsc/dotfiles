@@ -34,7 +34,7 @@ The choice there is between trusting the model silently and making it say so out
 flowchart TD
   Q{"can the repository<br/>show this step was done?"}:::plain
   Q -->|yes| D["derived — clerk looks:<br/>git, a file, or the log<br/>of commands that have run"]:::clerk
-  Q -->|no| A["asserted — the model states it:<br/>clerk step --done ground"]:::you
+  Q -->|no| A["asserted — the model states it:<br/>clerk step done ground"]:::you
   D --> DR["finished, and worked out<br/>again on every call"]:::plain
   A --> W["written down, with the code<br/>it was said about"]:::plain
   W --> T{"is the claim<br/>about the code?"}:::plain
@@ -62,7 +62,7 @@ sequenceDiagram
   participant S as clerk step
   participant C as clerk, the dispatcher
   participant L as ledger and git
-  M->>S: clerk step --start slug --request "…"
+  M->>S: clerk step start slug --request "…"
   S->>L: write runs/slug/run.json
   loop until step is finished
     S->>L: prepare, in-process: run.json, tasks/, the receipt, git
@@ -89,16 +89,16 @@ Where a claim is stamped with the *code tree* it was made about, that means the 
 
 ```mermaid
 flowchart TD
-  start["start<br/>run.json exists"] -->|"clerk step --start"| ground
+  start["start<br/>run.json exists"] -->|"clerk step start"| ground
   ground["ground<br/>a guidelines --caller run is in the event log<br/>tree clean, else blocked"] -->|"clerk guidelines --caller"| isolate
   isolate["isolate<br/>the current branch is the slug"] -->|"clerk isolate"| decompose
-  decompose["decompose<br/>breakdown bound, task record lint clean<br/>approved when review_breakdown is on"] -->|"clerk step --done decompose --tasks-file"| build
+  decompose["decompose<br/>breakdown bound, task record lint clean<br/>approved when review_breakdown is on"] -->|"clerk step done decompose --tasks-file"| build
   build["build N, once per task<br/>done in the task record and the tree clean"] -->|"clerk finish N -- files, then the commit"| build
   build -. "gears on and the task is hard:<br/>pause N until --done pause N" .-> build
   build -->|"no task left open"| suite
   suite["suite<br/>a passing receipt at this code tree"] -->|"clerk receipt --passed"| audit
   audit["audit<br/>accepted at this code tree"] -->|"clerk audit round … accept"| match
-  match["match-request<br/>the request re-read against the branch"] -->|"clerk step --done match-request"| verify
+  match["match-request<br/>the request re-read against the branch"] -->|"clerk step done match-request"| verify
   verify["verify-run<br/>clerk verify clean, not_checked reviewed"] -->|"step runs verify itself<br/>--done verify-run"| land
   land["land<br/>archived; integrated when asked"] -->|"clerk land"| learn
   learn["learn<br/>an entry written, or --done learn --none"] -->|"clerk learn"| fin["finished<br/>run.json: finished true"]
@@ -153,7 +153,7 @@ flowchart LR
   land["clerk land"]:::clerk -->|archive record| ar
   land -->|land| rj
   logged["every logged command"]:::clerk -->|appends| ev
-  step["clerk step --start · --done"]:::clerk -->|done · breakdown · match_request| rj
+  step["clerk step start · --done"]:::clerk -->|done · breakdown · match_request| rj
   step -->|the step text it printed| sh
   step -->|appends, at the verify-run row| vl
   audit["clerk audit"]:::clerk --> aj
@@ -189,7 +189,7 @@ flowchart LR
   ev -->|"was a learning written?"| rl["the learn step<br/>is finished"]:::plain
   ev -->|"which fixups found a<br/>task boundary drawn wrong?"| rb["what this run tells<br/>the next plan"]:::plain
   ev -->|"when did each<br/>command run?"| rs["how long each<br/>step took"]:::plain
-  D["clerk step --done &lt;id&gt;"]:::you --> rj
+  D["clerk step done &lt;id&gt;"]:::you --> rj
   LD["clerk land"]:::clerk --> rj
   rj["run.json — what the model claimed,<br/>each with the code it claimed it about"]:::file
   rj -->|"read straight back,<br/>nothing to replay"| ra["decompose · match-request<br/>land · the cached verify pass"]:::plain
@@ -211,7 +211,7 @@ The audit keeps a file of its own because it wants both halves at once. Its list
 
 **Where it lives:** clerk: LOGGED · clerk_repo.py: ledger_log · clerk_ledger.py: events, guidelines_read, task_signals, gear, learn_written, fixup_ambiguities · method/clerk-step.md, section "The event log"
 
-**When you would change it:** A fact a clerk command already produces should be derived, not asserted — add a reader beside `guidelines_read` rather than a `--done` handler. Assert only what no command can see. Adding a command to `LOGGED` costs one set entry; taking one out silently strands every reader that folds it.
+**When you would change it:** A fact a clerk command already produces should be derived, not asserted — add a reader beside `guidelines_read` rather than a `step done` handler. Assert only what no command can see. Adding a command to `LOGGED` costs one set entry; taking one out silently strands every reader that folds it.
 
 ## Files, and which imports which
 

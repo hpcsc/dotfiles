@@ -3,7 +3,7 @@ wrote as the run went, and the transcripts the harness wrote beside it.
 
 The ledger alone gives every step's wall clock, each task's, each audit round's and each
 audit agent's, with the dollars the harness reported for the agents. Tokens live only in
-the transcripts, which are found from the session id `clerk step --start` stamps into
+the transcripts, which are found from the session id `clerk step start` stamps into
 the run — or, for a run from before that stamp, from `shown.json`, `--session`, or a
 picker over the transcripts that overlap the run.
 """

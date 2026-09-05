@@ -1,5 +1,5 @@
 ```
-clerk step --start <kebab-slug> --request "<the request, verbatim>" --harness opencode
+clerk step start <kebab-slug> --request "<the request, verbatim>" --harness opencode
 ```
 
 It opens the run and returns the first step under `next`.

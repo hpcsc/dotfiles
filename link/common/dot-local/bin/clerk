@@ -43,14 +43,14 @@ INLINE_NEXT = {"finish": "after_commit", "isolate": "next", "land": "next", "lea
 USAGE = """\
 clerk — deterministic mechanics for an implementation run
 
-A run is driven by `clerk step`: open it once with `clerk step --start <slug> --request
+A run is driven by `clerk step`: open it once with `clerk step start <slug> --request
 "<the request, verbatim>"`, then call `clerk step`, do what it says, and call it again
 until it reports finished. Every command is a subcommand listed below; `clerk <name>
 --help` describes each. Every flag that takes a value is written --flag <value>.
 
 Per-repo flag defaults — in_place, integrate, review_breakdown, gears — come from
 tasks/clerk.json (tracked, a team decision) or tasks/.environment (gitignored,
-machine-local), in that order, and the request typed to `clerk step --start` outranks
+machine-local), in that order, and the request typed to `clerk step start` outranks
 both. `clerk prepare` reports the resolved values as `flags` and where each came from as
 `flag_sources`.
 

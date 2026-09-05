@@ -41,7 +41,7 @@ def cmd_start(slug, request, harness):
         die(f"'{slug}' is the default branch; a run needs a branch of its own")
     run = Run(runs_root(common) / slug)
     if run.exists() and not run.finished:
-        emit({"started": False, "reason": f"run '{slug}' is open — continue it with `clerk step`, or `clerk step --rm {slug}` to abandon it",
+        emit({"started": False, "reason": f"run '{slug}' is open — continue it with `clerk step`, or `clerk step rm {slug}` to abandon it",
               "run": run_summary(run, cwd)}, 3)
     if run.exists():
         for p in run.dir.iterdir():
@@ -119,7 +119,7 @@ DONE = {"ground": done_ground, "decompose": done_decompose, "pause": done_pause,
 
 def cmd_done(ctx, step_id, argv):
     if ctx.run is None:
-        die("no run is open here — `clerk step --start <slug> --request ...` first", 3)
+        die("no run is open here — `clerk step start <slug> --request ...` first", 3)
     handler = DONE.get(step_id)
     if handler is None:
         die(f"unknown step '{step_id}' — --done takes {', '.join(DONE)}")
@@ -157,7 +157,7 @@ def cmd_step(ctx):
     if ctx.run is None:
         return {"run": None, "step": "start", "stop": False, "blocked": False,
                 "why_not_done": "no run is open for this branch",
-                "done_by": "clerk step --start <slug> --request \"<the request, verbatim>\"",
+                "done_by": "clerk step start <slug> --request \"<the request, verbatim>\"",
                 "open_runs": open_run_summaries(ctx), "resume": ctx.prepare.get("resume"),
                 "instructions": instructions_for("start", ctx.harness), "facts": facts_for(ctx)}
     return next_step(ctx)
@@ -177,32 +177,71 @@ def cmd_rm(slug):
     return {"removed": slug}
 
 
-STEP_SPEC = {"--start": "value", "--request": "value", "--done": "value", "--status": "bool",
-             "--rm": "value", "--run": "value", "--harness": "value", "--full": "bool",
+# `--full`, `--run` and `--harness` modify whatever is being asked; the verbs are
+# positional, the way `clerk audit` and `clerk story` spell theirs.
+STEP_SPEC = {"--request": "value", "--run": "value", "--harness": "value", "--full": "bool",
              "-h": "bool", "--help": "bool"}
+VERBS = ("start", "done", "status", "rm")
+
+USAGE = """\
+usage: clerk step                        the next step, computed from the repo and the ledger
+       clerk step start <slug> --request "<the request, verbatim>"
+       clerk step done <step> [args]     assert a step whose completion is a judgment
+       clerk step status                 every row, with whether it is done
+       clerk step rm <slug>              abandon a run
+
+       [--run <slug>] names the run when several are open; [--full] reprints the method
+       text; [--harness <name>] overrides harness detection."""
 
 
 def main_step(argv):
     """Every branch ends in emit(), which prints and exits; nothing falls through."""
-    if "--done" in argv:
-        # --done's own flags belong to the step; split them off before parsing ours.
-        i = argv.index("--done")
-        o, _ = parse(argv[: i + 2], STEP_SPEC)
-        ctx = build_ctx(o["--run"], o["--harness"], full=o["--full"])
-        emit(cmd_done(ctx, o["--done"], argv[i + 2:]))
-    o, rest = parse(argv, STEP_SPEC)
+    # The verb wherever it sits: `clerk step --run x status` and `clerk step status --run x`
+    # are the same request, and a caller that has to remember which order is one more rule.
+    verb, rest_argv = None, list(argv)
+    for i, a in enumerate(argv):
+        if a in VERBS and not (i and argv[i - 1] in ("--run", "--harness", "--request")):
+            verb, rest_argv = a, list(argv[:i]) + list(argv[i + 1:])
+            break
+    else:
+        bare = [a for i, a in enumerate(argv)
+                if not a.startswith("-") and not (i and argv[i - 1] in ("--run", "--harness", "--request"))]
+        if bare:
+            die(f"unknown verb '{bare[0]}' — clerk step takes {', '.join(VERBS)}, or nothing for the next step")
+
+    if verb == "done":
+        # The step's own flags are its business, not step's. Only the two that name which
+        # run this is are lifted out; everything else goes to the handler untouched.
+        tail, mine = list(rest_argv), {}
+        for flag in ("--run", "--harness"):
+            if flag in tail:
+                i = tail.index(flag)
+                if i + 1 >= len(tail):
+                    die(f"{flag} needs a value")
+                mine[flag] = tail[i + 1]
+                del tail[i:i + 2]
+        if not tail or tail[0].startswith("-"):
+            die(f"clerk step done <step> — one of {', '.join(DONE)}")
+        emit(cmd_done(build_ctx(mine.get("--run"), mine.get("--harness")), tail[0], tail[1:]))
+
+    o, rest = parse(rest_argv, STEP_SPEC)
     if o["-h"] or o["--help"]:
         print(__doc__.strip().splitlines()[0])
-        print("\nusage: clerk step [--start <slug> --request <text>] [--done <step> ...] [--status] [--full] [--rm <slug>] [--run <slug>] [--harness <name>]")
+        print("\n" + USAGE)
         sys.exit(0)
+
+    if verb == "start":
+        if not rest:
+            die('clerk step start <slug> --request "<the request, verbatim>"')
+        emit(cmd_start(rest[0], o["--request"], o["--harness"]))
+    if verb == "rm":
+        if not rest:
+            die("clerk step rm <slug>")
+        emit(cmd_rm(rest[0]))
     if rest:
         die(f"unexpected argument '{rest[0]}'")
-    if o["--start"]:
-        emit(cmd_start(o["--start"], o["--request"], o["--harness"]))
-    if o["--rm"]:
-        emit(cmd_rm(o["--rm"]))
-    ctx = build_ctx(o["--run"], o["--harness"], read_only=bool(o["--status"]), full=bool(o["--full"]))
-    if o["--status"]:
+    ctx = build_ctx(o["--run"], o["--harness"], read_only=(verb == "status"), full=bool(o["--full"]))
+    if verb == "status":
         emit(cmd_status(ctx))
     emit(cmd_step(ctx))
 

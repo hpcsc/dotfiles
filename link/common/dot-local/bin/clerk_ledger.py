@@ -279,7 +279,7 @@ def resolve_run(ctx, explicit, pick=False):
     if explicit:
         run = Run(runs_root(ctx.common) / explicit)
         if not run.exists():
-            die(f"no run '{explicit}' — `clerk step --status` from the default branch lists them")
+            die(f"no run '{explicit}' — `clerk step status` from the default branch lists them")
         return run
     slug = ctx.prepare.get("run")
     if slug:

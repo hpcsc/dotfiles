@@ -851,7 +851,7 @@ def main_audit(argv):
     if ctx.run is None:
         if verb not in ADHOC_VERBS:
             die(f"`clerk audit {verb}` records evidence against a run, and none is open "
-                f"here — `clerk step --start` first", 3)
+                f"here — `clerk step start` first", 3)
         ctx.run = adhoc_ledger(ctx)
         ctx.adhoc = True
     aud = ctx.run.read("audit.json", {"rounds_planned": None, "rounds": [], "accepted": None})

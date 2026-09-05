@@ -29,7 +29,7 @@ Pass the index rather than the whole file, because the file only ever grows and 
 ### Bind the breakdown to the run
 
 ```
-clerk step --done decompose --tasks-file <the breakdown>
+clerk step done decompose --tasks-file <the breakdown>
 ```
 
 Before it binds anything it runs `clerk lint --rule certainty-unevidenced` over the task record and refuses on a finding. Seconds, no agent, and it settles the one thing about an assessment that is not a matter of opinion: a task called `high` or `medium` certainty with no precedent named, or one citing a file that is not there. Both mean the same thing — a confidence with nothing behind it, which is how the field drifts to `high` on everything and stops being worth reading. Fix a finding by correcting the assessment, not by deleting the reference: a precedent you cannot produce is a task that is `low`. An adopted breakdown goes through the same check, which tells you whether the one you are about to build was checked when it was written.

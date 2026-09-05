@@ -11,7 +11,7 @@ Read the values rather than re-deriving them. Three carry precedence rules subtl
 - **`learnings_path`** — always `tasks/learnings.md` in the repo the learnings are about, beside the breakdowns. It hangs off the main checkout, so every worktree of one repo reads and writes the same file. A repo that gitignores `tasks/` keeps its learnings all the same; they simply stay local instead of reaching teammates.
 - **`flags`** — the run's flags, request first, then `tasks/clerk.json` (tracked, a team decision), then `tasks/.environment` (gitignored, machine-local), then off. `flag_sources` names what decided each, `request` included. Only whole tokens count, so a description that happens to say "integrate" is prose and not an instruction, and a request carrying both `--integrate` and `--no-integrate` reads as off — off is what a run does with nothing set, so an ambiguous signal must never be what changes it.
 
-The request is the top layer of the last two, and it needs no passing: `--start` recorded it verbatim, and every resolution since reads it from there.
+The request is the top layer of the last two, and it needs no passing: `clerk step start` recorded it verbatim, and every resolution since reads it from there.
 
 **Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
 

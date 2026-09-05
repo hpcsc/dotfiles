@@ -149,14 +149,14 @@ esac
 step=$(printf '%s' "$p" | grep -m1 -o '"step": "[a-z-]*"' | sed 's/.*"step": "//;s/"//')
 n=$(printf '%s' "$p" | grep -m1 -o '"n": [0-9]*' | sed 's/.*: //')
 case "$step" in
-  ground)   clerk step --done ground --caller exported >/dev/null ;;
-  decompose) clerk step --done decompose --tasks-file "tasks/story.md" >/dev/null ;;
+  ground)   clerk step done ground --caller exported >/dev/null ;;
+  decompose) clerk step done decompose --tasks-file "tasks/story.md" >/dev/null ;;
   build)    case "$n" in 1) f=a.go ;; *) f=b.go ;; esac
             printf 'package main\n' > "$f"
             clerk finish "$n" -- "$f" >/dev/null && git commit -qm "Task $n" ;;
-  match-request) clerk step --done match-request >/dev/null ;;
-  verify-run) clerk step --done verify-run >/dev/null ;;
-  learn)    clerk step --done learn --none >/dev/null ;;
+  match-request) clerk step done match-request >/dev/null ;;
+  verify-run) clerk step done verify-run >/dev/null ;;
+  learn)    clerk step done learn --none >/dev/null ;;
 esac
 emit "did the $step step"
 STUB
@@ -239,7 +239,7 @@ SEE=$(cd "$(mktemp -d)" && pwd -P)
 cat > "$SEE/claude" <<'STUB'
 #!/usr/bin/env bash
 p=$(cat)
-case "$p" in *'"step": "ground"'*) clerk step --done ground --caller exported >/dev/null ;; esac
+case "$p" in *'"step": "ground"'*) clerk step done ground --caller exported >/dev/null ;; esac
 case "$*" in
   *stream-json*)
     cat <<'EV'
@@ -300,7 +300,7 @@ cat > "$OC/opencode" <<'STUB'
 printf '%s\n' "$*" >> "$STUB_LOG"
 printf 'OPENCODE_CONFIG=%s\n' "${OPENCODE_CONFIG:-none}" >> "$STUB_LOG"
 p=$(cat)
-case "$p" in *'"step": "ground"'*) clerk step --done ground --caller exported >/dev/null ;; esac
+case "$p" in *'"step": "ground"'*) clerk step done ground --caller exported >/dev/null ;; esac
 printf '{"sessionID":"ses_abc","text":"named the caller pattern"}\n'
 STUB
 chmod +x "$OC/opencode"

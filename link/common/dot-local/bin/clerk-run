@@ -576,7 +576,7 @@ def open_run(cwd, slug, request, harness):
     if not slug or not request:
         die("no run is open here — name the story: clerk run --slug <kebab-slug> "
             "--request \"<the request, verbatim>\"", 3)
-    rc, out, err = clerk("step", "--start", slug, "--request", request,
+    rc, out, err = clerk("step", "start", slug, "--request", request,
                          "--harness", harness, cwd=cwd)
     if rc != 0 or not out or not out.get("started"):
         die(f"could not open the run: {(out or {}).get('reason') or err}", 3)

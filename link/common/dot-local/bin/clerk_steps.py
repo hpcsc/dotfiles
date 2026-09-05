@@ -42,7 +42,7 @@ MATCH_QUESTIONS = [
 # step used to carry a built-in copy of its text as well, for a machine without the
 # method — a second source, and it drifted from the first within a week.
 BUILTIN = {
-    "start": "No run is open here. Record the request verbatim: `clerk step --start <kebab-slug> --request \"<the request>\"`. The slug becomes the branch name.",
+    "start": "No run is open here. Record the request verbatim: `clerk step start <kebab-slug> --request \"<the request>\"`. The slug becomes the branch name.",
     "finished": "The run is complete.",
 }
 
@@ -149,7 +149,7 @@ def row_ground(ctx):
     return row("ground", False,
                why_not_done="no `clerk guidelines --caller <pattern>` has run for this run",
                done_by="clerk guidelines; then clerk guidelines --caller <pattern> [--dom] [--state]; then clerk step. "
-                       "(A repo with no guidelines directory: clerk step --done ground --caller <pattern>)")
+                       "(A repo with no guidelines directory: clerk step done ground --caller <pattern>)")
 
 
 def run_branch(ctx):
@@ -224,24 +224,24 @@ def row_decompose(ctx):
         return row("decompose", False,
                    why_not_done="no breakdown is bound to this run",
                    resume=resume, breakdowns=ctx.prepare.get("breakdowns"),
-                   done_by="clerk step --done decompose --tasks-file <tasks/<story>.md> [--approved]")
+                   done_by="clerk step done decompose --tasks-file <tasks/<story>.md> [--approved]")
     tf, side, archived = breakdown_files(ctx)
     if archived:
         return row("decompose", True, tasks_file=str(tf), task_record=str(side), archived=True)
     if not side.exists():
         return row("decompose", False, tasks_file=bd["tasks_file"],
                    why_not_done=f"no task record at {side} — a breakdown is bound with its tasks/<story>.json",
-                   done_by=f"decompose again, or write the task record by hand from the task sections; then clerk step --done decompose --tasks-file {bd['tasks_file']}")
+                   done_by=f"decompose again, or write the task record by hand from the task sections; then clerk step done decompose --tasks-file {bd['tasks_file']}")
     if file_hash(side) != bd.get("lint_hash"):
         findings = lint_task_record(side, ctx.cwd)
         if findings:
             return row("decompose", False, tasks_file=bd["tasks_file"], findings=findings,
                        why_not_done="the task record changed and `lint certainty-unevidenced` now reports findings",
-                       done_by="correct the assessments, then clerk step --done decompose --tasks-file again")
+                       done_by="correct the assessments, then clerk step done decompose --tasks-file again")
     if ctx.flags.get("review_breakdown") and not bd.get("approved"):
         return row("decompose", False, stop=True, tasks_file=bd["tasks_file"],
                    why_not_done="review_breakdown is on and the breakdown is not approved",
-                   done_by=f"show the breakdown and wait for approval; then clerk step --done decompose --tasks-file {bd['tasks_file']} --approved")
+                   done_by=f"show the breakdown and wait for approval; then clerk step done decompose --tasks-file {bd['tasks_file']} --approved")
     return row("decompose", True, tasks_file=bd["tasks_file"], task_record=breakdown_side(bd))
 
 
@@ -278,7 +278,7 @@ def row_build(ctx):
     if pauses and not shown:
         return row("pause", False, stop=True,
                    why_not_done=f"task {n} pauses after its tests ({', '.join(reasons)}) and they were not shown",
-                   done_by=f"write the tests, run them red, show the assertions, stop; then clerk step --done pause {n}",
+                   done_by=f"write the tests, run them red, show the assertions, stop; then clerk step done pause {n}",
                    **fields)
     return row("build", False, pause_after_tests=pauses,
                why_not_done=f"task {n} is open",
@@ -335,7 +335,7 @@ def row_match_request(ctx):
         return row("match-request", True)
     why = "the request was not re-read against this code tree" if not rec else "matched at an earlier code tree — the code changed since"
     return row("match-request", False, why_not_done=why,
-               done_by="clerk step --done match-request", **fields)
+               done_by="clerk step done match-request", **fields)
 
 
 
@@ -373,7 +373,7 @@ def row_verify_run(ctx):
     else:
         why = "clerk verify left checks in not_checked that need judgment"
         done_by = ("spawn run-verifier, passing it the `not_checked` list verbatim so it works "
-                   "those gaps rather than the whole branch; then clerk step --done verify-run")
+                   "those gaps rather than the whole branch; then clerk step done verify-run")
     return row("verify-run", False, why_not_done=why,
                verify=data, done_by=done_by)
 
@@ -442,7 +442,7 @@ def row_learn(ctx):
     return row("learn", False, why_not_done="no learning was written for this run",
                learnings_path=ctx.prepare.get("learnings_path"), breakdown_signals=breakdown_signals(ctx),
                done_by=f"clerk learn --list; clerk learn --type ... --title ... --learning ... --apply-when ... --feature {ctx.run.slug}; "
-                       f"or, for a run with nothing that generalises: clerk step --done learn --none")
+                       f"or, for a run with nothing that generalises: clerk step done learn --none")
 
 
 ROWS = [("ground", row_ground), ("isolate", row_isolate), ("decompose", row_decompose), ("build", row_build),

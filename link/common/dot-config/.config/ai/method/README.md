@@ -76,10 +76,10 @@ ledger, and the next step appears when this one's evidence exists.
 flowchart LR
   subgraph MODEL["the model"]
     direction TB
-    S0["clerk step --start &lt;slug&gt;<br/>--request '&lt;the request, verbatim&gt;'"]
+    S0["clerk step start &lt;slug&gt;<br/>--request '&lt;the request, verbatim&gt;'"]
     S1["clerk step"]
     DO["do what instructions says:<br/>run the commands, write the code"]
-    DN["clerk step --done &lt;step&gt; …<br/>asserted steps only"]
+    DN["clerk step done &lt;step&gt; …<br/>asserted steps only"]
   end
   subgraph CLERK["clerk step"]
     direction TB
@@ -112,7 +112,7 @@ flowchart LR
 
 The table `clerk step` walks, top to bottom. Green rows are **derived** — clerk checks the
 world and the record; orange rows are **asserted** — completion is a judgment, recorded
-with `clerk step --done` and stamped with the code tree it applies to; pink is a human
+with `clerk step done` and stamped with the code tree it applies to; pink is a human
 checked. A row names the command that supplies its evidence.
 
 ```mermaid
@@ -120,15 +120,15 @@ flowchart TD
   START["start<br/>run.json holds the request verbatim"] --> GROUND
   GROUND["ground<br/>a clerk guidelines --caller run exited 0<br/>blocked while the tree is dirty"] --> ISOLATE
   ISOLATE["isolate<br/>branch == slug<br/>clerk isolate"] --> DECOMPOSE
-  DECOMPOSE["decompose<br/>breakdown bound · task record present · lint clean<br/>clerk step --done decompose --tasks-file"] --> TASK
+  DECOMPOSE["decompose<br/>breakdown bound · task record present · lint clean<br/>clerk step done decompose --tasks-file"] --> TASK
   TASK{"task N<br/>first open task with its<br/>dependencies done"} -->|"gears on, and low certainty /<br/>high blast radius / downshifted"| PAUSE
-  PAUSE["pause N · stop: true<br/>clerk step --done pause N"] --> BUILD
+  PAUSE["pause N · stop: true<br/>clerk step done pause N"] --> BUILD
   TASK --> BUILD["clerk finish N -- files<br/>stages · lints · marks done<br/>the commit leaves the tree clean"]
   BUILD -->|"tasks open"| TASK
   BUILD -->|"none open"| SUITE
   SUITE["suite<br/>receipt green at this code tree"] --> AUDIT
   AUDIT["audit<br/>clerk audit run · round · accept"] --> MATCH
-  MATCH["match-request<br/>clerk step --done match-request"] --> VERIFY
+  MATCH["match-request<br/>clerk step done match-request"] --> VERIFY
   VERIFY["verify-run<br/>clerk verify clean · not_checked reviewed"] --> LAND
   LAND["land<br/>clerk land · the checks read the acceptance<br/>fast-forward from the main checkout"] --> LEARN
   LEARN["learn<br/>a clerk learn write, or --done learn --none"] --> FIN["finished"]
@@ -167,7 +167,7 @@ The markdown describes the tasks in prose
 and the task record carries the dependency graph and the run's progress. Nothing rewrites
 the markdown afterwards. Then the only check before code.
 
-A breakdown with no task record cannot be bound: `clerk step --done decompose` refuses
+A breakdown with no task record cannot be bound: `clerk step done decompose` refuses
 rather than guessing at dependencies from prose. Decompose it again, or write the task record
 by hand from the task sections.
 
@@ -235,7 +235,7 @@ that produces evidence appends its run to the ledger's `events.jsonl` on the way
 done, `receipt` binds the green, `audit round` and `audit accept` record the audit, `land`
 stamps what it decided, `learn` writes the entry. The rest are **asserted**, the way the
 land takes `--audit-accepted`: the breakdown is bound, the tests were shown, the request was
-re-read, what the verifier left in `not_checked` was reviewed — recorded with `clerk step --done`, stamped
+re-read, what the verifier left in `not_checked` was reviewed — recorded with `clerk step done`, stamped
 with the code tree they apply to. Receipts and acceptances compare by code tree, the HEAD
 tree minus the breakdown files under `tasks/`, so the archive commit does not stale a
 green. The method text lives one step per file under `implement/steps/`, read by the
@@ -304,7 +304,7 @@ flowchart LR
     j8["that the breakdown is bound, the tests shown,<br/>the request re-read, not_checked reviewed"]
   end
   M -.->|"facts, refusals, the next step,<br/>and what it could not settle"| J
-  J -.->|"assertions it cannot infer<br/>clerk audit accept · clerk step --done"| M
+  J -.->|"assertions it cannot infer<br/>clerk audit accept · clerk step done"| M
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
   class m1,m2,m3,m4,m5,m6,m7,m8,m9,m10 clerk
@@ -333,7 +333,7 @@ with `--audit-accepted`. Without either, land refuses.
 | `lint [--staged] [--rule <r>]... [<paths>]` | The conventions a regex settles: a comment naming code by its position in the breakdown, scenario-named sibling tests, a method apart from its type — and, over a breakdown's task record, a certainty assessed `high` or `medium` with no precedent behind it | 0 clean · **1** findings |
 | `verify` | Uncommitted work, unproven suites, scattered tasks, plus `not_checked` | 0 clean · **1** block |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
-| `step [--start <slug> --request <text>] [--done <step> …] [--status] [--run <slug>] [--rm <slug>]` | The first step of the run that is not done, with the method text for it, computed from the repository and the run's ledger on every call; `--start` opens a run and records the request verbatim; `--done` records the steps whose completion is a judgment | 0 · **3** several open runs |
+| `step` · `step start <slug> --request <text>` · `step done <step> …` · `step status` · `step rm <slug>` | The first step of the run that is not done, with the method text for it, computed from the repository and the run's ledger on every call; `start` opens a run and records the request verbatim; `done` records the steps whose completion is a judgment | 0 · **3** several open runs |
 | `audit run [--rounds <n>] …` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and land read | 0 · **3** refused |
 
 Every command takes `--tasks-file` when `tasks/` holds more than one breakdown. Exit 2
@@ -529,7 +529,7 @@ flowchart TD
 
 The step files are the one text with two readers: the generator concatenates them into
 the document a human reads, and `clerk step` prints one of them at a time, with the variants
-resolved for the harness the run recorded at `--start`.
+resolved for the harness the run recorded at `clerk step start`.
 
 A procedure the agent must follow in full is **concatenated, not referenced**: splitting
 it into "now read these six files" adds six reads and invites the partial compliance the
@@ -540,7 +540,7 @@ partially by design — so they stay referenced.
 
 | Seam | Claude Code | opencode |
 |---|---|---|
-| start | `clerk step --start <slug> --request …` — `CLAUDECODE` in the environment names the harness | the same, plus `--harness opencode`, said once; the run records it |
+| start | `clerk step start <slug> --request …` — `CLAUDECODE` in the environment names the harness | the same, plus `--harness opencode`, said once; the run records it |
 | invocation | the harness substitutes `$ARGUMENTS` into the skill | the wrapper is substituted; the skill is read as a file |
 | worktree | `EnterWorktree` / `ExitWorktree` | `git worktree add` + `cd` |
 | decompose | Agent tool | `task` tool, self-contained prompt |
@@ -559,7 +559,7 @@ memory.
 
 The method therefore never depends on the token. It opens by naming the thing instead:
 **the request** is everything the caller handed over, recorded verbatim by
-`clerk step --start` before anything else happens, and every later step reads it from
+`clerk step start` before anything else happens, and every later step reads it from
 that record — the audit and match-request steps get it back as `request`. Three steps need it — whether
 `--in-place` was passed, whether an existing breakdown was named, and handing the
 request to the audit unsummarized — and all three work the same way on both tools.

@@ -32,6 +32,44 @@ local function with_identifier_triggers(server_chars)
 	return chars
 end
 
+-- The kind column: a nerd-font glyph coloured like the same construct in the
+-- buffer, in place of the LSP kind name Neovim shows by default. Color items are
+-- left out on purpose; their default kind is a swatch in the colour itself.
+local KIND_ICONS = {
+	Text = { "󰉿", "String" },
+	Method = { "󰆧", "Function" },
+	Function = { "󰊕", "Function" },
+	Constructor = { "󱌣", "Function" },
+	Field = { "󰜋", "Identifier" },
+	Variable = { "󰫧", "Identifier" },
+	Class = { "󰠱", "Type" },
+	Interface = { "󰠲", "Type" },
+	Module = { "󰏗", "Include" },
+	Property = { "󰘮", "Identifier" },
+	Unit = { "󰑭", "Number" },
+	Value = { "󰎠", "Constant" },
+	Enum = { "󰉺", "Type" },
+	Keyword = { "󰌋", "Keyword" },
+	Snippet = { "󰎞", "Special" },
+	File = { "󰈙", "Directory" },
+	Reference = { "󰌹", "Identifier" },
+	Folder = { "󰉋", "Directory" },
+	EnumMember = { "󰓼", "Constant" },
+	Constant = { "󰏿", "Constant" },
+	Struct = { "󰅩", "Type" },
+	Event = { "󱐋", "Special" },
+	Operator = { "󰦒", "Operator" },
+	TypeParameter = { "󰅴", "Type" },
+}
+
+local function with_kind_icon(item)
+	local icon = KIND_ICONS[vim.lsp.protocol.CompletionItemKind[item.kind]]
+	if not icon then
+		return {}
+	end
+	return { kind = icon[1], kind_hlgroup = icon[2] }
+end
+
 -- Neovim's built-in LSP/diagnostic keymaps (0.11+, set on attach) stay as-is:
 --   K           hover
 --   grn         rename
@@ -67,7 +105,7 @@ function M.on_attach(client, bufnr)
 	if client:supports_method("textDocument/completion") then
 		local provider = client.server_capabilities.completionProvider
 		provider.triggerCharacters = with_identifier_triggers(provider.triggerCharacters)
-		vim.lsp.completion.enable(true, client.id, bufnr, { autotrigger = true })
+		vim.lsp.completion.enable(true, client.id, bufnr, { autotrigger = true, convert = with_kind_icon })
 	end
 end
 

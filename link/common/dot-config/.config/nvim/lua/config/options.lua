@@ -33,6 +33,10 @@ opt.scrolloff = 1 -- always keep 1 line above and below the cursor for context
 opt.background = "dark"
 opt.complete:remove("i") -- disable scanning included files for keyword completion
 opt.completeopt = { "menu", "menuone", "noselect", "popup", "fuzzy" } -- LSP autocompletion menu: always show, never preselect
+opt.pumheight = 12 -- ... at most 12 rows tall, then scroll
+opt.pummaxwidth = 60 -- ... and at most 60 columns wide, truncating the rest
+opt.pumborder = "rounded"
+opt.fillchars:append({ trunc = "…" }) -- marks text 'pummaxwidth' cut off
 -- Open new split panes to right and bottom, which feels more natural
 opt.splitbelow = true
 opt.splitright = true

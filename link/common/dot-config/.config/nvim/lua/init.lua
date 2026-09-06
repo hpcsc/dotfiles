@@ -5,6 +5,7 @@ function M.setup(opts)
 	require("usercommands")
 	require("config.options")
 	require("config.autocmds")
+	require("config.highlights")
 	require("config.lazy").setup(opts.lazy)
 	require("config.mappings")
 end

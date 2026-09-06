@@ -2,6 +2,8 @@ Your lens is this project's OWN conventions — naming, structure, layering, idi
 
 Also weigh every new or changed comment against {{comments_guide}}: a comment that only restates what the code says, or names code by its plan position ("task N", "step 2", "the new helper") rather than its domain role, is a violation — `quality_kind: "comment-usage"`.
 
+And weigh every new or renamed identifier against {{naming_guide}}: one word used for two concepts or two words for one, a formal synonym where a plain word exists, a metaphor a reader has to have explained, or a concept whose own explanation runs longer than its definition — `quality_kind: "naming"`. The language's own naming-patterns guideline still governs package, interface and constructor structure; this one governs the words.
+
 Required reading: {{reading}}. {{disclosure}}
 
 A convention you cannot point at in a guideline or in the surrounding code is a personal preference — do not raise it.

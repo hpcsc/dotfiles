@@ -17,6 +17,7 @@ from pathlib import Path
 
 CALLER_PATTERNS = "~/.config/ai/guidelines/testing/caller-patterns.md"
 COMMENTS_GUIDE = "~/.config/ai/guidelines/comments.md"
+NAMING_GUIDE = "~/.config/ai/guidelines/naming.md"
 
 DISCLOSURE = (
     "Load these with one `clerk guidelines` call rather than reading the files: it cuts each to the sections "
@@ -479,7 +480,7 @@ class _PromptCtx:
     def guidelines(self, lang, remit):
         return (self.preamble(remit)
                 + fill(self._p("lens-guidelines"),
-                       {"comments_guide": COMMENTS_GUIDE,
+                       {"comments_guide": COMMENTS_GUIDE, "naming_guide": NAMING_GUIDE,
                         "reading": ", ".join(LANG[lang]["reading"]), "disclosure": DISCLOSURE})
                 + self.contract())
 

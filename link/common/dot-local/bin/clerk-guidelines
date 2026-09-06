@@ -65,7 +65,7 @@ OPTIONAL_FILES = {
     "state": "javascript/state-management.md",
 }
 
-ALWAYS = ["testing/caller-patterns.md", "comments.md"]
+ALWAYS = ["testing/caller-patterns.md", "comments.md", "naming.md"]
 
 # The guidelines that declare concepts, and so are read in parts. Everything else is
 # short enough that slicing would cost a heading map to save nothing, and arrives whole.

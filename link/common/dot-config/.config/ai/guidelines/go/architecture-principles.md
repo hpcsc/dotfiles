@@ -51,6 +51,13 @@
 - The file that declares a type declares every method on it. Reading the type's file is reading everything it can do.
 - **A new file means a new type.** When the declaring file grows too large, extract a collaborator with its own name, its own dependencies and its own constructor — never move some of the methods sideways into a second file that keeps the same receiver.
 - A second file with the same receiver is the symptom, not the problem: a file named for one capability adding methods to a type named for another has already named the type it should have declared.
+- **And the converse: a file whose declarations do not refer to each other is already two files.** Treat the file's declarations as a graph — one declaration mentioning another is an edge. Two components with no edge between them are two files that happen to share a name. This is worth checking mechanically; it finds strandings the eye skips, such as a helper sitting in the file of a type that never calls it.
+
+**Order within the file:**
+- Declare the type, then its constructors, then its methods. A reader scrolling the type's behaviour should never pass through a different type to reach the rest of it.
+- Free functions go last, together. A helper dropped between two methods reads as a third method until you check the receiver.
+- A second type in the file is a part of the named one, and where it goes depends on which part. A small value type the named type's fields are written in — an enum, a pair — goes before it, because you need it to read the struct. A collection of it, or a satellite it owns, goes after, with its own methods following it.
+- Keep a blank line between every top-level declaration. `gofmt` does not insert them, so a mechanical reorder can run four declarations together and still format clean.
 
 **Extracting the collaborator:**
 - Give it only the dependencies its own methods use, construct it in the owner's constructor, and have the owner delegate.

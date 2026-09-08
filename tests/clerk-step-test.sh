@@ -599,6 +599,15 @@ run "$RJ" step done match-request >/dev/null
 receipt_ok "$RJ" true >/dev/null
 run "$RJ" step done verify-run >/dev/null
 eq "the in-place run reaches land" "land" "$(run "$RJ" step | field .step)"
+
+# The archive record is one file per checkout, and it outlives the run that wrote it: an
+# earlier story's record closed the land row of every in-place run that followed, and the
+# run reached `finished` without archiving or integrating anything.
+printf '{"path": "tasks/completed/earlier.md", "name": "earlier"}\n' > "$RJ/.git/clerk/archived.json"
+eq "an earlier story's archive record does not archive this run" "land|archive" \
+   "$(run "$RJ" step | jq -r '[.step, .action] | join("|")')"
+rm -f "$RJ/.git/clerk/archived.json"
+
 LJ=$(run "$RJ" land --audit-accepted)
 eq "land --integrate in place fast-forwards and deletes the branch" "true|ij" \
    "$(printf '%s' "$LJ" | jq -r '[(.landed|tostring), .deleted_branch] | join("|")')"
@@ -613,6 +622,11 @@ LN=$(run "$RJ" learn add --type convention --title "Keep it" --learning "A fact.
 eq "a clerk learn write is the evidence: no --done needed, and learn hands over the end" "finished" \
    "$(printf '%s' "$LN" | jq -r '.next.step')"
 eq "which stamps the run finished" "true" "$(jq -r '.finished' "$RJ/.git/clerk/runs/ij/run.json")"
+eq "landing wrote an archive record naming this run's breakdown" "ij" \
+   "$(jq -r .name "$RJ/.git/clerk/archived.json")"
+run "$RJ" step start ij2 --request "The next story in this checkout" >/dev/null
+eq "and the next run in this checkout starts without it" "false" \
+   "$([ -f "$RJ/.git/clerk/archived.json" ] && echo true || echo false)"
 
 # --------------------------------------------------------------------------------
 printf '\nsignals — ground is the guidelines run; gears shifts on what the run observed\n'

@@ -17,7 +17,7 @@ from pathlib import Path
 
 from clerk_lib import clerk, die, git, gitout, worktree_for
 from clerk_method import Renderer
-from clerk_repo import breakdown_side
+from clerk_repo import archive_record, breakdown_side
 from clerk_tasks import load_task_record, next_task
 from clerk_verify import verify
 from clerk_ledger import (age_seconds, fixup_ambiguities, gear, guidelines_read, is_ancestor,
@@ -167,14 +167,15 @@ def run_branch(ctx):
 def landed_elsewhere(ctx):
     """True when the run has left its branch for a reason the table accepts: the branch
     was merged or deleted, or its worktree holds the archive record."""
-    if not ctx.run.section("breakdown"):
+    bd = ctx.run.section("breakdown")
+    if not bd:
         return False
     b = run_branch(ctx)
     if not b["exists"] or b["merged"]:
         return True
     if b["worktree"]:
         gd = gitout("rev-parse", "--absolute-git-dir", cwd=b["worktree"])
-        return bool(gd) and (Path(gd) / "clerk" / "archived.json").exists()
+        return bool(gd) and bool(archive_record(Path(gd) / "clerk", bd["tasks_file"]))
     return False
 
 
@@ -384,7 +385,8 @@ def row_land(ctx):
     if stamp and stamp.get("landed"):
         return row("land", True, archived=True, integrated=True, source="the run's land record")
     if ctx.branch == slug:
-        archived = bool(stamp) or (Path(ctx.git_dir) / "clerk" / "archived.json").exists()
+        bd = ctx.run.section("breakdown")
+        archived = bool(stamp) or bool(bd and archive_record(Path(ctx.git_dir) / "clerk", bd["tasks_file"]))
         if not archived:
             return row("land", False, action="archive", why_not_done="the breakdown is not archived",
                        integrate=ctx.flags.get("integrate"),

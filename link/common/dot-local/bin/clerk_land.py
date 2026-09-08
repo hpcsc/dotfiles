@@ -15,9 +15,17 @@ from pathlib import Path
 
 from clerk_lib import die, emit, git, gitout
 from clerk_ledger import Run
-from clerk_repo import (breakdown_for, common_dir, current_branch, default_branch, env_get, head_sha,
-                        is_ignored, ledger_dir, now, receipt_state, repo_root, resolve_flag,
-                        run_records_dir, task_record_for, state_dir, tasks_home, tasks_hint, work_tree)
+from clerk_repo import (archive_record, breakdown_for, common_dir, current_branch, default_branch,
+                        env_get, head_sha, is_ignored, ledger_dir, now, receipt_state, repo_root,
+                        resolve_flag, run_records_dir, task_record_for, state_dir, tasks_home,
+                        tasks_hint, work_tree)
+
+
+def run_breakdown():
+    """The breakdown the run this call belongs to bound, or None outside a run."""
+    ldir = ledger_dir()
+    bd = Run(ldir).section("breakdown") if ldir else None
+    return bd.get("tasks_file") if bd else None
 
 
 def stamp_land(record):
@@ -148,11 +156,12 @@ def land_checks(audit_accepted=False, tasks_override=None):
     checks = []
 
     tasks, _ = breakdown_for(tasks_override)
-    archived = Path(state) / "archived.json"
-    if not tasks and archived.is_file():
-        # Archiving needs every task closed, so the archive record IS that evidence,
-        # and a second `land` after a rebase does not refuse a run that already satisfied it.
-        ok, detail = True, f"breakdown already archived at {json.loads(archived.read_text()).get('path')}"
+    # Archiving needs every task closed, so the archive record IS that evidence, and a
+    # second `land` after a rebase does not refuse a run that already satisfied it. It
+    # must be this run's archive: the record outlives the run that wrote it.
+    rec = archive_record(state, run_breakdown()) if not tasks else None
+    if rec:
+        ok, detail = True, f"breakdown already archived at {rec.get('path')}"
     elif not tasks:
         ok, detail = False, f"no task file found under {wt}/tasks (pass --tasks-file to name it)"
     elif not Path(tasks).is_file():

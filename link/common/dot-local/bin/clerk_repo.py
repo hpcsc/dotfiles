@@ -57,6 +57,26 @@ def state_dir(cwd=None):
     return f"{gd}/clerk" if gd else None
 
 
+def archive_record(state, tasks_file=None):
+    """The archive `clerk land` wrote in this checkout, or None when it is not the archive
+    of `tasks_file`. The file holds one record, names no run, and nothing removes it, so a
+    second in-place run reads the first one's and lands on its evidence. A caller with no
+    breakdown to match against passes None and takes any record."""
+    rec = ledger_read(Path(state) / "archived.json") if state else None
+    if not rec:
+        return None
+    if tasks_file and Path(rec.get("path") or "").name != Path(tasks_file).name:
+        return None
+    return rec
+
+
+def clear_archive_record(state):
+    """Drop the archive record an earlier run left in this checkout. The record is evidence
+    that this run archived, and a run that is starting has none."""
+    if state:
+        (Path(state) / "archived.json").unlink(missing_ok=True)
+
+
 def run_records_dir(state, tasks_file):
     """Where `finish` records which files belonged to which task, one directory per
     breakdown: keyed on the task number alone, a second story's records overwrote the

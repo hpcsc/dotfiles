@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clerk_lib import clerk, die, emit, git, gitout, parse, resolve_tasks_arg, take_verb  # noqa: E402
 from clerk_ledger import (CALLERS, Run, build_ctx, detect_harness, now, open_run_summaries,  # noqa: E402
                           run_summary, runs_root, session_id)
+from clerk_repo import clear_archive_record, state_dir  # noqa: E402
 from clerk_steps import (ROWS, active_rows, facts_for, file_hash, instructions_for,  # noqa: E402
                          lint_task_record, next_step)
 from clerk_tasks import status_of  # noqa: E402
@@ -46,6 +47,7 @@ def cmd_start(slug, request, harness):
     if run.exists():
         for p in run.dir.iterdir():
             p.unlink()
+    clear_archive_record(state_dir(cwd))
     run.write("run.json", {"slug": slug, "request": request, "started_at": now(), "launch_cwd": cwd,
                            "launch_branch": prep.get("branch"), "harness": harness or detect_harness(),
                            "session_id": session_id(), "finished": False})

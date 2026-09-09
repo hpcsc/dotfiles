@@ -41,6 +41,8 @@ Four checks earlier runs paid for, each of which shipped a defect that a passing
 - **Moving code can silently invert a source-scanning test.** A test that locates code with `readFileSync` plus `indexOf`/`substring` bounds starts scanning nothing when the bounds cross, and passes forever.
 - **Look at UI in a browser.** CSS and layout defects are invisible to a green suite. Run the app, open the page, look at it.
 
+**An artefact you look at costs the rest of the run.** A screenshot, a rendered page or a binary read whole stays in context for every turn after it, and the audit pays for it on all of them. One run read three PNGs of an app icon while proving a task, and they were still there at the run's last turn. So look once, then make the comparison mechanical: have the probe assert the image against a reference and report a verdict, and keep only what you are still reasoning about.
+
 **If the tests will not go green, report the real failure output.** Do not weaken the test to pass, and do not commit red.
 
 ### 4. Commit the task

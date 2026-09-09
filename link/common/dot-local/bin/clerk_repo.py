@@ -367,9 +367,9 @@ def request_tokens(request):
 
 
 def request_learnings_path(request, root):
-    """`--learnings-path <p>` or `--learnings-path=<p>` in the request. A caller fanning
-    several runs over one story gives each its own file. Relative resolves against the
-    repo root, not the cwd."""
+    """`--learnings-path <p>` or `--learnings-path=<p>` in the request, for a caller with a
+    reason to keep one run's learnings out of the repo's file. Relative resolves against
+    the repo root, not the cwd."""
     toks = request_tokens(request)
     p = None
     for i, t in enumerate(toks):

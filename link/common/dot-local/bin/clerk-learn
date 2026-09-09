@@ -9,9 +9,9 @@ read again, and nothing about the result says so — the append succeeds, the te
 there, and the next run reads the real file and finds it empty.
 
 So the path is asked for rather than derived, defaulting to what `clerk prepare` resolves
-(from the repo root, whatever the cwd) and taking --path for the case that override
-exists to serve: a caller fanning several runs over one story gives each its own file,
-because they share a git-common-dir and would otherwise append over each other.
+(from the repo root, whatever the cwd) and taking --path as an escape hatch. No caller
+passes it: runs fanned over one story share the repo's file, and the append below is
+O_APPEND, so concurrent entries land whole rather than over each other.
 
 What stays judgment is the whole of the content — whether a candidate survives the
 falsifiable filter, and whether it duplicates an existing entry *in substance*. This only

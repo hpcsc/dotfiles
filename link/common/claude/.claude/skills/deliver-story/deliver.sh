@@ -102,7 +102,6 @@ fi
 [ -f "$PLAN" ] || die "plan not found: $PLAN"
 
 MAIN_ROOT=$(git rev-parse --show-toplevel) || die "not in a git repo"
-REPO=$(basename "$MAIN_ROOT")
 STORY_SLUG=$(yq -r '.story_slug // ""' "$PLAN")
 [ -n "$STORY_SLUG" ] || die "plan has no story_slug: $PLAN"
 
@@ -190,7 +189,6 @@ in_only() {
   return 1
 }
 
-LEARN_DIR="$HOME/.claude/implement-learnings/$REPO/$STORY_SLUG"
 launched=0
 waiting=0
 chosen=0
@@ -296,7 +294,6 @@ while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
   [ -f "$tasks_abs" ] || die "deliverable $id: task file missing: $tasks_abs"
   bc=$(base_commit "$base") || die "deliverable $id: cannot resolve base '$base'"
 
-  learnings="$LEARN_DIR/$id.md"
   handle="$STORY_SLUG-$id"
   # --in-place because workmux already made the worktree and started this agent inside it;
   # without it the run would scaffold a second one for work it is already standing in.
@@ -305,7 +302,7 @@ while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
   # --no-integrate as a flag rather than only as prose: a repo may set integrate=true, and
   # `clerk land` honours that in code, which would merge each deliverable into the default
   # branch — dismantling the stack these runs exist to produce before anyone reviews it.
-  prompt="/implement $tasks_abs --in-place --no-integrate (adopt this task file; persist run learnings to $learnings; leave the branch for review)"
+  prompt="/implement $tasks_abs --in-place --no-integrate (adopt this task file; leave the branch for review)"
 
   # The agent pane workmux focuses; killing every other pane in that window
   # leaves the deliverable with a single pane. In window mode the deliverable is a window of
@@ -332,7 +329,6 @@ while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
     set_status "$id" running
     launched_handles="$launched_handles $handle"
   else
-    mkdir -p "$LEARN_DIR"
     # stdin is the deliverable-list pipe feeding this loop; workmux reads a non-tty stdin as a
     # worktree list and then rejects --name as multi-worktree generation.
     if workmux "$@" </dev/null; then

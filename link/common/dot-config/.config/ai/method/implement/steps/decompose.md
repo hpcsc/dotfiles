@@ -1,5 +1,7 @@
 ## Decompose the story into tasks
 
+{{include:shared/reading.md}}
+
 ### Adopt an existing breakdown if there is one
 
 If the request names a file in `tasks/`, or the step reported a `resume`, read that breakdown, present it with `clerk status`, and skip decomposing. Tasks with `done: true` in the task record are finished — `clerk step` resumes at the first unblocked one that is not.

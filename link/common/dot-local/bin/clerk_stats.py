@@ -120,7 +120,11 @@ def windows(run):
 
     build_end = max(finishes.values()) if finishes else None
     suite_end = first("receipt", after=build_end) if build_end else None
-    accepted = (aud.get("accepted") or {}).get("at")
+    # The audit ends at the FIRST acceptance. A later step can send the run back — match-request
+    # re-reads the story and finds a criterion nothing guards — and the re-acceptance that
+    # follows belongs to the step that found it, not to the audit that had already closed.
+    accepts = aud.get("accepts") or ([aud["accepted"]] if aud.get("accepted") else [])
+    accepted = accepts[0].get("at") if accepts else None
     rounds = aud.get("rounds") or []
     audit_end = parse_at(accepted) if accepted else None
     match_end = parse_at(match.get("at"))

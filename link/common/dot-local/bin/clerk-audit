@@ -226,6 +226,7 @@ def audit_accept(ctx, aud, o):
         emit({"accepted": False, "reason": f"{planned} rounds planned, {len(rounds)} recorded — run the rest, or pass --early \"<why>\""}, 3)
     aud["accepted"] = {"at": now(), "code_tree": ctx.head_ct, "sha": ctx.head,
                        "rounds": len(rounds), "reason": o["--early"]}
+    aud.setdefault("accepts", []).append(aud["accepted"])
     ctx.run.write("audit.json", aud)
     summary = audit_summary(aud, aud["accepted"]["at"])
     if o["--early"]:

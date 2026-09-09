@@ -405,6 +405,15 @@ eq "with no session on record there are no tokens, and the reason is said" "null
 eq "--text renders the same as a table that opens with the run" "run w1" \
    "$(run "$WT" stats --run w1 --text | head -1 | cut -d' ' -f1-2)"
 
+# The audit ends where it was FIRST accepted. A later step can send the run back — match-request
+# re-reads the story and finds a criterion nothing guards — and the re-acceptance that follows
+# belongs to the step that found it.
+A0=$(printf '%s' "$S" | jq -r '.steps[] | select(.step=="audit") | .end')
+jq --arg a "2030-01-01T00:00:00Z" '.accepts += [{at: $a}] | .accepted.at = $a' "$AJW" > "$AJW.new" \
+  && /bin/mv -f "$AJW.new" "$AJW"
+eq "a re-acceptance does not stretch the audit over the steps after it" "$A0" \
+   "$(run "$WT" stats --run w1 --json | jq -r '.steps[] | select(.step=="audit") | .end')"
+
 # A transcript the harness might have written, in the folder it keeps for the run's
 # working directory: one turn streamed as two lines, and one turn from after the run.
 TD=$(cd "$(mktemp -d)" && pwd -P)

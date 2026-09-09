@@ -4,6 +4,8 @@ keeps every agent that had landed: `clerk audit run` resumes it and spawns only 
 `clerk audit status` says whether its runner is still alive, and what ended it is written
 to the round's `incidents`.
 
+**Then wait, and do not end your turn.** The background completion re-invokes you when the round exits. A turn that ends first can only be restarted by the user, and the round landing does not restart it — so do not poll the progress file between checks.
+
 **Say where it can be watched.** Its first two lines are `progress: <path>`, a file in the
 run's ledger that gets every phase, every agent and every tool call whatever the console is
 set to, and `watch: clerk watch <path>`, the command that draws that file as phases and

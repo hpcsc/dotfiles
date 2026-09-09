@@ -3,6 +3,8 @@ the background, polling its output. A round that is killed keeps every agent tha
 landed: `clerk audit run` resumes it and spawns only the rest, `clerk audit status` says
 whether its runner is still alive, and what ended it is written to the round's `incidents`.
 
+**Then wait inside one call, and do not end your turn.** `clerk watch <progress>` blocks until the round lands. Where a tool timeout will not stretch that far, loop in the shell inside a single call. A poll that ends the turn needs a human to resume it, and the round finishing does not summon one.
+
 **Say where it can be watched.** Its first two lines are `progress: <path>`, a file in the
 run's ledger that gets every phase, every agent and every tool call whatever the console is
 set to, and `watch: clerk watch <path>`, the command that draws that file as phases and

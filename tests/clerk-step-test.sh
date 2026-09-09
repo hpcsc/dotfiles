@@ -686,7 +686,8 @@ run "$RA" step start story --request "a story" >/dev/null 2>&1
 git -C "$RA" switch -qc story 2>/dev/null
 PR=$(cd "$(mktemp -d)" && pwd -P); mkdir -p "$PR/audit-implement/prompts"
 for f in scope-open scope-rules review-open review-rules finding-contract lens-semantic \
-         lens-guidelines lens-tests lens-concurrency lens-performance dedupe-open \
+         lens-guidelines lens-tests lens-concurrency lens-performance lens-deliverables \
+         dedupe-open \
          dedupe-rules dedupe-output refute-open refute-file-rule refute-runtime \
          refute-quality report-open report-rules report-tail regrade mechanical \
          mechanical-tail; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
@@ -806,6 +807,26 @@ eq "one file in a secondary language is read by hand, not by a panel" "semantic:
    "$(printf '%s' "$N" | jq -r '[.next.spawn[].id | sub("^review:";"")] | join(",")')"
 eq "and the reader is told which files nobody reviewed" "true" \
    "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(test("too few to earn a panel"))] | length > 0 | tostring')"
+
+# A file no language owns is still where a criterion can land: a README that documents a
+# step, a workflow that must not build the thing. One lens owns those and judges one
+# question — whether what the request asked for is guarded there.
+cat > "$RA/docs.json" <<'JSON'
+{"base":"abc","head":"def","summary":"go plus a readme","files":["a.go","b.go","c.go","README.md",".github/workflows/ci.yml"],
+ "languages":["Go"],
+ "by_language":[{"language":"Go","files":["a.go","b.go","c.go"]}],
+ "signals":{"tests_changed":false,"concurrency":false,"performance":false}}
+JSON
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+N=$(run "$RA" audit record --phase scope --results "$RA/docs.json")
+eq "files no language owns earn the deliverables lens" "semantic:Go,guidelines:Go,deliverables" \
+   "$(printf '%s' "$N" | jq -r '[.next.spawn[].id | sub("^review:";"")] | join(",")')"
+eq "and its remit is exactly those files" "true" \
+   "$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.id == "review:deliverables")][0].prompt | (contains("README.md") and contains(".github/workflows/ci.yml") and contains("YOUR REMIT")) | tostring')"
+eq "a diff every changed file of which a language owns does not buy it" "true" \
+   "$(run "$RA" audit begin --base main --restart >/dev/null 2>&1
+      run "$RA" audit record --phase scope --results "$RA/scope.json" \
+      | jq -r '[.next.held_back[] | select(test("^deliverables"))] | length > 0 | tostring')"
 
 # A finding the author declined last round is settled. A lens that raises it again —
 # by the same id, or reworded — is dropped before anyone is paid to refute it.

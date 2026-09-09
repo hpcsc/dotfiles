@@ -184,16 +184,20 @@ def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
     if not signals.get("tests_changed"):
         not_run.append("test integrity — no test file changed")
 
-    lenses, not_run = _narrow(lenses, not_run, scope, lenses_override, fixed_files)
-
-    # A file no language claimed is a file no lens is answerable for. Usually that is
-    # correct — prose and lockfiles have nothing a code lens can judge — but it is stated
-    # rather than assumed.
+    # A file no language claims has nothing a code lens can judge, and used to be left to
+    # nobody on that ground. What lands in one is still a criterion: two rounds passed over
+    # a README documenting a step nothing executed, and deleting the section left the suite
+    # green. This lens owns those files and judges only whether what the request asked for
+    # is guarded there.
     owned = {f for e in (scope.get("by_language") or []) for f in (e.get("files") or [])}
     unowned = [f for f in (scope.get("files") or []) if f not in owned]
     if unowned:
-        not_run.append(f"{len(unowned)} changed file(s) under no language, so no lens "
-                       f"owned them: {', '.join(unowned)}")
+        lenses.append({"key": "deliverables", "agent": LANG["Generic"]["semantic"],
+                       "prompt": ctxb.deliverables(unowned)})
+    else:
+        not_run.append("deliverables — every changed file is owned by a language")
+
+    lenses, not_run = _narrow(lenses, not_run, scope, lenses_override, fixed_files)
     return lenses, not_run
 
 
@@ -439,7 +443,7 @@ class _PromptCtx:
             mid = "\nIt reported nothing.\n"
         return self._p("mechanical") + "\n" + mid + "\n" + self._p("mechanical-tail") + "\n\n"
 
-    def file_block(self, remit):
+    def file_block(self, remit, label="written in your language"):
         files = self.scope.get("files") or []
         if not remit or len(remit) >= len(files):
             rows = "\n".join(f"  {f}" for f in files)
@@ -447,7 +451,7 @@ class _PromptCtx:
         rest = [f for f in files if f not in remit]
         mine = "\n".join(f"  {f}" for f in remit)
         theirs = "\n".join(f"  {f}" for f in rest)
-        return (f"YOUR REMIT — the {len(remit)} changed file(s) written in your language. Judge these, and "
+        return (f"YOUR REMIT — the {len(remit)} changed file(s) {label}. Judge these, and "
                 f"raise findings ONLY about these:\n{mine}\n\n"
                 f"Context, not remit — the other {len(rest)} changed file(s). A lens of their own language is "
                 f"reviewing them right now, so a finding you raise here is one they are already raising. Read "
@@ -455,14 +459,14 @@ class _PromptCtx:
                 f"review them for their own sake. If you spot something wrong in one that its owner would "
                 f"plausibly miss, put it in `note` and not in `findings`:\n{theirs}\n\n")
 
-    def preamble(self, remit):
+    def preamble(self, remit, label="written in your language"):
         base, head = self.scope.get("base"), self.scope.get("head")
         staged = " (or `git diff --cached` — this target is the staged changes)" if base == "HEAD" else ""
         return (self._p("review-open") + "\n\n"
                 + f"Change set, as summarized from the diff: {self.scope.get('summary')}\n"
                 + self.intent() + self.recheck_block() + self.mechanical()
                 + f"Diff: `git diff {base}...{head}`{staged}\n"
-                + self.file_block(remit)
+                + self.file_block(remit, label)
                 + self._p("review-rules") + "\n\n")
 
     def contract(self):
@@ -483,6 +487,10 @@ class _PromptCtx:
                        {"comments_guide": COMMENTS_GUIDE, "naming_guide": NAMING_GUIDE,
                         "reading": ", ".join(LANG[lang]["reading"]), "disclosure": DISCLOSURE})
                 + self.contract())
+
+    def deliverables(self, remit):
+        return (self.preamble(remit, label="no programming language owns")
+                + self._p("lens-deliverables") + self.contract())
 
     def specialist(self, kind):
         key = "lens-concurrency" if kind == "concurrency" else "lens-performance"

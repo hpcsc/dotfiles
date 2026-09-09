@@ -14,9 +14,11 @@ agent is asked again with the error when it does not fit; and no worktree is pro
 so one is made for any job whose claim can only be settled by mutating a checkout.
 """
 
+import atexit
 import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
@@ -68,16 +70,29 @@ def _untrack(proc):
 def stop_all():
     """Ends every agent this process started and refuses to start another. A runner
     going down would otherwise leave them spending against a ledger nobody is left to
-    write, and `run_job` would retry the one it just killed."""
+    write, and `run_job` would retry the one it just killed.
+
+    The whole group, not the agent alone: an agent is a harness that spawns its own
+    tools, and terminating only the process we hold leaves those children running and
+    holding the memory the next attempt needs. Each agent leads its own group for
+    exactly this, so one signal reaches everything it started."""
     global STOPPING
     STOPPING = True
     with _running_lock:
         procs = list(_running)
     for p in procs:
         try:
-            p.terminate()
-        except OSError:
-            pass
+            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            try:
+                p.terminate()
+            except OSError:
+                pass
+
+
+# A runner that ends without going through its signal handler — an unhandled error, a
+# plain return — must not leave agents behind either.
+atexit.register(stop_all)
 
 
 def new_session_id():
@@ -211,7 +226,7 @@ def _run_streamed(harness, argv, ask, cwd, on_event, timeout, env=None):
     lines = []
     proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, text=True, cwd=cwd, bufsize=1,
-                            env=env)
+                            env=env, start_new_session=True)
     _track(proc)
     try:
         proc.stdin.write(ask)

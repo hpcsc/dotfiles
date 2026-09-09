@@ -59,6 +59,7 @@ class Out:
                 self.beat_file = None
         self.log_path = str(log_path) if log_path else None
         self.log = None
+        self.gone = False
         if log_path:
             # Full detail whatever the terminal is set to: a cron entry wants a quiet
             # console and a complete file, and the file is the only way to watch a
@@ -102,10 +103,24 @@ class Out:
         except OSError:
             pass
 
+    def _console(self, text, stream):
+        """A reader that has gone away must not end the run. `clerk audit run … | head`
+        closes the pipe the moment head has its lines, and the next progress write then
+        raises BrokenPipeError out of whatever thread wrote it — which killed three
+        rounds mid-review, each one leaving its agents running and its report unwritten.
+        The round's evidence goes to the ledger and the log file, so a console nobody is
+        reading is the one output that can be dropped."""
+        if self.gone:
+            return
+        try:
+            print(text, file=stream, flush=True)
+        except (BrokenPipeError, ValueError):
+            self.gone = True
+
     def _write(self, text, to_stderr):
         with self.lock:
             if to_stderr:
-                print(text, file=sys.stderr, flush=True)
+                self._console(text, sys.stderr)
             if self.log:
                 self.log.write(text + "\n")
 
@@ -119,11 +134,11 @@ class Out:
         """Where to watch, said before anything happens, so it can be tailed from the
         moment the command is launched rather than found afterwards in a transcript."""
         if self.log_path and self.level != "raw":
-            print(f"progress: {self.log_path}", file=sys.stderr, flush=True)
-            print(f"watch: clerk watch {self.log_path}", file=sys.stderr, flush=True)
+            self._console(f"progress: {self.log_path}", sys.stderr)
+            self._console(f"watch: clerk watch {self.log_path}", sys.stderr)
 
     def _emit_raw(self, obj):
-        print(json.dumps(obj, separators=(",", ":")), flush=True)
+        self._console(json.dumps(obj, separators=(",", ":")), sys.stdout)
 
     def step(self, text):
         self._say(text, "step")
@@ -153,7 +168,7 @@ class Out:
         several at once; a run walking one step at a time passes none."""
         if self.level == "raw":
             if e.get("kind") == "raw":
-                print(e["line"], flush=True)
+                self._console(e["line"], sys.stdout)
             return
         if e.get("kind") != "tool":
             return
@@ -175,7 +190,12 @@ class Out:
         if self.level == "raw":
             self._emit_raw({"kind": "summary", **obj})
             sys.exit(code)
-        emit(obj, code)
+        try:
+            emit(obj, code)
+        except BrokenPipeError:
+            # The summary had nowhere to go, but the round's own record already landed
+            # in the ledger; exiting on its result is what the caller reads.
+            sys.exit(code)
 
 
 def _short(path):

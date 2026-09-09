@@ -13,10 +13,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import VERSION, die, emit, parse  # noqa: E402
+from clerk_lib import VERSION, die, emit, parse, usage_if_asked  # noqa: E402
 from clerk_repo import prepare  # noqa: E402
 
 if __name__ == "__main__":
+    usage_if_asked(sys.argv[1:], __doc__, "    clerk prepare [--request \"<the request, verbatim>\"]")
     o, rest = parse(sys.argv[1:], {"--request": "value"})
     if rest:
         die(f"unknown argument '{rest[0]}'")

@@ -16,11 +16,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, emit  # noqa: E402
+from clerk_lib import die, emit, usage_if_asked  # noqa: E402
 from clerk_tasks import cmd_finish  # noqa: E402
 
 if __name__ == "__main__":
     argv = sys.argv[1:]
+    usage_if_asked(argv, __doc__)
     if not argv or not argv[0].isdigit():
         die("first argument must be a task number")
     n = int(argv[0])

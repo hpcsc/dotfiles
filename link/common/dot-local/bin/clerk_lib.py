@@ -49,6 +49,21 @@ class Parser(argparse.ArgumentParser):
         die(message)
 
 
+def usage_if_asked(argv, doc, usage=None):
+    """Print what the command is and how it is called, then exit, for `-h`/`--help` before
+    any parse. `clerk land` had none: a run asked for it, got `unknown argument`, and spent
+    two more round trips reading the dispatcher's list instead. The usage is the indented
+    block of the module docstring unless one is passed."""
+    if not any(a in ("-h", "--help") for a in argv):
+        return
+    lines = (doc or "").strip().splitlines()
+    print(lines[0] if lines else f"clerk {NAME}")
+    block = usage or "\n".join(x for x in lines[1:] if x.startswith("    ")).strip("\n")
+    if block:
+        print("\nUSAGE\n" + block)
+    sys.exit(0)
+
+
 def git(*args, cwd=None):
     """The CompletedProcess, for callers that read the exit code and the output both."""
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)

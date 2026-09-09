@@ -85,6 +85,15 @@ eq "a name git would refuse is refused" "2" "$(rc "$R" step start 'bad name' --r
 S=$(run "$R" step start w1 --request "Add a widget --gears")
 eq "--start opens the run" "true|w1" "$(printf '%s' "$S" | jq -r '[(.started|tostring), .run] | join("|")')"
 eq "and returns the first step under next" "ground" "$(printf '%s' "$S" | jq -r '.next.step')"
+eq "with how to call the commands it names, so no round trip is spent on --help" "true" \
+   "$(printf '%s' "$S" | jq -r '.next.usage.guidelines | contains("--caller") | tostring')"
+eq "and only where the step's text is printed, not on every later call" "false" \
+   "$(run "$R" step | jq -r 'has("usage")')"
+HELPED=0
+for c in land receipt verify isolate prepare finish; do
+  "$CLERK" $c --help 2>/dev/null | grep -q '^USAGE' && HELPED=$((HELPED + 1))
+done
+eq "every command a step names answers --help rather than 'unknown argument'" "6" "$HELPED"
 eq "the ledger lives under the common git dir" "$R/.git/clerk/runs/w1" "$(printf '%s' "$S" | field .ledger)"
 eq "the request is kept verbatim" "Add a widget --gears" "$(jq -r .request "$R/.git/clerk/runs/w1/run.json")"
 eq "a second --start on an open run is refused" "3" "$(rc "$R" step start w1 --request again)"

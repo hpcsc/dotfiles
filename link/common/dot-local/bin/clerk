@@ -113,8 +113,9 @@ def run_logged(name, exe, argv):
     r = subprocess.run([exe, *argv], stdout=subprocess.PIPE, text=True)
     out = r.stdout
     # Exit 2 is a usage error in every command, and a usage error is not evidence of
-    # anything.
-    if r.returncode != 2:
+    # anything. Nor is asking how a command is called, which `clerk step` now does on the
+    # run's behalf — logged, it would put a `learn` event after the `land` that ended a run.
+    if r.returncode != 2 and not any(a in ("-h", "--help") for a in argv):
         ledger_log(ldir, name, r.returncode, argv)
     if r.returncode == 0 and ldir and name in INLINE_NEXT:
         try:

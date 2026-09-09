@@ -13,9 +13,10 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 
-from clerk_lib import clerk, die, git, gitout, worktree_for
+from clerk_lib import CLERK, clerk, die, git, gitout, worktree_for
 from clerk_method import Renderer
 from clerk_repo import archive_record, breakdown_side
 from clerk_tasks import load_task_record, next_task
@@ -506,6 +507,42 @@ def facts_for(ctx):
     return {k: ctx.prepare.get(k) for k in FACTS_KEYS if k in ctx.prepare}
 
 
+_CLERK_SUB = re.compile(r"\bclerk ([a-z][a-z-]*)")
+_USAGE = {}
+
+
+def usage_block(text):
+    """The USAGE section of a `--help`, in either shape clerk writes it: a `USAGE` heading
+    over indented lines, or a leading `usage:` line with indented continuations."""
+    lines = (text or "").splitlines()
+    for i, line in enumerate(lines):
+        if line.strip() != "USAGE" and not line.startswith("usage:"):
+            continue
+        block = [line] if line.startswith("usage:") else []
+        for x in lines[i + 1:]:
+            if x.strip() and not x.startswith((" ", "\t")):
+                break
+            block.append(x)
+        return "\n".join(block).strip("\n") or None
+    return None
+
+
+def command_usage(done_by):
+    """How to call every clerk command this step names. A run spent one round trip on
+    `--help` before its first use of each of six of them, and the model is reading the
+    step's text at that moment anyway."""
+    out = {}
+    for sub in dict.fromkeys(_CLERK_SUB.findall(done_by or "")):
+        if sub == "step":
+            continue
+        if sub not in _USAGE:
+            r = subprocess.run([str(CLERK), sub, "--help"], capture_output=True, text=True)
+            _USAGE[sub] = usage_block(r.stdout)
+        if _USAGE[sub]:
+            out[sub] = _USAGE[sub]
+    return out
+
+
 def present(ctx, r):
     out = {"run": ctx.run.slug, "step": r["step"]}
     for k, v in r.items():
@@ -517,5 +554,9 @@ def present(ctx, r):
     out["code_tree"] = ctx.head_ct
     out["harness"] = ctx.harness
     out["instructions"], out["instructions_elided"] = instructions_text(ctx, r["step"])
+    if not out["instructions_elided"]:
+        usage = command_usage(r.get("done_by"))
+        if usage:
+            out["usage"] = usage
     out["facts"] = facts_for(ctx)
     return out

@@ -13,7 +13,7 @@ Read the values rather than re-deriving them. Three carry precedence rules subtl
 
 The request is the top layer of the last two, and it needs no passing: `clerk step start` recorded it verbatim, and every resolution since reads it from there.
 
-**Read the learnings file now.** It holds conventions and recurring findings earlier runs paid for.
+**Read the learnings index now.** `clerk learn index` prints every entry's title, type and apply-when — a sixth of the bytes, and the whole of what picking needs — and `clerk learn show <title>...` fetches the bodies worth reading. Do not read `learnings_path` itself: it only ever grows, it is read before the story rather than against it, and one run spent seventy-nine kilobytes of `sed` ranges on it in the first thirty seconds and then called `index` anyway. Every byte read here rides in context for the rest of the run, and the audit — the longest step, and the one that needs none of it — pays for it on all ninety-odd of its turns.
 
 **`learnings_path` honours a `--learnings-path` in the request**, and `learnings_path_source` says which you got. That override exists because the path is one per repository, and every worktree of one repo resolves to it — so several runs dispatched over one story would read and append to a single file at once, each overwriting what the others just added. A caller that fans runs out gives each its own path for that reason. Use the resolved value for both the read here and the write at the end.
 

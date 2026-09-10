@@ -12,6 +12,7 @@ import json
 import os
 import re
 from datetime import datetime, timezone
+from functools import cached_property
 from pathlib import Path
 
 from clerk_lib import die, git, gitout
@@ -29,32 +30,245 @@ def now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+class Repo:
+    """One checkout, and the git facts about it — each question asked at most once.
+
+    Every fact below is derived from git by running git, and almost all of them are
+    answers something else in the same call already had. Resolving them as free functions
+    over a cwd meant nothing could remember: one `clerk prepare` asked for the common dir
+    five times and `clerk step` ran twenty-nine git subprocesses to learn twelve things.
+    The functions further down are still the interface every caller uses; each now holds
+    one of these for the length of its own work, and the repeats collapse.
+
+    An instance answers for the checkout as it stood when it was made, so it is meant to
+    live for one call and no longer. HEAD moves when a task commits and the branch moves
+    when a run isolates; one held across either would go on describing the checkout that
+    used to be here, which is worse than the subprocess it saved.
+    """
+
+    def __init__(self, cwd=None):
+        self.cwd = cwd
+        self._code_trees = {}
+        self._ignored = {}
+
+    # -- where things are --------------------------------------------------------
+
+    @cached_property
+    def work_tree(self):
+        """The tree we are standing in. Inside a worktree it is on another branch entirely,
+        and a suite pointed at the main checkout tests code without the feature in it."""
+        return gitout("rev-parse", "--show-toplevel", cwd=self.cwd)
+
+    @cached_property
+    def common_dir(self):
+        return gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=self.cwd)
+
+    @cached_property
+    def git_dir(self):
+        return gitout("rev-parse", "--absolute-git-dir", cwd=self.cwd)
+
+    @cached_property
+    def repo_root(self):
+        """The main repo root, which is NOT the work tree inside a worktree. tasks/ and the
+        learnings file live here."""
+        return str(Path(self.common_dir).parent) if self.common_dir else None
+
+    @cached_property
+    def state_dir(self):
+        """Per-worktree, inside the git dir, so state is never committed and needs no ignore
+        entry."""
+        return f"{self.git_dir}/clerk" if self.git_dir else None
+
+    @cached_property
+    def tasks_home(self):
+        """The work tree when tasks/ is tracked — the breakdown is content on the branch and
+        the worktree's copy is the one that gets staged. The main repo root when tasks/ is
+        excluded — a fresh worktree never materialises an untracked file."""
+        if not self.repo_root:
+            return None
+        return self.repo_root if self.is_ignored(self.repo_root, "tasks") else self.work_tree
+
+    def is_ignored(self, directory, rel):
+        """As the repo's own rules see it: .gitignore, info/exclude and a global excludes file
+        alike — a repo that keeps tasks/ out of history usually does it through info/exclude."""
+        key = (str(directory), rel)
+        if key not in self._ignored:
+            self._ignored[key] = git("check-ignore", "-q", "--", rel, cwd=directory).returncode == 0
+        return self._ignored[key]
+
+    # -- where HEAD is -----------------------------------------------------------
+
+    @cached_property
+    def default_branch(self):
+        d = ""
+        # Without a remote, `rev-parse --abbrev-ref origin/HEAD` echoes the literal back, and a
+        # base of HEAD makes every base..HEAD diff silently empty.
+        if git("show-ref", "--verify", "--quiet", "refs/remotes/origin/HEAD", cwd=self.cwd).returncode == 0:
+            d = (gitout("rev-parse", "--abbrev-ref", "origin/HEAD", cwd=self.cwd) or "").removeprefix("origin/")
+        if d in ("", "HEAD", "origin/HEAD"):
+            d = ""
+            for c in ("main", "master"):
+                if git("show-ref", "--verify", "--quiet", f"refs/heads/{c}", cwd=self.cwd).returncode == 0:
+                    d = c
+                    break
+        return d
+
+    @cached_property
+    def current_branch(self):
+        return gitout("rev-parse", "--abbrev-ref", "HEAD", cwd=self.cwd) or ""
+
+    @cached_property
+    def head_sha(self):
+        return gitout("rev-parse", "HEAD", cwd=self.cwd)
+
+    @cached_property
+    def tree_is_clean(self):
+        return not (gitout("status", "--porcelain", cwd=self.cwd) or "")
+
+    @cached_property
+    def worktrees(self):
+        """Every worktree of this repo with the branch it has checked out; a detached one has
+        no branch and is not listed."""
+        out = []
+        path = None
+        for line in (gitout("worktree", "list", "--porcelain", cwd=self.cwd) or "").splitlines():
+            if line.startswith("worktree "):
+                path = line[len("worktree "):]
+            elif line.startswith("branch "):
+                out.append({"path": path, "branch": line[len("branch "):].removeprefix("refs/heads/")})
+        return out
+
+    def code_tree(self, rev):
+        """The identity of the code at a revision: its tree listing minus the breakdown files
+        under tasks/. The receipt and the acceptance compare by this rather than by SHA, so a
+        tasks/-only commit — the archive — does not make a green stale.
+
+        Memoised per revision because it is the most expensive question here and the one
+        asked twice: judging a receipt compares the tree at the recorded SHA with the tree
+        at HEAD, and HEAD's was already resolved for the run's own facts."""
+        if rev not in self._code_trees:
+            listing = gitout("ls-tree", "-r", rev, cwd=self.cwd)
+            if listing is None:
+                self._code_trees[rev] = None
+            else:
+                kept = [ln for ln in listing.split("\n") if not _BREAKDOWN_FILE.search(ln)]
+                self._code_trees[rev] = hashlib.sha1("\n".join(kept).encode()).hexdigest()
+        return self._code_trees[rev]
+
+    # -- which run this tree belongs to ------------------------------------------
+
+    @cached_property
+    def runs_dir(self):
+        return Path(self.common_dir) / "clerk" / "runs" if self.common_dir else None
+
+    @cached_property
+    def open_runs(self):
+        """Every run under <git-common-dir>/clerk/runs that has not finished."""
+        root = self.runs_dir
+        if not root or not root.is_dir():
+            return []
+        out = []
+        for d in sorted(root.iterdir()):
+            rj = d / "run.json"
+            if not rj.is_file():
+                continue
+            try:
+                finished = json.loads(rj.read_text()).get("finished")
+            except (OSError, json.JSONDecodeError):
+                finished = None
+            if finished is not True:
+                out.append(d.name)
+        return out
+
+    @cached_property
+    def ledger_dir(self):
+        """The ledger this invocation belongs to, or None. On a feature branch it is the run
+        named by the branch; on the default branch it is the one unfinished run, if there is
+        exactly one — the rule `clerk step` resolves by, so the two never disagree."""
+        root = self.runs_dir
+        if not root or not root.is_dir():
+            return None
+        branch = self.current_branch
+        if branch and branch != "HEAD" and branch != self.default_branch:
+            return str(root / branch) if (root / branch / "run.json").is_file() else None
+        open_ = self.open_runs
+        return str(root / open_[0]) if len(open_) == 1 else None
+
+    @cached_property
+    def ledger_breakdown(self):
+        """The breakdown the open run bound, for a command given none that could not resolve
+        one by looking. Only a file still on disk counts."""
+        if not self.ledger_dir:
+            return None
+        bd = run_section(self.ledger_dir, "breakdown")
+        tf = (bd or {}).get("tasks_file") if isinstance(bd, dict) else None
+        return tf if tf and Path(tf).is_file() else None
+
+    @cached_property
+    def request_from_ledger(self):
+        if not self.ledger_dir:
+            return None
+        meta = ledger_read(Path(self.ledger_dir) / "run.json")
+        return (meta or {}).get("request") or None if isinstance(meta, dict) else None
+
+    def breakdown_for(self, override):
+        """(path, rc): --tasks-file when given, else the one breakdown under tasks/, else the
+        one the ledger bound. rc 1 for none, 3 for several."""
+        home = self.tasks_home
+        if override:
+            return resolve_tasks_arg(override, home), 0
+        if not home:
+            return None, 1
+        found, rc = find_tasks_file(home)
+        if rc == 0:
+            return found, 0
+        lb = self.ledger_breakdown
+        if lb:
+            return lb, 0
+        return None, rc
+
+    def receipt_state(self, state, head):
+        """The recorded suite receipt, and whether it still describes HEAD: it passed, and the
+        code it ran against is the code at HEAD by code tree."""
+        rec = Path(state) / "receipt.json" if state else None
+        if not rec or not rec.is_file():
+            return {"recorded": False, "fresh": False, "passed": False, "sha": None, "command": None,
+                    "at": None, "why": "no suite receipt recorded"}
+        try:
+            r = json.loads(rec.read_text())
+        except (OSError, json.JSONDecodeError):
+            r = {}
+        sha, passed = r.get("sha") or "", r.get("passed") is True
+        fresh, why = False, None
+        if not passed:
+            why = f"the recorded receipt failed: {r.get('command') or ''}"
+        elif sha != head and self.code_tree(sha) != self.code_tree(head):
+            why = (f"the receipt describes {sha[:8]}, HEAD is {(head or '')[:8]} — the tree changed after "
+                   f"the suite ran, and the code changed with it, not only tasks/; re-run it")
+        else:
+            fresh = True
+        return {"recorded": True, "fresh": fresh, "passed": passed, "sha": sha, "command": r.get("command") or "",
+                "at": r.get("at") or "", "why": why}
+
+
 # --------------------------------------------------------------------------------
 # Where things are
 # --------------------------------------------------------------------------------
 
 def work_tree(cwd=None):
-    """The tree we are standing in. Inside a worktree it is on another branch entirely,
-    and a suite pointed at the main checkout tests code without the feature in it."""
-    return gitout("rev-parse", "--show-toplevel", cwd=cwd)
+    return Repo(cwd).work_tree
 
 
 def common_dir(cwd=None):
-    return gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
+    return Repo(cwd).common_dir
 
 
 def repo_root(cwd=None):
-    """The main repo root, which is NOT the work tree inside a worktree. tasks/ and the
-    learnings file live here."""
-    c = common_dir(cwd)
-    return str(Path(c).parent) if c else None
+    return Repo(cwd).repo_root
 
 
 def state_dir(cwd=None):
-    """Per-worktree, inside the git dir, so state is never committed and needs no ignore
-    entry."""
-    gd = gitout("rev-parse", "--absolute-git-dir", cwd=cwd)
-    return f"{gd}/clerk" if gd else None
+    return Repo(cwd).state_dir
 
 
 def archive_record(state, tasks_file=None):
@@ -85,36 +299,23 @@ def run_records_dir(state, tasks_file):
 
 
 def default_branch(cwd=None):
-    d = ""
-    # Without a remote, `rev-parse --abbrev-ref origin/HEAD` echoes the literal back, and a
-    # base of HEAD makes every base..HEAD diff silently empty.
-    if git("show-ref", "--verify", "--quiet", "refs/remotes/origin/HEAD", cwd=cwd).returncode == 0:
-        d = (gitout("rev-parse", "--abbrev-ref", "origin/HEAD", cwd=cwd) or "").removeprefix("origin/")
-    if d in ("", "HEAD", "origin/HEAD"):
-        d = ""
-        for c in ("main", "master"):
-            if git("show-ref", "--verify", "--quiet", f"refs/heads/{c}", cwd=cwd).returncode == 0:
-                d = c
-                break
-    return d
+    return Repo(cwd).default_branch
 
 
 def current_branch(cwd=None):
-    return gitout("rev-parse", "--abbrev-ref", "HEAD", cwd=cwd) or ""
+    return Repo(cwd).current_branch
 
 
 def head_sha(cwd=None):
-    return gitout("rev-parse", "HEAD", cwd=cwd)
+    return Repo(cwd).head_sha
 
 
 def tree_is_clean(cwd=None):
-    return not (gitout("status", "--porcelain", cwd=cwd) or "")
+    return Repo(cwd).tree_is_clean
 
 
 def is_ignored(directory, rel):
-    """As the repo's own rules see it: .gitignore, info/exclude and a global excludes file
-    alike — a repo that keeps tasks/ out of history usually does it through info/exclude."""
-    return git("check-ignore", "-q", "--", rel, cwd=directory).returncode == 0
+    return Repo().is_ignored(directory, rel)
 
 
 # --------------------------------------------------------------------------------
@@ -122,41 +323,15 @@ def is_ignored(directory, rel):
 # --------------------------------------------------------------------------------
 
 def runs_dir(cwd=None):
-    c = common_dir(cwd)
-    return Path(c) / "clerk" / "runs" if c else None
+    return Repo(cwd).runs_dir
 
 
 def open_runs(cwd=None):
-    """Every run under <git-common-dir>/clerk/runs that has not finished."""
-    root = runs_dir(cwd)
-    if not root or not root.is_dir():
-        return []
-    out = []
-    for d in sorted(root.iterdir()):
-        rj = d / "run.json"
-        if not rj.is_file():
-            continue
-        try:
-            finished = json.loads(rj.read_text()).get("finished")
-        except (OSError, json.JSONDecodeError):
-            finished = None
-        if finished is not True:
-            out.append(d.name)
-    return out
+    return Repo(cwd).open_runs
 
 
 def ledger_dir(cwd=None):
-    """The ledger this invocation belongs to, or None. On a feature branch it is the run
-    named by the branch; on the default branch it is the one unfinished run, if there is
-    exactly one — the rule `clerk step` resolves by, so the two never disagree."""
-    root = runs_dir(cwd)
-    if not root or not root.is_dir():
-        return None
-    branch = current_branch(cwd)
-    if branch and branch != "HEAD" and branch != default_branch(cwd):
-        return str(root / branch) if (root / branch / "run.json").is_file() else None
-    open_ = open_runs(cwd)
-    return str(root / open_[0]) if len(open_) == 1 else None
+    return Repo(cwd).ledger_dir
 
 
 def ledger_read(path, default=None):
@@ -219,38 +394,11 @@ _BREAKDOWN_FILE = re.compile(r"\ttasks/.*\.(md|json|ya?ml)$")
 
 
 def code_tree(rev, cwd=None):
-    """The identity of the code at a revision: its tree listing minus the breakdown files
-    under tasks/. The receipt and the acceptance compare by this rather than by SHA, so a
-    tasks/-only commit — the archive — does not make a green stale."""
-    listing = gitout("ls-tree", "-r", rev, cwd=cwd)
-    if listing is None:
-        return None
-    kept = [ln for ln in listing.split("\n") if not _BREAKDOWN_FILE.search(ln)]
-    return hashlib.sha1("\n".join(kept).encode()).hexdigest()
+    return Repo(cwd).code_tree(rev)
 
 
 def receipt_state(state, head, cwd=None):
-    """The recorded suite receipt, and whether it still describes HEAD: it passed, and the
-    code it ran against is the code at HEAD by code tree."""
-    rec = Path(state) / "receipt.json" if state else None
-    if not rec or not rec.is_file():
-        return {"recorded": False, "fresh": False, "passed": False, "sha": None, "command": None,
-                "at": None, "why": "no suite receipt recorded"}
-    try:
-        r = json.loads(rec.read_text())
-    except (OSError, json.JSONDecodeError):
-        r = {}
-    sha, passed = r.get("sha") or "", r.get("passed") is True
-    fresh, why = False, None
-    if not passed:
-        why = f"the recorded receipt failed: {r.get('command') or ''}"
-    elif sha != head and code_tree(sha, cwd) != code_tree(head, cwd):
-        why = (f"the receipt describes {sha[:8]}, HEAD is {(head or '')[:8]} — the tree changed after "
-               f"the suite ran, and the code changed with it, not only tasks/; re-run it")
-    else:
-        fresh = True
-    return {"recorded": True, "fresh": fresh, "passed": passed, "sha": sha, "command": r.get("command") or "",
-            "at": r.get("at") or "", "why": why}
+    return Repo(cwd).receipt_state(state, head)
 
 
 # --------------------------------------------------------------------------------
@@ -437,13 +585,7 @@ def resolve_flags(root, request=""):
 # --------------------------------------------------------------------------------
 
 def tasks_home(cwd=None):
-    """The work tree when tasks/ is tracked — the breakdown is content on the branch and
-    the worktree's copy is the one that gets staged. The main repo root when tasks/ is
-    excluded — a fresh worktree never materialises an untracked file."""
-    root = repo_root(cwd)
-    if not root:
-        return None
-    return root if is_ignored(root, "tasks") else work_tree(cwd)
+    return Repo(cwd).tasks_home
 
 
 def breakdown_paths(home, include_archived=False):
@@ -490,31 +632,11 @@ def tasks_hint(home, cmd):
 
 
 def ledger_breakdown(cwd=None):
-    """The breakdown the open run bound, for a command given none that could not resolve
-    one by looking. Only a file still on disk counts."""
-    d = ledger_dir(cwd)
-    if not d:
-        return None
-    bd = run_section(d, "breakdown")
-    tf = (bd or {}).get("tasks_file") if isinstance(bd, dict) else None
-    return tf if tf and Path(tf).is_file() else None
+    return Repo(cwd).ledger_breakdown
 
 
 def breakdown_for(override, cwd=None):
-    """(path, rc): --tasks-file when given, else the one breakdown under tasks/, else the
-    one the ledger bound. rc 1 for none, 3 for several."""
-    home = tasks_home(cwd)
-    if override:
-        return resolve_tasks_arg(override, home), 0
-    if not home:
-        return None, 1
-    found, rc = find_tasks_file(home)
-    if rc == 0:
-        return found, 0
-    lb = ledger_breakdown(cwd)
-    if lb:
-        return lb, 0
-    return None, rc
+    return Repo(cwd).breakdown_for(override)
 
 
 def task_record_for(tasks_file):
@@ -544,16 +666,7 @@ def commit_skill_for(wt):
 
 
 def worktrees(cwd=None):
-    """Every worktree of this repo with the branch it has checked out; a detached one has
-    no branch and is not listed."""
-    out = []
-    path = None
-    for line in (gitout("worktree", "list", "--porcelain", cwd=cwd) or "").splitlines():
-        if line.startswith("worktree "):
-            path = line[len("worktree "):]
-        elif line.startswith("branch "):
-            out.append({"path": path, "branch": line[len("branch "):].removeprefix("refs/heads/")})
-    return out
+    return Repo(cwd).worktrees
 
 
 def resume_for(breakdowns, trees):
@@ -573,29 +686,29 @@ def resume_for(breakdowns, trees):
 # --------------------------------------------------------------------------------
 
 def request_from_ledger(cwd=None):
-    d = ledger_dir(cwd)
-    if not d:
-        return None
-    meta = ledger_read(Path(d) / "run.json")
-    return (meta or {}).get("request") or None if isinstance(meta, dict) else None
+    return Repo(cwd).request_from_ledger
 
 
 def prepare(cwd=None, request=None):
     """Every fact a run reads, as one object. The request is the top layer of the flags
     and the learnings path; once a run is open the ledger holds it verbatim, so a call
-    without one reads it from there and says so in `request_source`."""
-    root = repo_root(cwd)
+    without one reads it from there and says so in `request_source`.
+
+    One Repo for the whole assembly, so the questions these facts share — the common dir,
+    the work tree, whether tasks/ is ignored — are asked once between them rather than
+    once each."""
+    r = Repo(cwd)
+    root = r.repo_root
     if not root:
         die("not a git repository")
     request_source = "argument" if request else "none"
     if not request:
-        request = request_from_ledger(cwd)
+        request = r.request_from_ledger
         if request:
             request_source = "ledger"
-    wt = work_tree(cwd)
-    th = tasks_home(cwd)
-    default = default_branch(cwd)
-    branch = current_branch(cwd)
+    wt = r.work_tree
+    th = r.tasks_home
+    default = r.default_branch
     base = gitout("merge-base", "HEAD", default, cwd=cwd) if default else None
     learn, learn_src = resolve_learnings_path(root), "resolved"
     if request:
@@ -603,23 +716,22 @@ def prepare(cwd=None, request=None):
         if override:
             learn, learn_src = override, "request"
     tasks, _ = find_tasks_file(th)
-    trees = worktrees(cwd)
+    trees = r.worktrees
     breakdowns = list_breakdowns(th)
-    ld = ledger_dir(cwd)
-    head = head_sha(cwd)
+    ld = r.ledger_dir
     facts = {
         "version": None,
         "repo_root": root,
         "build_tree": wt,
         "in_worktree": root != wt,
-        "branch": branch,
+        "branch": r.current_branch,
         "default_branch": default or None,
         "base": base or None,
-        "code_tree": code_tree("HEAD", cwd),
+        "code_tree": r.code_tree("HEAD"),
         "run": Path(ld).name if ld else None,
-        "runs_open": open_runs(cwd),
-        "receipt": receipt_state(state_dir(cwd), head, cwd),
-        "clean": tree_is_clean(cwd),
+        "runs_open": r.open_runs,
+        "receipt": r.receipt_state(r.state_dir, r.head_sha),
+        "clean": r.tree_is_clean,
         "languages": detect_languages(root),
         "test_commands": resolve_test_commands(root),
         "go_tool_prefix": resolve_go_prefix(root),
@@ -629,7 +741,7 @@ def prepare(cwd=None, request=None):
         "commit_skill": commit_skill_for(wt),
         "tasks_file": tasks,
         "tasks_home": th,
-        "tasks_tracked": not is_ignored(root, "tasks"),
+        "tasks_tracked": not r.is_ignored(root, "tasks"),
         "breakdowns": breakdowns,
         "worktrees": trees,
         "resume": resume_for(breakdowns, trees),

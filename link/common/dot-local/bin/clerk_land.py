@@ -15,10 +15,9 @@ from pathlib import Path
 
 from clerk_lib import die, emit, git, gitout
 from clerk_ledger import Run
-from clerk_repo import (archive_record, breakdown_for, common_dir, current_branch, default_branch,
-                        env_get, head_sha, is_ignored, ledger_dir, now, receipt_state, repo_root,
-                        resolve_flag, run_records_dir, task_record_for, state_dir, tasks_home,
-                        tasks_hint, work_tree)
+from clerk_repo import (Repo, archive_record, common_dir, current_branch, default_branch,
+                        env_get, ledger_dir, now, repo_root, resolve_flag, run_records_dir,
+                        task_record_for, tasks_hint)
 
 
 def run_breakdown():
@@ -150,12 +149,16 @@ def isolate(name, in_place=None, base=None):
 # --------------------------------------------------------------------------------
 
 def land_checks(audit_accepted=False, tasks_override=None):
-    wt = work_tree()
-    state = state_dir()
-    head = head_sha()
+    # Safe to hold one here and nowhere else in this file: these are the checks, they run
+    # before anything in `land` moves a ref, and they are the only stretch of it that
+    # reads without writing. `land` itself reads either side of a rebase on purpose.
+    repo = Repo()
+    wt = repo.work_tree
+    state = repo.state_dir
+    head = repo.head_sha
     checks = []
 
-    tasks, _ = breakdown_for(tasks_override)
+    tasks, _ = repo.breakdown_for(tasks_override)
     # Archiving needs every task closed, so the archive record IS that evidence, and a
     # second `land` after a rebase does not refuse a run that already satisfied it. It
     # must be this run's archive: the record outlives the run that wrote it.
@@ -182,7 +185,7 @@ def land_checks(audit_accepted=False, tasks_override=None):
     checks.append({"name": "tree-clean", "ok": not dirty,
                    "detail": "working tree clean" if not dirty else f"uncommitted changes: {';'.join(dirty[:5])}"})
 
-    rs = receipt_state(state, head)
+    rs = repo.receipt_state(state, head)
     if rs["fresh"]:
         ok, detail = True, f"green at {(head or '')[:8]}: {rs['command']}"
     else:
@@ -239,8 +242,13 @@ def land(integrate=None, audit=False, name=None, tasks_override=None, check=Fals
     if not g["ok"]:
         emit({"landed": False, "reason": "a land check failed", "land_checks": g}, 1)
 
-    root, wt, th, state = repo_root(), work_tree(), tasks_home(), state_dir()
-    default, branch = default_branch(), current_branch()
+    # One Repo per phase, never one for the function. Everything to the archive commit
+    # below is read off the checkout as it stands now; past that it has moved, and a second
+    # Repo is how this file says so. A `Repo.moved()` to call afterwards would be the same
+    # pairing that `os.chdir` and a cwd field were — a rule held by memory, not by code.
+    here = Repo()
+    root, wt, th, state = here.repo_root, here.work_tree, here.tasks_home, here.state_dir
+    default, branch = here.default_branch, here.current_branch
 
     # Nothing typed means the repo decides, after those checks: a config file cannot change
     # whether the branch is fit to land, only whether a fit branch goes on to be merged.
@@ -248,7 +256,7 @@ def land(integrate=None, audit=False, name=None, tasks_override=None, check=Fals
     if integrate is None:
         integrate, integrate_src = resolve_flag(root, "integrate")
 
-    tasks, rc = breakdown_for(tasks_override)
+    tasks, rc = here.breakdown_for(tasks_override)
     if rc == 3:
         die(tasks_hint(th, "land"))
     if rc != 0:
@@ -262,7 +270,7 @@ def land(integrate=None, audit=False, name=None, tasks_override=None, check=Fals
         archive_dir = Path(th) / "tasks" / "completed"
         archive_dir.mkdir(parents=True, exist_ok=True)
         side = Path(tasks).with_suffix(".json")
-        if is_ignored(str(Path(tasks).parent), Path(tasks).name):
+        if here.is_ignored(str(Path(tasks).parent), Path(tasks).name):
             # Machine-local: a plain move and no archive commit.
             try:
                 shutil.move(tasks, archive_dir / Path(tasks).name)
@@ -299,12 +307,15 @@ def land(integrate=None, audit=False, name=None, tasks_override=None, check=Fals
     if branch == default:
         die(f"already on {default} — nothing to integrate")
 
-    before = head_sha()
+    # A Repo each side of the rebase, because the whole check is that these two differ.
+    # One instance would answer the second read from the first, and the check would pass
+    # for every branch — including the ones whose green the replay had just invalidated.
+    before = Repo().head_sha
     if git("rebase", default).returncode != 0:
         git("rebase", "--abort")
         emit({"landed": False, "reason": f"rebase onto {default} conflicted; branch left exactly as it was",
               "note": "resolve it yourself or hand it to the user — do not resolve someone else's merge"}, 1)
-    after = head_sha()
+    after = Repo().head_sha
     if before != after:
         # Green-before-rebase is not green-after.
         emit({"landed": False, "rebased": True, "reason": "the rebase replayed commits onto a moved base",

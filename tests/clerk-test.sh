@@ -695,6 +695,36 @@ eq "and never pushes"                "false"   "$(printf '%s' "$L" | jq -r '.pus
 eq "names the branch it deleted"     "feature" "$(printf '%s' "$L" | jq -r '.deleted_branch')"
 eq "with nothing left behind to say" "null"    "$(printf '%s' "$L" | jq -r '.branch_left')"
 
+# A base that moved. --integrate was only ever exercised where the replay is a no-op, so
+# the one check that reads HEAD on both sides of the rebase — green-before is not
+# green-after — had nothing asserting it fires. It is the check most easily disabled by
+# accident, because both reads look like the same read.
+RMB=$(new_repo)
+mkdir -p "$RMB/tasks"
+printf -- '### Task 1: Only task\n' > "$RMB/tasks/story.md"
+printf '{"tasks":[{"n":1,"title":"Only task","depends_on":[],"done":false}]}\n' > "$RMB/tasks/story.json"
+git -C "$RMB" add -A && git -C "$RMB" commit -qm "Plan"
+git -C "$RMB" switch -qc feature
+printf 'the feature\n' > "$RMB/feature.txt"
+run "$RMB" finish 1 -- feature.txt >/dev/null 2>&1
+git -C "$RMB" commit -qm "Add the feature"
+# Someone else lands first, so the replay is a real one and HEAD comes out different.
+git -C "$RMB" switch -q main
+printf 'theirs\n' > "$RMB/other.txt"
+git -C "$RMB" add -A && git -C "$RMB" commit -qm "Someone else lands first"
+git -C "$RMB" switch -q feature
+receipt_ok "$RMB" "go test ./..." >/dev/null
+L=$(run "$RMB" land --integrate --audit-accepted); RC=$?
+eq "a replay onto a moved base stops the land" "3" "$RC"
+eq "and says the rebase is why"                "true" \
+   "$(printf '%s' "$L" | jq -r '.rebased')"
+eq "reading head on both sides of it, not once" "false" \
+   "$(printf '%s' "$L" | jq -r '(.was == .now) | tostring')"
+eq "and sends the run back through the suite"  "1" \
+   "$(printf '%s' "$L" | grep -c 'clerk receipt')"
+eq "the branch is left rebased, not merged"    "0" \
+   "$(git -C "$RMB" rev-list --count feature..main)"
+
 # Typing neither --integrate nor --no-integrate is what makes the repo's own decision
 # load-bearing, and land is the only caller that resolves a flag with no request to read.
 # Reaching for the request argument it does not pass aborted the subshell under `set -u`,

@@ -1140,6 +1140,34 @@ eq "with no log and no run, it says so rather than hanging" "3" \
    "$(cd "$(mktemp -d)" && git init -q . && "$CLERK" watch >/dev/null 2>&1; printf '%s' $?)"
 rm -rf "$(dirname "$WLOG")"
 
+# The log above is hand-written, so it says nothing about whether what a runner actually
+# writes is what watch actually reads. This drives the writer and reads the result, so the
+# two cannot drift apart with the suite still green.
+PLOG=$(cd "$(mktemp -d)" && pwd -P)/progress.log
+python3 - "$BIN" "$PLOG" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+from clerk_render import Out
+o = Out("quiet", log_path=sys.argv[2])
+o.step("review · round 2 · 2 agents, concurrently")
+o.started("semantic:Go")
+o.started("tests:Go")
+o.event({"kind": "tool", "name": "Bash", "input": {"command": "task test:unit"}}, "tests:Go")
+o.result("pass", row="semantic:Go", ok=True, seconds=64, cost_usd=0.004)
+PY
+W=$(run "$R" watch "$PLOG" --json)
+eq "what a runner writes is what watch reads" "semantic:Go=ok|tests:Go=run" \
+   "$(printf '%s' "$W" | jq -r '[.groups[0].rows[] | .name + "=" + .state] | join("|")')"
+eq "and the row still out says what it is touching" "true" \
+   "$(printf '%s' "$W" | jq -r '[.groups[0].rows[] | select(.name=="tests:Go") | .doing] | first | contains("task test:unit")')"
+# The cost is carried as a number, so a turn under a cent is not rounded out of the total
+# on its way through a rendered line.
+eq "a sub-cent cost survives to the reader" "0.004" \
+   "$(printf '%s' "$W" | jq -r '[.groups[0].rows[] | select(.name=="semantic:Go") | .cost] | first | tostring')"
+eq "and the drawn log still reads as it did" "1" \
+   "$(grep -c '^  ✓ semantic:Go' "$PLOG" | tr -d ' ')"
+rm -rf "$(dirname "$PLOG")"
+
 unset CLERK_AUDIT_PROMPTS
 
 # --------------------------------------------------------------------------------

@@ -12,13 +12,38 @@ apart for that reason.
 import hashlib
 import json
 import os
-import re
 import sys
 import threading
 import time
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from clerk_lib import emit
+
+
+@dataclass
+class Progress:
+    """One thing that happened in a run, as the thing itself rather than as the line
+    drawn for it.
+
+    There are three readers of a run's progress and they used to share only the text: the
+    person watching, the status line, and `clerk watch`. The last two recovered what they
+    needed by matching against the drawn line — the status line regexed a dollar amount
+    out of a figure that had already been rounded to the cent, so a turn under a cent
+    added nothing to it while the ledger counted it, and an error message containing a `$`
+    was read as a cost. `clerk watch` reproduced the whole grammar in another file, where
+    a changed prefix here would have cost it a screen and no test would have said so.
+
+    So the numbers travel as numbers. `text` stays whatever the caller wants drawn, since
+    what reads well differs between a story's turn and one lens of a round; everything a
+    reader has to compute from is beside it."""
+
+    kind: str                # step | note | started | activity | result | reply
+    text: str = ""
+    row: str = None          # which agent or row it is about, where there is one
+    ok: bool = None          # a result's verdict
+    seconds: int = None
+    cost_usd: float = None
 
 
 # Where a run in flight announces itself. A fixed path rather than the run's ledger,
@@ -30,6 +55,10 @@ def active_dir():
 
 
 STALE_AFTER = 3600
+
+# Out of the f-string that uses them: an escape inside one is a backslash, which the
+# Python a test runs clerk under refuses to parse.
+OK, BAD = "\u2713", "\u2717"
 
 
 class Out:
@@ -59,16 +88,22 @@ class Out:
                 self.beat_file = None
         self.log_path = str(log_path) if log_path else None
         self.log = None
+        self.records = None
         self.gone = False
         if log_path:
             # Full detail whatever the terminal is set to: a cron entry wants a quiet
             # console and a complete file, and the file is the only way to watch a
             # twenty-minute round that was launched into the background.
+            #
+            # The same progress lands as data in a .jsonl beside it — beside rather than
+            # instead, because the log is what a person tails and `clerk watch` is the
+            # one reader that needs the parts.
             try:
                 Path(log_path).parent.mkdir(parents=True, exist_ok=True)
                 self.log = open(log_path, "w", buffering=1)
+                self.records = open(Path(log_path).with_suffix(".jsonl"), "w", buffering=1)
             except OSError:
-                self.log, self.log_path = None, None
+                self.log, self.log_path, self.records = None, None, None
 
     def _sweep(self):
         """A run killed outright cannot remove its own file, so the next one to start
@@ -81,19 +116,18 @@ class Out:
             except OSError:
                 pass
 
-    def _pulse(self, text, kind):
+    def _pulse(self, p):
         """What a glance is owed: what it is doing now, how much has landed, what it has
-        cost. Derived from the lines already being rendered, so neither runner has to
-        report its progress twice."""
+        cost. Read off the record, so neither runner has to report its progress twice and
+        the total is the one the run is actually spending rather than the sum of what the
+        console happened to round to."""
         if not self.beat_file:
             return
-        if kind == "step":
-            self._label = text.split(" · ")[0][:40]
-        elif kind == "result":
+        if p.kind == "step":
+            self._label = p.text.split(" · ")[0][:40]
+        elif p.kind == "result":
             self._done += 1
-            m = re.search(r"\$([0-9.]+)", text)
-            if m:
-                self._cost += float(m.group(1))
+            self._cost += p.cost_usd or 0.0
         else:
             return
         try:
@@ -141,27 +175,46 @@ class Out:
         self._console(json.dumps(obj, separators=(",", ":")), sys.stdout)
 
     def step(self, text):
-        self._say(text, "step")
+        self._say(Progress("step", text), text)
 
-    def result(self, text):
-        self._say(text, "result")
+    def result(self, detail="", *, row=None, ok=True, seconds=None, cost_usd=None):
+        """A row that landed. `detail` is what the caller wants said about it \u2014 a story's
+        turn and one lens of a round say different things \u2014 and the rest is what the
+        status line and `clerk watch` would otherwise read back out of the drawn line."""
+        head = f"{row:<20} " if row else ""
+        self._say(Progress("result", detail, row=row, ok=ok, seconds=seconds, cost_usd=cost_usd),
+                  f"  {OK if ok else BAD} {head}{detail}")
+
+    def started(self, row):
+        self._say(Progress("started", row=row), f"  \u00b7 {row} started")
 
     def note(self, text):
-        self._say(text, "note")
+        self._say(Progress("note", text), f"  \u00b7 {text}")
 
     def reply(self, text):
-        self._say(text, "reply")
+        self._say(Progress("reply", text), f"    {text}")
 
-    def _say(self, text, kind):
-        self._pulse(text, kind)
+    def _say(self, p, line):
+        self._pulse(p)
+        self._record(p)
         if self.level == "raw":
             # A mechanical step spawns nothing, so without this the JSONL would have gaps
             # exactly where clerk did the work itself.
-            self._emit_raw({"kind": kind, "text": text})
+            self._emit_raw({"kind": p.kind, "text": line})
             if self.log:
-                self._write(text, to_stderr=False)
+                self._write(line, to_stderr=False)
             return
-        self._write(text, to_stderr=not (self.level == "quiet" and kind not in ("step", "result")))
+        self._write(line, to_stderr=not (self.level == "quiet" and p.kind not in ("step", "result")))
+
+    def _record(self, p):
+        if not self.records:
+            return
+        try:
+            with self.lock:
+                self.records.write(json.dumps({k: v for k, v in asdict(p).items() if v is not None},
+                                              separators=(",", ":")) + "\n")
+        except (OSError, ValueError):
+            self.records = None
 
     def event(self, e, label=None):
         """One thing an agent did. `label` names which agent, for a phase running
@@ -172,9 +225,10 @@ class Out:
             return
         if e.get("kind") != "tool":
             return
+        what = describe(e.get("name"), e.get("input"))
+        self._record(Progress("activity", what, row=label))
         who = f"{label:<18} " if label else ""
-        self._write(f"   \u22ef {who}{describe(e.get('name'), e.get('input'))}",
-                    to_stderr=self.level != "quiet")
+        self._write(f"   \u22ef {who}{what}", to_stderr=self.level != "quiet")
 
     def final(self, obj, code=0):
         if self.beat_file:
@@ -185,6 +239,9 @@ class Out:
         if self.log:
             self.log.write(json.dumps(obj, indent=2) + "\n")
             self.log.close()
+        if self.records:
+            self.records.write(json.dumps({"kind": "summary", **obj}, separators=(",", ":")) + "\n")
+            self.records.close()
         if self.log_path:
             obj = {**obj, "progress": self.log_path}
         if self.level == "raw":

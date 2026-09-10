@@ -688,7 +688,7 @@ def audit_run(ctx, aud, o):
                                  f"wait for it, or stop it and run again"}, 3)
         died = note_runner_dead(ctx, aud)
         if died:
-            out.note(f"  · the previous runner (pid {died['pid']}) died in {died['phase']}: "
+            out.note(f"the previous runner (pid {died['pid']}) died in {died['phase']}: "
                      f"{len(died['kept'])} agent(s) kept, {len(died['lost'])} to run again")
 
     def on_signal(signum, frame):
@@ -726,16 +726,17 @@ def audit_run(ctx, aud, o):
         kept = runner.reusable(nxt["phase"], jobs)
         out.step(_phase_line(nxt, jobs, kept))
         for jid, r in kept.items():
-            out.note(f"  · {_short_id(jid)} landed at {(r.get('at') or '')[11:16]}Z, kept")
+            out.note(f"{_short_id(jid)} landed at {(r.get('at') or '')[11:16]}Z, kept")
         todo = [j for j in jobs if j["id"] not in kept]
         runner.phase_started(nxt["phase"], kept)
         def began(j):
             runner.agent_started(j)
-            out.note(f"  · {_short_id(j['id'])} started")
+            out.started(_short_id(j["id"]))
         def landed(j, r):
             took = runner.agent_landed(j, r)
-            out.result(f"  {'✓' if r.get('ok') else '✗'} {_short_id(j['id']):<20} "
-                       f"{_verdict(r):<28} {took}s · ${r.get('cost_usd') or 0:.2f}")
+            cost = float(r.get("cost_usd") or 0)
+            out.result(f"{_verdict(r):<28} {took}s · ${cost:.2f}",
+                       row=_short_id(j["id"]), ok=bool(r.get("ok")), seconds=took, cost_usd=cost)
         def event(jid, e):
             if out.wants_events:
                 out.event(e, _short_id(jid))

@@ -7,15 +7,19 @@ That leaves the file as the only way to see where one is up to, and `tail -f` sh
 a scroll: a phase's agents interleave, a lens that finished scrolls away, and the totals
 are wherever they last appeared.
 
-This reads the same file and draws it as what it is — groups with rows under them, each
-row carrying its state and what it is touching. Nothing here talks to the runner: it is a
-reader over a file, so watching costs the run nothing and stopping it interrupts nothing.
+This draws it as what it is — groups with rows under them, each row carrying its state
+and what it is touching. Nothing here talks to the runner: it is a reader over a file, so
+watching costs the run nothing and stopping it interrupts nothing.
 
-The parse is deliberately shallow. Indentation says the shape — a group at the margin, a
-row two spaces in, an activity three — so a phase table this does not know about still
-renders, and a format change costs a wrong label rather than an empty screen.
+What it reads is `progress.jsonl`, the records the runner writes beside the log: one line
+per thing that happened, with the parts already apart. Before those existed this had to
+recognise the drawn line instead — indentation for the shape, a regex for the cost — which
+is a second copy of a grammar that lives in clerk_render, and a prefix changed there would
+have cost this a screen with every test still green. `parse` is that reader, kept for a
+log written by an older runner.
 """
 
+import json
 import os
 import re
 import sys
@@ -39,20 +43,67 @@ GREEN, RED, CYAN = "\033[32m", "\033[31m", "\033[36m"
 class Group:
     def __init__(self, title):
         self.title = title
-        self.rows = {}      # row -> {"state", "detail", "doing"}
+        self.rows = {}      # row -> {"state", "detail", "doing", "cost"}
         self.order = []
         self.lines = []     # anything that belongs to the group rather than a row
 
     def row(self, name):
         if name not in self.rows:
-            self.rows[name] = {"state": "run", "detail": "", "doing": ""}
+            self.rows[name] = {"state": "run", "detail": "", "doing": "", "cost": None}
             self.order.append(name)
         return self.rows[name]
 
 
+def read_records(lines):
+    """The same groups and rows, from the records a runner writes beside its log. Each
+    line is one `clerk_render.Progress`, so nothing here has to recognise a prefix or
+    read a number back out of a rendered figure."""
+    groups, tail = [], []
+    for raw in lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            r = json.loads(raw)
+        except json.JSONDecodeError:
+            # A line still being written. The next frame is 0.3s away and will have it.
+            continue
+        kind, text = r.get("kind"), r.get("text", "")
+        if kind == "summary":
+            tail.append(raw)
+            continue
+        if kind == "step":
+            groups.append(Group(text))
+            continue
+        if not groups:
+            continue
+        g = groups[-1]
+        if kind == "started":
+            g.row(r["row"])
+        elif kind == "activity":
+            if r.get("row"):
+                g.row(r["row"])["doing"] = text
+            elif g.order:
+                g.rows[g.order[-1]]["doing"] = text
+            else:
+                g.lines.append(text)
+        elif kind == "result":
+            row = g.row(r.get("row") or text)
+            row["state"] = "ok" if r.get("ok") else "bad"
+            row["detail"] = text if r.get("row") else ""
+            row["doing"] = ""
+            row["cost"] = r.get("cost_usd")
+        elif kind in ("note", "reply"):
+            g.lines.append(text)
+    return groups, tail
+
+
 def parse(lines):
-    """(groups, tail) — the tail is whatever came after the last group, which is where a
-    runner's closing JSON lands."""
+    """(groups, tail) from the drawn log, for a run started before the records existed.
+    Drop it once no such log is being watched.
+
+    The tail is whatever came after the last group, which is where a runner's closing
+    JSON lands."""
     groups, tail = [], []
     for raw in lines:
         line = raw.rstrip("\n")
@@ -98,6 +149,9 @@ def render(groups, tail, started, path, width):
     spent = 0.0
     for g in groups:
         for r in g.rows.values():
+            if r.get("cost") is not None:
+                spent += r["cost"]
+                continue
             m = re.search(r"\$([0-9.]+)", r["detail"])
             if m:
                 spent += float(m.group(1))
@@ -163,9 +217,14 @@ def main(argv):
     st = os.stat(path)
     started = getattr(st, "st_birthtime", st.st_mtime)
 
+    # The records when the runner wrote them, the drawn log when it did not.
+    records = Path(path).with_suffix(".jsonl")
+
     def snapshot():
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            return parse(fh.readlines())
+        src = records if records.exists() else Path(path)
+        with open(src, encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()
+        return read_records(lines) if src == records else parse(lines)
 
     if as_json:
         groups, tail = snapshot()
@@ -177,7 +236,7 @@ def main(argv):
     seen = -1
     while True:
         groups, tail = snapshot()
-        size = os.path.getsize(path)
+        size = os.path.getsize(records if records.exists() else path)
         if size != seen:
             seen = size
             frame = render(groups, tail, started, path, width)

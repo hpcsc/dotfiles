@@ -279,7 +279,7 @@ class Runner:
         say so, and a fourth that forgot would leave the runner naming a tree it had left."""
         os.chdir(path)
         self.cwd = path
-        self.out.note(f"  · {note}")
+        self.out.note(note)
         return True
 
     def charge(self, reply):
@@ -308,7 +308,7 @@ class Runner:
             if out.get("mode") == "worktree":
                 return self.enter(out["path"],
                                   f"{'adopted' if out.get('adopted') else 'created'} {out['path']}")
-            self.out.note(f"  · on branch {out.get('branch', self.slug)}")
+            self.out.note(f"on branch {out.get('branch', self.slug)}")
             return True
         return f"the isolate row asked for '{action}', which the runner does not know how to do"
 
@@ -317,7 +317,7 @@ class Runner:
         work = row.get("build_tree") or self.cwd
         if not cmd:
             return "the repo declares no test command, so the runner could not run the suite"
-        self.out.note(f"  · {cmd}")
+        self.out.note(cmd)
         log = Path(tempfile.mkdtemp(prefix="clerk-run-")) / "suite.log"
         with log.open("w") as fh:
             rc = subprocess.run(cmd, shell=True, cwd=work, stdout=fh,
@@ -327,7 +327,7 @@ class Runner:
         with log.open("a") as fh:
             fh.write(f"\nclerk_exit={rc}\n")
         if rc != 0:
-            self.out.note(f"  · suite failed (exit {rc})")
+            self.out.note(f"suite failed (exit {rc})")
             tail = log.read_text()[-4000:]
             return (f"The runner ran `{cmd}` in {work} and it exited {rc}. No receipt was "
                     f"recorded. Fix what is broken, get it green, and record the receipt "
@@ -336,7 +336,7 @@ class Runner:
                               "--output-file", str(log), cwd=work)
         if err:
             return f"the suite passed but `clerk receipt` failed: {err}"
-        self.out.note("  · green, receipt recorded")
+        self.out.note("green, receipt recorded")
         return True
 
     def do_audit(self, row):
@@ -357,7 +357,7 @@ class Runner:
             args += ["--test-commands", json.dumps(row["test_commands"])]
         if self.model:
             args += ["--model", self.model]
-        self.out.note(f"  · audit round {len(aud.get('rounds') or []) + 1} of {planned}")
+        self.out.note(f"audit round {len(aud.get('rounds') or []) + 1} of {planned}")
         out, err = clerk_json(*args, cwd=self.cwd, allow=(0, 3))
         if out is None:
             return f"`clerk audit run` failed: {err}"
@@ -371,13 +371,13 @@ class Runner:
         if not rec or not rec.get("recorded"):
             return f"the round was not recorded: {(rec or {}).get('reason') or err}"
         r = rec["round"]
-        self.out.note(f"  · {r.get('findings')} finding(s), {r.get('coverage_gaps')} coverage gap(s)")
+        self.out.note(f"{r.get('findings')} finding(s), {r.get('coverage_gaps')} coverage gap(s)")
         if not r.get("findings") and not r.get("coverage_gaps"):
             # Nothing found and nothing left unlooked-at: there is no judgment left in
             # accepting that, so it does not cost a turn.
             acc, _ = clerk_json("audit", "accept", cwd=self.cwd, allow=(0, 3))
             if acc and acc.get("accepted"):
-                self.out.note("  · accepted; the round found nothing and left nothing uncovered")
+                self.out.note("accepted; the round found nothing and left nothing uncovered")
                 return True
         note = (f"The runner drove audit round {r['n']} and recorded it. The report it was "
                 f"given:\n\n```json\n{json.dumps(report, indent=2)[:12000]}\n```\n\n"
@@ -398,9 +398,9 @@ class Runner:
         if out is None:
             return f"`clerk land` failed: {err}"
         if out.get("landed"):
-            self.out.note(f"  · landed on {out.get('default_branch')}")
+            self.out.note(f"landed on {out.get('default_branch')}")
         elif out.get("archived"):
-            self.out.note(f"  · archived {out['archived']}; integration {out.get('integrate_source') or 'off'}")
+            self.out.note(f"archived {out['archived']}; integration {out.get('integrate_source') or 'off'}")
         else:
             return (f"`clerk land` did not close the step: {out.get('reason')}\n\n"
                     f"```json\n{json.dumps(out, indent=2)[:4000]}\n```")
@@ -437,14 +437,15 @@ class Runner:
             self.session = res.get("session_id") or self.session
             self.resume = bool(self.session)
             self.sent.add("build")
-        took = f"{int(time.time() - started)}s"
+        took = int(time.time() - started)
+        cost = float(res.get("cost_usd") or 0)
         if not res.get("ok"):
-            self.out.result(f"  ✗ {res.get('error')}  ({took})")
+            self.out.result(f"{res.get('error')}  ({took}s)", ok=False, seconds=took, cost_usd=cost)
             return res.get("error")
         for line in str(res.get("data") or "").strip().splitlines()[:3]:
             if line.strip():
-                self.out.reply(f"    {line.strip()}")
-        self.out.result(f"  ✓ {took} · ${res.get('cost_usd') or 0:.2f}")
+                self.out.reply(line.strip())
+        self.out.result(f"{took}s · ${cost:.2f}", seconds=took, cost_usd=cost)
         return None
 
     # -- The walk ----------------------------------------------------------------

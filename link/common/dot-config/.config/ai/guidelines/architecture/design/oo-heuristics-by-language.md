@@ -130,6 +130,7 @@ Applies nearly literally; the conventions are weaker.
 - **5.12** — `isinstance` chains.
 - **6.1 / 6.3** — mixins and diamonds are common; MRO makes accidental multiple inheritance (6.3) a real and subtle defect.
 - **9.1** — ORM models (Django/SQLAlchemy) doubling as domain types.
+- **The missing abstraction** — Python is where this axis matters most, and it runs both ways. A module of functions threading a `conn`, `session` or `cfg` through every signature is a class nobody wrote; a class holding `__init__` and one method is a function wearing a costume. Build the function × parameter matrix before concluding either, and treat `functools.partial` stacks and closures over the same captured variables as the same finding: a closure over N variables is an object with N fields and one method.
 
 ---
 
@@ -137,7 +138,7 @@ Applies nearly literally; the conventions are weaker.
 
 Say so and stop. Do not force the heuristics onto:
 
-- **Pure functional modules** — data and transformations are separated *by design*. 2.9 does not apply.
+- **Pure functional modules** — data and transformations are separated *by design*. 2.9 does not apply. A module whose functions thread mutable state through their signatures is not this, however functional it looks; measure it before exempting it.
 - **DTOs, wire formats, event payloads, config structs** — public, behaviourless data is correct. 2.1, 2.9, 3.3, 4.6, 4.7, 9.2 do not apply.
 - **Generated code** — protobuf, ORM models, OpenAPI clients, codegen output.
 - **Vendored and third-party code.**

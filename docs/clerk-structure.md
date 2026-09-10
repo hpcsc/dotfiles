@@ -145,7 +145,7 @@ flowchart LR
     vl["verify-log.jsonl<br/>which check fired, each time"]
     aj["audit.json<br/>rounds, live round, acceptance"]
     sh["shown.json<br/>which step text this session saw"]
-    pl["progress.log · runner.json"]
+    pl["progress.log · progress.jsonl<br/>runner.json"]
   end
   finish["clerk finish"]:::clerk -->|marks done, stages| sc
   finish -->|records| tr
@@ -166,7 +166,7 @@ flowchart LR
   classDef file fill:#FFFFFF,stroke:#9AA39D,stroke-width:1px,color:#1B1F1D
 ```
 
-**Where it lives:** clerk_repo.py: state_dir, ledger_dir, run_records_dir, ledger_log · clerk_ledger.py: Run · method/clerk-step.md, section "Ledger"
+**Where it lives:** clerk_repo.py: Repo.state_dir, Repo.ledger_dir, run_records_dir, ledger_log · clerk_ledger.py: Run · method/clerk-step.md, section "Ledger"
 
 **When you would change it:** A new per-run fact goes in the ledger through `Run.put` or `Run.mark`, never in tasks/: a tracked ledger would dirty the tree on every write and put session evidence into PRs.
 
@@ -226,14 +226,14 @@ flowchart LR
   end
   subgraph P["commands: clerk-&lt;name&gt;"]
     step["clerk-step"]
-    audit["clerk-audit"]
-    runp["clerk-run"]
+    audit["clerk-audit<br/>Runner"]
+    runp["clerk-run<br/>Runner"]
     mech["prepare · status · finish · receipt<br/>isolate · verify · land"]
     others["stats · lint · guidelines · learn<br/>fixup · story · watch"]
   end
   subgraph S["shared modules: clerk_*.py"]
     lib["clerk_lib<br/>die, emit, git, parse, plugin_bin"]
-    repo["clerk_repo<br/>the repo's facts, prepare, the event log"]
+    repo["clerk_repo<br/>Repo, the facts prepare assembles, the event log"]
     tasks["clerk_tasks<br/>the task record: status, next task, finish, receipt"]
     verify["clerk_verify<br/>the mechanical checks"]
     landm["clerk_land<br/>isolate, the land checks, landing"]
@@ -242,7 +242,7 @@ flowchart LR
     method["clerk_method<br/>variant and include renderer"]
     panel["clerk_audit_panel<br/>lenses, remits, refuters"]
     harness["clerk_harness<br/>spawn claude -p or opencode"]
-    render["clerk_render<br/>progress lines, beat file"]
+    render["clerk_render<br/>Out and Progress, beat file"]
     st["clerk_stats<br/>time and tokens"]
   end
   core -->|"runs, as a process"| P
@@ -273,6 +273,77 @@ flowchart LR
 **Where it lives:** link/common/dot-local/bin/ · clerk_lib.py for what every command does the same way
 
 **When you would change it:** A new command is a new clerk-<name> executable with a first docstring line reading `clerk <name> — …`; the dispatcher lists it without being told. Put the logic in a clerk_*.py module and keep the executable to argument parsing, so another command can import it rather than run it.
+
+## The types, and what each one owns
+
+Most of clerk is functions, and should stay that way — a rule that reads a file and answers a question needs nothing held between calls. The types exist where something genuinely has to be *kept*: a directory of records, a checkout's answers, a walk in progress. Six of them carry a run between commands, and each owns one thing; the rest — a markup renderer, the audit's prompt builder, an argument parser — are local to one file.
+
+```mermaid
+classDiagram
+    class Repo {
+        one checkout, as it stands now
+        +work_tree
+        +head_sha
+        +ledger_dir
+        +code_tree(rev)
+        +receipt_state(state, head)
+    }
+    class Run {
+        one run's records on disk
+        +read()
+        +write()
+        +put()
+        +mark()
+    }
+    class Ctx {
+        what one call resolved
+    }
+    class Runner {
+        the process driving a walk
+        +walk()
+        +enter(path)
+        +charge(reply)
+    }
+    class Out {
+        what a watcher sees
+        +step()
+        +result()
+        +event()
+    }
+    class Progress {
+        one thing that happened
+        +kind
+        +cost_usd
+        +seconds
+    }
+    class facts["prepare() — every fact, as one object"]
+    facts ..> Repo : holds one for the assembly
+    Ctx *-- Run : contains
+    Ctx ..> facts : resolved by
+    Runner *-- Out : contains
+    Runner ..> Run : records its round
+    Out ..> Progress : draws it, and records it
+```
+
+**`Repo`** (clerk_repo) is one checkout and the git facts about it, each question asked at most once. Asking at most once needs somewhere to keep the answer, and a free function over a cwd has nowhere: the facts share their underlying git questions heavily — the common dir sits behind the repo root, the runs directory and the ledger alike — so resolving them separately means asking git the same thing several times inside one call. The free functions remain as the interface; each holds one of these for the length of its own work.
+
+**`Run`** (clerk_ledger) is the directory under `<git-common-dir>/clerk/runs/<slug>/` and the reads and writes over it. Every per-run fact goes in through `put` or `mark`.
+
+**`Ctx`** (clerk_ledger) is what one call resolved — `prepare`'s facts and the run this tree belongs to — carried to the rows so each is handed its answers rather than fetching them.
+
+**`Runner`** is the process driving a walk, and there are two of them: `clerk-run`'s walks a story's step table, `clerk-audit`'s walks a round's phases. Same word deliberately, because it is the same job. Each keeps its own record as it goes, so a resume knows what had already landed.
+
+**`Out`** and **`Progress`** (clerk_render) are the two halves of showing a run as it happens. `Progress` is the thing that happened, with its numbers as numbers; `Out` draws the line and writes the record. Three readers want that — the person watching, the status line, `clerk watch` — and only the first wants the line.
+
+**Two rules a change here has to keep:**
+
+**A `Repo` answers for the checkout as it stood when it was made.** Hold one across a stretch that only reads. Take a new one after anything that moves a ref — a commit, a switch, a rebase. `clerk_land` is the worked example: `land_checks` holds one because it reads and writes nothing, while `land` takes one per phase and a fresh one either side of its rebase, because the whole of that check is that head differs across it. A `Repo.moved()` to call after each mutation is the alternative, and it puts the rule back in the caller's memory, where a missed call is silent.
+
+**Progress travels as a record, not as a line.** Anything a later reader has to compute from — a cost, a duration, which agent — is a field on `Progress`, never something to be matched back out of the drawn text. That text is rounded to the cent, so a turn costing less than one would total as nothing, and an error message carrying a `$` would read as a cost.
+
+**Where it lives:** clerk_repo.py: Repo · clerk_ledger.py: Run, Ctx · clerk-run, clerk-audit: Runner · clerk_render.py: Out, Progress
+
+**When you would change it:** A new fact about the checkout is a `Repo` member, not a new free function that shells out — `Repo` is meant to be the only thing here that asks git about the repository. A new thing worth showing while a run walks is a `Progress` kind, so `clerk watch` gets it without learning a new prefix.
 
 ## A command's round trip through the dispatcher
 

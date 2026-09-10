@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import Parser, clerk, die, facts, take_verb  # noqa: E402
+from clerk_lib import Parser, clerk, die, repo, take_verb  # noqa: E402
 
 
 def run(*args, cwd=None):
@@ -257,7 +257,7 @@ def main(argv):
         return 0
     create, as_json, plan_arg = verb == "create", args.json, args.plan
 
-    repo_root = facts().get("repo_root")
+    repo_root = repo().repo_root
     if not repo_root:
         die("not a git repository")
 

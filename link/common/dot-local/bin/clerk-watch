@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, emit, gitout  # noqa: E402
+from clerk_lib import die, emit, repo  # noqa: E402
 
 GROUP = re.compile(r"^(?! )(?P<title>.+?)\s*$")
 STARTED = re.compile(r"^  · (?P<row>\S+) started\s*$")
@@ -186,13 +186,13 @@ def resolve(explicit):
     ad-hoc audit. Read-only — watching never opens a ledger that was not there."""
     if explicit:
         return explicit
-    cwd = os.getcwd()
-    common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
+    r = repo(os.getcwd())
+    common = r.common_dir
     if not common:
         die("not a git repository")
-    rc, prep, _ = clerk("prepare", cwd=cwd)
-    slug = (prep or {}).get("run")
-    branch = (prep or {}).get("branch")
+    ldir = r.ledger_dir
+    slug = Path(ldir).name if ldir else None
+    branch = r.current_branch
     for p in ([Path(common) / "clerk" / "runs" / slug / "progress.log"] if slug else []) + \
              ([Path(common) / "clerk" / "audits" / str(branch).replace("/", "-") / "progress.log"]
               if branch else []):

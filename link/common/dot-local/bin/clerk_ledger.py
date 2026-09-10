@@ -18,14 +18,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from clerk_lib import die, emit, git, gitout
-from clerk_repo import breakdown_side, ledger_read, prepare, run_section
+from clerk_lib import die, emit, git
+from clerk_repo import Repo, breakdown_side, ledger_read, now, prepare, run_section
 
 CALLERS = ("ui", "inbound", "outbound", "async", "exported")
-
-
-def now():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # --------------------------------------------------------------------------------
@@ -248,19 +244,23 @@ class Ctx:
 
 def build_ctx(explicit_run=None, harness=None, read_only=False, full=False, pick=False):
     cwd = os.getcwd()
-    common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
+    # One Repo for the whole call. Nothing here moves a ref, so prepare and the fields
+    # below share the answers instead of asking git for each of them twice.
+    r = Repo(cwd)
+    common = r.common_dir
     if not common:
         die("not a git repository")
     # The facts are resolved in-process: prepare finds the run this tree belongs to and
     # applies that run's request itself. Only a `--run` naming a different run asks again,
     # with that run's request.
-    prep = prepare(cwd)
-    ctx = Ctx(cwd=cwd, common=common, git_dir=gitout("rev-parse", "--absolute-git-dir", cwd=cwd),
-              branch=prep.get("branch") or None, head=gitout("rev-parse", "HEAD", cwd=cwd),
+    prep = prepare(cwd, repo=r)
+    ctx = Ctx(cwd=cwd, common=common, git_dir=r.git_dir,
+              branch=prep.get("branch") or None, head=r.head_sha,
               default=prep.get("default_branch"), prepare=prep, read_only=read_only, full=full)
     ctx.run = resolve_run(ctx, explicit_run, pick=pick)
     if ctx.run is not None and prep.get("run") != ctx.run.slug:
-        prep = prepare(cwd, ctx.run.meta.get("request") or "")
+        # The same checkout, so the same Repo: only the request differs.
+        prep = prepare(cwd, ctx.run.meta.get("request") or "", repo=r)
         ctx.prepare = prep
     ctx.head_ct = prep.get("code_tree")
     ctx.flags = prep.get("flags", {})

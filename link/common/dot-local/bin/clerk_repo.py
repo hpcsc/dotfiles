@@ -665,15 +665,15 @@ def request_from_ledger(cwd=None):
     return Repo(cwd).request_from_ledger
 
 
-def prepare(cwd=None, request=None):
+def prepare(cwd=None, request=None, repo=None):
     """Every fact a run reads, as one object. The request is the top layer of the flags
     and the learnings path; once a run is open the ledger holds it verbatim, so a call
     without one reads it from there and says so in `request_source`.
 
-    One Repo for the whole assembly, so the questions these facts share — the common dir,
-    the work tree, whether tasks/ is ignored — are asked once between them rather than
-    once each."""
-    r = Repo(cwd)
+    One Repo for the whole assembly, so the questions these facts share, such as the
+    common dir, the work tree, and whether tasks/ is ignored, are asked once between them
+    rather than once each. A caller that already holds one passes it in and shares it."""
+    r = repo or Repo(cwd)
     root = r.repo_root
     if not root:
         die("not a git repository")

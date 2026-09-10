@@ -109,22 +109,29 @@ def clerk(*args, cwd=None, env=None):
 
 
 def facts(cwd=None, request=None):
-    """`clerk prepare`'s facts, resolved in-process: precedence rules subtle enough to get
-    wrong twice — where the breakdown lives when tasks/ is excluded, which branch is
-    default, where the work tree is — decided once in clerk_repo and read here."""
+    """`clerk prepare`'s facts, resolved in-process. The precedence rules behind them are
+    subtle enough to get wrong twice: where the breakdown lives when tasks/ is excluded,
+    which branch is default, where the work tree is. clerk_repo decides each once, and
+    this reads the answer.
+
+    Ask for this when a caller wants the request applied on top, which is what makes the
+    flags and the learnings path what they are. A caller that wants one plain fact about
+    the checkout asks `repo()` instead, and pays for that fact alone."""
     from clerk_repo import prepare  # clerk_repo imports this module, so the import waits
     return prepare(cwd, request)
 
 
-def resolve_tasks_arg(arg, tasks_home):
-    """A relative path is written the way the repo reads on disk, but cwd inside a
-    worktree is not where an excluded breakdown lives. Try the breakdown home before
-    handing the path back as given. The core's resolve_tasks_arg, for plugins."""
-    p = Path(arg)
-    if p.is_absolute() or p.exists():
-        return p
-    candidate = Path(tasks_home) / arg
-    return candidate if candidate.exists() else p
+def repo(cwd=None):
+    """The checkout, for a caller that wants a fact or two rather than all of them.
+
+    `facts()` resolves every fact a run reads, which is twelve git subprocesses and a
+    quarter of a second. Most callers here want one: the work tree, the default branch,
+    where the ledger is. They ask this and pay for what they ask.
+
+    The instance answers for the checkout as it stood when it was made. Do not keep one
+    across a commit, a switch or a rebase."""
+    from clerk_repo import Repo  # clerk_repo imports this module, so the import waits
+    return Repo(cwd)
 
 
 def worktree_for(branch, worktrees):

@@ -17,10 +17,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, emit, git, gitout, parse, resolve_tasks_arg, take_verb  # noqa: E402
+from clerk_lib import clerk, die, emit, git, gitout, parse, take_verb  # noqa: E402
 from clerk_ledger import (CALLERS, Run, build_ctx, detect_harness, now, open_run_summaries,  # noqa: E402
                           run_summary, runs_root, session_id)
-from clerk_repo import Repo, clear_archive_record  # noqa: E402
+from clerk_repo import Repo, clear_archive_record, resolve_tasks_arg  # noqa: E402
 from clerk_steps import (ROWS, active_rows, facts_for, file_hash, instructions_for,  # noqa: E402
                          lint_task_record, next_step)
 from clerk_tasks import status_of  # noqa: E402
@@ -68,7 +68,7 @@ def done_decompose(ctx, argv):
     o, _ = parse(argv, {"--tasks-file": "value", "--approved": "bool"})
     if not o["--tasks-file"]:
         die("--done decompose needs --tasks-file <tasks/<story>.md>")
-    tf = resolve_tasks_arg(o["--tasks-file"], ctx.prepare.get("tasks_home") or ctx.cwd)
+    tf = Path(resolve_tasks_arg(o["--tasks-file"], ctx.prepare.get("tasks_home") or ctx.cwd))
     if not tf.exists():
         die(f"no breakdown at {o['--tasks-file']}", 1)
     tf = tf.resolve()

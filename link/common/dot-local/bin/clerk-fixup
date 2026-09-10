@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import take_verb, Parser, die, emit, facts  # noqa: E402
+from clerk_lib import take_verb, Parser, die, emit, gitout, repo  # noqa: E402
 from clerk_lib import git as git_raw  # noqa: E402
 
 
@@ -52,9 +52,11 @@ def resolve_base(explicit):
         return r.stdout.strip()
     # The merge-base `clerk prepare` reports — the one `verify` scopes its own checks by —
     # so a caller that passes neither gets the branch point rather than a guess.
-    f = facts()
-    if f.get("base") and f.get("branch") != f.get("default_branch"):
-        return f["base"]
+    r = repo()
+    default = r.default_branch
+    base = gitout("merge-base", "HEAD", default) if default else None
+    if base and r.current_branch != default:
+        return base
     # Standing on the default branch there is no other branch to fork from, which is the
     # ordinary shape of an --in-place run: the work is a run of local commits that have
     # not been pushed. Their base is where the branch and its upstream last agreed.

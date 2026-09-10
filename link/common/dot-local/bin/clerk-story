@@ -19,7 +19,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import Parser, die, facts, git_ok, gitout, resolve_tasks_arg, worktree_for  # noqa: E402
+from clerk_lib import Parser, die, git_ok, gitout, repo, worktree_for  # noqa: E402
+from clerk_repo import resolve_tasks_arg  # noqa: E402
 
 
 def git(*args):
@@ -230,9 +231,9 @@ def main(argv):
         return 0
     table, plan_arg = args.table, args.plan
 
-    f = facts()
-    tasks_home = f.get("tasks_home") or f.get("repo_root")
-    default_branch = f.get("default_branch")
+    r = repo()
+    tasks_home = r.tasks_home or r.repo_root
+    default_branch = r.default_branch
     if not default_branch:
         die("no default branch resolved, and every merged test is taken against one")
 
@@ -245,7 +246,7 @@ def main(argv):
         ref = f"origin/{default_branch}"
 
     if plan_arg:
-        plan = str(resolve_tasks_arg(plan_arg, tasks_home))
+        plan = resolve_tasks_arg(plan_arg, tasks_home)
         if not Path(plan).is_file():
             die(f"plan not found: {plan}")
         plans = [plan]
@@ -258,7 +259,7 @@ def main(argv):
     for path in plans:
         doc = load_plan(path)
         siblings = doc.get("deliverables") or []
-        described = [describe(d, tasks_home, ref, f.get("worktrees")) for d in siblings if d.get("id")]
+        described = [describe(d, tasks_home, ref, r.worktrees) for d in siblings if d.get("id")]
         for d in described:
             d["base_commit"] = base_commit(d["base"], described)
         stories.append(

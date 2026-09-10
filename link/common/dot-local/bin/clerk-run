@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, gitout, parse  # noqa: E402
+from clerk_lib import clerk, die, gitout, parse, repo  # noqa: E402
 import clerk_harness as hx  # noqa: E402
 from clerk_render import Out  # noqa: E402
 
@@ -193,7 +193,7 @@ def ask_step(cwd, slug, harness, full=True):
     return row
 
 
-def ledger_dir(cwd, slug):
+def run_dir(cwd, slug):
     common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd)
     if not common:
         die("not a git repository")
@@ -237,7 +237,7 @@ class Runner:
 
     @property
     def dir(self):
-        return ledger_dir(self.cwd, self.slug)
+        return run_dir(self.cwd, self.slug)
 
     def load(self):
         """A run that died mid-story resumes where the ledger says, and the build session
@@ -550,10 +550,14 @@ def check_gates(out, cwd, request, waivers):
     that set it, and the caller waives it for this run deliberately — recorded in the
     ledger, because a pause nobody took is a fact about the run.
     """
-    rc, prep, err = clerk("prepare", "--request", request or "", cwd=cwd)
-    if not prep:
-        die(f"clerk prepare failed: {err or f'exit {rc}'}")
-    flags, src = prep.get("flags") or {}, prep.get("flag_sources") or {}
+    # The flag resolver itself, not every fact a run reads to reach it. The request is
+    # the top layer of the precedence, so it is passed on as `clerk prepare` passes it.
+    from clerk_repo import resolve_flags
+    root = repo(cwd).repo_root
+    if not root:
+        die("not a git repository")
+    resolved = resolve_flags(root, request or "")
+    flags, src = resolved["flags"], resolved["flag_sources"]
     waived = {}
     for key, (off, what) in GATES.items():
         if not flags.get(key):
@@ -581,7 +585,7 @@ def open_run(cwd, slug, request, harness):
     if row.get("run"):
         if slug and slug != row["run"]:
             die(f"the run open here is '{row['run']}'; --slug said '{slug}'", 3)
-        meta = json.loads((ledger_dir(cwd, row["run"]) / "run.json").read_text())
+        meta = json.loads((run_dir(cwd, row["run"]) / "run.json").read_text())
         return row["run"], meta.get("request") or ""
     if not slug or not request:
         die("no run is open here — name the story: clerk run --slug <kebab-slug> "
@@ -635,7 +639,7 @@ def main(argv):
                          {k for k, on in (("gears", o["--no-gears"]),
                                           ("review_breakdown", o["--no-review-breakdown"])) if on})
     o["rounds"] = int(o["--rounds"]) if (o["--rounds"] or "").isdigit() else DEFAULT_ROUNDS
-    o["log_path"] = None if o["--dry-run"] else str(ledger_dir(cwd, slug) / "progress.log")
+    o["log_path"] = None if o["--dry-run"] else str(run_dir(cwd, slug) / "progress.log")
     o["beat"] = None if o["--dry-run"] else {"dir": cwd, "slug": slug}
     runner = Runner(cwd, slug, request, harness, cmd, o, waived)
     runner.out.opening()

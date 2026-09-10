@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import Parser, clerk, die  # noqa: E402
+from clerk_lib import Parser, die, repo  # noqa: E402
 
 DEFAULT_ROOT = Path.home() / ".config" / "ai" / "guidelines"
 
@@ -221,13 +221,14 @@ def emit_sections(path, lines, wanted, out, resolved, literals=(), h2=None):
 
 
 def detect_languages(cwd):
-    """Ask clerk, so this agrees with what the rest of the run was told."""
-    rc, data, err = clerk("prepare", cwd=cwd)
-    if rc != 0 or data is None:
-        # Pass its reason through. "clerk prepare failed" sent the reader looking at this
-        # command, when what it actually says is "not a git repository".
-        die(f"{err or f'clerk prepare exited {rc}'} — pass --language explicitly to skip detection")
-    return data.get("languages", [])
+    """The same resolver `clerk prepare` reports from, so this agrees with what the rest
+    of the run was told. Called here rather than through the command, which resolves
+    every other fact a run reads to hand back this one."""
+    from clerk_repo import detect_languages as detect
+    root = repo(cwd).repo_root
+    if not root:
+        die("not a git repository — pass --language explicitly to skip detection")
+    return detect(root)
 
 
 def main():

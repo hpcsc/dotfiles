@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import Parser, die, facts, git  # noqa: E402
+from clerk_lib import Parser, die, git, repo  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -469,8 +469,8 @@ def main(argv):
     # build_tree, never repo_root: inside a worktree they differ, and repo_root is the main
     # checkout. Linting there reads another branch's index and disk — --cached finds nothing
     # staged, and the file rules parse files this branch already deleted.
-    repo = facts()
-    root = repo.get("build_tree") or repo.get("repo_root")
+    r = repo()
+    root = r.work_tree or r.repo_root
     if not root:
         die("not a git repository")
 

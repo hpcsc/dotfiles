@@ -310,10 +310,6 @@ def head_sha(cwd=None):
     return Repo(cwd).head_sha
 
 
-def tree_is_clean(cwd=None):
-    return Repo(cwd).tree_is_clean
-
-
 def is_ignored(directory, rel):
     return Repo().is_ignored(directory, rel)
 
@@ -321,14 +317,6 @@ def is_ignored(directory, rel):
 # --------------------------------------------------------------------------------
 # The run ledger: which run this tree belongs to, and the writers every command shares
 # --------------------------------------------------------------------------------
-
-def runs_dir(cwd=None):
-    return Repo(cwd).runs_dir
-
-
-def open_runs(cwd=None):
-    return Repo(cwd).open_runs
-
 
 def ledger_dir(cwd=None):
     return Repo(cwd).ledger_dir
@@ -391,10 +379,6 @@ def ledger_log(directory, cmd, rc, argv, cwd=None):
 # --------------------------------------------------------------------------------
 
 _BREAKDOWN_FILE = re.compile(r"\ttasks/.*\.(md|json|ya?ml)$")
-
-
-def code_tree(rev, cwd=None):
-    return Repo(cwd).code_tree(rev)
 
 
 def receipt_state(state, head, cwd=None):
@@ -631,10 +615,6 @@ def tasks_hint(home, cmd):
     return f"{cmd}: {len(paths)} breakdowns under {home}/tasks; name the one this run is building with --tasks-file:\n{listed}"
 
 
-def ledger_breakdown(cwd=None):
-    return Repo(cwd).ledger_breakdown
-
-
 def breakdown_for(override, cwd=None):
     return Repo(cwd).breakdown_for(override)
 
@@ -663,10 +643,6 @@ def commit_skill_for(wt):
     """The project's own commit skill when it defines one — usually to carry a
     convention its history depends on — else the personal one that wraps the same agent."""
     return "commit" if (Path(wt) / ".claude" / "skills" / "commit" / "SKILL.md").is_file() else "pcommit"
-
-
-def worktrees(cwd=None):
-    return Repo(cwd).worktrees
 
 
 def resume_for(breakdowns, trees):

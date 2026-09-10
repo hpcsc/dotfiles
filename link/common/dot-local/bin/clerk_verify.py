@@ -11,8 +11,7 @@ import re
 from pathlib import Path
 
 from clerk_lib import gitout
-from clerk_repo import (breakdown_for, default_branch, head_sha, receipt_state, run_records_dir, state_dir,
-                        tasks_home)
+from clerk_repo import Repo, run_records_dir
 
 VACUITY = re.compile(r"no files changed|no tests to run|no test files|0 passed|0 tests|skip running tests|no tests ran", re.I)
 _NOT_VACUOUS = re.compile(r"no test files|^ok\s.*no tests to run", re.I)
@@ -69,11 +68,15 @@ def scattered_task(records, base, cwd=None):
 
 
 def verify(tasks_override=None, cwd=None):
-    th = tasks_home(cwd)
-    tasks, _ = breakdown_for(tasks_override, cwd)
-    state = state_dir(cwd)
-    default = default_branch(cwd)
-    head = head_sha(cwd)
+    # One Repo for the whole check: every question below shares the common dir and the
+    # work tree with another, and nothing here moves a ref, so the answers cannot go
+    # stale under it. Six separate ones asked git thirteen times to learn ten things.
+    repo = Repo(cwd)
+    th = repo.tasks_home
+    tasks, _ = repo.breakdown_for(tasks_override)
+    state = repo.state_dir
+    default = repo.default_branch
+    head = repo.head_sha
     base = gitout("merge-base", "HEAD", default, cwd=cwd) if default else None
     findings, gaps, hints = [], [], []
 
@@ -90,7 +93,7 @@ def verify(tasks_override=None, cwd=None):
 
     # 2. unproven-suite — judged from the recorded receipt, because the receipt is what
     #    land trusts and it is what must not be hollow.
-    rs = receipt_state(state, head, cwd)
+    rs = repo.receipt_state(state, head)
     if not rs["fresh"]:
         findings.append({"check": "unproven-suite", "severity": "block", "detail": rs["why"]})
     else:

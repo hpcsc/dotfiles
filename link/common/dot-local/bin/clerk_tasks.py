@@ -13,8 +13,7 @@ import subprocess
 from pathlib import Path
 
 from clerk_lib import die, emit, git, gitout, plugin_bin
-from clerk_repo import (breakdown_for, is_ignored, now, run_records_dir, task_record_for, state_dir,
-                        tasks_home, tasks_hint, work_tree)
+from clerk_repo import Repo, now, run_records_dir, task_record_for, tasks_hint
 
 _TASK_HEADING = re.compile(r"^###\s+Task\s+(\d+):")
 _CHECKBOX = re.compile(r"^\s*- \[([ xX])\]")
@@ -90,9 +89,10 @@ def status_of(tasks_file, side, archived, label=None):
 
 def cmd_status(o):
     from clerk_repo import breakdown_paths
-    th = tasks_home()
+    repo = Repo()
+    th = repo.tasks_home
     if o["--all"]:
-        wt = work_tree() or ""
+        wt = repo.work_tree or ""
         out = []
         for f in breakdown_paths(th, include_archived=True):
             side = task_record_for(f)
@@ -103,7 +103,7 @@ def cmd_status(o):
             label = f[len(wt) + 1:] if f.startswith(wt + "/") else f
             out.append(status_of(f, side, arch, label))
         return {"breakdowns": out}
-    tasks, rc = breakdown_for(o["--tasks-file"])
+    tasks, rc = repo.breakdown_for(o["--tasks-file"])
     if rc != 0:
         die(tasks_hint(th, "status"))
     side = task_record_for(tasks)
@@ -113,8 +113,12 @@ def cmd_status(o):
 
 
 def cmd_finish(n, files, tasks_override=None):
-    th = tasks_home()
-    tasks, rc = breakdown_for(tasks_override)
+    # Held across the staging below: `git add` changes the index, and nothing this asks
+    # the repo — where tasks/ lives, which state dir, whether the record is ignored —
+    # is an answer the index can change.
+    repo = Repo()
+    th = repo.tasks_home
+    tasks, rc = repo.breakdown_for(tasks_override)
     if rc != 0:
         die(tasks_hint(th, "finish"))
     if not Path(tasks).is_file():
@@ -135,7 +139,7 @@ def cmd_finish(n, files, tasks_override=None):
     # One task in flight. A finish whose commit never happened leaves its paths in the
     # index, and the next finish would sweep them into its own commit. So a path another
     # task's record claims, still staged and not named here, refuses this one.
-    state = state_dir()
+    state = repo.state_dir
     records = Path(run_records_dir(state, tasks))
     owners = {}
     for rec in sorted(records.glob("*.json")) if records.is_dir() else []:
@@ -188,7 +192,7 @@ def cmd_finish(n, files, tasks_override=None):
     # stranded outside it and the dirty tree blocks the next step. Excluded tasks/: neither
     # file is ever committed, so rewriting the task record is the whole of the job.
     staged_tasks, tracked = False, True
-    if is_ignored(str(Path(side).parent), Path(side).name):
+    if repo.is_ignored(str(Path(side).parent), Path(side).name):
         tracked = False
     else:
         if git("diff", "--quiet", "--", tasks).returncode != 0:
@@ -221,10 +225,11 @@ def cmd_receipt(command, passed, output_file):
     The output file is the evidence and is required. Without it `passed` is an assertion
     with nothing behind it, and the vacuity check downstream degrades to a hint — which is
     the one shape a receipt exists to make impossible."""
-    sha = gitout("rev-parse", "HEAD")
+    repo = Repo()
+    sha = repo.head_sha
     if not sha:
         die("cannot resolve HEAD")
-    state = state_dir()
+    state = repo.state_dir
     if not state:
         die("not a git repository")
     Path(state).mkdir(parents=True, exist_ok=True)

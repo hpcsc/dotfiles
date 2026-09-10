@@ -1,14 +1,14 @@
 # Inside clerk
 
-How the implement skill and clerk fit together, drawn for someone about to change them. Green marks what clerk decides from evidence, terracotta what the model judges — the same two fills as in the method README.
+This page shows how the implement skill and clerk fit together. It is for someone who is about to change them. Green marks what clerk decides from evidence. Terracotta marks what the model judges. The method README uses the same two fills.
 
-The whole design is one split. Anything a program does more reliably than a prompt — which test command wins, which task is next, whether a green receipt describes the tree about to land, what step comes after this one — is a clerk command. Writing the code, reviewing it and deciding a fix is right stay with the model.
+The whole design is one split. A clerk command does anything a program does more reliably than a prompt. That covers which test command wins and which task is next. It also covers whether a green receipt describes the tree that is about to land, and what step comes next. The model still writes the code, reviews it, and decides that a fix is right.
 
 ## The problem, and the one idea
 
-The obvious way to make a model follow a procedure is to write the procedure down and hand it over. It half works. A long enough list gets partly followed, and a skipped step is silent — nothing downstream knows step 4 never happened, so the run keeps going and the gap shows up at review, or later.
+The obvious way to make a model follow a procedure is to write the procedure down and give it to the model. This half works. A model follows only part of a long list, and a skipped step is silent. Nothing later in the run knows that step 4 never happened. The run continues, and the gap appears at review or after it.
 
-clerk's answer is to stop storing the position anywhere. There is no counter and no checklist. Every turn asks the same question, and the answer is worked out fresh from the repository:
+clerk stores the position nowhere. There is no counter and no checklist. Every turn asks the same question. clerk works the answer out again from the repository each time:
 
 ```mermaid
 flowchart LR
@@ -22,13 +22,13 @@ flowchart LR
   classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
 ```
 
-Everything else on this page follows from that. There are eleven steps in a fixed order; the code that answers "is this one done?" for a step is its **row**; the whole pass over one request is a **run**, and the records clerk keeps for it are its **ledger**.
+Everything else on this page follows from that. There are eleven steps in a fixed order. The code that answers "is this step done?" is that step's **row**. The whole pass over one request is a **run**. The records clerk keeps for a run are its **ledger**.
 
 ## Two ways a step can be finished
 
-If clerk could check every step by looking at the repository, it would, and there would be nothing to explain. But some steps are not observable. Nothing in git can show that the guidelines were read and thought about, or that the request was re-read against the branch and found to match.
+clerk checks a step against the repository whenever it can. Some steps are not visible there. Nothing in git shows that someone read the guidelines and thought about them. Nothing in git shows that someone re-read the request against the branch and found a match.
 
-The choice there is between trusting the model silently and making it say so out loud. clerk does the second: the claim is recorded, and — when the claim is about the code — recorded *against* that code, so changing the code takes the claim back.
+For those steps there are two options: trust the model in silence, or ask the model to state the claim. clerk asks for the claim and records it. When the claim is about the code, clerk records it *against* that code. A change to the code then withdraws the claim.
 
 ```mermaid
 flowchart TD
@@ -45,15 +45,17 @@ flowchart TD
   classDef plain fill:#EEF0EC,stroke:#5C645F,stroke-width:1px,color:#1B1F1D
 ```
 
-That is the split the two fills mark on every diagram below: green where clerk decides, terracotta where the model does. It is also why an assertion is never a bare flag — a claim with no code attached could never be taken back.
+The two fills mark this split on every diagram below. Green is where clerk decides. Terracotta is where the model decides. This is also why an assertion is never a bare flag: nothing can withdraw a claim that carries no code.
 
-The same instinct runs through the rest. `clerk finish` asks which files a task owns rather than reading `git status`, because "what I meant to change" is not observable either. The plan lives in two files — a **breakdown**, `tasks/<story>.md`, written by a person, and a **task record**, `tasks/<story>.json`, where clerk keeps per-task state — so clerk never edits prose it did not write. A **receipt** records that the suite passed *and* what it passed against, because "the tests pass" without that is a claim about a moment, not about the branch.
+The same rule shapes the rest. `clerk finish` asks which files a task owns and does not read `git status`. Git does not show what someone meant to change.
+
+The plan lives in two files. A person writes the **breakdown**, `tasks/<story>.md`. clerk keeps the per-task state in the **task record**, `tasks/<story>.json`. clerk therefore never edits prose it did not write. A **receipt** records that the suite passed and what it passed against. Without that second part, "the tests pass" describes a moment and not the branch.
 
 ## One call, repeated
 
-That loop in full, with the parts of it that are not obvious. `clerk step` gathers the repository's facts in its own process rather than shelling out for them. The model's next move is a different command entirely — whatever the reply's `done_by` named. And four of those commands hand back the step that follows, so closing one and asking for the next is a single call rather than two.
+Here is that loop in full, with the parts that are not obvious. `clerk step` gathers the repository's facts inside its own process. It does not run other commands to get them. The model's next move is a different command, the one the reply names in `done_by`. Four of those commands return the step that follows, so one call both closes a step and asks for the next.
 
-A stopped run needs nothing to restart it: the next call is the call it would have made anyway.
+A stopped run needs nothing to start it again. The next call is the call the run makes anyway.
 
 ```mermaid
 sequenceDiagram
@@ -79,13 +81,13 @@ sequenceDiagram
 
 **Where it lives:** link/common/dot-local/bin/clerk-step (main_step, cmd_step) · clerk_ledger.py (build_ctx) · clerk_steps.py (evaluate, present) · method/implement/body.md, section "The loop"
 
-**When you would change it:** Adding a field to every reply: `present` in clerk_steps.py. Changing what a fresh call resolves first: `build_ctx`.
+**When to change it:** To add a field to every reply, change `present` in clerk_steps.py. To change what a fresh call resolves first, change `build_ctx`.
 
 ## The step table and what closes each row
 
-The eleven, in order. `clerk step` reads them from the top and returns the first one not done.
+The eleven steps, in order. `clerk step` reads them from the top and returns the first step that is not done.
 
-Where a claim is stamped with the *code tree* it was made about, that means the file listing at HEAD minus the breakdown files under `tasks/`, hashed. Comparing by that rather than by commit is what lets the run commit its own breakdown — the archive, the write-up — without making a green suite stale, while any touch of the code still does.
+Some claims carry the *code tree* they describe. The code tree is the file listing at HEAD, minus the breakdown files under `tasks/`, hashed. clerk compares by the code tree and not by the commit. A run can therefore commit its own breakdown, such as the archive or the write-up, and keep a green suite. Any change to the code still makes that suite stale.
 
 ```mermaid
 flowchart TD
@@ -110,17 +112,24 @@ flowchart TD
   class decompose,match,learn you
 ```
 
-Two labels on it are worth spelling out. *Gears* is an optional flag: with it on, a task the breakdown called low certainty or high blast radius stops once its tests are red, so a person sees them before any code is written. *`not_checked`* is what `clerk verify` ran but could not judge — a symbol only prose mentions, a task owning no file of its own — left for a person rather than counted as clean.
+Two labels on the diagram need more detail. *Gears* is an optional flag. With gears on, a task that the breakdown marks as low certainty or high blast radius stops once its tests are red. A person then sees those tests before anyone writes code. *`not_checked`* holds what `clerk verify` ran but cannot judge. Two examples are a symbol that only prose mentions, and a task that owns no file of its own. clerk leaves those for a person and does not count them as clean.
 
 **Where it lives:** clerk_steps.py: ROWS and the row_* functions · clerk-step: the DONE handlers · method/clerk-step.md, section "The step table"
 
-**When you would change it:** A new row is one `row_<name>` function returning `row(id, done, …)` plus its place in ROWS, a step file under method/implement/steps/, and a section in tests/clerk-step-test.sh.
+**When to change it:** A new row needs four things:
+
+- a `row_<name>` function that returns `row(id, done, …)`
+- a place in ROWS
+- a step file under method/implement/steps/
+- a section in tests/clerk-step-test.sh
 
 ## Four places state lives, and who writes each
 
-Four rather than one, because they have different owners and different lifetimes. What the team decides is meant to be reviewed, so it is tracked and goes into the commits. What one machine prefers is nobody else's business, so it sits in a gitignored file.
+There are four places and not one, because each has a different owner and a different lifetime. The team's decisions need review, so git tracks them and they go into the commits. One machine's preferences concern nobody else, so they sit in a gitignored file.
 
-What clerk records is neither. Tracking it would dirty the tree on every write — the exact signal the step table reads to know a task has been committed — and would put session records in front of reviewers, where the model could edit them. So it lives under `.git`: what one checkout knows in that checkout's git dir, what the run knows in the common one, because a run's last steps happen in the main checkout after the worktree is gone.
+What clerk records is neither of those. A tracked ledger dirties the tree on every write, and the step table reads a clean tree as its signal that a task is committed. A tracked ledger also puts session records in front of reviewers, where the model can edit them.
+
+So the ledger lives under `.git`. What one checkout knows sits in that checkout's git dir. What the run knows sits in the common git dir, because a run's last steps happen in the main checkout after the worktree is gone.
 
 ```mermaid
 flowchart LR
@@ -168,13 +177,13 @@ flowchart LR
 
 **Where it lives:** clerk_repo.py: Repo.state_dir, Repo.ledger_dir, run_records_dir, ledger_log · clerk_ledger.py: Run · method/clerk-step.md, section "Ledger"
 
-**When you would change it:** A new per-run fact goes in the ledger through `Run.put` or `Run.mark`, never in tasks/: a tracked ledger would dirty the tree on every write and put session evidence into PRs.
+**When to change it:** Put a new per-run fact in the ledger through `Run.put` or `Run.mark`. Never put it in tasks/. A tracked ledger dirties the tree on every write and puts session evidence into pull requests.
 
 ## The log, and the record
 
-A derived step has to answer something like "has `clerk guidelines` run for this run, naming a caller pattern?" Nothing in git knows. The cheapest answer is to write a line down every time one of clerk's own commands finishes, and let any such question become a search of that list.
+A derived step must answer a question like this one: has `clerk guidelines` run for this run, and did it name a caller pattern? Git holds no answer. The cheapest answer is to write one line each time one of clerk's own commands ends. Every question of that kind then becomes a search of that list.
 
-So the dispatcher appends one line — the command, its arguments, its exit code, the time, and HEAD — for each of the nine commands that change something. Reads are not logged: `clerk step` alone runs several times per step and would bury everything else.
+The dispatcher appends one line for each of the nine commands that change something. The line holds the command, its arguments, its exit code, the time, and HEAD. clerk does not log reads. `clerk step` alone runs several times for each step, and its lines hide everything else.
 
 ```mermaid
 flowchart LR
@@ -199,25 +208,25 @@ flowchart LR
   classDef file fill:#FFFFFF,stroke:#9AA39D,stroke-width:1px,color:#1B1F1D
 ```
 
-A log rather than a flag per question, because the questions arrive later. Nothing decided in advance that a run would want to know how many fixups found a task boundary drawn across one file — the lines were already there, and answering it meant reading the same file a new way. That is why the right side of the picture can grow without the left side changing.
+clerk keeps a log, and not one flag for each question, because new questions arrive later. Nobody planned for the question "how many fixups found a task boundary drawn across one file?". The lines were already there, and the answer came from a new read of the same file. The right side of the diagram can therefore grow while the left side stays the same.
 
-What a log is bad at is being glanced at. "Where is this run?" should be one look rather than a replay, so what the model claims goes into `run.json` and is read straight back. Each side pays for the other: the log answers questions nobody has asked yet, the record answers the one being asked now.
+A log is slow to read at a glance. The question "where is this run?" needs one look, not a replay. So clerk writes what the model claims into `run.json`. It reads that record straight back. Each side pays for the other. The log answers questions nobody asked yet. The record answers the question asked now.
 
-Two steps take either. Ground finishes when a `clerk guidelines --caller` run turns up in the log, or — in a repo with no guidelines to read — when the model says so. The learning at the end is the same. The reply names which one answered, so nobody has to guess whether clerk saw it or was told.
+Two steps accept either source. The ground step finishes when a `clerk guidelines --caller` run appears in the log. In a repository with no guidelines to read, it finishes when the model says so. The learn step at the end works the same way. The reply names the source, so nobody must guess whether clerk saw the evidence or was told.
 
-`verify-log.jsonl` is a second log, for a question the first cannot answer. The event log records that `clerk verify` ran and what it exited, not which of its checks fired, and "is this step worth what it blocks?" needs the checks. Nothing in clerk reads it; it is there for a person looking across many runs.
+`verify-log.jsonl` is a second log. It answers a question the first log cannot. The event log records that `clerk verify` ran and its exit code, but not which checks reported a problem. The question "is this step worth what it blocks?" needs those checks. Nothing in clerk reads this log. It is there for a person who compares many runs.
 
-The audit keeps a file of its own because it wants both halves at once. Its list of finished rounds only ever grows, but a round still in flight is rewritten as each review agent lands, from several threads at a time — and putting a rewrite of the run's identity behind every one of those writes is a lost update waiting to happen.
+The audit keeps its own file because it needs both halves at once. Its list of finished rounds only grows. clerk rewrites a round still in progress each time a review agent returns. Several threads do this at the same time. If each of those writes also rewrote the run's identity, two threads can lose one another's updates.
 
 **Where it lives:** clerk: LOGGED · clerk_repo.py: ledger_log · clerk_ledger.py: events, guidelines_read, task_signals, gear, learn_written, fixup_ambiguities · method/clerk-step.md, section "The event log"
 
-**When you would change it:** A fact a clerk command already produces should be derived, not asserted — add a reader beside `guidelines_read` rather than a `step done` handler. Assert only what no command can see. Adding a command to `LOGGED` costs one set entry; taking one out silently strands every reader that folds it.
+**When to change it:** Derive a fact that a clerk command already produces. Do not assert it. Add a reader beside `guidelines_read` instead of a `step done` handler. Assert only what no command can see. A new command in `LOGGED` costs one set entry. Removal of a command from `LOGGED` silently breaks every reader that folds it.
 
 ## Files, and which imports which
 
-One dispatcher, an executable per command, and a set of modules beside them. Where a command needs what another one knows, it imports it rather than running it: the repo's facts, the task record, the checks, the landing and the step table are all modules, imported by path so they work whether the tree is stowed or not.
+There is one dispatcher, one executable for each command, and a set of modules beside them. A command that needs what another one knows imports it and does not run it. The repository's facts, the task record, the checks, the land logic, and the step table are all modules. Each import goes by path, so it works whether the tree is stowed or not.
 
-That leaves git, the harness, and the few places a command deliberately runs another as a program — `clerk-lint` from `finish`, the executables from the dispatcher. Nothing calls back up the stack, so a failure is one stack trace rather than a reply parsed back out of another command's stdout.
+That leaves git, the harness, and a few places where one command runs another as a program on purpose. `finish` runs `clerk-lint`, and the dispatcher runs the executables. Nothing calls back up the stack. A failure is therefore one stack trace, and not a reply parsed out of another command's stdout.
 
 ```mermaid
 flowchart LR
@@ -272,11 +281,11 @@ flowchart LR
 
 **Where it lives:** link/common/dot-local/bin/ · clerk_lib.py for what every command does the same way
 
-**When you would change it:** A new command is a new clerk-<name> executable with a first docstring line reading `clerk <name> — …`; the dispatcher lists it without being told. Put the logic in a clerk_*.py module and keep the executable to argument parsing, so another command can import it rather than run it.
+**When to change it:** A new command is a new clerk-<name> executable. Its first docstring line must read `clerk <name> — …`, and the dispatcher then lists it with no other change. Put the logic in a clerk_*.py module. Keep the executable to its arguments, so another command can import the logic and does not have to run it.
 
 ## The types, and what each one owns
 
-Most of clerk is functions, and should stay that way — a rule that reads a file and answers a question needs nothing held between calls. The types exist where something genuinely has to be *kept*: a directory of records, a checkout's answers, a walk in progress. Six of them carry a run between commands, and each owns one thing; the rest — a markup renderer, the audit's prompt builder, an argument parser — are local to one file.
+Most of clerk is functions, and it must stay that way. A rule that reads a file and answers a question holds nothing between calls. A type earns its place only where something must be kept: a directory of records, one checkout's answers, a walk in progress. Six types carry a run between commands, and each owns one thing. The rest are local to one file: a markup renderer, the audit's prompt builder, and an argument parser.
 
 ```mermaid
 classDiagram
@@ -325,33 +334,35 @@ classDiagram
     Out ..> Progress : draws it, and records it
 ```
 
-**`Repo`** (clerk_repo) is one checkout and the git facts about it, each question asked at most once. Asking at most once needs somewhere to keep the answer, and a free function over a cwd has nowhere: the facts share their underlying git questions heavily — the common dir sits behind the repo root, the runs directory and the ledger alike — so resolving them separately means asking git the same thing several times inside one call. The free functions remain as the interface; each holds one of these for the length of its own work.
+**`Repo`** (clerk_repo) is one checkout and the git facts about it. It asks git each question at most once. To ask once, something must keep the answer, and a plain function over a cwd has nowhere to keep it. The facts also share their git questions. The common dir sits behind the repo root, the runs directory, and the ledger alike. Separate functions therefore ask git the same thing several times in one call. The plain functions stay as the interface, and each one holds a `Repo` for the length of its own work.
 
 **`Run`** (clerk_ledger) is the directory under `<git-common-dir>/clerk/runs/<slug>/` and the reads and writes over it. Every per-run fact goes in through `put` or `mark`.
 
-**`Ctx`** (clerk_ledger) is what one call resolved — `prepare`'s facts and the run this tree belongs to — carried to the rows so each is handed its answers rather than fetching them.
+**`Ctx`** (clerk_ledger) is what one call resolved: the facts from `prepare`, and the run this tree belongs to. `clerk step` passes it to the rows, so each row gets its answers and does not fetch them.
 
-**`Runner`** is the process driving a walk, and there are two of them: `clerk-run`'s walks a story's step table, `clerk-audit`'s walks a round's phases. Same word deliberately, because it is the same job. Each keeps its own record as it goes, so a resume knows what had already landed.
+**`Runner`** is the process that drives a walk. There are two. The one in `clerk-run` walks a story's step table. The one in `clerk-audit` walks a round's phases. They share a word on purpose, because they do the same job. Each writes its own record as it goes, so a run that starts again knows what finished before.
 
-**`Out`** and **`Progress`** (clerk_render) are the two halves of showing a run as it happens. `Progress` is the thing that happened, with its numbers as numbers; `Out` draws the line and writes the record. Three readers want that — the person watching, the status line, `clerk watch` — and only the first wants the line.
+**`Out`** and **`Progress`** (clerk_render) are the two halves of how clerk shows a run. `Progress` is one thing that happened, and it holds its numbers as numbers. `Out` draws the line and writes the record. Three readers need this: the person who watches, the status line, and `clerk watch`. Only the first needs the line.
 
 **Two rules a change here has to keep:**
 
-**A `Repo` answers for the checkout as it stood when it was made.** Hold one across a stretch that only reads. Take a new one after anything that moves a ref — a commit, a switch, a rebase. `clerk_land` is the worked example: `land_checks` holds one because it reads and writes nothing, while `land` takes one per phase and a fresh one either side of its rebase, because the whole of that check is that head differs across it. A `Repo.moved()` to call after each mutation is the alternative, and it puts the rule back in the caller's memory, where a missed call is silent.
+**A `Repo` answers for the checkout as it stood when someone made it.** Hold one across a stretch of code that only reads. Take a new one after anything that moves a ref: a commit, a switch, or a rebase.
 
-**Progress travels as a record, not as a line.** Anything a later reader has to compute from — a cost, a duration, which agent — is a field on `Progress`, never something to be matched back out of the drawn text. That text is rounded to the cent, so a turn costing less than one would total as nothing, and an error message carrying a `$` would read as a cost.
+`clerk_land` is the worked example. `land_checks` holds one, because it reads and writes nothing. `land` takes one for each phase, and a fresh one on each side of its rebase. That check exists only to see whether HEAD differs across the rebase. One instance answers the second read from the first, and the check then always passes. The other option is a `Repo.moved()` call after each change. That puts the rule back in the caller's memory, where a missed call is silent.
+
+**Progress travels as a record and not as a line.** A later reader needs a cost, a duration, and the name of the agent. Each of those is a field on `Progress`. Never match one back out of the drawn text. clerk rounds that text to the cent, so a turn that costs less than one cent adds nothing to the total. An error message that holds a `$` also reads as a cost.
 
 **Where it lives:** clerk_repo.py: Repo · clerk_ledger.py: Run, Ctx · clerk-run, clerk-audit: Runner · clerk_render.py: Out, Progress
 
-**When you would change it:** A new fact about the checkout is a `Repo` member, not a new free function that shells out — `Repo` is meant to be the only thing here that asks git about the repository. A new thing worth showing while a run walks is a `Progress` kind, so `clerk watch` gets it without learning a new prefix.
+**When to change it:** Add a new fact about the checkout as a `Repo` member. Do not add a plain function that runs git, because `Repo` must be the only thing here that asks git about the repository. Add a new `Progress` kind for anything a walk must report. `clerk watch` then reads it and needs no new prefix.
 
 ## A command's round trip through the dispatcher
 
-`clerk` itself does almost nothing. It finds `clerk-<name>` and hands over, the way git finds `git-<name>`, so a new command is a new executable and nothing has to be told it exists.
+`clerk` itself does almost nothing. It finds `clerk-<name>` and hands control to it, the way git finds `git-<name>`. A new command is therefore a new executable, and nothing needs to be told that it exists.
 
-Two things make it more than a lookup. A command whose running is evidence has to leave a trace, so rather than becoming that command the dispatcher runs it and writes the line on the way out. And four commands close a step, so it works the next one out in its own process and adds it to the reply. Everything else it simply becomes, which costs nothing.
+Two things make the dispatcher more than a lookup. A command that counts as evidence must leave a trace. For those, the dispatcher runs the command as a child and writes the log line after the command ends. Four commands close a step. For those, the dispatcher works out the next step in its own process and adds it to the reply. For every other command the dispatcher replaces itself with the command, which costs nothing.
 
-The ledger is resolved before the command runs rather than after, because `land --integrate` finishes on a branch the run is no longer named by. A usage error — exit 2 in every command — is never logged: a mistyped invocation is not evidence of anything.
+The dispatcher resolves the ledger before the command runs, not after. `land --integrate` ends on a branch that no longer names the run. The dispatcher never logs a usage error, which is exit 2 in every command, because a mistyped call is not evidence of anything.
 
 ```mermaid
 flowchart TD
@@ -374,11 +385,13 @@ flowchart TD
 
 **Where it lives:** link/common/dot-local/bin/clerk: LOGGED, INLINE_NEXT, run_logged
 
-**When you would change it:** A command whose running should count as evidence for a row goes into LOGGED, and the row reads it through an event reader in clerk_ledger.py such as `guidelines_read`.
+**When to change it:** Put a command into LOGGED when its run must count as evidence for a row. The row then reads it through an event reader in clerk_ledger.py, such as `guidelines_read`.
 
 ## The audit is a second machine of the same shape
 
-The audit reviews the finished branch with agents rather than rules. A *lens* is one of them: one angle — semantic, guidelines, concurrency, performance, tests — over one language. A *refuter* is given a single finding and asked to disprove it, so what reaches the report is what survived being argued with. `clerk audit next` hands out one phase's batch of those jobs with every prompt resolved; `record` takes the replies and advances. `clerk audit run` walks that loop in-process and spawns a headless harness only where a judgment is wanted. Each landed reply is written to the live round as it arrives, so a killed round resumes with only the rest.
+The audit reviews the finished branch with agents and not with rules. A *lens* is one agent. It covers one angle over one language, and the angles are semantic, guidelines, concurrency, performance, and tests. A *refuter* gets a single finding and must disprove it. Only a finding that survives that argument reaches the report.
+
+`clerk audit next` hands out one phase's jobs with every prompt resolved. `clerk audit record` takes the replies and advances the phase. `clerk audit run` walks that loop inside its own process and starts a headless harness only where it needs a judgment. It writes each reply to the live round as the reply arrives. A round that someone killed then starts again with only the jobs that remain.
 
 ```mermaid
 stateDiagram-v2
@@ -404,11 +417,13 @@ stateDiagram-v2
 
 **Where it lives:** clerk-audit: audit_next, audit_record, audit_run, Runner · clerk_audit_panel.py: LANG, remit_for, build_panel, refute_jobs · clerk_harness.py: run_job, run_batch · method/audit-implement/prompts/ and schemas.json
 
-**When you would change it:** What a lens is owed, or how many refuters a claim gets, changes in clerk_audit_panel.py and reaches both harnesses at once. How an agent is spawned changes only in clerk_harness.py's `_argv` and `_envelope`.
+**When to change it:** Change what a lens gets, or how many refuters a claim gets, in clerk_audit_panel.py. That change reaches both harnesses at once. Change how clerk starts an agent in `_argv` and `_envelope` in clerk_harness.py, and nowhere else.
 
 ## Where the words the model reads come from
 
-Everything the model reads is generated from sources under `method/`. The skill file the *harness* — the tool running the model, Claude Code or opencode — loads at the start holds only what is true before any step runs. Each step's method is its own file, rendered at the moment the step is reached. Both readings go through one resolver, so a *variant* — a piece of prose that differs by harness, kept apart so the shared text stays one copy — renders the same way in the skill and in the reply.
+clerk generates everything the model reads from sources under `method/`. The *harness* is the tool that runs the model, either Claude Code or opencode. The harness loads a skill file at the start, and that file holds only what is true before any step runs. Each step's method is its own file, and clerk renders it when the run reaches that step.
+
+Both paths use one resolver. A *variant* is a piece of prose that differs by harness. clerk keeps a variant apart so the shared text stays one copy. One resolver means a variant renders the same way in the skill and in the reply.
 
 ```mermaid
 flowchart LR
@@ -441,11 +456,11 @@ flowchart LR
 
 **Where it lives:** scripts/gen-skills.sh · clerk_method.py · clerk_steps.py: instructions_for, instructions_text · Taskfile: `task common:gen` and `gen:skills:check`
 
-**When you would change it:** Edit the source under method/, never the SKILL.md, then run `task common:gen`. A step's text changes without regenerating anything; a change to body.md or a variant needs the generator, and `--check` fails the build until it has run.
+**When to change it:** Edit the source under method/. Never edit a SKILL.md. Then run `task common:gen`. A step's text changes with no generator run. A change to body.md or to a variant needs the generator, and `--check` fails the build until the generator runs.
 
 ## Contributing a change
 
-- **Run the suites.** `env -u CLAUDECODE tests/clerk-test.sh`, `tests/clerk-step-test.sh` and `tests/clerk-run-test.sh`. They build throwaway repositories and assert on JSON; the step suite takes a few minutes. Inside a Claude Code session the variable has to be unset or six worktree cases fail for no reason of yours.
-- **Regenerate the prose.** `task common:gen` after touching anything under method/ that a SKILL.md is built from; `task common:gen:skills:check` is what tells you whether you needed to.
-- **Mind the links.** ~/.local/bin/clerk-* are stow symlinks into this working tree. A saved edit is what every other session on the machine runs next, so keep an edit-and-test cycle short.
-- **Keep the split.** If a change makes the model remember an order or re-derive a fact, it belongs in a command or a row instead. If it asks a program to judge whether code is right, it belongs with the model.
+- **Run the suites.** `env -u CLAUDECODE tests/clerk-test.sh`, `tests/clerk-step-test.sh`, and `tests/clerk-run-test.sh`. They build throwaway repositories and assert on JSON. The step suite takes a few minutes. Inside a Claude Code session you must unset the variable, or six worktree cases fail for a reason that is not yours.
+- **Regenerate the prose.** Run `task common:gen` after you change anything under method/ that a SKILL.md is built from. `task common:gen:skills:check` tells you whether you need to.
+- **Mind the links.** ~/.local/bin/clerk-* are stow symlinks into this working tree. Every other session on the machine runs your saved edit next, so keep each edit and test cycle short.
+- **Keep the split.** A change that makes the model remember an order, or derive a fact again, belongs in a command or a row. A change that asks a program to judge whether code is right belongs with the model.

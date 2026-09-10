@@ -512,13 +512,13 @@ _USAGE = {}
 
 
 def usage_block(text):
-    """The USAGE section of a `--help`, in either shape clerk writes it: a `USAGE` heading
-    over indented lines, or a leading `usage:` line with indented continuations."""
+    """The USAGE section of a `--help`: the heading, then the indented lines under it.
+    Every command writes it that way, and tests/clerk-step-test.sh holds them to it."""
     lines = (text or "").splitlines()
     for i, line in enumerate(lines):
-        if line.strip() != "USAGE" and not line.startswith("usage:"):
+        if line.strip() != "USAGE":
             continue
-        block = [line] if line.startswith("usage:") else []
+        block = []
         for x in lines[i + 1:]:
             if x.strip() and not x.startswith((" ", "\t")):
                 break

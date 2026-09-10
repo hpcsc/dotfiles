@@ -25,7 +25,7 @@ def main_stats(argv):
     import clerk_stats as st
     o, rest = parse(argv, STATS_SPEC)
     if o["-h"] or o["--help"]:
-        print("usage: clerk stats [--run <slug> | --pick] [--session <id>] [--text | --json]")
+        print("USAGE\n  clerk stats [--run <slug> | --pick] [--session <id>] [--text | --json]")
         sys.exit(0)
     if rest:
         die(f"unexpected argument '{rest[0]}'")

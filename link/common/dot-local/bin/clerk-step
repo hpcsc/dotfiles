@@ -186,14 +186,15 @@ STEP_SPEC = {"--request": "value", "--run": "value", "--harness": "value", "--fu
 VERBS = ("start", "done", "status", "rm")
 
 USAGE = """\
-usage: clerk step                        the next step, computed from the repo and the ledger
-       clerk step start <slug> --request "<the request, verbatim>"
-       clerk step done <step> [args]     assert a step whose completion is a judgment
-       clerk step status                 every row, with whether it is done
-       clerk step rm <slug>              abandon a run
+USAGE
+  clerk step                        the next step, computed from the repo and the ledger
+  clerk step start <slug> --request "<the request, verbatim>"
+  clerk step done <step> [args]     assert a step whose completion is a judgment
+  clerk step status                 every row, with whether it is done
+  clerk step rm <slug>              abandon a run
 
-       [--run <slug>] names the run when several are open; [--full] reprints the method
-       text; [--harness <name>] overrides harness detection."""
+  [--run <slug>] names the run when several are open; [--full] reprints the method
+  text; [--harness <name>] overrides harness detection."""
 
 
 def main_step(argv):

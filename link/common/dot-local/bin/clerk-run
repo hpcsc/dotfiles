@@ -604,7 +604,8 @@ SPEC = {"--slug": "value", "--request": "value", "--harness": "value",
         "--raw": "bool"}
 
 USAGE = """\
-usage: clerk run [--slug <kebab-slug> --request "<the request, verbatim>"]
+USAGE
+  clerk run [--slug <kebab-slug> --request "<the request, verbatim>"]
                  [--no-gears] [--no-review-breakdown] [--rounds <n>] [--model <m>]
                  [--allow-tool <spec>]... [--max-steps <n>] [--dry-run]
                  [--quiet | --raw]

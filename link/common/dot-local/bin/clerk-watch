@@ -207,9 +207,10 @@ def main(argv):
     as_json = "--json" in argv
     rest = [a for a in argv if not a.startswith("-")]
     if "-h" in argv or "--help" in argv:
-        print("usage: clerk watch [<progress.log>] [--once] [--json]\n\n"
-              "Draws a run's progress as it arrives. --once renders the current state and\n"
-              "exits; --json reports it as data instead of a screen.")
+        print("clerk watch — a run's progress, redrawn as it arrives.\n\n"
+              "USAGE\n  clerk watch [<progress.log>] [--once] [--json]\n\n"
+              "--once renders the current state and exits. --json reports it as data\n"
+              "instead of a screen.")
         return
     path = resolve(rest[0] if rest else None)
     # When the log was opened, not when it was last written to: mtime is the last line,

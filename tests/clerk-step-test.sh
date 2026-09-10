@@ -89,11 +89,19 @@ eq "with how to call the commands it names, so no round trip is spent on --help"
    "$(printf '%s' "$S" | jq -r '.next.usage.guidelines | contains("--caller") | tostring')"
 eq "and only where the step's text is printed, not on every later call" "false" \
    "$(run "$R" step | jq -r 'has("usage")')"
-HELPED=0
-for c in land receipt verify isolate prepare finish; do
-  "$CLERK" $c --help 2>/dev/null | grep -q '^USAGE' && HELPED=$((HELPED + 1))
+# Every command, not only the ones a step names: `clerk step` reads the USAGE block out of
+# each --help it needs, so a command that answers in another shape answers with nothing.
+CMDS="audit finish fixup guidelines isolate land learn lint prepare receipt run stats status step story verify watch"
+HELPED=0; MISSING=""
+for c in $CMDS; do
+  if "$CLERK" $c --help 2>/dev/null | grep -q '^USAGE'; then
+    HELPED=$((HELPED + 1))
+  else
+    MISSING="$MISSING $c"
+  fi
 done
-eq "every command a step names answers --help rather than 'unknown argument'" "6" "$HELPED"
+eq "every command answers --help with a USAGE block" "$(printf '%s' "$CMDS" | wc -w | tr -d ' ')" "$HELPED"
+eq "and none answers in another shape" "" "$MISSING"
 eq "the ledger lives under the common git dir" "$R/.git/clerk/runs/w1" "$(printf '%s' "$S" | field .ledger)"
 eq "the request is kept verbatim" "Add a widget --gears" "$(jq -r .request "$R/.git/clerk/runs/w1/run.json")"
 eq "a second --start on an open run is refused" "3" "$(rc "$R" step start w1 --request again)"

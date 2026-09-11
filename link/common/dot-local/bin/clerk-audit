@@ -461,8 +461,70 @@ def _tally(lv):
         if usable and len(against) * 2 > len(usable):
             refuted.append({"finding": f, "basis": (against[0].get("basis") or basis)})
         else:
-            confirmed.append({"finding": f, "basis": basis, "blocked": blocked})
+            confirmed.append({"finding": f, "basis": basis, "blocked": blocked, "unverified": not votes})
     return confirmed, refuted
+
+
+CONFIDENCE = ("confirmed", "plausible")
+# What a lens may say about a finding beyond the fields every report row has.
+LENS_EXTRAS = ("failure_scenario", "suggested_fix", "quality_kind")
+
+
+def _finding_row(c, grade):
+    """One report row: the finding as its lens raised it and its refuter left it, with the
+    report agent's grade on top. No grade leaves the lens's severity in place."""
+    f, g = c["finding"], grade or {}
+    severity = g.get("severity") if g.get("severity") in panel.SEVERITY_RANK else f.get("severity")
+    if c.get("blocked") or c.get("unverified"):
+        confidence = "plausible"
+    else:
+        confidence = g.get("confidence") if g.get("confidence") in CONFIDENCE else "confirmed"
+    evidence = str(c.get("basis") or "")
+    if c.get("blocked"):
+        evidence = f"NOT EXECUTED — the check could not run: {evidence}"
+    note = str(g.get("note") or "").strip()
+    if note:
+        evidence = f"{evidence} — {note}" if evidence else note
+    row = {"id": f.get("id"), "severity": severity, "file": f.get("file"), "line": f.get("line"),
+           "claim": f.get("claim"), "nature": f.get("nature"), "lens": f.get("lens"),
+           "confidence": confidence, "evidence": evidence}
+    row.update({k: f[k] for k in LENS_EXTRAS if f.get(k)})
+    if grade is None:
+        row["ungraded"] = True
+    return row
+
+
+def _lint_rows(scope):
+    return [{"id": f"lint-{m.get('rule')}-{Path(str(m.get('file') or '')).name}-{m.get('line') or 0}",
+             "severity": "low", "file": m.get("file"), "line": m.get("line"), "claim": m.get("message"),
+             "nature": "quality", "lens": "clerk-lint", "confidence": "confirmed",
+             "evidence": f"`clerk lint` rule {m.get('rule')}"}
+            for m in (scope or {}).get("mechanical") or []]
+
+
+def _report(lv, graded):
+    """The round's report: the report agent's grades and ranking, joined onto what the
+    ledger already holds for each survivor.
+
+    The agent writes a grade, not a finding. The claim, file, lens and evidence were in the
+    ledger before it ran, and writing them out again kept each round waiting minutes on
+    output. The join must never lose a defect or make one up, so a survivor the agent
+    leaves out is reported at its lens's grade, and an id it invents is dropped."""
+    graded = graded if isinstance(graded, dict) else {}
+    confirmed, _ = _tally(lv)
+    by_id = {str(c["finding"].get("id")): c for c in confirmed}
+    grades = {}
+    for g in graded.get("findings") or []:
+        gid = str(g.get("id")) if isinstance(g, dict) else None
+        if gid in by_id and gid not in grades:
+            grades[gid] = g
+    rows = [_finding_row(by_id[i], g) for i, g in grades.items()]
+    rows += [_finding_row(c, None) for i, c in by_id.items() if i not in grades]
+    rows += _lint_rows(lv.get("scope"))
+    # Stable, so the agent's ranking holds inside each grade.
+    rows.sort(key=lambda r: panel.SEVERITY_RANK.get(r.get("severity"), 3))
+    return {"findings": rows, "coverage_gaps": list(graded.get("coverage_gaps") or []),
+            "summary": graded.get("summary") or ""}
 
 
 def _read_results(pathish):
@@ -531,7 +593,7 @@ def audit_record(ctx, aud, o):
         lv["verdicts"] = data if isinstance(data, list) else [data]
         lv["phase"] = "report"
     elif ph == "report":
-        lv["report"] = data if isinstance(data, dict) else (data[0] if data else {})
+        lv["report"] = _report(lv, data if isinstance(data, dict) else (data[0] if data else {}))
         lv["phase"] = "done"
     else:
         die(f"unknown phase '{ph}'")

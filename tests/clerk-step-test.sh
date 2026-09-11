@@ -800,6 +800,44 @@ N=$(run "$RA" audit record --phase report --results "$RA/rep.json")
 eq "the round ends pointing at the command that records it" "done|true" \
    "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.record_with | contains("clerk audit round") | tostring)] | join("|")')"
 
+# The report agent writes grades. The finding itself — claim, file, lens, evidence — is in
+# the ledger already, and clerk joins it onto the grade.
+report_row() {  # <id> <jq expression over that row>
+  run "$RA" audit status | jq -r --arg id "$1" "[.live.report.findings[] | select(.id == \$id)][0] | $2"
+}
+eq "a survivor the report leaves out is still reported, at its lens's grade, with its refuter's evidence" \
+   "high|a.go|boom|semantic:Go|true|ran it, it broke" \
+   "$(report_row f1 '[.severity, .file, .claim, .lens, (.ungraded|tostring), .evidence] | join("|")')"
+eq "and a refuted one is not" "0" \
+   "$(run "$RA" audit status | jq -r '[.live.report.findings[] | select(.id=="f2")] | length')"
+to_report() {  # <scope file> <verdicts file> <report file>
+  run "$RA" audit begin --base main --restart >/dev/null 2>&1
+  run "$RA" audit record --phase scope --results "$1" >/dev/null 2>&1
+  run "$RA" audit record --phase review --results "$RA/rev.json" >/dev/null 2>&1
+  run "$RA" audit record --phase dedupe --results "$RA/dd.json" >/dev/null 2>&1
+  run "$RA" audit record --phase refute --results "$2" >/dev/null 2>&1
+  run "$RA" audit record --phase report --results "$3" >/dev/null 2>&1
+}
+printf '{"findings":[{"id":"f1","severity":"medium","confidence":"confirmed","note":"bounded to one retry"},{"id":"ghost","severity":"high","confidence":"confirmed"}],"coverage_gaps":["nobody ran the e2e"],"summary":"s"}' > "$RA/rep2.json"
+to_report "$RA/scope.json" "$RA/vd.json" "$RA/rep2.json"
+eq "a grade lands on the finding clerk holds, and its note joins the evidence" "medium|boom|true|null" \
+   "$(report_row f1 '[.severity, .claim, (.evidence | contains("bounded to one retry") and contains("ran it, it broke") | tostring), (.ungraded|tostring)] | join("|")')"
+eq "an id the report invents is dropped, and its gaps and summary are kept" "1|nobody ran the e2e|s" \
+   "$(run "$RA" audit status | jq -r '.live.report | [(.findings|length|tostring), .coverage_gaps[0], .summary] | join("|")')"
+cat > "$RA/vd-blocked.json" <<'JSON'
+[{"finding_id":"f1","refuted":false,"blocked":true,"basis":"no go toolchain"},
+ {"finding_id":"f2","refuted":true,"basis":"the rule does not exist"}]
+JSON
+printf '{"findings":[{"id":"f1","severity":"high","confidence":"confirmed"}],"coverage_gaps":[],"summary":"s"}' > "$RA/rep3.json"
+to_report "$RA/scope.json" "$RA/vd-blocked.json" "$RA/rep3.json"
+eq "a survivor nobody could check stays plausible whatever the grade says, and says it was not executed" "plausible|true" \
+   "$(report_row f1 '[.confidence, (.evidence | startswith("NOT EXECUTED")|tostring)] | join("|")')"
+jq '.mechanical_ran = true | .mechanical = [{"file":"b.go","line":3,"rule":"comment-restates","message":"restates the code"}]' \
+   "$RA/scope.json" > "$RA/scope-lint.json"
+to_report "$RA/scope-lint.json" "$RA/vd.json" "$RA/rep2.json"
+eq "what clerk lint found is added by clerk, confirmed, under its own lens" "clerk-lint|confirmed|restates the code" \
+   "$(run "$RA" audit status | jq -r '[.live.report.findings[] | select(.lens=="clerk-lint")][0] | [.lens, .confidence, .claim] | join("|")')"
+
 # Fix-scoped narrowing, the three cases that must not narrow.
 narrow() {  # <fixed-file args...> -> the lens keys that would run
   run "$RA" audit begin --base main --restart >/dev/null 2>&1

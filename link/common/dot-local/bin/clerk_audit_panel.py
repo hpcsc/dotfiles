@@ -549,9 +549,9 @@ class _PromptCtx:
                 f"- {m.get('file')}" + (f":{m['line']}" if m.get("line") else "")
                 + f" [{m.get('rule')}] {m.get('message')}" for m in mech)
             out += (f"REPORTED MECHANICALLY by `clerk lint` ({len(mech)}) — deterministic, already established, "
-                    f"and NOT sent to a refuter because there is nothing to disprove. Include each one as a finding with "
-                    f"`confidence: \"confirmed\"`, `lens: \"clerk-lint\"` and the rule name as its evidence. Do "
-                    f"not reword the message, and do not merge them with a lens finding:\n{rows}\n\n")
+                    f"and NOT sent to a refuter because there is nothing to disprove. clerk adds each one to the "
+                    f"report itself; they are here so the coverage you judge counts them. Do not put them in "
+                    f"`findings`:\n{rows}\n\n")
         ref = "\n".join(f"- [{r['finding'].get('id')}] {r['finding'].get('claim')} — {r.get('basis')}"
                         for r in refuted) or "  (none)"
         out += f"REFUTED and dropped ({len(refuted)}) — for your judgment of coverage only, do NOT reinstate:\n{ref}\n\n"

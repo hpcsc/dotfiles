@@ -318,21 +318,19 @@
     "properties": {
       "findings": {
         "type": "array",
+        "description": "one entry per survivor, most severe first; clerk joins each finding's claim, file, lens and evidence onto it",
         "items": {
           "type": "object",
           "additionalProperties": false,
           "required": [
             "id",
             "severity",
-            "file",
-            "claim",
-            "nature",
-            "confidence",
-            "lens"
+            "confidence"
           ],
           "properties": {
             "id": {
-              "type": "string"
+              "type": "string",
+              "description": "the survivor's id, verbatim from the list"
             },
             "severity": {
               "type": "string",
@@ -340,30 +338,8 @@
                 "low",
                 "medium",
                 "high"
-              ]
-            },
-            "file": {
-              "type": "string"
-            },
-            "line": {
-              "type": [
-                "integer",
-                "null"
-              ]
-            },
-            "claim": {
-              "type": "string"
-            },
-            "nature": {
-              "type": "string",
-              "enum": [
-                "runtime",
-                "quality"
-              ]
-            },
-            "lens": {
-              "type": "string",
-              "description": "the lens key that raised this, verbatim from the survivor list; when deduplicating two lenses into one finding, join their keys with \" + \""
+              ],
+              "description": "the grade after the re-grade across the whole set"
             },
             "confidence": {
               "type": "string",
@@ -373,15 +349,12 @@
               ],
               "description": "confirmed = reproduced by execution, or a quality rule cited at a specific line"
             },
-            "evidence": {
-              "type": "string",
-              "description": "the command + output that reproduced it, or the rule + line"
-            },
-            "suggested_fix": {
+            "note": {
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "description": "one clause: the cost you graded on when you changed the grade, or why a survivor is only plausible"
             }
           }
         }

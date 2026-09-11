@@ -378,9 +378,12 @@ def job_tools(test_commands, isolation="none"):
     return tools
 
 
-def _spawn(job_id, prompt, schema, agent=None, isolation="none", tools=None):
-    return {"id": job_id, "prompt": prompt, "schema_name": schema,
-            "agent": agent, "isolation": isolation, "allowed_tools": tools or []}
+def _spawn(job_id, prompt, schema, agent=None, isolation="none", tools=None, finding_ids=None):
+    job = {"id": job_id, "prompt": prompt, "schema_name": schema,
+           "agent": agent, "isolation": isolation, "allowed_tools": tools or []}
+    if finding_ids:
+        job["finding_ids"] = finding_ids
+    return job
 
 
 def audit_next(ctx, aud, o):
@@ -426,9 +429,10 @@ def audit_next(ctx, aud, o):
                                  request=a["request"], brief=a["brief"],
                                  test_commands=a["test_commands"])
         return {"phase": "refute", "round": lv["round"], "concurrent": True,
-                "spawn": [_spawn(f"refute:{j['id']}", j["prompt"], "VERDICT_SCHEMA",
+                "spawn": [_spawn(f"refute:{j['id']}", j["prompt"], j["schema"],
                                  isolation=j["isolation"],
-                                 tools=job_tools(a.get("test_commands"), j["isolation"])) for j in jobs],
+                                 tools=job_tools(a.get("test_commands"), j["isolation"]),
+                                 finding_ids=j.get("finding_ids")) for j in jobs],
                 "record_with": "clerk audit record --phase refute --results <file>"}
 
     if phase == "report":
@@ -590,7 +594,11 @@ def audit_record(ctx, aud, o):
         lv["dedupe_collapsed"] = collapsed
         lv["phase"] = "refute" if lv["candidates"] else "report"
     elif ph == "refute":
-        lv["verdicts"] = data if isinstance(data, list) else [data]
+        rows = data if isinstance(data, list) else [data]
+        # A batched refuter answers with `verdicts`, one per claim it was given.
+        lv["verdicts"] = [v for r in rows
+                          for v in (r["verdicts"] if isinstance(r, dict) and isinstance(r.get("verdicts"), list)
+                                    else [r])]
         lv["phase"] = "report"
     elif ph == "report":
         lv["report"] = _report(lv, data if isinstance(data, dict) else (data[0] if data else {}))
@@ -708,6 +716,9 @@ def _verdict(r):
     if "findings" in d and isinstance(d["findings"], list):
         n = len(d["findings"])
         return f"{n} finding{'s' if n != 1 else ''}" if n else "pass"
+    if isinstance(d.get("verdicts"), list):
+        refuted = sum(1 for v in d["verdicts"] if isinstance(v, dict) and v.get("refuted"))
+        return f"{len(d['verdicts']) - refuted} upheld, {refuted} refuted"
     if "refuted" in d:
         return "refuted" if d.get("refuted") else ("blocked" if d.get("blocked") else "upheld")
     if "files" in d and isinstance(d["files"], list):
@@ -867,6 +878,17 @@ def _payload_for(phase, jobs, results):
         rows = []
         for j in jobs:
             d = ok.get(j["id"])
+            if j.get("finding_ids"):
+                got = {}
+                for v in (d.get("verdicts") or []) if isinstance(d, dict) else []:
+                    if isinstance(v, dict) and v.get("finding_id") in j["finding_ids"]:
+                        got.setdefault(v["finding_id"], v)
+                # A claim the batch returned nothing for was not checked, and is kept
+                # rather than dropped: the same rule as a refuter that could not run.
+                rows += [got.get(fid) or {"finding_id": fid, "refuted": False, "blocked": True,
+                                          "basis": "the batched refuter returned no verdict for it"}
+                         for fid in j["finding_ids"]]
+                continue
             if isinstance(d, dict):
                 d.setdefault("finding_id", j["id"].split("refute:", 1)[-1].split("#", 1)[0])
                 rows.append(d)

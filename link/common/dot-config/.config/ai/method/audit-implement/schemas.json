@@ -307,6 +307,61 @@
       }
     }
   },
+  "VERDICTS_SCHEMA": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "verdicts"
+    ],
+    "properties": {
+      "verdicts": {
+        "type": "array",
+        "description": "one verdict for each finding you were given, each with its finding_id verbatim",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "finding_id",
+            "refuted",
+            "basis"
+          ],
+          "properties": {
+            "finding_id": {
+              "type": "string"
+            },
+            "refuted": {
+              "type": "boolean",
+              "description": "true when you ran something and it did NOT establish the defect is real"
+            },
+            "blocked": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "true when you could not execute the check at all — a missing dependency, an absent toolchain, an unreachable service. Not a refutation: nothing was tested."
+            },
+            "basis": {
+              "type": "string",
+              "description": "for a runtime claim: the exact command run and the raw output tail. For a quality claim: the specific rule and the line it is violated at."
+            },
+            "severity_after": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                null
+              ],
+              "description": "your own severity once you looked; null to keep the reviewer's"
+            }
+          }
+        }
+      }
+    }
+  },
   "SYNTH_SCHEMA": {
     "type": "object",
     "additionalProperties": false,

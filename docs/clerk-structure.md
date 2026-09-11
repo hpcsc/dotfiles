@@ -404,7 +404,7 @@ stateDiagram-v2
   review --> refute: one candidate, nothing to group
   review --> report: no candidate
   dedupe --> refute: one agent groups same-defect findings
-  refute --> report: refuters, concurrent, a worktree each for runtime claims
+  refute --> report: refuters, concurrent, a worktree each for runtime claims, one reader for quality claims
   report --> done: one agent ranks what survived
   done --> [*]: clerk audit round --report, then accept
   note right of refute

@@ -838,6 +838,38 @@ to_report "$RA/scope-lint.json" "$RA/vd.json" "$RA/rep2.json"
 eq "what clerk lint found is added by clerk, confirmed, under its own lens" "clerk-lint|confirmed|restates the code" \
    "$(run "$RA" audit status | jq -r '[.live.report.findings[] | select(.lens=="clerk-lint")][0] | [.lens, .confidence, .claim] | join("|")')"
 
+# Quality claims settled by reading share one reader, grouped by file. A runtime claim and
+# a claim about a test keep a refuter each.
+cat > "$RA/rev-q.json" <<'JSON'
+[{"lens":"semantic:Go","verdict":"fail","findings":[
+  {"id":"r1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"},
+  {"id":"q1","severity":"low","nature":"quality","file":"b.go","claim":"a name"},
+  {"id":"q2","severity":"low","nature":"quality","file":"c.go","claim":"a comment"},
+  {"id":"q3","severity":"low","nature":"quality","file":"b.go","claim":"another name"},
+  {"id":"t1","severity":"low","nature":"quality","file":"a_test.go","claim":"a vacuous test"}]}]
+JSON
+printf '{"clusters":[{"ids":["r1"]},{"ids":["q1"]},{"ids":["q2"]},{"ids":["q3"]},{"ids":["t1"]}]}' > "$RA/dd-q.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
+run "$RA" audit record --phase review --results "$RA/rev-q.json" >/dev/null 2>&1
+N=$(run "$RA" audit record --phase dedupe --results "$RA/dd-q.json")
+eq "quality claims settled by reading share one reader; runtime and test claims keep their own" \
+   "refute:r1,refute:t1,refute:quality-batch-1|q1,q3,q2|none|VERDICTS_SCHEMA" \
+   "$(printf '%s' "$N" | jq -r '[([.next.spawn[].id] | join(",")), (.next.spawn[2].finding_ids | join(",")), .next.spawn[2].isolation, .next.spawn[2].schema_name] | join("|")')"
+cat > "$RA/vd-q.json" <<'JSON'
+[{"finding_id":"r1","refuted":false,"basis":"ran it"},
+ {"finding_id":"t1","refuted":true,"basis":"the test fails with the feature removed"},
+ {"verdicts":[{"finding_id":"q1","refuted":true,"basis":"no such rule"},
+              {"finding_id":"q3","refuted":false,"basis":"naming.md line 12"}]}]
+JSON
+N=$(run "$RA" audit record --phase refute --results "$RA/vd-q.json")
+eq "a batched reply is read as one verdict per claim" "report|true|true" \
+   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED refutation (3)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (2)") | tostring)] | join("|")')"
+printf '{"findings":[],"coverage_gaps":[],"summary":"s"}' > "$RA/rep-q.json"
+run "$RA" audit record --phase report --results "$RA/rep-q.json" >/dev/null 2>&1
+eq "a claim no verdict came back for is reported as unchecked, not as confirmed" "plausible" \
+   "$(report_row q2 '.confidence')"
+
 # Fix-scoped narrowing, the three cases that must not narrow.
 narrow() {  # <fixed-file args...> -> the lens keys that would run
   run "$RA" audit begin --base main --restart >/dev/null 2>&1
@@ -990,6 +1022,47 @@ eq "one finding needs no dedupe pass, so none is paid for" "false" \
 # named, not quietly drop out of a panel the reader thinks ran whole.
 eq "a lens that never returns usable JSON is reported as failed" "review:guidelines:Go" \
    "$(printf '%s' "$RR" | jq -r '[.phases[] | select(.phase=="review") | .failed[]] | join(",")')"
+
+# A batched reader that answers for some of its claims and not for the others: the rest
+# are kept as not executed, and the one it refuted is gone.
+FAKE3=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$FAKE3/claude" <<'STUB'
+#!/usr/bin/env bash
+ARGS="$*"
+p=$(cat)
+emit() {
+  case "$ARGS" in
+    *stream-json*)
+      printf '{"type":"result","subtype":"success","is_error":false,"result":%s,"total_cost_usd":0.01}\n' "$(jq -Rs . <<< "$1")" ;;
+    *) printf '{"is_error":false,"total_cost_usd":0.01,"result":%s}\n' "$(jq -Rs . <<< "$1")" ;;
+  esac
+}
+saw() { printf '%s\n' "$1" >> "$(dirname "$0")/spawns"; }
+case "$p" in
+  *"FRAGMENT scope-open"*)
+    emit '{"base":"abc","head":"def","summary":"s","files":["a.go","b.go","c.go"],"languages":["Go"],"by_language":[{"language":"Go","files":["a.go","b.go","c.go"]}],"signals":{"tests_changed":false,"concurrency":false,"performance":false},"has_code":true}' ;;
+  *"FRAGMENT lens-semantic"*)
+    emit '{"verdict":"fail","findings":[{"id":"g1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"},{"id":"q1","severity":"low","nature":"quality","file":"b.go","claim":"a name"},{"id":"q2","severity":"low","nature":"quality","file":"b.go","claim":"a comment"},{"id":"q3","severity":"low","nature":"quality","file":"c.go","claim":"a doc"}],"note":null}' ;;
+  *"FRAGMENT dedupe-open"*) emit '{"clusters":[{"ids":["g1"]},{"ids":["q1"]},{"ids":["q2"]},{"ids":["q3"]}]}' ;;
+  *"checks them together"*) saw batch
+    emit '{"verdicts":[{"finding_id":"q1","refuted":true,"basis":"no such rule"},{"finding_id":"q2","refuted":false,"basis":"comments.md line 4"}]}' ;;
+  *"FRAGMENT refute-open"*) saw refute; emit '{"finding_id":"g1","refuted":false,"blocked":false,"basis":"ran it"}' ;;
+  *"FRAGMENT report-open"*)
+    emit '{"findings":[{"id":"g1","severity":"high","confidence":"confirmed"},{"id":"q2","severity":"low","confidence":"confirmed"}],"coverage_gaps":[],"summary":"graded"}' ;;
+  *) emit '{"verdict":"pass","findings":[],"note":null}' ;;
+esac
+STUB
+chmod +x "$FAKE3/claude"
+: > "$FAKE3/spawns"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+RB=$(PATH="$FAKE3:$PATH" run "$RA" audit run --restart --quiet 2>/dev/null)
+eq "three quality claims on two files cost one reader, and the runtime claim its own refuter" "1|1" \
+   "$(grep -c '^batch$' "$FAKE3/spawns" | tr -d ' ')|$(grep -c '^refute$' "$FAKE3/spawns" | tr -d ' ')"
+eq "a claim the reader refuted is gone from the report" "0" \
+   "$(printf '%s' "$RB" | jq -r '[.report.findings[] | select(.id=="q1")] | length')"
+eq "a claim it returned no verdict for is kept, as not executed" "plausible|true" \
+   "$(printf '%s' "$RB" | jq -r '[.report.findings[] | select(.id=="q3")][0] | [.confidence, (.evidence|startswith("NOT EXECUTED")|tostring)] | join("|")')"
+rm -rf "$FAKE3"
 
 # --------------------------------------------------------------------------------
 printf '\nthe audit as it happens — a round is watchable, not a wait with a number\n'

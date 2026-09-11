@@ -72,6 +72,10 @@ TEST_FILE_RE = re.compile(r"(^|[/_.-])(test|tests|spec|_test\.|\.test\.|\.spec\.
 # pass anyway; a convention claim cites a rule and a line.
 TEST_PATH_RE = re.compile(r"(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|_test\.exs)$")
 
+READ_ONLY = ("Nothing here is executed, so you are reading the tree the audit reports on. Do not modify "
+             "it: a claim settled by naming a rule and a line needs no experiment, and a tree left dirty "
+             "stops the run.\n\n")
+
 
 def canonical_lang(l):
     if l and l in LANG:
@@ -353,10 +357,48 @@ def needs_tree(finding):
         TEST_PATH_RE.search(str(finding.get("file") or "")))
 
 
+# A refuter's cost is mostly the files it reads into a cold context, and a quality claim
+# settled by reading needs no checkout of its own, so claims like that share one reader.
+# Measured over three runs, 31 of 88 refuters were one each for such a claim.
+QUALITY_BATCH = 8
+
+
+def batchable(finding, depth):
+    """A quality claim not about a test, which one refuter settles by citing a rule and a
+    line, without a change to the tree."""
+    return (finding.get("nature") == "quality" and not needs_tree(finding)
+            and refuters_for(finding, depth) == 1)
+
+
+def quality_batches(findings, size=QUALITY_BATCH):
+    """Claims on one file stay together, because the file is what a reader pays to take in,
+    and no batch holds more than `size`."""
+    by_file = {}
+    for f in findings:
+        by_file.setdefault(str(f.get("file") or ""), []).append(f)
+    batches, cur = [], []
+    for group in by_file.values():
+        for i in range(0, len(group), size):
+            chunk = group[i:i + size]
+            if cur and len(cur) + len(chunk) > size:
+                batches.append(cur)
+                cur = []
+            cur += chunk
+    if cur:
+        batches.append(cur)
+    return batches
+
+
 def refute_jobs(scope, prompts, findings, depth, *, request="", brief="", test_commands=None):
     ctxb = _PromptCtx(scope, prompts, request, brief, (), test_commands or {})
+    shared = [f for f in findings if batchable(f, depth)]
+    if len(shared) < 2:
+        shared = []
+    shared_ids = {f["id"] for f in shared}
     jobs = []
     for f in findings:
+        if f["id"] in shared_ids:
+            continue
         n = refuters_for(f, depth)
         for i in range(n):
             jobs.append({
@@ -364,8 +406,18 @@ def refute_jobs(scope, prompts, findings, depth, *, request="", brief="", test_c
                 "finding_id": f["id"],
                 "agent": None,
                 "isolation": "worktree" if needs_tree(f) else "none",
+                "schema": "VERDICT_SCHEMA",
                 "prompt": ctxb.refute(f, i, n),
             })
+    for k, batch in enumerate(quality_batches(shared), 1):
+        jobs.append({
+            "id": f"quality-batch-{k}",
+            "finding_ids": [f["id"] for f in batch],
+            "agent": None,
+            "isolation": "none",
+            "schema": "VERDICTS_SCHEMA",
+            "prompt": ctxb.refute_quality_batch(batch),
+        })
     return jobs
 
 
@@ -521,9 +573,7 @@ class _PromptCtx:
                     "Restore it before you return anyway: a worktree left clean is reclaimed automatically, and "
                     "one left dirty is not.\n\n")
         else:
-            out += ("Nothing here is executed, so you are reading the tree the audit reports on. Do not modify "
-                    "it: a claim settled by naming a rule and a line needs no experiment, and a tree left dirty "
-                    "stops the run.\n\n")
+            out += READ_ONLY
         if n > 1:
             out += (f"You are refuter {i + 1} of {n} working independently on this same claim; do not assume "
                     f"the others agree with you.\n\n")
@@ -531,6 +581,20 @@ class _PromptCtx:
         out += (fill(self._p("refute-runtime"), {"test_command": self.test_cmd(langs[0] if langs else None)})
                 if f.get("nature") == "runtime" else self._p("refute-quality"))
         return out
+
+    def refute_quality_batch(self, findings):
+        rows = "\n".join(
+            f"- Finding {f.get('id')} [{f.get('severity')}, quality] in {f.get('file')}"
+            + (f":{f['line']}" if f.get("line") else "") + f"\n  Claim: {f.get('claim')}"
+            for f in findings)
+        return (self._p("refute-open") + "\n\n"
+                + f"These {len(findings)} claims are all QUALITY claims settled by reading, so one reader checks "
+                  f"them together. Judge each on its own: a verdict on one says nothing about the next.\n\n"
+                + rows + "\n\n"
+                + f"Diff under audit: `git diff {self.scope.get('base')}...{self.scope.get('head')}`\n\n"
+                + self._p("refute-file-rule") + "\n\n" + READ_ONLY + self._p("refute-quality") + "\n\n"
+                + "Return `verdicts`: one for each finding above, with its `finding_id` verbatim. A finding "
+                  "you return no verdict for is recorded as not checked, never as refuted.")
 
     def synth(self, confirmed, refuted, lens_notes, gaps):
         files = self.scope.get("files") or []

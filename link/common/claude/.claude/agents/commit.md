@@ -36,7 +36,19 @@ If the caller supplied additional context (a ticket, a step description):
 - Incorporate it naturally into the message
 - Do NOT mention it came from user input
 
-### Step 4: Draft Commit Message
+### Step 4: Read the Writing Guideline
+
+Write the message in ASD-STE100 Simplified Technical English. Read the guideline before you draft:
+
+```bash
+cat ~/.config/ai/guidelines/writing/asd-ste100.md
+```
+
+Apply it to the subject and the body: approved words, active voice, simple tenses, no `-ing` verb forms,
+no metaphors, and short sentences. Technical names, such as identifiers, file paths and commands, stay as
+they are. Where the repository's own commit conventions differ, follow the repository.
+
+### Step 5: Draft Commit Message
 
 Follow these rules strictly:
 
@@ -60,7 +72,7 @@ Follow these rules strictly:
 - Include file paths only when they provide essential context for understanding the change
 - Write as a human developer would
 
-### Step 5: Execute Commit
+### Step 6: Execute Commit
 
 Use HEREDOC format for the commit:
 ```bash
@@ -77,24 +89,25 @@ EOF
 
 **Simple change (no body needed):**
 ```
-Add user authentication endpoint
+Add an endpoint to authenticate users
 ```
 
-**Change needing explanation:**
+**Change that needs an explanation:**
 ```
-Fix payment retry logic for failed transactions
+Wait longer before each payment retry
 
-Previously, failed payments were retried immediately which caused
-rate limiting issues with the payment provider. Now retries use
-exponential backoff starting at 5 seconds.
+The service retried a failed payment immediately. The payment provider
+then limited the rate of our requests. The first retry now waits 5
+seconds, and each later retry waits twice as long as the one before.
 ```
 
 **Refactoring:**
 ```
-Extract validation logic into separate module
+Move the validation functions to their own file
 
-Moves validation functions from handler.go to validation.go
-to improve code organization and testability.
+handler.go held both the HTTP handler and the validation rules. The
+validation rules are now in validation.go, so a test can check them
+without a request.
 ```
 
 ## Output

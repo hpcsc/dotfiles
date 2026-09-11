@@ -63,7 +63,7 @@ Then write the message, which is judgment rather than mechanics:
 
 {{variant:commit}}
 
-The message obeys the `commit` agent's rules: imperative subject, ≤50 chars, capitalised, no trailing period, blank line before a body wrapped at 72 explaining **what and why**; no AI/Claude mention, no `Co-Authored-By`, no generated-with footer, no generic file lists. Apply the repo's own conventions too — read the project's instructions file and any committing guideline, and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one.
+The message obeys the `commit` agent's rules: imperative subject, ≤50 chars, capitalised, no trailing period, blank line before a body wrapped at 72 explaining **what and why**, prose in Simplified Technical English (`~/.config/ai/guidelines/writing/asd-ste100.md`); no AI/Claude mention, no `Co-Authored-By`, no generated-with footer, no generic file lists. Apply the repo's own conventions too — read the project's instructions file and any committing guideline, and reuse a cached trailer (e.g. a Linear initiative trailer) if the repo uses one.
 
 Two rules `clerk` cannot enforce for you:
 

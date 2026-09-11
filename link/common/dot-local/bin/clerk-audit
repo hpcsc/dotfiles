@@ -4,9 +4,12 @@
 The audit is a phase machine on the same shape as the step table: scope, review, dedupe,
 refute, report. `clerk audit next` hands out one phase's batch of agents with every prompt
 resolved, `clerk audit record` takes their replies and advances, and `clerk audit run`
-walks the whole machine in-process, shelling out to a headless harness only where a
-judgment is wanted. `plan`, `round` and `accept` are the ledger entries the step table
-reads; `status` says whether a round is in flight and whether its runner is still alive.
+walks the whole machine, shelling out to a headless harness only where a judgment is
+wanted. The walk runs in a process of its own, detached from the command that started it:
+that command only relays what the round prints, so stopping it stops the wait and not the
+round. `wait` takes a round up again and `stop` ends one. `plan`, `round` and `accept` are
+the ledger entries the step table reads; `status` says whether a round is in flight and
+whether its runner is still alive.
 """
 
 import json
@@ -16,6 +19,7 @@ import signal
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -684,8 +688,7 @@ def audit_run(ctx, aud, o):
     if prior.get("pid") and prior["pid"] != os.getpid() and not prior.get("finished_at"):
         if runner_alive(prior["pid"]):
             out.final({"ran": False, "phase": runner.lv["phase"], "cost_usd": 0.0,
-                       "reason": f"a runner (pid {prior['pid']}) is already driving this round — "
-                                 f"wait for it, or stop it and run again"}, 3)
+                       "reason": already_driving(prior["pid"])}, 3)
         died = note_runner_dead(ctx, aud)
         if died:
             out.note(f"the previous runner (pid {died['pid']}) died in {died['phase']}: "
@@ -693,17 +696,23 @@ def audit_run(ctx, aud, o):
 
     def on_signal(signum, frame):
         name = signal.Signals(signum).name
+        stopped = stop_requested(ctx) == os.getpid()
         landed, in_flight = runner.roster()
         with runner.lock:
             runner.record()["died"] = now()
-            runner.incident("runner-killed", signal=name, kept=landed, lost=in_flight)
+            if stopped:
+                runner.incident("runner-stopped", by="clerk audit stop", kept=landed, lost=in_flight)
+            else:
+                runner.incident("runner-killed", signal=name, kept=landed, lost=in_flight)
         ex.stop_all()
         try:
             out.final({"ran": False, "phase": runner.record().get("phase") or runner.lv["phase"],
-                       "cost_usd": round(spent, 4), "reason": f"killed by {name}",
+                       "cost_usd": round(spent, 4),
+                       "reason": "stopped by `clerk audit stop`" if stopped else f"killed by {name}",
                        "kept": landed, "lost": in_flight}, 128 + signum)
         except SystemExit:
             pass
+        write_exit_record(ctx, 128 + signum)
         os._exit(128 + signum)
     for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
         signal.signal(sig, on_signal)
@@ -809,9 +818,222 @@ def _payload_for(phase, jobs, results):
     return []
 
 
+# --------------------------------------------------------------------------------
+# The round in a process of its own. Claude Code's low-memory guard stops a background
+# command on a busy machine, and it took the runner with it: every round of three runs
+# lost the agents it had in flight that way. What survived was a runner no command owned,
+# so the round now runs as one and the command that starts it only relays what it prints.
+# --------------------------------------------------------------------------------
+
+POLL_S = 0.2
+RUNNER_OUT, RUNNER_ERR = "runner.out", "runner.err"
+
+
+def already_driving(pid):
+    return (f"a runner (pid {pid}) is already driving this round — `clerk audit wait` waits for "
+            f"it and ends on its summary, `clerk audit stop` ends it")
+
+
+def write_exit_record(ctx, code):
+    """How the runner ended, for a waiter that is not its parent and so cannot wait() for
+    it. Flushed first: the waiter takes the record as its cue to read the last output."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (OSError, ValueError):
+            pass
+    code = 0 if code is None else (code if isinstance(code, int) else 1)
+    try:
+        ctx.run.write("runner-exit.json", {"pid": os.getpid(), "code": code, "at": now()})
+    except OSError:
+        pass
+
+
+def exit_code(ctx, pid):
+    rec = ctx.run.read("runner-exit.json", None) or {}
+    return rec.get("code") if rec.get("pid") == pid else None
+
+
+def stop_requested(ctx):
+    return (ctx.run.read("runner-stop.json", None) or {}).get("pid")
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _detach(argv, ledger):
+    """Start `argv` as a process no command owns, and return its pid.
+
+    Twice forked, so its parent is init rather than this process: a guard that stops a
+    background command stops the command's descendants with it, and a session of its own
+    alone is not enough to leave that tree. Its output goes to files in the ledger, which
+    is also what keeps it from holding the caller's pipe open."""
+    ledger.mkdir(parents=True, exist_ok=True)
+    r, w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        try:
+            os.close(r)
+            os.setsid()
+            if os.fork():
+                os._exit(0)
+            fi = os.open(os.devnull, os.O_RDONLY)
+            fo = os.open(ledger / RUNNER_OUT, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+            fe = os.open(ledger / RUNNER_ERR, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+            os.dup2(fi, 0)
+            os.dup2(fo, 1)
+            os.dup2(fe, 2)
+            os.write(w, str(os.getpid()).encode())
+            os.closerange(3, 1024)
+            os.execv(argv[0], argv)
+        finally:
+            os._exit(127)
+    os.close(w)
+    os.waitpid(pid, 0)
+    got = os.read(r, 32)
+    os.close(r)
+    return int(got) if got else None
+
+
+def relay(ctx, pid, from_start):
+    """Copy what the runner prints to this process's own streams until it ends, then exit
+    the way it did. A SIGTERM or SIGHUP here ends the wait and leaves the round running; a
+    Ctrl-C is a person asking the round itself to stop."""
+    ledger = ctx.run.dir
+    streams = [(ledger / RUNNER_ERR, sys.stderr), (ledger / RUNNER_OUT, sys.stdout)]
+    offsets = {}
+    for path, _ in streams:
+        try:
+            offsets[path] = 0 if from_start else path.stat().st_size
+        except OSError:
+            offsets[path] = 0
+    gone = [False]
+
+    def pump():
+        for path, stream in streams:
+            try:
+                with open(path, "rb") as fh:
+                    fh.seek(offsets[path])
+                    chunk = fh.read()
+            except OSError:
+                continue
+            offsets[path] += len(chunk)
+            if chunk and not gone[0]:
+                try:
+                    stream.buffer.write(chunk)
+                    stream.buffer.flush()
+                except (BrokenPipeError, ValueError, OSError):
+                    gone[0] = True
+
+    def leave(signum, frame):
+        pump()
+        msg = (f"clerk: audit: stopped waiting — the round goes on as pid {pid}. `clerk audit wait` "
+               f"picks it up, `clerk audit stop` ends it\n")
+        try:
+            os.write(2, msg.encode())
+        except OSError:
+            pass
+        os._exit(128 + signum)
+
+    def stop(signum, frame):
+        signal.signal(signal.SIGINT, leave)
+        _signal_stop(ctx, pid)
+
+    signal.signal(signal.SIGTERM, leave)
+    signal.signal(signal.SIGHUP, leave)
+    signal.signal(signal.SIGINT, stop)
+    while _alive(pid) and exit_code(ctx, pid) is None:
+        pump()
+        time.sleep(POLL_S)
+    # The record lands just before the runner exits; what it printed last lands with it.
+    for _ in range(50):
+        if not _alive(pid):
+            break
+        time.sleep(POLL_S)
+    pump()
+    code = exit_code(ctx, pid)
+    if code is None:
+        aud = ctx.run.read("audit.json", {}) or {}
+        died = note_runner_dead(ctx, aud) if live_of(aud) else None
+        emit({"ran": False, "reason": f"the runner (pid {pid}) ended without saying how — "
+                                      f"`clerk audit status` says what it kept, `clerk audit run` resumes it",
+              "died": died}, 1)
+    sys.exit(code)
+
+
+def _signal_stop(ctx, pid):
+    ctx.run.write("runner-stop.json", {"pid": pid, "at": now()})
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def audit_launch(ctx, aud, o, argv):
+    """`clerk audit run`: start the round's runner detached, then relay it to the end."""
+    r = runner_view(live_of(aud))
+    if r and r["alive"] and not r.get("finished_at"):
+        emit({"ran": False, "phase": live_of(aud)["phase"], "cost_usd": 0.0,
+              "reason": already_driving(r["pid"])}, 3)
+    pid = _detach([sys.executable, str(Path(__file__).resolve()), *argv, "--no-detach"], ctx.run.dir)
+    if not pid:
+        die("the round's runner did not start", 1)
+    relay(ctx, pid, from_start=True)
+
+
+def audit_wait(ctx, aud, o):
+    """Wait for the round a runner is driving and end on its summary — or, for a round that
+    ended while nobody was waiting, hand back the summary it left."""
+    lv = live_of(aud)
+    r = runner_view(lv)
+    if not r or not r.get("pid"):
+        emit({"waited": False, "reason": "no runner has driven a round here — `clerk audit run` starts one"}, 3)
+    pid = int(r["pid"])
+    if r["alive"]:
+        relay(ctx, pid, from_start=False)
+    code = exit_code(ctx, pid)
+    if code is not None:
+        try:
+            sys.stdout.buffer.write((ctx.run.dir / RUNNER_OUT).read_bytes())
+            sys.stdout.buffer.flush()
+        except (OSError, ValueError):
+            pass
+        sys.exit(code)
+    note_runner_dead(ctx, aud)
+    emit({"waited": False, "reason": f"the runner (pid {pid}) is gone and left no summary — "
+                                     f"`clerk audit run` resumes the round",
+          "runner": runner_view(live_of(aud))}, 3)
+
+
+def audit_stop(ctx, aud, o):
+    """End the round a runner is driving. What had landed stays kept; `clerk audit run`
+    resumes it later, spawning only the rest."""
+    lv = live_of(aud)
+    r = runner_view(lv)
+    if not r or not r["alive"] or r.get("finished_at"):
+        emit({"stopped": False, "reason": "no runner is driving a round here"}, 3)
+    pid = int(r["pid"])
+    _signal_stop(ctx, pid)
+    for _ in range(150):
+        if not _alive(pid):
+            break
+        time.sleep(POLL_S)
+    v = runner_view(live_of(ctx.run.read("audit.json", aud))) or {}
+    return {"stopped": not _alive(pid), "pid": pid, "round": lv["round"], "phase": v.get("phase"),
+            "kept": v.get("landed") or [], "lost": v.get("in_flight") or [],
+            "next": "`clerk audit run` resumes the round, spawning only what had not landed"}
+
+
 # Verbs that only need somewhere to keep a round. The rest record evidence the step
 # table reads, so they need the run that evidence describes.
-ADHOC_VERBS = ("run", "begin", "next", "record", "status")
+ADHOC_VERBS = ("run", "begin", "next", "record", "status", "wait", "stop")
 
 
 def adhoc_ledger(ctx):
@@ -828,13 +1050,13 @@ def adhoc_ledger(ctx):
 
 AUDIT = {"round": audit_round, "accept": audit_accept,
          "status": audit_status, "begin": audit_begin, "next": audit_next,
-         "record": audit_record, "run": audit_run}
+         "record": audit_record, "run": audit_run, "wait": audit_wait, "stop": audit_stop}
 
 
 def main_audit(argv):
     """As main_step: every branch ends in emit()."""
     if not argv or argv[0] in ("-h", "--help"):
-        print("USAGE\n  clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n      [--fixed-file <p>]... [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n      [--model <m>] [--dry-run] [--quiet | --raw]\n  clerk audit round --report <json|-> [--replan <n>]\n  clerk audit accept [--early <why>] | status")
+        print("USAGE\n  clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n      [--fixed-file <p>]... [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n      [--model <m>] [--dry-run] [--quiet | --raw] [--no-detach]\n  clerk audit wait      wait for the round a runner is driving; end on its summary\n  clerk audit stop      end that round; `run` resumes it\n  clerk audit round --report <json|-> [--replan <n>]\n  clerk audit accept [--early <why>] | status\n\n`run` drives the round in a process of its own and relays it, so stopping the command\nstops the wait, not the round. --no-detach drives it in this process instead.")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
     handler = AUDIT.get(verb)
@@ -847,7 +1069,7 @@ def main_audit(argv):
                     "--recheck": "value", "--test-commands": "value", "--another": "value",
                     "--fixed-file": "list", "--lens": "list", "--restart": "bool",
                     "--dry-run": "bool", "--model": "value",
-                    "--quiet": "bool", "--raw": "bool",
+                    "--quiet": "bool", "--raw": "bool", "--no-detach": "bool",
                     "--harness-cmd": "value"})
     ctx = build_ctx(o["--run"])
     if ctx.run is None:
@@ -857,6 +1079,17 @@ def main_audit(argv):
         ctx.run = adhoc_ledger(ctx)
         ctx.adhoc = True
     aud = ctx.run.read("audit.json", {"rounds_planned": None, "rounds": [], "accepted": None})
+    if verb == "run" and not o["--dry-run"]:
+        if not o["--no-detach"]:
+            audit_launch(ctx, aud, o, argv)
+        try:
+            emit(handler(ctx, aud, o))
+        except SystemExit as e:
+            write_exit_record(ctx, e.code)
+            raise
+        except BaseException:
+            write_exit_record(ctx, 1)
+            raise
     emit(handler(ctx, aud, o))
 
 

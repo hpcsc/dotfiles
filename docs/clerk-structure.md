@@ -391,7 +391,9 @@ flowchart TD
 
 The audit reviews the finished branch with agents and not with rules. A *lens* is one agent. It covers one angle over one language, and the angles are semantic, guidelines, concurrency, performance, and tests. A *refuter* gets a single finding and must disprove it. Only a finding that survives that argument reaches the report.
 
-`clerk audit next` hands out one phase's jobs with every prompt resolved. `clerk audit record` takes the replies and advances the phase. `clerk audit run` walks that loop inside its own process and starts a headless harness only where it needs a judgment. It writes each reply to the live round as the reply arrives. A round that someone killed then starts again with only the jobs that remain.
+`clerk audit next` hands out one phase's jobs with every prompt resolved. `clerk audit record` takes the replies and advances the phase. `clerk audit run` walks that loop and starts a headless harness only where it needs a judgment. It writes each reply to the live round as the reply arrives. A round that someone killed then starts again with only the jobs that remain.
+
+The walk runs in a process that no command owns. `clerk audit run` forks it twice, so its parent is init, and then only copies what it prints. A guard that stops the command therefore stops the wait and not the round. Claude Code's low-memory guard is one such guard. `clerk audit wait` waits for the round again and ends on its summary. `clerk audit stop` ends the round.
 
 ```mermaid
 stateDiagram-v2
@@ -415,7 +417,7 @@ stateDiagram-v2
   end note
 ```
 
-**Where it lives:** clerk-audit: audit_next, audit_record, audit_run, Runner · clerk_audit_panel.py: LANG, remit_for, build_panel, refute_jobs · clerk_harness.py: run_job, run_batch · method/audit-implement/prompts/ and schemas.json
+**Where it lives:** clerk-audit: audit_next, audit_record, audit_run, Runner, audit_launch, relay, audit_wait, audit_stop · clerk_audit_panel.py: LANG, remit_for, build_panel, refute_jobs · clerk_harness.py: run_job, run_batch · method/audit-implement/prompts/ and schemas.json
 
 **When to change it:** Change what a lens gets, or how many refuters a claim gets, in clerk_audit_panel.py. That change reaches both harnesses at once. Change how clerk starts an agent in `_argv` and `_envelope` in clerk_harness.py, and nowhere else.
 

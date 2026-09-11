@@ -95,5 +95,6 @@ own — its files still reach every other lens as context, and `lenses_not_run` 
 | No harness on PATH | `clerk audit run` refuses rather than reporting a clean audit. Install `claude` or `opencode`, or pass `--harness-cmd`. |
 | The base resolves to HEAD | The diff is empty and the scoping pass says so. Give the ref the work started from — the branch was probably already landed. |
 | A lens is named in `failed` | It exhausted its retries. The round still completes; that lens is a coverage gap, and a panel that quietly thins out otherwise reports as full coverage. |
+| The command waiting on a round stops early | A tool timeout, or Claude Code's low-memory guard, stopped the wait and not the round: the round runs in a process of its own. `clerk audit wait` waits for it again and ends on its summary, even for a round that already ended. `clerk audit stop` ends a round on purpose. |
 | The round dies mid-flight | Run it again — the phase it reached is recorded and it continues from there. `--restart` throws the round away and begins again. |
 | The tree is dirty afterwards | A refuter died mid-probe. Restore the branch tip before you trust another run; refuters mutate a checkout of their own, but a crashed one can leave residue. |

@@ -70,6 +70,9 @@ own — its files still reach every other lens as context, and `lenses_not_run` 
 the background, polling its output. A round that is killed keeps every agent that had
 landed: `clerk audit run` resumes it and spawns only the rest, `clerk audit status` says
 whether its runner is still alive, and what ended it is written to the round's `incidents`.
+The round runs in a process of its own, so a timeout that stops the command stops only the
+wait: `clerk audit wait` waits for the same round again and ends on its summary, and
+`clerk audit stop` ends it.
 
 **Then wait inside one call, and do not end your turn.** `clerk watch <progress>` blocks until the round lands. Where a tool timeout will not stretch that far, loop in the shell inside a single call. A poll that ends the turn needs a human to resume it, and the round finishing does not summon one.
 
@@ -121,5 +124,6 @@ A round already in flight for this branch is continued rather than restarted; pa
 | No harness on PATH | `clerk audit run` refuses rather than reporting a clean audit. Install `claude` or `opencode`, or pass `--harness-cmd`. |
 | The base resolves to HEAD | The diff is empty and the scoping pass says so. Give the ref the work started from — the branch was probably already landed. |
 | A lens is named in `failed` | It exhausted its retries. The round still completes; that lens is a coverage gap, and a panel that quietly thins out otherwise reports as full coverage. |
+| The command waiting on a round stops early | A tool timeout, or Claude Code's low-memory guard, stopped the wait and not the round: the round runs in a process of its own. `clerk audit wait` waits for it again and ends on its summary, even for a round that already ended. `clerk audit stop` ends a round on purpose. |
 | The round dies mid-flight | Run it again — the phase it reached is recorded and it continues from there. `--restart` throws the round away and begins again. |
 | The tree is dirty afterwards | A refuter died mid-probe. Restore the branch tip before you trust another run; refuters mutate a checkout of their own, but a crashed one can leave residue. |

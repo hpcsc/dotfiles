@@ -312,7 +312,8 @@ def row_audit(ctx):
     if runner:
         fields["runner"] = runner
     if runner and runner["alive"]:
-        why = f"round {live['round']} is running: pid {runner['pid']}, in {runner['phase']}"
+        why = (f"round {live['round']} is running: pid {runner['pid']}, in {runner['phase']} — "
+               f"`clerk audit wait` waits for it and ends on its summary")
     elif runner and not runner.get("finished_at"):
         why = (f"round {live['round']} is in flight but its runner (pid {runner['pid']}) is gone — "
                f"it entered {runner['phase']} at {runner['started_at']}, {len(runner['landed'])} agent(s) "

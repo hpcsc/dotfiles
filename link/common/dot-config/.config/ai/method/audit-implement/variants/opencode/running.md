@@ -2,6 +2,9 @@
 the background, polling its output. A round that is killed keeps every agent that had
 landed: `clerk audit run` resumes it and spawns only the rest, `clerk audit status` says
 whether its runner is still alive, and what ended it is written to the round's `incidents`.
+The round runs in a process of its own, so a timeout that stops the command stops only the
+wait: `clerk audit wait` waits for the same round again and ends on its summary, and
+`clerk audit stop` ends it.
 
 **Then wait inside one call, and do not end your turn.** `clerk watch <progress>` blocks until the round lands. Where a tool timeout will not stretch that far, loop in the shell inside a single call. A poll that ends the turn needs a human to resume it, and the round finishing does not summon one.
 

@@ -4,6 +4,13 @@ keeps every agent that had landed: `clerk audit run` resumes it and spawns only 
 `clerk audit status` says whether its runner is still alive, and what ended it is written
 to the round's `incidents`.
 
+**The round runs in a process of its own.** The command only relays it, so whatever stops
+that command stops the wait and not the round — and Claude Code's low-memory guard stops
+background commands on a busy machine. When the command ends without the round's summary,
+run `clerk audit wait` in the background: it waits for the same round and ends on its
+summary, even one that already ended. `clerk audit stop` ends a round on purpose. Do not
+wrap either in `timeout`; it only ends the wait.
+
 **Then wait, and do not end your turn.** The background completion re-invokes you when the round exits. A turn that ends first can only be restarted by the user, and the round landing does not restart it — so do not poll the progress file between checks.
 
 **Say where it can be watched.** Its first two lines are `progress: <path>`, a file in the

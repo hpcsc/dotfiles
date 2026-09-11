@@ -1108,6 +1108,52 @@ eq "and the round records which agent failed it, and why" "phase-failed|scope|tr
    "$(jq -r '.incidents[-1] | [.kind, (.agents|join(",")), (.error | contains("attempts") | tostring)] | join("|")' "$AJ")"
 eq "an ending the runner chose is not a death" "0" \
    "$(run "$RA" audit status | jq -r '[.incidents[] | select(.kind=="runner-died" and .phase=="scope")] | length')"
+
+# --------------------------------------------------------------------------------
+printf '\nthe round outlives the command that started it — a stopped wait is not a stopped round\n'
+
+# Claude Code's low-memory guard stops a background command, and a runner under that
+# command went with it. `exec` makes the background job the command itself, so killing
+# $BG stops exactly what the guard stops.
+landed_fresh() {  # until this round's runner is on record and its guidelines lens has landed
+  for _ in $(seq 1 150); do
+    [ -n "$(jq -r '.live.runner.pid // empty' "$AJ" 2>/dev/null)" ] && grep -q '✓ guidelines:Go' "$LOG" 2>/dev/null && return
+    sleep 0.2
+  done
+}
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+KILLS=$(jq '[.incidents[]? | select(.kind=="runner-killed")] | length' "$AJ")
+: > "$LOG"
+(cd "$RA" && exec env PATH="$FAKE2:$PATH" SLOW=4 "$CLERK" audit run --restart --quiet >/dev/null 2>&1) &
+BG=$!
+landed_fresh
+PID=$(jq -r '.live.runner.pid' "$AJ")
+eq "the round's runner is a process of its own, not a child of the command that started it" "true" \
+   "$([ -n "$PID" ] && [ "$PID" != "$BG" ] && [ "$(ps -o ppid= -p "$PID" | tr -d ' ')" != "$BG" ] && echo true || echo false)"
+kill -TERM "$BG" 2>/dev/null; wait "$BG" 2>/dev/null
+eq "stopping that command leaves the round running" "true" \
+   "$(kill -0 "$PID" 2>/dev/null && echo true || echo false)"
+W=$(cd "$RA" && PATH="$FAKE2:$PATH" "$CLERK" audit wait 2>/dev/null)
+eq "audit wait takes the round up and ends on its summary" "true|one real defect" \
+   "$(printf '%s' "$W" | jq -r '[(.ran|tostring), .report.summary] | join("|")')"
+eq "and nothing killed the round, so no kill is on record" "$KILLS" \
+   "$(jq '[.incidents[]? | select(.kind=="runner-killed")] | length' "$AJ")"
+eq "a round that ended with nobody waiting still hands back its summary" "one real defect" \
+   "$(cd "$RA" && "$CLERK" audit wait 2>/dev/null | jq -r '.report.summary')"
+
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+: > "$LOG"
+(cd "$RA" && exec env PATH="$FAKE2:$PATH" SLOW=30 "$CLERK" audit run --restart --quiet >/dev/null 2>&1) &
+BG=$!
+landed_fresh
+eq "a second launch while a runner drives the round is refused, --restart or not" "3" \
+   "$(cd "$RA" && PATH="$FAKE2:$PATH" "$CLERK" audit run --restart --quiet >/dev/null 2>&1; printf '%s' $?)"
+STP=$(run "$RA" audit stop)
+eq "audit stop ends the round and says what it kept and what it lost" "true|review:guidelines:Go|review:semantic:Go" \
+   "$(printf '%s' "$STP" | jq -r '[(.stopped|tostring), (.kept|join(",")), (.lost|join(","))] | join("|")')"
+wait "$BG" 2>/dev/null
+eq "the stop is on record as a stop, not as a kill" "runner-stopped" "$(jq -r '.incidents[-1].kind' "$AJ")"
+eq "with nothing running, a stop is refused" "3" "$(rc "$RA" audit stop)"
 rm -rf "$FAKE2"
 
 # --------------------------------------------------------------------------------

@@ -457,6 +457,41 @@ eq "the turn inside the run lands in a step; the one after it is set aside, not 
    "$(printf '%s' "$S" | jq -r '[([.steps[].tokens.turns] | add), .tokens.outside_run.turns] | map(tostring) | join("|")')"
 eq "the session's subagents are listed by type, with their tokens" "commit|30" \
    "$(printf '%s' "$S" | jq -r '[.subagents[0].type, (.subagents[0].tokens.output|tostring)] | join("|")')"
+
+# A step's wall clock counts the time the session sat still. What ended the wait says
+# whose it was: a person, or background work the session had started.
+LE=$(printf '%s' "$S" | jq -r '.steps[] | select(.step=="land") | .end')
+at() { jq -rn --arg t "$LE" --argjson s "$1" '($t|fromdateiso8601) + $s | todateiso8601'; }
+RJ="$R/.git/clerk/runs/w1/run.json"
+/bin/cp -f "$RJ" "$TD/run.keep.json"
+jq --arg e "$(at 10800)" '.finished_at = $e' "$TD/run.keep.json" > "$RJ"
+cat > "$PD/sess-2.jsonl" <<EOF
+{"type":"user","timestamp":"$(at 60)","message":{"role":"user","content":"go on"}}
+{"type":"assistant","timestamp":"$(at 61)","message":{"id":"w1","content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{}}]}}
+{"type":"user","timestamp":"$(at 1861)","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q1","content":"answered"}]}}
+{"type":"assistant","timestamp":"$(at 1870)","message":{"id":"w2","content":[{"type":"tool_use","id":"b1","name":"Bash","input":{}}]}}
+{"type":"user","timestamp":"$(at 1871)","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"b1","content":"running in background"}]}}
+{"type":"system","timestamp":"$(at 1872)"}
+{"type":"queue-operation","timestamp":"$(at 2472)"}
+{"type":"assistant","timestamp":"$(at 2480)","message":{"id":"w3","content":[{"type":"text","text":"done"}]}}
+{"type":"system","timestamp":"$(at 2481)"}
+{"type":"user","timestamp":"$(at 3381)","message":{"role":"user","content":"back again"}}
+{"type":"assistant","timestamp":"$(at 3390)","message":{"id":"w4","content":[{"type":"text","text":"ok"}]}}
+EOF
+S2=$(CLERK_TRANSCRIPTS_DIR="$TD" run "$WT" stats --run w1 --session sess-2 --json)
+eq "a step's wall splits into waiting on a person, waiting on background work, and the rest" "2700|600|7500" \
+   "$(printf '%s' "$S2" | jq -r '.steps[] | select(.step=="learn") | [.waiting.person, .waiting.background, .active_seconds] | map(tostring) | join("|")')"
+eq "and the run's totals say the same" "2700|600" \
+   "$(printf '%s' "$S2" | jq -r '[.waiting.person, .waiting.background] | map(tostring) | join("|")')"
+eq "--text says where the wall clock went" "true" \
+   "$(CLERK_TRANSCRIPTS_DIR="$TD" run "$WT" stats --run w1 --session sess-2 --text | grep -q '45.0m waiting on a person, 10.0m on background work' && echo true || echo false)"
+/bin/cp -f "$TD/run.keep.json" "$RJ"
+
+jq '.rounds[0].agents = [{"phase":"review","seconds":600,"cost_usd":1.5},{"phase":"review","seconds":300,"cost_usd":0.5},
+                         {"phase":"refute","seconds":120,"cost_usd":0.25}]' "$AJW" > "$AJW.new" && /bin/mv -f "$AJW.new" "$AJW"
+eq "an audit round breaks down by phase: its agents, the slowest, their agent time, their cost" "review|2|600|900|true|refute|1|120" \
+   "$(run "$WT" stats --run w1 --json | jq -r '.audit_rounds[0].phases | [.[0].phase, .[0].agents, .[0].critical_seconds, .[0].agent_seconds, (.[0].cost_usd == 2), .[1].phase, .[1].agents, .[1].critical_seconds] | map(tostring) | join("|")')"
+jq '.rounds[0].agents = []' "$AJW" > "$AJW.new" && /bin/mv -f "$AJW.new" "$AJW"
 eq "a session the run recorded is used without being named" "sess-1" \
    "$(jq '.session_id = "sess-1"' "$R/.git/clerk/runs/w1/run.json" > "$TD/run.json" && /bin/cp -f "$TD/run.json" "$R/.git/clerk/runs/w1/run.json"
       CLERK_TRANSCRIPTS_DIR="$TD" run "$WT" stats --run w1 --json | jq -r '.session')"

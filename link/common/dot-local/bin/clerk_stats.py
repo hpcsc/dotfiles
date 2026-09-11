@@ -20,6 +20,9 @@ from pathlib import Path
 
 STEPS = ["ground", "decompose", "build", "suite", "audit", "match-request",
          "verify-run", "land", "learn"]
+PHASES = ["scope", "review", "dedupe", "refute", "report"]
+# A shorter gap is the model or a tool at work, however slow.
+IDLE_AFTER = 120
 
 
 def parse_at(s):
@@ -180,6 +183,7 @@ def windows(run):
             "agents": len(agents),
             "agent_seconds": sum(a.get("seconds") or 0 for a in agents) or None,
             "cost_usd": round(sum(a.get("cost_usd") or 0 for a in agents), 4) if agents else None,
+            "phases": phase_rows(agents),
             "incidents": len(r.get("incidents") or []),
             "recovered_from_report": bool(r.get("recovered_from_report")),
             "agent_rows": agents})
@@ -189,6 +193,82 @@ def windows(run):
     return {"started_at": meta.get("started_at"), "finished_at": meta.get("finished_at"),
             "total_seconds": total, "steps": out, "tasks": tasks, "audit_rounds": audit_rounds,
             "incidents": aud.get("incidents") or []}
+
+
+def phase_rows(agents):
+    """A round by phase. A phase's agents run at once, so its slowest agent is what the
+    round waits for, and the sum is what they cost in agent time."""
+    by = {}
+    for a in agents:
+        by.setdefault(a.get("phase") or "?", []).append(a)
+    rows = []
+    for ph in PHASES + sorted(k for k in by if k not in PHASES):
+        xs = by.get(ph)
+        if not xs:
+            continue
+        secs = [a.get("seconds") or 0 for a in xs]
+        rows.append({"phase": ph, "agents": len(xs), "critical_seconds": max(secs),
+                     "agent_seconds": sum(secs),
+                     "cost_usd": round(sum(a.get("cost_usd") or 0 for a in xs), 4)})
+    return rows
+
+
+# --------------------------------------------------------------------------------
+# Waits: where the session stood still, and for whom
+# --------------------------------------------------------------------------------
+
+def _wait_kind(kind, content, inflight):
+    if inflight:
+        # A tool is running, so the session is at work, unless that tool is a question.
+        return "person" if "AskUserQuestion" in inflight.values() else None
+    text = content if isinstance(content, str) else json.dumps(content or "")
+    if kind == "queue-operation" or "<task-notification>" in text:
+        return "background"
+    if kind == "user":
+        return "person"
+    return None
+
+
+def waits_of(path):
+    """(start, end, kind) for each gap longer than IDLE_AFTER in which the session did
+    nothing of its own. `person` — it waited for someone: a question it asked, or a turn
+    it ended, until someone typed. `background` — it waited for work it had started
+    elsewhere, an agent or a backgrounded command, whose end woke it.
+
+    A step's wall clock counts both, so a run that paused overnight read as a step that
+    took eight hours."""
+    out, prev, inflight = [], None, {}
+    for d in read_jsonl(path):
+        at = parse_at(d.get("timestamp"))
+        if not at:
+            continue
+        kind = d.get("type")
+        c = (d.get("message") or {}).get("content")
+        if prev and (at - prev).total_seconds() > IDLE_AFTER:
+            w = _wait_kind(kind, c, inflight)
+            if w:
+                out.append((prev, at, w))
+        if kind == "assistant" and isinstance(c, list):
+            for x in c:
+                if isinstance(x, dict) and x.get("type") == "tool_use":
+                    inflight[x.get("id")] = x.get("name")
+        elif kind == "user" and isinstance(c, list):
+            for x in c:
+                if isinstance(x, dict) and x.get("type") == "tool_result":
+                    inflight.pop(x.get("tool_use_id"), None)
+        elif kind == "user":
+            inflight.clear()
+        prev = at
+    return out
+
+
+def waited(waits, a, b):
+    by = {"person": 0.0, "background": 0.0}
+    for w0, w1, k in waits:
+        lo, hi = max(a, w0), min(b, w1)
+        if hi > lo:
+            by[k] += (hi - lo).total_seconds()
+    return {k: int(v) for k, v in by.items()}
 
 
 # --------------------------------------------------------------------------------
@@ -361,9 +441,18 @@ def collect(run, cwd, session=None):
         out["tokens"] = {"total": total, "outside_run": outside, "model": model,
                          "context_at_end": (turns[-1]["input"] + turns[-1]["cache_read"]
                                             + turns[-1]["cache_creation"]) if turns else None}
+        waits = waits_of(path)
+        for s in out["steps"]:
+            a, b = parse_at(s["start"]), parse_at(s["end"])
+            if a and b:
+                s["waiting"] = waited(waits, a, b)
+                s["active_seconds"] = max(0, s["seconds"] - sum(s["waiting"].values()))
+        t0, tend = parse_at(w["started_at"]), parse_at(w["finished_at"])
+        out["waiting"] = waited(waits, t0, tend) if t0 and tend else None
         out["subagents"] = subagents(sid, cwd, parse_at(w["started_at"]), parse_at(w["finished_at"]))
     else:
         out["tokens"] = None
+        out["waiting"] = None
         out["subagents"] = []
         out["note"] = ("no transcript: the run records no session id and none was given with --session"
                        if not sid else f"no transcript found for session {sid}")
@@ -471,7 +560,7 @@ def render(st):
     has_tok = bool(st.get("tokens"))
     head = f"{'step':<16}{'wall':>8}{'share':>7}"
     if has_tok:
-        head += f"{'turns':>7}{'fresh in':>10}{'cached in':>11}{'out':>8}"
+        head += f"{'person':>8}{'bg':>8}{'turns':>7}{'fresh in':>10}{'cached in':>11}{'out':>8}"
     lines += ["", head]
     tasks = {t["task"]: t for t in st.get("tasks") or []}
     for s in st["steps"]:
@@ -480,7 +569,9 @@ def render(st):
         row = f"{s['step']:<16}{span(sec):>8}{share:>7}"
         if has_tok:
             t = s.get("tokens") or _zero()
-            row += (f"{t['turns']:>7}{tokens(t['input'] + t['cache_creation']):>10}"
+            wt = s.get("waiting") or {}
+            row += (f"{span(wt.get('person')):>8}{span(wt.get('background')):>8}"
+                    f"{t['turns']:>7}{tokens(t['input'] + t['cache_creation']):>10}"
                     f"{tokens(t['cache_read']):>11}{tokens(t['output']):>8}")
         lines.append(row)
         if s["step"] == "build":
@@ -495,10 +586,19 @@ def render(st):
                     if r.get("tokens") else ""
                 lines.append(f"  round {r['n']:<9}{span(r['seconds']):>8}       "
                              f"findings {r.get('findings')}  {agents}{tok}  incidents {r['incidents']}")
+                for ph in r.get("phases") or []:
+                    lines.append(f"      {ph['phase']:<8} ×{ph['agents']:<3} slowest {span(ph['critical_seconds']):>6}"
+                                 f" · agent time {span(ph['agent_seconds']):>6} · ${ph['cost_usd']:.2f}")
     if has_tok:
         t = st["tokens"]["total"]
-        lines.append(f"{'total':<16}{'':>8}{'':>7}{t['turns']:>7}{tokens(t['input'] + t['cache_creation']):>10}"
+        lines.append(f"{'total':<16}{'':>8}{'':>7}{'':>8}{'':>8}{t['turns']:>7}"
+                     f"{tokens(t['input'] + t['cache_creation']):>10}"
                      f"{tokens(t['cache_read']):>11}{tokens(t['output']):>8}")
+        wt = st.get("waiting")
+        if wt and total:
+            rest = max(0, total - wt["person"] - wt["background"])
+            lines.append(f"  of {span(total)}: {span(wt['person'])} waiting on a person, "
+                         f"{span(wt['background'])} on background work, {span(rest)} the session at work")
         o = st["tokens"]["outside_run"]
         if o["turns"]:
             lines.append(f"  ({o['turns']} turns outside the run's span, {tokens(o['output'])} out)")

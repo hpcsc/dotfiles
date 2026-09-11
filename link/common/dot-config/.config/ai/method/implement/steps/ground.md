@@ -19,10 +19,10 @@ It emits the whole of `comments.md` and both naming guidelines — all short, an
 **Then name your caller pattern.** Which of UI / Inbound / Outbound / Async / Exported API this work has is the one judgment in this step, so it is asked for rather than guessed:
 
 ```
-clerk guidelines --caller ui        # …or inbound, outbound, async, exported
+clerk guidelines --caller ui --only        # …or inbound, outbound, async, exported
 ```
 
-Add `--dom` or `--state` when the task touches the DOM or shared state.
+Add `--dom` or `--state` when the task touches the DOM or shared state. Keep `--only`: without it the call prints the whole bundle again beside the caller section — thirty kilobytes the first call already put in context, and past what the harness shows without a second read.
 
 **Read its "Not loaded" section if it prints one.** A guideline that has been reorganised out from under the slot list, or a language with no guideline set at all, is reported there rather than silently omitted — and a section missing from the output otherwise reads exactly like a section the guideline never had.
 

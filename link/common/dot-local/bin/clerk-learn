@@ -106,7 +106,25 @@ def cut(path, title):
 
 VERBS = ("add", "list", "index", "show", "drop")
 VALUE_FLAGS = {"--type": "value", "--title": "value", "--learning": "value",
-               "--apply-when": "value", "--task": "value", "--feature": "value", "--path": "value"}
+               "--apply-when": "value", "--task": "value", "--feature": "value", "--path": "value",
+               "--match": "value"}
+
+
+def matching(rows, terms):
+    """The rows whose title or apply-when names one of `terms`, those naming more first.
+
+    The index grows with the file — 119 and 247 entries in the two repos measured, 31 and
+    56 KB — and a run reads it into a context every later turn pays for again. A term
+    matches at the start of a word, so `jira` finds `Jira` and `jira-link` and not the
+    middle of `casejira`: a package name is how an apply-when names its area."""
+    pats = [re.compile(r"(?<![A-Za-z0-9])" + re.escape(t), re.I) for t in terms]
+    scored = []
+    for i, r in enumerate(rows):
+        text = f"{r.get('title') or ''} {r.get('apply_when') or ''}"
+        n = sum(1 for p in pats if p.search(text))
+        if n:
+            scored.append((-n, i, r))
+    return [r for _, _, r in sorted(scored, key=lambda s: s[:2])]
 
 
 def main():
@@ -119,6 +137,8 @@ def main():
     ap.add_argument("--task", default="", help="the task number(s) this was observed in")
     ap.add_argument("--feature", default="", help="the feature the run was building")
     ap.add_argument("--path", help="the learnings file; defaults to what clerk prepare resolves")
+    ap.add_argument("--match", help="for index: the entries naming one of these terms (space- or comma-separated)")
+    ap.add_argument("--text", action="store_true", help="for index: one line per entry, not JSON")
     ap.add_argument("--replace", action="store_true", help="rewrite an entry with this title")
     ap.add_argument("titles", nargs="*", help="for show and drop: which entries")
     args = ap.parse_args(rest)
@@ -129,6 +149,8 @@ def main():
               "\n                  [--task N[,M]] [--feature <s>] [--replace]"
               "\n  clerk learn list             titles only"
               "\n  clerk learn index            title, type and apply-when: what picking needs"
+              "\n      [--match <terms>]         only the entries naming a term: a package, a path, a noun"
+              "\n      [--text]                  one line per entry"
               "\n  clerk learn show <title>...  the full entry for the ones worth reading"
               "\n  clerk learn drop <title>     retire an entry that has gone stale"
               "\n\n  [--path <f>] names the learnings file; it defaults to what clerk prepare resolves."
@@ -148,10 +170,24 @@ def main():
         rows = [{"title": ttl, "type": f.get("type"), "apply_when": f.get("apply_when"),
                  "recorded": f.get("recorded"), "observed": f.get("observed")}
                 for ttl, f, _ in entries(path)]
-        emit({"ok": True, "path": str(path), "exists": path.is_file(), "entries": len(rows),
-              "index": rows,
-              "note": "read `apply_when` to pick, then `clerk learn show <title>` for the "
-                      "bodies. Passing every body to a planner costs far more than it teaches"})
+        total = len(rows)
+        terms = [t for t in re.split(r"[\s,]+", args.match or "") if t]
+        if terms:
+            rows = matching(rows, terms)
+        if args.text:
+            lines = [f"- [{r['type']}] {r['title']} :: {r['apply_when']}" for r in rows]
+            if terms:
+                lines.append(f"({len(rows)} of {total} entries name one of: {', '.join(terms)} — "
+                             f"without --match the index lists them all)")
+            print("\n".join(lines))
+            return 0
+        out = {"ok": True, "path": str(path), "exists": path.is_file(), "entries": total,
+               "index": rows,
+               "note": "read `apply_when` to pick, then `clerk learn show <title>` for the "
+                       "bodies. Passing every body to a planner costs far more than it teaches"}
+        if terms:
+            out.update({"match": terms, "matched": len(rows)})
+        emit(out)
 
     if verb == "show":
         if not args.titles:

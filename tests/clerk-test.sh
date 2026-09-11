@@ -8,6 +8,9 @@
 set -uo pipefail
 
 CLERK="$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-local/bin/clerk"
+# The dispatcher takes clerk-<name> from PATH before the copy beside it, so without this a
+# checkout other than the stowed one tests the stowed commands.
+export PATH="$(dirname "$CLERK"):$PATH"
 MODELS="$(cd "$(dirname "$0")/.." && pwd)/scripts/agent-models.py"
 PASS=0
 FAIL=0
@@ -1899,6 +1902,22 @@ eq "--show returns the body of the one worth reading" "true|folded wording" \
    "$(run "$RL" learn show "Second thing" | jq -r '[(.ok|tostring), (.entries["Second thing"] | test("folded wording") | tostring | sub("true";"folded wording"))] | join("|")')"
 eq "a title nothing recorded is named rather than silently empty" "3" \
    "$(run "$RL" learn show "No such entry" >/dev/null 2>&1; printf '%s' $?)"
+
+# The index still grows with the file, and a run reads it into a context every later turn
+# pays for. A run picks by what its story names, so it asks for that.
+run "$RL" learn add --type constraint --title "Casejira writes its links" --learning "x" \
+    --apply-when "touching collect/modules/casejira or its Jira ticket links" >/dev/null
+run "$RL" learn add --type pattern --title "Viewer tests pin their pool" --learning "x" \
+    --apply-when "adding a test under internal/viewer" >/dev/null
+eq "--match keeps the entries whose title or apply-when names a term, the most terms first" "Casejira writes its links|1|2" \
+   "$(run "$RL" learn index --match "casejira, jira" | jq -r '[.index[0].title, (.matched|tostring), (.match|length|tostring)] | join("|")')"
+eq "a term matches at the start of a word, not inside one" "0" \
+   "$(run "$RL" learn index --match "ira" | jq -r '.matched')"
+T=$(run "$RL" learn index --text --match "viewer")
+eq "--text is one line per entry, then what the filter left out" "- [pattern] Viewer tests pin their pool :: adding a test under internal/viewer|true" \
+   "$(printf '%s\n' "$T" | head -1)|$(printf '%s\n' "$T" | tail -1 | grep -q 'without --match' && echo true || echo false)"
+run "$RL" learn drop "Casejira writes its links" >/dev/null
+run "$RL" learn drop "Viewer tests pin their pool" >/dev/null
 
 # Nothing could retire an entry, so a learning written against code since rewritten stayed
 # true-sounding forever and every later run in the repo read it as fact.

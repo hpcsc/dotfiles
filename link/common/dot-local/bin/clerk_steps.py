@@ -149,7 +149,7 @@ def row_ground(ctx):
                    why_not_done="tree dirty")
     return row("ground", False,
                why_not_done="no `clerk guidelines --caller <pattern>` has run for this run",
-               done_by="clerk guidelines; then clerk guidelines --caller <pattern> [--dom] [--state]; then clerk step. "
+               done_by="clerk guidelines; then clerk guidelines --caller <pattern> --only [--dom] [--state]; then clerk step. "
                        "(A repo with no guidelines directory: clerk step done ground --caller <pattern>)")
 
 

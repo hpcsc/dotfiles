@@ -33,6 +33,7 @@ Before approving any domain design, verify:
 - [ ] Aggregates represent true consistency boundaries
 - [ ] Each aggregate changes for ONE category of reasons
 - [ ] No god objects forming (10+ event types = smell)
+- [ ] Every exported aggregate method is a command. None answers a question about the aggregate's state
 
 ### 5. Coupling Assessment
 - [ ] Services communicate through events, not method calls
@@ -554,7 +555,7 @@ func (a *Account) Close(cmd CloseAccount) ValidationResult {
     if a.Balance.IsPositive() {
         return Invalid("cannot close account with positive balance")
     }
-    if a.HasPendingPayments() {
+    if a.hasPendingPayments() {
         return Invalid("cannot close account with pending payments")
     }
 
@@ -580,6 +581,46 @@ func (h *Handler) Handle(cmd CloseAccount) error {
 - Business rules are testable without infrastructure
 - Aggregate is the single source of truth for its invariants
 - Handler stays thin and focused
+
+---
+
+### An Aggregate Takes Commands, Not Questions
+
+**Pattern**: Every exported method on an aggregate takes a command, checks the invariants and returns the events. No exported method answers a question about the aggregate's state.
+
+An aggregate is the write model. Its state is there for its own commands to check. A method such as `HasIdentifiedCustomer()`, `AutoReplySuppressed()` or `View()` gives that state to a caller, and the caller then makes a decision outside the version check that protects the command. The caller can decide on a stale answer, and the rule now lives in two places.
+
+```go
+// Bad: the handler asks, then decides
+if conversation.HasIdentifiedCustomer() {
+    return nil
+}
+events := conversation.RecordDeferral(cmd)
+
+// Good: the command decides, inside the aggregate
+events := conversation.RecordDeferral(cmd) // no event when the thread already has a customer
+```
+
+Where the answer goes instead:
+
+| The caller wants the state to... | Put it here |
+|---|---|
+| Decide what to do | In the command. The aggregate makes the decision, then emits the event or refuses |
+| Show it, filter by it or report on it | In a projection that the events build |
+| Log why a command emitted nothing | Nowhere new. Log that the command emitted nothing. The events that explain why are already on the stream |
+
+A private method that the commands share is fine: `hasPendingPayments()` above reads the state for `Close`. Tests check the events a command emits and the commands it refuses. They do not read the state.
+
+**Detection**:
+- An exported aggregate method that returns a `bool` or a field and emits no event
+- A handler that calls an aggregate method in an `if`, then sends a command
+- An aggregate method that only a log line or a test calls
+- A doc comment that tells callers not to use the method to decide something
+
+**Why it's good**:
+- Every decision happens inside the version check, so a concurrent write cannot make it stale
+- The aggregate holds only the state its invariants need
+- Each read shape lives in its own projection, so a new view does not change the aggregate
 
 ---
 

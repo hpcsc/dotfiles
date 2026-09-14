@@ -83,6 +83,12 @@ func renderText(draft Draft) string { ... }
 func (d *Drafter) renderText(draft Draft) string { ... }
 ```
 
+### 9. An Aggregate Takes Commands, Not Questions
+- Every exported method on an aggregate takes a command, checks the invariants and returns the events. No exported method answers a question about the aggregate's state: no `HasX()`, no `IsX()`, no `View()`.
+- A caller that needs the state to decide something holds a rule that belongs in the command. A caller that needs the state to show or report something reads a projection.
+- A private method that the commands share is fine.
+- The full rule, with where each kind of question goes: `architecture/design/domain-modeling.md`, "An Aggregate Takes Commands, Not Questions".
+
 ## Application
 
 These principles work together to create:

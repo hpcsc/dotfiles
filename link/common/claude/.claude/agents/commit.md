@@ -61,7 +61,9 @@ Follow these rules strictly:
 
 **Body (only if needed):**
 - Wrap at 72 characters
-- Explain WHAT changed and WHY
+- Explain WHAT changed and WHY. WHAT is what the code does differently, as a user or a reviewer sees it
+- Do not list each change in the diff: no list of the types, functions, fields or files that changed, or of what each one got. Name code only when the reader needs the name to follow the what or the why
+- Keep a sentence that says why the code does something unexpected. It is part of the why
 - Skip if the subject is self-explanatory
 
 **Critical Rules:**

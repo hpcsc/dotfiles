@@ -74,5 +74,16 @@ is a force push, so ask the user first (section 3).
 The message says what the commit changes and why. It does not say who asked for the change or which
 review found the problem: a later reader does not have that context.
 
+"What the commit changes" is what the code does differently, as a user or a reviewer sees it. It is not
+a list of each change in the diff. Do not list the types, functions, fields or files that changed, or
+what each one got: the diff shows that. Name code only when the reader needs the name to follow the
+what or the why.
+
+- Bad: `RetryPolicy gets a Backoff field. Client.Send reads it and calls time.Sleep before each retry.`
+- Good: `The first retry now waits 5 seconds, and each later retry waits twice as long as the one before.`
+
+A sentence that says why the code does something unexpected is part of the why, and stays:
+`the action is start_search, not search, because search collides with the [keys.search] table`.
+
 For the words, follow `writing/asd-ste100.md`. Where the repository has its own commit conventions,
 follow the repository.

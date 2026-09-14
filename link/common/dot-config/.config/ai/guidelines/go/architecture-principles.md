@@ -55,7 +55,7 @@
 
 **Order within the file:**
 - Declare the type, then its constructors, then its methods. A reader scrolling the type's behaviour should never pass through a different type to reach the rest of it.
-- Free functions go last, together. A helper dropped between two methods reads as a third method until you check the receiver.
+- Free functions go last, together. A helper dropped between two methods reads as a third method until you check the receiver. After §8, the only free functions left are the ones no single type owns.
 - A second type in the file is a part of the named one, and where it goes depends on which part. A small value type the named type's fields are written in — an enum, a pair — goes before it, because you need it to read the struct. A collection of it, or a satellite it owns, goes after, with its own methods following it.
 - Keep a blank line between every top-level declaration. `gofmt` does not insert them, so a mechanical reorder can run four declarations together and still format clean.
 
@@ -65,6 +65,23 @@
 - Generated code and build-tagged variants are exempt; they cannot live in the declaring file.
 
 This is stricter than the standard library, which does spread large types across files. The strictness is deliberate: a receiver is not a namespace, and "which file does this method go in" should have exactly one answer.
+
+### 8. A Helper That One Type Uses Is a Method of That Type
+- A private function that only one type's methods call is a method of that type. A package-level function adds a name that every file in the package can see, and it hides which type the behaviour belongs to.
+- This is also true when the helper is pure, reads no field, or sits in its own file. A method that does not use its receiver is fine. Name the receiver as the type's other methods do.
+- Keep a free function in two cases only:
+  - Code passes it as a function value, and a method would need two-step construction.
+  - It is the logic of a file that owns package-level data, such as a lookup table and the function that reads the table.
+- **Do not share glue between two types that can change apart.** When two services need the same few lines over one dependency, give each service its own private method. A shared function or a new collaborator couples the two, and the first change that makes them differ must take the coupling apart again. Share only logic that belongs to the domain type, and put it on that type: `Rules.WithLLMText()`, `Rule.String()`.
+- Test files are exempt. A test helper is not part of the package that production code sees.
+
+```go
+// ❌ Only *Drafter calls it, but every file in the package can see it
+func renderText(draft Draft) string { ... }
+
+// ✅
+func (d *Drafter) renderText(draft Draft) string { ... }
+```
 
 ## Application
 

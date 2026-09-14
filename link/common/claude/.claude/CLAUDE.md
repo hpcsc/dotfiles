@@ -28,6 +28,10 @@
 
 - When writing or editing code, follow `~/.config/ai/guidelines/comments.md`: default to no comments; add one only when you can name the specific wrong conclusion a reader would draw without it. Read that guideline (it's short) before adding any non-trivial comment.
 
+# Commits
+
+- When you commit, or when you fix code that a commit on the current branch added, follow `~/.config/ai/guidelines/git/commits.md`. Fold each fix into the commit that added the code, also on a pushed branch. Ask before every force push.
+
 
 # Document Creation
 

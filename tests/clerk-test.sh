@@ -1425,6 +1425,7 @@ exported-body
 quickref-body
 EOF
 printf '# Comment Usage\ncomments-body\n' > "$GD/comments.md"
+printf '# Naming\nwording-body\n' > "$GD/naming.md"
 # Go spells three of these differently from every other language. Under the old
 # name-matching that took a per-language spelling list; the marker makes it a lookup.
 cat > "$GD/go/testing-patterns.md" <<'EOF'

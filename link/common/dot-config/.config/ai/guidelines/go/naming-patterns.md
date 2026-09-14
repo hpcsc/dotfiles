@@ -125,9 +125,31 @@ func NewFakeStream() *FakeStream {...}
 
 ```go
 // Clear assertion of interface implementation
-var _ command.Bus = (*bus)(nil)
+var _ command.Bus = (*inMemory)(nil)
 var _ event.Stream = (*esdb)(nil)
 ```
+
+### 6. File Naming Rules
+
+**A file is named for the type it declares.** The file name is the type's name, or its main noun, in the repository's file-name style. Most repositories use snake_case.
+
+```
+✅ document_uploader.go     declares documentUploader
+✅ condition.go             declares closeCondition and its constructors
+✅ esdb.go                  declares esdb, the event.Stream that uses EventStoreDB
+
+❌ documentupload.go        the name is an action, and the repository writes document_uploader.go
+❌ ticketlinkreader.go      the repository writes ticket_link_reader.go
+❌ corpus.go                declares five ...Spec types and no corpus
+```
+
+**A file whose name matches none of its declarations is misnamed.** Rename the file, or move each declaration to the file that has its name. A file that declares two unrelated types is two files (`architecture-principles.md` §7).
+
+**A test file has the name of the file it tests, plus `_test`.** `condition_test.go` tests `condition.go`. Do not add a qualifier such as `_internal`: the `package` line already says whether the test is inside the package.
+
+**A file of test support is named for the type it declares, not for its role.** `harness.go` declares `harness`. `support_test.go` reads as the tests for `support`, and `instruments_test.go` reads as the tests for `instruments`.
+
+In an implementation subpackage (§1), name the type for its mechanism too, so the file and the type agree: `inmemory.go` declares `inMemory`.
 
 ## Summary
 
@@ -140,5 +162,6 @@ Following these naming patterns creates:
 **Key Takeaways:**
 - Package names are domain nouns, interface names are capabilities/roles
 - Implementation files describe what they are or how they work (never `impl` or `default`)
+- Each file is named for the type it declares; its test file is that name plus `_test`
 - Real constructors return interfaces, fake constructors return concrete types
 - Always include interface compliance checks with `var _ Interface = (*implementation)(nil)`

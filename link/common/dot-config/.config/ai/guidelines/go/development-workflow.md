@@ -41,7 +41,7 @@ Hide implementation details from consumers.
 ```go
 // Real implementations return interfaces
 func NewBus() command.Bus {
-    return &bus{
+    return &inMemory{
         handlers: make(map[string]command.Handler),
     }
 }
@@ -58,7 +58,7 @@ func NewFakeBus() *FakeBus {
 Compile-time verification that your type implements the interface.
 
 ```go
-var _ command.Bus = (*bus)(nil)
+var _ command.Bus = (*inMemory)(nil)
 ```
 
 ### 6. Create Test Doubles in the Same Package

@@ -28,6 +28,8 @@ audit-implement claude   $ROOT/link/common/claude/.claude/skills/audit-implement
 audit-implement opencode $ROOT/link/common/dot-config/.config/opencode/skills/audit-implement/SKILL.md
 implement claude   $ROOT/link/common/claude/.claude/skills/implement/SKILL.md
 implement opencode $ROOT/link/common/dot-config/.config/opencode/skills/implement/SKILL.md
+draw-event-flow claude   $ROOT/link/common/claude/.claude/skills/draw-event-flow/SKILL.md
+draw-event-flow opencode $ROOT/link/common/dot-config/.config/opencode/skills/draw-event-flow/SKILL.md
 agents/decompose-to-tasks claude   $ROOT/link/common/claude/.claude/agents/decompose-to-tasks.md
 agents/decompose-to-tasks opencode $ROOT/link/common/dot-config/.config/opencode/agents/decompose-to-tasks.md
 agents/commit claude   $ROOT/link/common/claude/.claude/agents/commit.md

@@ -1,0 +1,59 @@
+---
+config:
+  layout: elk
+  securityLevel: loose
+  elk:
+    mergeEdges: false
+    nodePlacementStrategy: BRANDES_KOEPF
+---
+flowchart TB
+
+    %% Event flow: orange pills are events, bare gears are automations.
+    %% A green edge is a gate — the automation emits that event only when the
+    %% gate passes. Plain edges are "this event is consumed by that automation".
+    %% ---
+    %% RENDERER NOTE: the gear is `fa:fa-cog` sized with an inline span, which
+    %% needs Font Awesome and securityLevel: loose. mermaid-cli and mermaid.live
+    %% have both; GitHub has neither and prints the literal text `fa:fa-cog`.
+    %% For a portable file, replace every
+    %%   <span style='font-size:30px'>fa:fa-cog</span>
+    %% with a plain unicode gear: ⚙
+    %% ---
+    %% PARSER TRAPS, each of which costs a render:
+    %%   - `flowchart` must be the first line after the frontmatter. A %% comment
+    %%     block above it fails with "Expecting 'NEWLINE', 'SPACE', 'GRAPH'".
+    %%   - A bare %% line in the body renders as a visible node. Use `%% ---`.
+    %%   - @{ icon: "fa:cog" } renders a blue "?" box — the iconify pack is not
+    %%     registered in mermaid-cli. Do not use it.
+    %%   - Keep edge labels to two short lines; Mermaid lays them out as objects,
+    %%     and long ones inflate the ranks into long detours.
+    %% ---
+    %% Qualifiers too long for an edge label belong here, not on the picture.
+
+    %% ---------- nodes ----------
+    trigger(["SomethingHappened"])
+    automation["<span style='font-size:30px'>fa:fa-cog</span><br/>TheAutomation<br/><small>an optional sub-line</small>"]
+    emitted(["SomethingElseHappened"])
+    downstream["<span style='font-size:30px'>fa:fa-cog</span><br/>DownstreamAutomation<br/><small style='color:#A33A2A'>no gate — runs for everything</small>"]
+    deadEnd(["NobodyConsumesThis<br/><small>projections only</small>"])
+
+    %% ---------- edges ----------
+    trigger --> automation
+    automation -- "GATE_NAME<br/>and only when …" --> emitted
+    emitted --> downstream
+    downstream --> deadEnd
+
+    %% ---------- styling ----------
+    %% Event orange is Event Storming's; keep it exactly. The gear class paints
+    %% no shape, which is what makes an automation read as a bare gear.
+    classDef event fill:#FFE0C0,stroke:#B44E12,stroke-width:1.5px,color:#16201B
+    classDef gear fill:none,stroke:none,color:#16201B
+    classDef dead fill:#FFE0C0,stroke:#A33A2A,stroke-width:1.6px,stroke-dasharray:5 4,color:#16201B
+
+    class trigger,emitted event
+    class automation,downstream gear
+    class deadEnd dead
+
+    %% Colour the gated edges green. linkStyle indexes are 0-based in the order
+    %% the edges are declared above — recount them after inserting an edge.
+    linkStyle 1 stroke:#14705A,stroke-width:2.5px

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Event flow diagram — standalone SVG.
+
+  Self-contained: no external fonts, no scripts, no artifact host. Opens in any
+  browser, embeds in a README or a doc, and follows the reader's colour scheme.
+
+  Replace the example nodes below. Keep the token block, the gear symbol and the
+  label classes. viewBox must leave room for captions that hang below a gear.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="1000" role="img"
+     aria-label="Replace with one sentence stating what this diagram claims.">
+  <style>
+    :root, svg {
+      --surface: #FFFFFF;
+      --ink: #16201B;
+      --muted: #5A6861;
+      --event: #B44E12;
+      --event-soft: #FFE0C0;
+      --gate: #14705A;
+      --stop: #A33A2A;
+      --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root, svg {
+        --surface: #151C19;
+        --ink: #E2E9E5;
+        --muted: #93A199;
+        --event: #F2A868;
+        --event-soft: #40260F;
+        --gate: #53C3A1;
+        --stop: #E88C78;
+      }
+    }
+
+    .bg { fill: var(--surface); }
+
+    /* nodes */
+    .event { fill: var(--event-soft); stroke: var(--event); stroke-width: 1.5; }
+    .event-dead { fill: var(--event-soft); stroke: var(--stop); stroke-width: 1.6; stroke-dasharray: 5 4; }
+    .gear { fill: var(--ink); }
+    .gear-hole { fill: var(--surface); }
+
+    /* text */
+    .event-t { font-family: var(--mono); font-size: 11px; fill: var(--ink); }
+    .name { font-family: var(--mono); font-size: 11.5px; font-weight: 600; fill: var(--ink); }
+    .sub { font-family: var(--sans); font-size: 10px; fill: var(--muted); }
+    .warn { font-family: var(--sans); font-size: 10px; fill: var(--stop); }
+
+    /* labels that may sit on an edge — the halo is what makes that legible */
+    .gate-t, .qual {
+      paint-order: stroke;
+      stroke: var(--surface);
+      stroke-width: 5px;
+      stroke-linejoin: round;
+    }
+    .gate-t { font-family: var(--mono); font-size: 10.5px; font-weight: 600; fill: var(--gate); }
+    .qual { font-family: var(--sans); font-size: 10px; fill: var(--muted); }
+
+    /* edges */
+    .edge { stroke: var(--ink); stroke-width: 1.4; fill: none; }
+    .edge-gated { stroke: var(--gate); stroke-width: 2; fill: none; }
+    .edge-stop { stroke: var(--stop); stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+    .head { fill: var(--ink); }
+    .head-gated { fill: var(--gate); }
+    .head-stop { fill: var(--stop); }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="head"/>
+    </marker>
+    <marker id="arrow-gated" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="head-gated"/>
+    </marker>
+    <marker id="arrow-stop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="head-stop"/>
+    </marker>
+
+    <!-- The automation symbol: hub, eight teeth at 45 degrees, hub hole.
+         Place with <use href="#gear" transform="translate(x,y)"/> -->
+    <g id="gear" class="gear">
+      <circle cx="0" cy="0" r="8.4"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(45)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(90)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(135)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(180)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(225)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(270)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(315)"/>
+      <circle cx="0" cy="0" r="3.4" class="gear-hole"/>
+    </g>
+  </defs>
+
+  <rect x="0" y="0" width="1000" height="420" class="bg"/>
+
+  <!-- ============ example: replace everything below ============ -->
+
+  <!-- an event: a pill, rx = half the height -->
+  <rect x="30" y="60" width="230" height="48" rx="24" class="event"/>
+  <text x="145" y="89" text-anchor="middle" class="event-t">SomethingHappened</text>
+  <line x1="260" y1="84" x2="418" y2="84" class="edge" marker-end="url(#arrow)"/>
+
+  <!-- an automation: a bare gear, name captioned below -->
+  <use href="#gear" transform="translate(440,84)"/>
+  <text x="440" y="114" text-anchor="middle" class="name">TheAutomation</text>
+  <text x="440" y="129" text-anchor="middle" class="sub">an optional sub-line</text>
+
+  <!-- a gated emission: the gate's name rides on the edge -->
+  <line x1="462" y1="84" x2="678" y2="84" class="edge-gated" marker-end="url(#arrow-gated)"/>
+  <text x="570" y="72" text-anchor="middle" class="gate-t">GATE_NAME</text>
+  <text x="570" y="98" text-anchor="middle" class="qual">and only when …</text>
+
+  <rect x="682" y="60" width="240" height="48" rx="24" class="event"/>
+  <text x="802" y="89" text-anchor="middle" class="event-t">SomethingElseHappened</text>
+
+  <!-- an ungated hop: say so, since readers assume a gate -->
+  <path d="M802,108 L802,190 L440,190 L440,220" class="edge" marker-end="url(#arrow)"/>
+  <use href="#gear" transform="translate(440,242)"/>
+  <text x="440" y="272" text-anchor="middle" class="name">DownstreamAutomation</text>
+  <text x="440" y="287" text-anchor="middle" class="warn">no gate — runs for everything</text>
+
+  <!-- a dead end: an event nothing consumes -->
+  <line x1="462" y1="242" x2="678" y2="242" class="edge" marker-end="url(#arrow)"/>
+  <rect x="682" y="218" width="240" height="48" rx="24" class="event-dead"/>
+  <text x="802" y="247" text-anchor="middle" class="event-t">NobodyConsumesThis</text>
+  <text x="802" y="284" text-anchor="middle" class="warn">projections only — nothing reacts</text>
+</svg>

@@ -2,69 +2,67 @@
 <!--
   Event flow diagram — standalone SVG.
 
-  Self-contained: no external fonts, no scripts, no artifact host. Opens in any
+  Self-contained: no external fonts, no scripts, no host page. Opens in any
   browser, embeds in a README or a doc, and follows the reader's colour scheme.
 
-  Replace the example nodes below. Keep the token block, the gear symbol and the
-  label classes. viewBox must leave room for captions that hang below a gear.
+  Replace the example nodes below. Keep the colour rules, the gear symbol and
+  the label classes. viewBox must leave room for captions that hang below a gear.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="1000" role="img"
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 1000 420" width="1000" height="420" role="img"
      aria-label="Replace with one sentence stating what this diagram claims.">
   <style>
-    :root, svg {
-      --surface: #FFFFFF;
-      --ink: #16201B;
-      --muted: #5A6861;
-      --event: #B44E12;
-      --event-soft: #FFE0C0;
-      --gate: #14705A;
-      --stop: #A33A2A;
-      --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
-      --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root, svg {
-        --surface: #151C19;
-        --ink: #E2E9E5;
-        --muted: #93A199;
-        --event: #F2A868;
-        --event-soft: #40260F;
-        --gate: #53C3A1;
-        --stop: #E88C78;
-      }
-    }
+    /* Colours are literal, not CSS custom properties. Non-browser renderers —
+       librsvg, Quick Look, Inkscape, most doc previews — do not resolve var(),
+       and every fill that fails to resolve draws black, so the whole diagram
+       vanishes into its background. Light is the default; the media query
+       below overrides each class where the renderer supports it. */
 
-    .bg { fill: var(--surface); }
+    .bg { fill: #FFFFFF; }
 
     /* nodes */
-    .event { fill: var(--event-soft); stroke: var(--event); stroke-width: 1.5; }
-    .event-dead { fill: var(--event-soft); stroke: var(--stop); stroke-width: 1.6; stroke-dasharray: 5 4; }
-    .gear { fill: var(--ink); }
-    .gear-hole { fill: var(--surface); }
+    .event { fill: #FFE0C0; stroke: #B44E12; stroke-width: 1.5; }
+    .event-dead { fill: #FFE0C0; stroke: #A33A2A; stroke-width: 1.6; stroke-dasharray: 5 4; }
+    .gear { fill: #16201B; }
+    .gear-hole { fill: #FFFFFF; }
 
     /* text */
-    .event-t { font-family: var(--mono); font-size: 11px; fill: var(--ink); }
-    .name { font-family: var(--mono); font-size: 11.5px; font-weight: 600; fill: var(--ink); }
-    .sub { font-family: var(--sans); font-size: 10px; fill: var(--muted); }
-    .warn { font-family: var(--sans); font-size: 10px; fill: var(--stop); }
+    .event-t { font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 11px; fill: #16201B; }
+    .name { font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 11.5px; font-weight: 600; fill: #16201B; }
+    .sub { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 10px; fill: #5A6861; }
+    .warn { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 10px; fill: #A33A2A; }
 
     /* labels that may sit on an edge — the halo is what makes that legible */
-    .gate-t, .qual {
-      paint-order: stroke;
-      stroke: var(--surface);
-      stroke-width: 5px;
-      stroke-linejoin: round;
-    }
-    .gate-t { font-family: var(--mono); font-size: 10.5px; font-weight: 600; fill: var(--gate); }
-    .qual { font-family: var(--sans); font-size: 10px; fill: var(--muted); }
+    .gate-t, .qual { paint-order: stroke; stroke: #FFFFFF; stroke-width: 5px; stroke-linejoin: round; }
+    .gate-t { font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #14705A; }
+    .qual { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 10px; fill: #5A6861; }
 
     /* edges */
-    .edge { stroke: var(--ink); stroke-width: 1.4; fill: none; }
-    .edge-gated { stroke: var(--gate); stroke-width: 2; fill: none; }
-    .edge-stop { stroke: var(--stop); stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
-    .head { fill: var(--ink); }
-    .head-gated { fill: var(--gate); }
-    .head-stop { fill: var(--stop); }
+    .edge { stroke: #16201B; stroke-width: 1.4; fill: none; }
+    .edge-gated { stroke: #14705A; stroke-width: 2; fill: none; }
+    .edge-stop { stroke: #A33A2A; stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+    .head { fill: #16201B; }
+    .head-gated { fill: #14705A; }
+    .head-stop { fill: #A33A2A; }
+
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #151C19; }
+      .event { fill: #40260F; stroke: #F2A868; }
+      .event-dead { fill: #40260F; stroke: #E88C78; }
+      .gear { fill: #E2E9E5; }
+      .gear-hole { fill: #151C19; }
+      .event-t, .name { fill: #E2E9E5; }
+      .sub, .qual { fill: #93A199; }
+      .warn { fill: #E88C78; }
+      .gate-t, .qual { stroke: #151C19; }
+      .gate-t { fill: #53C3A1; }
+      .edge { stroke: #E2E9E5; }
+      .edge-gated { stroke: #53C3A1; }
+      .edge-stop { stroke: #E88C78; }
+      .head { fill: #E2E9E5; }
+      .head-gated { fill: #53C3A1; }
+      .head-stop { fill: #E88C78; }
+    }
   </style>
 
   <defs>
@@ -79,7 +77,7 @@
     </marker>
 
     <!-- The automation symbol: hub, eight teeth at 45 degrees, hub hole.
-         Place with <use href="#gear" transform="translate(x,y)"/> -->
+         Place with <use href="#gear" xlink:href="#gear" transform="translate(x,y)"/> -->
     <g id="gear" class="gear">
       <circle cx="0" cy="0" r="8.4"/>
       <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3"/>
@@ -104,7 +102,7 @@
   <line x1="260" y1="84" x2="418" y2="84" class="edge" marker-end="url(#arrow)"/>
 
   <!-- an automation: a bare gear, name captioned below -->
-  <use href="#gear" transform="translate(440,84)"/>
+  <use href="#gear" xlink:href="#gear" transform="translate(440,84)"/>
   <text x="440" y="114" text-anchor="middle" class="name">TheAutomation</text>
   <text x="440" y="129" text-anchor="middle" class="sub">an optional sub-line</text>
 
@@ -118,7 +116,7 @@
 
   <!-- an ungated hop: say so, since readers assume a gate -->
   <path d="M802,108 L802,190 L440,190 L440,220" class="edge" marker-end="url(#arrow)"/>
-  <use href="#gear" transform="translate(440,242)"/>
+  <use href="#gear" xlink:href="#gear" transform="translate(440,242)"/>
   <text x="440" y="272" text-anchor="middle" class="name">DownstreamAutomation</text>
   <text x="440" y="287" text-anchor="middle" class="warn">no gate — runs for everything</text>
 

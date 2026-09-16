@@ -63,14 +63,16 @@ The gear is defined once in `<defs>` and placed with `<use>`:
 <text x="465" y="78" text-anchor="middle" class="name">TheAutomation</text>
 ```
 
-Eight teeth at 45° increments. The hub hole takes the surface colour, not white, or it turns into a solid dot in dark mode.
+Eight teeth at 45° increments. The hub hole is filled with the background colour and needs its own dark override, or it turns into a solid dot in dark mode.
+
+**Write every colour as a literal, never a CSS custom property.** Non-browser renderers — librsvg, Quick Look, Inkscape, most doc previews — do not resolve `var()`, and every fill that fails to resolve draws black, so the whole diagram vanishes into its background. A browser resolves it fine, which is why the bug stays hidden until someone opens the file anywhere else. Give each class its light-theme literals, then re-declare only the colour properties per class under `@media (prefers-color-scheme: dark)`. A renderer that ignores the media query shows the light theme, which is the right fallback.
 
 Rules that keep it readable:
 
-- **Give every text label a halo** so it can sit on an edge: `paint-order: stroke; stroke: var(--surface); stroke-width: 5px`. Without it the whole layout becomes an exercise in dodging lines.
-- **Route edges in channels, not diagonals**, when several leave one automation. Pick a distinct x for each elbow and check by arithmetic that no channel crosses a node — a diagonal through a caption is the usual failure.
+- **Give every text label a halo** so it can sit on an edge: `paint-order: stroke; stroke: #FFFFFF; stroke-width: 5px`, with the stroke overridden to the dark background under the media query. Without it the whole layout becomes an exercise in dodging lines.
+- **A halo only masks what is drawn before it.** SVG paints in document order, so an edge declared after a label is drawn over it, halo or not. Declare labels after the edges they sit on — or move the label along its own edge until nothing else crosses it.
+- **Route edges in channels, not diagonals**, when several leave one automation. Pick a distinct x for each elbow and check by arithmetic that no channel crosses a node or a label — a channel through a caption is the usual failure.
 - **Captions sit below the gear**, about 30px down, with any sub-line 15px below that. Aim arrows at the gear, not at where a box would have been.
-- **Declare every colour as a token on bare `:root` first**, then redefine only the tokens under `@media (prefers-color-scheme: dark)`. A colour whose only definition sits inside the media query is invisible in light mode.
 - **Leave room in the `viewBox`** for the outermost labels, including captions that hang below their node.
 
 Hand-placed SVG has no layout engine to catch a collision, so check the arithmetic on every elbow before rendering.
@@ -123,7 +125,13 @@ Also: `:::class` ends a statement, so declare nodes and edges on separate lines 
 
 Render the Mermaid **before** showing it to anyone — it is the only way to know it parses, and a silent layout disaster looks identical to success in the source. Look at the output once, fix what it shows in a single pass, and stop. Do not build a screenshot loop.
 
-For the SVG, open it or read the file back as an image. Check both themes if the reader will see both.
+For the SVG, render it with a non-browser engine, not a browser — a browser resolves CSS custom properties and hides exactly the failure that matters:
+
+```
+rsvg-convert -w 1300 flow.svg -o /tmp/flow-check.png
+```
+
+Then read the PNG back and look. A black rectangle means a colour is still a `var()`. Check both themes if the reader will see both.
 
 ## Where the files go
 

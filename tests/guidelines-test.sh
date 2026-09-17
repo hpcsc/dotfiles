@@ -161,6 +161,23 @@ else
   for c in $UNREAD; do printf '  %s\n' "$c"; done
 fi
 
+# --------------------------------------------------------------------------------
+printf '\noutput styles — the words they replace are the words the guidelines replace\n'
+
+# An output style cannot read a file, so it carries its own copy of the table.
+word_table() { awk '/^\| Instead of \| Write \|$/{t=1} t&&/^\|/{print;next} t{exit}' "$1"; }
+STYLE="$ROOT/link/common/claude/.claude/output-styles/asd-ste100.md"
+style_table=$(word_table "$STYLE")
+guideline_table=$(word_table "$GUIDELINES/writing/asd-ste100.md")
+if [ -z "$guideline_table" ]; then
+  bad "asd-ste100 output style copies the word table" "no word table in the guideline"
+elif [ "$style_table" = "$guideline_table" ]; then
+  ok "asd-ste100 output style copies the word table"
+else
+  bad "asd-ste100 output style copies the word table" \
+      "$(diff <(printf '%s\n' "$guideline_table") <(printf '%s\n' "$style_table") | grep '^[<>]' | head -2 | tr '\n' ' ')"
+fi
+
 rm -rf "$FIXTURE"
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

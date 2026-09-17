@@ -14,3 +14,6 @@ bin
 # blocker at ground, verify and land, so an untracked scratch directory would stop every
 # run in this repo until it was cleared.
 .scratches/
+
+# Claude Code downloads the skills of the claude.ai account here, through the ~/.claude/skills symlink.
+link/common/claude/.claude/skills/synced/

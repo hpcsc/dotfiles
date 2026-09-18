@@ -30,6 +30,10 @@ implement claude   $ROOT/link/common/claude/.claude/skills/implement/SKILL.md
 implement opencode $ROOT/link/common/dot-config/.config/opencode/skills/implement/SKILL.md
 draw-event-flow claude   $ROOT/link/common/claude/.claude/skills/draw-event-flow/SKILL.md
 draw-event-flow opencode $ROOT/link/common/dot-config/.config/opencode/skills/draw-event-flow/SKILL.md
+write-pr claude   $ROOT/link/common/claude/.claude/skills/write-pr/SKILL.md
+write-pr opencode $ROOT/link/common/dot-config/.config/opencode/skills/write-pr/SKILL.md
+review-pr claude   $ROOT/link/common/claude/.claude/skills/review-pr/SKILL.md
+review-pr opencode $ROOT/link/common/dot-config/.config/opencode/skills/review-pr/SKILL.md
 agents/decompose-to-tasks claude   $ROOT/link/common/claude/.claude/agents/decompose-to-tasks.md
 agents/decompose-to-tasks opencode $ROOT/link/common/dot-config/.config/opencode/agents/decompose-to-tasks.md
 agents/commit claude   $ROOT/link/common/claude/.claude/agents/commit.md

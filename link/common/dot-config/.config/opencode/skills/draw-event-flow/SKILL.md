@@ -29,6 +29,7 @@ A diagram that is merely plausible is worse than none: readers trust pictures mo
 - **Whether an emission can happen without its apparent trigger**, and whether two events are emitted in one write — those need drawing as a pair, not as siblings.
 - **Which edges have no gate at all.** These matter most; readers assume a gate exists, so mark the hops that have none.
 - **Dead ends**: an event nothing consumes. Say so, or the reader will assume something reacts to it.
+- **Whether each thing you are about to draw as an event is one.** A pill claims the log holds that fact. A message from a scheduler or a queue, a timer that fires, a vendor's response and a write to an external store are none of them events, however event-shaped their names are. Check that something appends it before it earns a pill.
 
 Show the mechanism, not its name. A box labelled "cache" says less than the prose; the path a request takes through it says what the words cannot.
 
@@ -40,7 +41,13 @@ Show the mechanism, not its name. A box labelled "cache" says less than the pros
 | **Automation** | Bare gear, **no box**, name captioned below | fill `#16201B` | fill `#E2E9E5` |
 | **Gated edge** | Stroke 2px, label = the gate's name | `#14705A` | `#53C3A1` |
 | **Plain edge** | Stroke 1.4px — "this event is consumed by that" | `#16201B` | `#E2E9E5` |
+| **Store or external service** | Rounded box, `rx` 8, name inside | fill `#ECEFED`, stroke `#5A6861` | fill `#1E2723`, stroke `#93A199` |
 | **No gate / dead end** | Red text, or a dashed red stroke on a pill | `#A33A2A` | `#E88C78` |
+| **An emission that never happens** | Dashed red **box**, never a pill | stroke `#A33A2A` on the background fill | stroke `#E88C78` |
+
+**Only a fact in the log gets a pill.** The shape is a claim, and a reader who sees a pill believes the system recorded that fact and can replay it. Everything else that moves through the picture takes another form: a scheduler's message, a queue delivery or a vendor call is an edge with a label, and the thing that holds it is a store box. When the moment genuinely needs to be auditable, the fix is in the system rather than in the drawing: append a real event, and then the pill is true.
+
+**An absence is not an event either.** "The automation emits nothing here" is the point of many diagrams, and a dashed pill says the opposite, because a pill of any stroke still reads as a fact. Draw it as a dashed red box, and keep the dashed pill for its own case: a real event that nothing consumes.
 
 The orange is Event Storming's event colour and is the one convention worth keeping exactly. Event Modeling also uses blue for commands and green for read models — do not introduce those unless the reader needs them, and never reuse blue or green for anything else in the same picture.
 

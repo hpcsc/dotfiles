@@ -36,12 +36,17 @@ flowchart TB
     emitted(["SomethingElseHappened"])
     downstream["<span style='font-size:30px'>fa:fa-cog</span><br/>DownstreamAutomation<br/><small style='color:#A33A2A'>no gate — runs for everything</small>"]
     deadEnd(["NobodyConsumesThis<br/><small>projections only</small>"])
+    store["Scheduler<br/><small>a store or an external service</small>"]
+    absent["nothing is written<br/><small>an emission that never happens</small>"]
 
     %% ---------- edges ----------
     trigger --> automation
     automation -- "GATE_NAME<br/>and only when …" --> emitted
     emitted --> downstream
     downstream --> deadEnd
+    automation -- "writes" --> store
+    store -- "a message at the deadline" --> downstream
+    automation -. "the gate did not pass" .-> absent
 
     %% ---------- styling ----------
     %% Event orange is Event Storming's; keep it exactly. The gear class paints
@@ -49,10 +54,16 @@ flowchart TB
     classDef event fill:#FFE0C0,stroke:#B44E12,stroke-width:1.5px,color:#16201B
     classDef gear fill:none,stroke:none,color:#16201B
     classDef dead fill:#FFE0C0,stroke:#A33A2A,stroke-width:1.6px,stroke-dasharray:5 4,color:#16201B
+    %% A store is not an event, and neither is an emission that never happens.
+    %% Both are boxes: only a fact in the log gets a pill.
+    classDef store fill:#ECEFED,stroke:#5A6861,stroke-width:1.3px,color:#16201B
+    classDef absent fill:#FFFFFF,stroke:#A33A2A,stroke-width:1.5px,stroke-dasharray:5 4,color:#16201B
 
     class trigger,emitted event
     class automation,downstream gear
     class deadEnd dead
+    class store store
+    class absent absent
 
     %% Colour the gated edges green. linkStyle indexes are 0-based in the order
     %% the edges are declared above — recount them after inserting an edge.

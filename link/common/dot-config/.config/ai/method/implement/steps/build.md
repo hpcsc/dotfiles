@@ -2,6 +2,8 @@
 
 **You write the code for every task.** Review happens once, over the finished branch, at the audit step — so nothing here waits on a reviewer.
 
+{{include:shared/reading.md}}
+
 ### The loop
 
 `clerk step` returns the task: the first whose `depends_on` are all done, with how many remain and how many are blocked, and — with `gears` on — whether it pauses after its tests. One task in flight at a time is what keeps a run resumable; a task is done when `clerk finish` marked it and its commit left the tree clean. `clerk finish` hands you the step that follows that commit as `after_commit` — the next task, or the suite — so you act on it once the commit is in; `clerk step` returns the task again until then, and `clerk finish` refuses the next task while this one's files sit uncommitted in the index.

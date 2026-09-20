@@ -16,6 +16,6 @@ clerk receipt --command "<the command you ran>" --passed --output-file /tmp/suit
 
 `--output-file` is required. A receipt is a claim that the suite passed at this code tree, and without the output there is nothing behind the claim — so `clerk receipt` refuses a missing or empty file, one written before the commit it says it describes, and a `clerk_exit=` that contradicts `--passed`. That last one is why the exit code goes in the file: it moves pass and fail from something you report to something the run recorded.
 
-Read the output yourself as well. The receipt checks that a green was possible, not that the branch is right.
+Read the output yourself as well. The receipt checks that a green was possible, not that the branch is right. The log is one source and it is on disk, so search it rather than page it: one pass for the failure lines costs one round trip, where a `head`, then a `tail`, then a `sed` over the same file costs three.
 
 The receipt is bound to the code tree it describes. That is what lets `clerk land` refuse a green taken before later changes, which is otherwise indistinguishable from a green taken after them — while a commit touching only `tasks/` leaves it standing, because the code it ran against did not move.

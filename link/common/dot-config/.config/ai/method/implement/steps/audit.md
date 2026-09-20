@@ -2,6 +2,8 @@
 
 This is where review happens.
 
+{{include:shared/reading.md}}
+
 **First, check the diff can be judged at all.** The audit's scoping pass classifies a change set as having no code when every changed file is documentation, configuration or build plumbing — `.md`/`.txt`, `.json`/`.yaml`/`.toml`/`.lock`, `Makefile`/`Taskfile`, images — and short-circuits the whole run. Apply that test yourself before you launch, because the short-circuit still costs a round trip and still comes back having reviewed nothing. One run retuned the same five lines in nineteen `serverless.yml` files, launched twice, and got two empty reports it was always going to get.
 
 When the diff is that shape, do not launch. Check it by hand — that the change is uniform where it claims to be, that every file still parses, that the sets you meant to leave alone are absent from the diff — say in your summary what you checked, and record the decision with `clerk audit accept --early "<why>"`. A config change is not exempt from review; it is exempt from *this* review, and saying which is the difference between a gap closed and a gap ignored.

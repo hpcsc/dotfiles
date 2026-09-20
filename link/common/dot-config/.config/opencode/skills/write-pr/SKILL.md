@@ -68,6 +68,15 @@ Rules that keep it readable:
 - Show the outcome a person cares about as its own node, such as "every account of the customer closes".
 - Stop at ten to fifteen nodes. Past that, split the outcomes into the table instead.
 
+**When the change is to an event, borrow the event grammar.** Four cases need a symbol this chain does not have:
+
+- A new event type that nothing consumes yet.
+- A new subscriber on an event that already has one.
+- An event renamed or removed.
+- An emission that the change takes away.
+
+Each one asks the reader who else reacts, and one path hides the answer. Take the orange pills, the bare gears and the dashed red box for an absent emission from `~/.config/ai/method/draw-event-flow/templates/event-flow.mmd`. Keep the rules above, and keep it to one diagram. GitHub has no Font Awesome, so write the gear as `⚙` and never as `fa:fa-cog`. A change to a command is a path, so draw it in this grammar.
+
 Write it to the scratchpad and **render it before it goes anywhere**:
 
 ```

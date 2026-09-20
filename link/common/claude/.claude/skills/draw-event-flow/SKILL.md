@@ -11,8 +11,8 @@ This borrows two symbols from Event Modeling — the **orange event** and the **
 
 Produce **both** deliverables every time, from the same model:
 
-1. **A standalone `.svg`** — self-contained, light/dark aware, opens in any browser and embeds in a README, Confluence or a doc. Hand-placed, so the layout is deliberate.
-2. **A Mermaid `.mmd`** — auto-laid-out, easy for someone else to edit, plus a rendered `.png` proving it parses.
+1. **A standalone `.svg`** — self-contained, light/dark aware, opens in any browser and embeds in a README, Confluence or a doc. Hand-placed, so the layout is deliberate — unless the system carries an `.emod` model, which draws its own (see below).
+2. **A Mermaid `.mmd`** — auto-laid-out, easy for someone else to edit, plus a rendered `.png` proving it parses. An `.emod` model writes this one too (see below).
 
 Start from the templates, which carry the palette, the gear symbol and the parser workarounds already:
 
@@ -31,6 +31,10 @@ A diagram that is merely plausible is worse than none: readers trust pictures mo
 - **Which edges have no gate at all.** These matter most; readers assume a gate exists, so mark the hops that have none.
 - **Dead ends**: an event nothing consumes. Say so, or the reader will assume something reacts to it.
 - **Whether each thing you are about to draw as an event is one.** A pill claims the log holds that fact. A message from a scheduler or a queue, a timer that fires, a vendor's response and a write to an external store are none of them events, however event-shaped their names are. Check that something appends it before it earns a pill.
+
+**When the system carries an `.emod` model, read the model, not the code.** It states every subscription outright, which is the guesswork this section exists to remove. `emod diagram <model>.emod --format event-flow` writes the first deliverable from it — pills, bare gears, external boxes, and an event nothing reads drawn dashed — and `--format event-flow-mermaid` writes the second, with the ELK layout and the parser workarounds already in place. Look at both before hand-placing anything, and hand-place only what neither draws. `emod export <model>.emod --format json` hands over the same facts as data: each automation's `on`, its `after` or `every`, the command it issues, and the flow naming the event that command emits.
+
+The model has one blind spot, and it is this diagram's subject: the gate. emod states a refusal as an invariant a command meets, never as a feature toggle or a runtime flag, so a condition on an emission still comes from the code. It leaves views out too, so an event only a read model consumes shows no arrow onward and no dead-end mark.
 
 Show the mechanism, not its name. A box labelled "cache" says less than the prose; the path a request takes through it says what the words cannot.
 

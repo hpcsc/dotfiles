@@ -4,7 +4,7 @@ Names are the primary documentation. A reader who knows the name should not need
 definition, and a reader who knows two names should not have to work out whether they
 mean the same thing.
 
-This governs identifiers: types, functions, variables, fields, constants, files,
+This governs identifiers: types, methods, functions, variables, fields, constants, files,
 packages, and the keys of a config or wire format you own. For Go package and interface
 structure, follow `go/naming-patterns.md`.
 
@@ -81,6 +81,46 @@ already say".
 The symptom to watch for: documentation that grows every time someone asks what a name
 means. Each added paragraph is evidence against the concept, not for the explanation.
 
+## 6. A method name reads with its receiver
+
+A method name is never read on its own. Grade it at the call site, out loud, with the
+receiver and the arguments in place.
+
+- Bad: `invoiceManager.ProcessInvoice(invoice)`
+- Good: `invoice.Issue()`
+
+Three ways the sentence breaks.
+
+**The receiver does not do the work.** The bad name above states the actor twice and the
+action nowhere. The fault is the abstraction rather than the word, and the fix is to move
+the behaviour onto the type that owns the data.
+
+**The name contains "and".** `SaveAndNotify` is two methods. Split it and let the caller
+order them. This is the same rule that governs a type's one-sentence responsibility.
+
+**An argument chooses the behaviour.** Fowler's flag argument: the caller passes a value
+whose only job is to pick which branch runs, so the call site no longer says what happens.
+The fix is one method per behaviour, named for what it does.
+
+- Bad: `Book(customer, true)`, `Render(doc, false)`
+- Good: `BookPremium(customer)`, `RenderDraft(doc)`
+
+The test is whether the callee branches on the value to choose behaviour. A boolean the
+callee stores or passes on is data, not a flag: `SetActive(true)`, a config field, and a
+functional option are all fine.
+
+## 7. A name that asks does not change state
+
+A method whose name asks a question must be safe to call twice. `IsValid()`, `Balance()`
+and `Len()` answer; they must not write, enqueue, consume, or advance a cursor. When one
+call must both answer and change something, name it for the change.
+
+- Bad: `NextSlot()`, which also reserves the slot it returns
+- Good: `Reserve() (Slot, error)`
+
+The cost of breaking this is a caller who logs, tests, or retries the question and changes
+the system by doing so.
+
 ## Review
 
 Check names for:
@@ -91,3 +131,6 @@ Check names for:
 - A metaphor, an idiom, or a name that needs its picture explained
 - `should` or `may` where the code enforces or permits
 - A concept whose explanation is longer than its definition
+- A method name that does not read as a sentence with its receiver
+- An argument whose only job is to pick which behaviour a method runs
+- A method that asks a question in its name and changes state in its body

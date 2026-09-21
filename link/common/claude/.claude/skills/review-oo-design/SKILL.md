@@ -278,6 +278,8 @@ A name is a claim about the design, so grade it as one. Three levels, worth very
 
 **Vocabulary: one word, one concept** (naming §1). Both directions are findings, and the scope is the repository, not the file: a reader meets both uses with no boundary between them to say they differ. A word another package already owns is taken, and the fix is a different word rather than a qualifier. The fourth list from 2.6, a domain word with no home in the code, is a missing abstraction wearing a naming disguise; grade it as a Chapter 2 finding.
 
+**Method names: grade them at the call site** (naming §§6–7). `invoice.Issue()` is a sentence; `invoiceManager.ProcessInvoice(invoice)` is not. Four failures, each an existing heuristic seen from the method's side: the receiver does not do the work (3.9), the name contains "and" (2.8 applied to one method), an argument picks which behaviour runs (Fowler's flag argument — 5.12 in the signature rather than the body), and a name that asks a question changes state (9.2's neighbour). Grade these at the call sites you already read for Phase 2. Do not sweep the method list; a wording nit per method is exactly what the Wording rule below forbids.
+
 **Wording** (naming §§2–4). The plain word over the formal synonym; no metaphor the reader must have explained before they can read the name; `must` and `can` where the code enforces or permits, never `should` or `may`. Real, but cheap and low-stakes: one grouped finding for the module, never one per identifier.
 
 For an event or message type, use the test from `~/.config/ai/guidelines/architecture/design/domain-modeling.md`: would a business stakeholder understand this name? `PaymentSucceeded` passes, `StatusChanged` does not.

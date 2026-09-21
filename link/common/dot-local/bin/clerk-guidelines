@@ -15,10 +15,12 @@ time. So it is one call.
 The heading names drift, which is the other reason this stopped being prose. The skill
 asked for "Unit of Behavior" and "Assertion Strictness"; Go spells the first "What is a
 Unit of Behavior?", and JavaScript has no assertion-strictness section at all — it has
-"Assertion Patterns". A prompt matching those by eye succeeds or fails silently. Slots
-below carry every spelling, and a slot that matches nothing is reported rather than
-dropped, because a section missing from the output reads exactly like a section the
-guideline does not have.
+"Assertion Patterns". A prompt matching those by eye succeeds or fails silently. So a
+section is addressed by the concept it declares rather than by its heading: the
+`<!-- concept: -->` marker is the contract, and the heading above it is prose that may be
+reworded, requalified or renumbered. A concept no file in the plan declares is reported
+rather than dropped, because a section missing from the output reads exactly like a
+section the guideline does not have.
 
 Dispatched to by `clerk` when invoked as `clerk guidelines`, and runnable on its own.
 """
@@ -44,10 +46,9 @@ CONCEPT_MARKER = re.compile(r"^<!--\s*concept:\s*([a-z0-9-]+)\s*-->")
 # part of any role's reading.
 CALLERS = {c: f"caller-{c}" for c in ("ui", "inbound", "outbound", "async", "exported")}
 
-# The testing guidelines the slot list was written against. Membership, not the
-# filename, is what earns the slot treatment: `cue/testing-patterns.md` matches the same
-# suffix and shares none of the headings, so cutting it to slots emitted nothing at all
-# and four complaints about sections it never claimed to have.
+# What a run in each language must have loaded, in the order it reads best. A language
+# with no entry here is named in `unknown_languages` rather than quietly given nothing,
+# because a bundle that is absent reads the same as a language that needs no guidelines.
 LANGUAGE_FILES = {
     "Go": ["go/testing-patterns.md", "go/naming-patterns.md",
            "go/architecture-principles.md", "go/development-workflow.md"],

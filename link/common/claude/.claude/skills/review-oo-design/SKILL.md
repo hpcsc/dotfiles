@@ -152,6 +152,7 @@ Never a finding on their own. Each one sends you to read something.
 | Distinct messages sent to one collaborator | high | 4.3 |
 | Inheritance / embedding depth | > 6 | 5.5 |
 | Accessors ÷ public methods | > ~0.5 | 3.3 |
+| Public methods that make no decision for their caller | any | interface depth |
 | Derived types with exactly one instance | any | 5.15 |
 | Types sharing an identical field set | any | 2.11 |
 | Type named after an operation | any | 3.9 |

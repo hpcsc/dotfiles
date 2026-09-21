@@ -523,6 +523,37 @@ Riel's own qualifier on the non-communicating-behaviour heuristics applies to th
 
 **In the report, say which of the two failure modes you're claiming.** A finding that doesn't distinguish them is asking for churn in an unspecified direction. And when a design sits reasonably between them, say so — "balanced" is a verdict.
 
+## Interface depth
+
+The counterweight to 2.3 and 2.6. Those minimize the protocol and ask nothing about what the
+caller gets back for what they learn, so a type can satisfy both by doing very little.
+Ousterhout's measure closes the gap: set the size of the public interface against the amount
+of work behind it.
+
+| | **Deep** | **Shallow** |
+|---|---|---|
+| Shape | small protocol, real work behind it | wide protocol, thin body |
+| Reading it | one call, and the caller never sees the algorithm | five names to get what one would have given |
+| The caller | says what it wants | runs the steps itself, in the right order |
+
+- **Smell**: every public method forwards, translates a single field, or exposes one step of a
+  sequence the caller must then order; a documented call order; a caller that pulls three values
+  off the object and computes the answer itself.
+- **Check**: count the public methods and their parameters against the decisions the type makes
+  that its callers therefore don't. Zero decisions is shallow, however cohesive the matrix looks.
+  The accessor-ratio check (3.3) finds the commonest special case; this is the general one.
+- **Fix**: move the sequence inside and publish the outcome the caller actually wanted. Where the
+  type holds no decision to make, the abstraction itself is the question — see 3.9 and 3.10.
+- **Not a finding when**: the width *is* the contract (a published API, a boundary shape a
+  framework dictates), or the type is a DTO, a config struct, or a wire format. Depth is a
+  property of an interface, not of a data shape. Check 3.10 first: a level that only forwards is
+  an agent to delete, not a shallow interface to deepen.
+
+Depth cuts against the catalogue's split bias, so it belongs with the balance check. Each split
+adds an interface, and an interface that carries no decision makes the system wider without
+making any caller's job smaller.
+
+
 ## Using the heuristics in a design discussion
 
 The heuristics identify *where* a design might change; they do not decide *whether* it should. Where a heuristic points at a deliberate trade-off, present both alternatives with the argument for each rather than issuing a verdict.
@@ -540,6 +571,7 @@ Riel's heuristics genuinely disagree with each other. Cite both sides; never pre
 | **5.4** (deeper the better) vs **5.5** (no deeper than six) | 5.5 governs. 5.4 only forbids *flattening* a genuine specialization hierarchy; it never licenses adding levels. |
 | **3.6** (model the real world) vs **3.1 / 3.2 / 2.9** | Riel's own exception clause: fidelity yields when it produces a god class or separates data from behaviour. Name the trade in the report. |
 | **2.4** (universal minimal interface) vs **2.3 / 2.6** (minimize the protocol) | 2.4's set is small, fixed, and buys substitutability; 2.3/2.6 govern the *domain-specific* protocol. Copy/equals/print are not clutter. |
+| **2.3 / 2.6** (minimize the protocol) vs **interface depth** | Both narrow the interface; only depth asks what the caller gets for the width it learns. A protocol is small enough when the caller can say what it wants, not when the method count is low. |
 | **4.9** (constraints in the class definition) vs class proliferation | Built into 4.9: prefer the type system until it would explode into a class per combination, then the constructor. |
 | **5.7** (all base classes abstract) vs useful default behaviour | Contested; the deck rebuts 5.7. Prompt only. Decide on whether an instance of the base means anything in the domain. |
 | **5.13** (case on attribute → subclass per value) vs **5.14** (don't model dynamic semantics with inheritance) | If the attribute changes during the object's lifetime, 5.14 wins: contain a state object, don't subclass. |
@@ -557,3 +589,4 @@ Riel's heuristics genuinely disagree with each other. Cite both sides; never pre
 - Harald Gall (University of Zurich), *Object-Oriented Design Heuristics* — the "warning mechanisms, not hard and fast rules" framing; the rebuttal of 5.7.
 - Dennis Mancl, *Object Oriented Design Heuristics* (CC BY 4.0, 2021) — 5.1 as the Liskov Substitution Principle and the precondition/postcondition test; the class-proliferation counterweight; the 3.3 diagnostic question; superficially-object-oriented topology; the facade abstraction-level check; worked remedies for 4.7, 5.14, and 5.15.
 - Elisa Banniassad, "Making the Liskov Substitution Principle Happy and Sad" (SPLASH 2017) — the wider-precondition / narrower-postcondition check.
+- John Ousterhout, *A Philosophy of Software Design* (2nd ed., 2021) — deep versus shallow modules; interface size judged against the functionality behind it.

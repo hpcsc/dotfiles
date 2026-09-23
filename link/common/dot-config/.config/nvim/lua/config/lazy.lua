@@ -35,6 +35,10 @@ function M.setup(opts)
 		install = { colorscheme = { "habamax" } },
 		-- disable automatic plugin update check
 		checker = { enabled = false },
+		-- do not build plugins that ship a rockspec with luarocks.
+		-- telescope-zf-native ships precompiled libzf libraries and only
+		-- needs them loaded at runtime, so there is nothing to build here.
+		rocks = { enabled = false },
 	})
 end
 

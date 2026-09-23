@@ -1,0 +1,16 @@
+# Default `fnox set` to the machine-global config (~/.config/fnox/config.toml)
+# unless the current directory already has a project config.
+local fnox_subcommand=$1
+case $fnox_subcommand in
+  set|remove|import|sync)
+    if [[ ! -f fnox.toml && ! -f .fnox.toml && ! -f fnox.local.toml && ! -f .fnox.local.toml ]] \
+      && (( ! $@[(Ie)--global] )) && (( ! $@[(Ie)-g] )); then
+      command fnox "$@" --global
+    else
+      command fnox "$@"
+    fi
+    ;;
+  *)
+    command fnox "$@"
+    ;;
+esac

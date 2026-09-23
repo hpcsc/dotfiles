@@ -18,5 +18,4 @@ bin
 # Claude Code downloads the skills of the claude.ai account here, through the ~/.claude/skills symlink.
 link/common/claude/.claude/skills/synced/
 
-# fnox: machine-specific secret overrides sit beside config.toml
-link/common/dot-config/.config/fnox/local.toml
+

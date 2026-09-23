@@ -88,6 +88,7 @@ tasks:
       - task: mise
       - task: stow
       - task: mise-global
+      - task: fnox
 
   devtools:
     desc: Development tools setup (parallel after common:core)
@@ -188,6 +189,12 @@ tasks:
     interactive: true
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-mise-global.sh"
+
+  fnox:
+    desc: Create the machine-specific fnox config - requires stow
+    run: once
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-fnox.sh"
 
   configure-yazi:
     desc: Install yazi plugins - requires mise

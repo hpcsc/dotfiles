@@ -290,10 +290,11 @@ eq "--quiet and --raw together are refused" "2" \
    "$(rc "$RR" run --quiet --raw)"
 
 # --------------------------------------------------------------------------------
-printf '\nthe opencode path — written to the documented contract, not to a binary\n'
+printf '\nthe opencode path — written to the current event contract, not to a binary\n'
 
-# No `opencode` is installed here, so what is checked is the invocation this would make
-# and the scoping it would write. A run under it stays unverified until one happens.
+# The fixture uses the current OpenCode NDJSON shape: the reply is in part.text and
+# step_finish carries the session and cost. The harness must read this without a result
+# object or a top-level text field.
 OC=$(cd "$(mktemp -d)" && pwd -P)
 cat > "$OC/opencode" <<'STUB'
 #!/usr/bin/env bash
@@ -301,7 +302,10 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 printf 'OPENCODE_CONFIG=%s\n' "${OPENCODE_CONFIG:-none}" >> "$STUB_LOG"
 p=$(cat)
 case "$p" in *'"step": "ground"'*) clerk step done ground --caller exported >/dev/null ;; esac
-printf '{"sessionID":"ses_abc","text":"named the caller pattern"}\n'
+printf '%s\n' \
+  '{"type":"step_start","sessionID":"ses_abc","part":{"type":"step-start"}}' \
+  '{"type":"text","sessionID":"ses_abc","part":{"type":"text","text":"named the caller pattern"}}' \
+  '{"type":"step_finish","sessionID":"ses_abc","part":{"type":"step-finish","reason":"stop","cost":0.01}}'
 STUB
 chmod +x "$OC/opencode"
 

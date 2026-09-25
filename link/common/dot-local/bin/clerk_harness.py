@@ -160,29 +160,63 @@ def _envelope(harness, raw):
     try:
         env = json.loads(raw)
     except json.JSONDecodeError:
-        # opencode's `--format json` emits an event stream rather than one object; the
-        # last object carrying text is the reply.
-        text, sid = None, None
+        events = []
         for line in raw.splitlines():
             line = line.strip()
             if not line.startswith("{"):
                 continue
             try:
-                ev = json.loads(line)
+                events.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-            if isinstance(ev, dict) and ev.get("text"):
-                text = ev["text"]
-            if isinstance(ev, dict) and ev.get("sessionID"):
-                sid = ev["sessionID"]
-        return text, 0.0, sid, (None if text else "harness output was not JSON")
-    if isinstance(env, dict):
-        sid = env.get("session_id") or env.get("sessionID")
-        if env.get("is_error"):
-            return None, float(env.get("total_cost_usd") or 0), sid, \
-                str(env.get("result") or "the agent reported an error")
-        return env.get("result"), float(env.get("total_cost_usd") or 0), sid, None
-    return None, 0.0, None, "harness output was not a JSON object"
+    else:
+        if not isinstance(env, dict):
+            return None, 0.0, None, "harness output was not a JSON object"
+        events = [env]
+
+    result = None
+    for ev in events:
+        if not isinstance(ev, dict) or not (
+                ev.get("type") == "result" or "result" in ev and "is_error" in ev):
+            continue
+        sid = ev.get("session_id") or ev.get("sessionID")
+        if ev.get("is_error"):
+            result = (None, float(ev.get("total_cost_usd") or 0), sid,
+                      str(ev.get("result") or "the agent reported an error"))
+        else:
+            result = (ev.get("result"), float(ev.get("total_cost_usd") or 0), sid, None)
+    if result is not None:
+        return result
+
+    text, sid, cost, err = None, None, 0.0, None
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        part = ev.get("part") if isinstance(ev.get("part"), dict) else {}
+        sid = (ev.get("session_id") or ev.get("sessionID") or
+               part.get("session_id") or part.get("sessionID") or sid)
+        if ev.get("text"):
+            text = ev["text"]
+        if ev.get("type") == "text" and part.get("type") == "text" and part.get("text"):
+            text = part["text"]
+        if ev.get("type") in ("step_finish", "step-finish"):
+            raw_cost = part.get("cost") if "cost" in part else ev.get("cost")
+            try:
+                cost += float(raw_cost or 0)
+            except (TypeError, ValueError):
+                pass
+            if (part.get("reason") or ev.get("reason")) == "error":
+                err = "the agent reported an error"
+        if ev.get("type") in ("error", "session.error"):
+            detail = ev.get("error") or ev.get("message")
+            if isinstance(detail, dict):
+                data = detail.get("data") if isinstance(detail.get("data"), dict) else {}
+                detail = data.get("message") or detail.get("message") or detail.get("name")
+            err = str(detail or "the agent reported an error")
+
+    if err:
+        return None, cost, sid, err
+    return (text if text else None), cost, sid, (None if text else "harness output was not JSON")
 
 
 # --------------------------------------------------------------------------------

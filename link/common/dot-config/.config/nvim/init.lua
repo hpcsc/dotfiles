@@ -8,3 +8,5 @@ vim.cmd("filetype plugin indent on")
 vim.cmd("syntax on")
 -- Theme (gruvbox is provided by plugin so this needs to run after plugin setup)
 vim.cmd("colorscheme gruvbox")
+-- lazy.nvim setup resets 'runtimepath', so a :packadd before the setup loses its package
+vim.cmd("packadd nvim.undotree")

@@ -13,7 +13,6 @@ return {
 	{ "junegunn/vim-peekaboo" },
 	{ "mhinz/vim-signify" },
 	{ "osyo-manga/vim-over" },
-	{ "google/vim-searchindex" },
 	{ "jiangmiao/auto-pairs" },
 	{ "vim-scripts/argtextobj.vim" },
 }

@@ -11,6 +11,7 @@ opt.lazyredraw = true -- redraw only when we need
 opt.showmatch = true -- highlight matching [{()}]
 opt.incsearch = true -- search as characters are entered
 opt.hlsearch = true -- highlight matches
+opt.shortmess:append("s") -- no "search hit BOTTOM" message when a search wraps
 opt.modelines = 1 -- enable modeline at the bottom of the file
 opt.hidden = true -- hide current unsaved buffer when opening a new file instead of closing it
 opt.backspace = { "indent", "eol", "start" }

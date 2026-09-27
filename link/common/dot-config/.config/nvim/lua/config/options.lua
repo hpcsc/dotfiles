@@ -27,6 +27,7 @@ opt.encoding = "utf-8"
 opt.backupdir = vim.fn.expand("~/.vim/tmp/backup//") -- set custom location for backup files
 opt.directory = vim.fn.expand("~/.vim/tmp/swap//") -- set custom location for swap files
 opt.undodir = vim.fn.expand("~/.vim/tmp/undo//") -- set custom location for undo files
+opt.undofile = true
 opt.ignorecase = true
 opt.smartcase = true -- smart case insensitive search
 opt.mouse = "a" -- enable mouse for scrolling and resizing

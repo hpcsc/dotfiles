@@ -22,6 +22,9 @@
 [diff]
 	mnemonicprefix = true
 	submodule = log
+	tool = nvim_difftool
+[difftool "nvim_difftool"]
+	cmd = nvim -c \"packadd nvim.difftool\" -d \"$LOCAL\" \"$REMOTE\"
 [includeIf "gitdir:~/Workspace/Code/"]
   	path = .gitconfig-work
 [includeIf "gitdir:~/Personal/Code/"]

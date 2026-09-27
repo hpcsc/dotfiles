@@ -107,6 +107,8 @@ function M.on_attach(client, bufnr)
 		provider.triggerCharacters = with_identifier_triggers(provider.triggerCharacters)
 		vim.lsp.completion.enable(true, client.id, bufnr, { autotrigger = true, convert = with_kind_icon })
 	end
+
+	vim.lsp.codelens.enable(true, { bufnr = bufnr })
 end
 
 return M

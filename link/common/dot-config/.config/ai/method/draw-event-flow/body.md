@@ -27,7 +27,7 @@ A diagram that is merely plausible is worse than none: readers trust pictures mo
 - **Dead ends**: an event nothing consumes. Say so, or the reader will assume something reacts to it.
 - **Whether each thing you are about to draw as an event is one.** A pill claims the log holds that fact. A message from a scheduler or a queue, a timer that fires, a vendor's response and a write to an external store are none of them events, however event-shaped their names are. Check that something appends it before it earns a pill.
 
-**When the system carries an `.emod` model, read the model, not the code.** It states every subscription outright, which is the guesswork this section exists to remove. `emod diagram <model>.emod --format event-flow` writes the first deliverable from it — pills, bare gears, external boxes, and an event nothing reads drawn dashed — and `--format event-flow-mermaid` writes the second, with the ELK layout and the parser workarounds already in place. Look at both before hand-placing anything, and hand-place only what neither draws. `emod export <model>.emod --format json` hands over the same facts as data: each automation's `on`, its `after` or `every`, the command it issues, and the flow naming the event that command emits.
+**When the system carries an `.emod` model, read the model, not the code.** It states every subscription outright, which is the guesswork this section exists to remove. `emod diagram <model>.emod --format event-flow` writes the first deliverable from it — pills, bare gears, external boxes, and an event nothing reads drawn dashed — and `--format event-flow-mermaid` writes the second, with the ELK layout, the gear icon and the parser workarounds already in place; `--format event-flow-mermaid-no-icons` writes the second for GitHub. Look at both before hand-placing anything, and hand-place only what neither draws. `emod export <model>.emod --format json` hands over the same facts as data: each automation's `on`, its `after` or `every`, the command it issues, and the flow naming the event that command emits.
 
 The model has one blind spot, and it is this diagram's subject: the gate. emod states a refusal as an invariant a command meets, never as a feature toggle or a runtime flag, so a condition on an emission still comes from the code. It leaves views out too, so an event only a read model consumes shows no arrow onward and no dead-end mark.
 
@@ -39,6 +39,7 @@ Show the mechanism, not its name. A box labelled "cache" says less than the pros
 |---|---|---|---|
 | **Event** | Stadium pill, `rx` = half the height | fill `#FFE0C0`, stroke `#B44E12` | fill `#40260F`, stroke `#F2A868` |
 | **Automation** | Bare gear, **no box**, name captioned below | fill `#16201B` | fill `#E2E9E5` |
+| **Automation, in Mermaid for GitHub** | Purple box, name inside | fill `#E1D5E7`, stroke `#9673A6` | — |
 | **Gated edge** | Stroke 2px, label = the gate's name | `#14705A` | `#53C3A1` |
 | **Plain edge** | Stroke 1.4px — "this event is consumed by that" | `#16201B` | `#E2E9E5` |
 | **Store or external service** | Rounded box, `rx` 8, name inside | fill `#ECEFED`, stroke `#5A6861` | fill `#1E2723`, stroke `#93A199` |
@@ -51,7 +52,7 @@ Show the mechanism, not its name. A box labelled "cache" says less than the pros
 
 The orange is Event Storming's event colour and is the one convention worth keeping exactly. Event Modeling also uses blue for commands and green for read models — do not introduce those unless the reader needs them, and never reuse blue or green for anything else in the same picture.
 
-**The automation is a bare gear**, not a box with a gear in it. Losing the box is the point: it is what makes the picture read as an event model rather than a flowchart.
+**The automation is a bare gear**, not a box with a gear in it. Losing the box is the point: it is what makes the picture read as an event model rather than a flowchart. The one exception is a Mermaid file for GitHub, which cannot draw the gear: there the automation is a purple box, the colour emod paints an automation in its lane diagrams.
 
 ## The standalone SVG
 
@@ -94,6 +95,8 @@ Five things decide whether it is readable, and four of them are not obvious.
 config:
   layout: elk
   securityLevel: loose
+  themeVariables:
+    edgeLabelBackground: "#FFFFFF"
   elk:
     mergeEdges: false
     nodePlacementStrategy: BRANDES_KOEPF
@@ -104,20 +107,29 @@ config:
 
 **Use `flowchart TB`.** `LR` on a chain of this shape produces a technically perfect ribbon — 2400×150 — that is unusable in a document.
 
-**The gear** is `fa:fa-cog` sized with an inline span, on a node styled `fill:none,stroke:none`:
+**The gear** is the `mdi:cog` icon, captioned with the automation's name, on a class that paints no box:
 
 ```
-    automation["<span style='font-size:30px'>fa:fa-cog</span><br/>TheAutomation"]
-    classDef gear fill:none,stroke:none,color:#16201B
+    automation@{ icon: "mdi:cog", label: "TheAutomation", pos: "b", h: 36 }
+    classDef automation fill:none,stroke:none,color:#16201B
 ```
 
-Font Awesome is bundled in `mermaid-cli` and mermaid.live, and `securityLevel: loose` is what allows the span. **GitHub has neither** and prints the literal text `fa:fa-cog`. If the file is destined for a README, swap every span for a plain unicode `⚙` — portable everywhere, just thinner. Record which you chose in a comment at the top.
+Mermaid draws an icon only when the renderer loads its icon set, which `mmdc` does with `--iconPacks @iconify-json/mdi` (see *Render and look*). It paints the caption on the edge-label background, a grey box by default, which is why the frontmatter sets `edgeLabelBackground` to white. A `themeCSS` rule in the frontmatter does not reach the caption: Mermaid drops the rule.
+
+**GitHub loads no icon set.** A file destined for a README draws each automation as a purple box instead, the colour emod paints an automation in its lane diagrams:
+
+```
+    automation["TheAutomation"]
+    classDef automation fill:#E1D5E7,stroke:#9673A6,color:#16201B
+```
+
+Leave `edgeLabelBackground` out of that file, so Mermaid's own theme carries a dark page. Record which of the two you wrote in a comment at the top.
 
 **Three parser traps**, each of which costs a render:
 
 - A `%%` comment block **between the frontmatter and `flowchart`** fails with `Expecting 'NEWLINE', 'SPACE', 'GRAPH', got 'NODE_STRING'`. The diagram type must come first; comments go after it.
 - A bare `%%` line inside the body **renders as a visible node** labelled `%%`. Use `%% ---` as a separator.
-- `@{ icon: "fa:cog" }`, the syntax the Mermaid docs recommend for icons, renders a blue box with a **?** — it needs an iconify pack registered at runtime, which `mermaid-cli` does not do. Do not use it.
+- An icon node **renders as a blue box with a ?** when the renderer did not load its icon set. `mmdc` needs `--iconPacks @iconify-json/mdi` on every render of a file with icons.
 
 Also: `:::class` ends a statement, so declare nodes and edges on separate lines rather than chaining a class onto an edge; HTML entities render literally, so use the actual character; and `linkStyle` indexes are 0-based in declaration order, so recount them after inserting an edge.
 
@@ -126,8 +138,10 @@ Also: `:::class` ends a statement, so declare nodes and edges on separate lines 
 `mermaid-cli` is installed under mise and is not on `PATH`:
 
 ```
-~/.local/share/mise/installs/npm-mermaid-js-mermaid-cli/*/bin/mmdc -i flow.mmd -o flow.png -b white -w 1600
+~/.local/share/mise/installs/npm-mermaid-js-mermaid-cli/*/bin/mmdc -i flow.mmd -o flow.png -b white -w 1600 --iconPacks @iconify-json/mdi
 ```
+
+`--iconPacks` fetches the icon set from unpkg.com, so the render needs the network. A file for GitHub has no icon and needs no `--iconPacks`.
 
 Render the Mermaid **before** showing it to anyone — it is the only way to know it parses, and a silent layout disaster looks identical to success in the source. Look at the output once, fix what it shows in a single pass, and stop. Do not build a screenshot loop.
 

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# A key binding runs this with the tmux server's PATH, which has no mise shims (workmux)
+# and no Homebrew (tmux on macOS).
+_prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
+[[ -d /opt/homebrew/bin ]] && _prefix="$_prefix:/opt/homebrew/bin"
+export PATH="$_prefix:$PATH"
+unset _prefix
+
+pane="${1:?usage: tmux-workmux-dashboard <pane-id>}"
+
+dashboard=$(tmux list-panes -t "$pane" -F '#{pane_id} #{@workmux_dashboard}' | awk '$2 == 1 { print $1; exit }')
+if [[ -n "$dashboard" ]]; then
+  tmux kill-pane -t "$dashboard"
+  exit 0
+fi
+
+dashboard=$(tmux new-pane -d -t "$pane" -x 90% -y 60% -X 5% -Y 1 -e "PATH=$PATH" -P -F '#{pane_id}' 'workmux dashboard') || exit 1
+tmux set-option -p -t "$dashboard" @workmux_dashboard 1

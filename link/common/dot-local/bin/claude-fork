@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+# A key binding runs this with the tmux server's PATH, which has no mise shims (jq)
+# and no Homebrew (tmux on macOS).
+_prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
+[[ -d /opt/homebrew/bin ]] && _prefix="$_prefix:/opt/homebrew/bin"
+export PATH="$_prefix:$PATH"
+unset _prefix
+
+usage="usage: claude-fork <right|below|window> <pane-id> [client]"
+place="${1:?$usage}"
+pane="${2:?$usage}"
+client="${3:-}"
+
+target=()
+[[ -n "$client" ]] && target=(-c "$client")
+
+config="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+# Claude Code writes sessions/<pid>.json for each live process, with the current
+# session ID. It is an internal file with no documentation.
+session_file=""
+pane_pid=$(tmux display-message -p -t "$pane" '#{pane_pid}') || exit 1
+for pid in "$pane_pid" $(ps -A -o pid=,ppid= | awk -v p="$pane_pid" '$2 == p { print $1 }'); do
+  if [[ -f "$config/sessions/$pid.json" ]]; then
+    session_file="$config/sessions/$pid.json"
+    break
+  fi
+done
+
+if [[ -z "$session_file" ]]; then
+  tmux display-message "${target[@]}" "no Claude session in this pane"
+  exit 0
+fi
+
+IFS=$'\t' read -r session_id cwd < <(jq -r '[.sessionId, .cwd] | @tsv' "$session_file")
+
+# Claude writes the transcript at the first message, so a new or cleared session
+# has no conversation to resume.
+transcripts=("$config"/projects/*/"$session_id.jsonl")
+if [[ ! -f "${transcripts[0]}" ]]; then
+  tmux display-message "${target[@]}" "this Claude session has no messages to fork"
+  exit 0
+fi
+
+case "$place" in
+  right)  fork_pane=$(tmux split-window -h -t "$pane" -c "$cwd" -P -F '#{pane_id}') ;;
+  below)  fork_pane=$(tmux split-window -v -t "$pane" -c "$cwd" -P -F '#{pane_id}') ;;
+  window) fork_pane=$(tmux new-window -a -t "$(tmux display-message -p -t "$pane" '#{window_id}')" -c "$cwd" -P -F '#{pane_id}') ;;
+  *)      tmux display-message "${target[@]}" "$usage"; exit 1 ;;
+esac
+# An empty target makes send-keys type into the active pane: the original Claude session.
+[[ -n "$fork_pane" ]] || exit 1
+
+# Typed into the shell, not run as the pane command, so quitting the fork leaves a shell.
+tmux send-keys -t "$fork_pane" "claude --resume $session_id --fork-session" Enter

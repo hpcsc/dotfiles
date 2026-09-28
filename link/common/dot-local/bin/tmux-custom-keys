@@ -81,7 +81,7 @@ table_tsv() {
     }
     NF && ($1 in cmds) && !($1 in seen) {
       rest = $0
-      sub(/^[^ ]+ +/, "", rest)
+      sub(/^ *[^ ]+ +/, "", rest)
       printf "%s\t%s\t%s\t%s\n", table, $1, (rest == cmds[$1]) ? "" : rest, cmds[$1]
       seen[$1] = 1
     }
@@ -89,7 +89,7 @@ table_tsv() {
       for (k = 1; k <= n; k++)
         if (!(order[k] in seen)) printf "%s\t%s\t\t%s\n", table, order[k], cmds[order[k]]
     }
-  ' <(printf '%s\n' "$listing") <(tmux list-keys -Na -T "$table")
+  ' <(printf '%s\n' "$listing") <(tmux list-keys -Na -P '' -T "$table")
 }
 
 # root first, then prefix, then the rest — the order Prefix + ? uses.

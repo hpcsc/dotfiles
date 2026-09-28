@@ -77,7 +77,7 @@ for file in "${files[@]}"; do
   # from the skill that generated it.
   menu+=(
     "$label" "$key"
-    "display-popup -E -w 90% -h 85% -T ' $label ' '\"$nvim_bin\" -R \"$file\"'"
+    "new-pane -x 90% -y 70% -X 5% -Y 1 '\"$nvim_bin\" -R \"$file\"'"
   )
   key=$((key + 1))
   [[ $key -gt 9 ]] && break

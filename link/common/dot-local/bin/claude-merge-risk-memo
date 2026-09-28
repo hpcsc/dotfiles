@@ -24,7 +24,7 @@ _prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
 export PATH="$_prefix:$PATH"
 unset _prefix
 
-# Pause before returning, so a message is readable before the popup closes over it.
+# Pause before returning, so a message is readable before its pane closes.
 die() {
   echo "$1" >&2
   read -r -s -n 1 -p "press any key"

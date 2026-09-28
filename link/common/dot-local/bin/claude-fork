@@ -7,7 +7,7 @@ _prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
 export PATH="$_prefix:$PATH"
 unset _prefix
 
-usage="usage: claude-fork <right|below|window> <pane-id> [client]"
+usage="usage: claude-fork <right|below|window|floating> <pane-id> [client]"
 place="${1:?$usage}"
 pane="${2:?$usage}"
 client="${3:-}"
@@ -47,6 +47,7 @@ case "$place" in
   right)  fork_pane=$(tmux split-window -h -t "$pane" -c "$cwd" -P -F '#{pane_id}') ;;
   below)  fork_pane=$(tmux split-window -v -t "$pane" -c "$cwd" -P -F '#{pane_id}') ;;
   window) fork_pane=$(tmux new-window -a -t "$(tmux display-message -p -t "$pane" '#{window_id}')" -c "$cwd" -P -F '#{pane_id}') ;;
+  floating) fork_pane=$(tmux new-pane -t "$pane" -c "$cwd" -x 90% -y 70% -X 5% -Y 1 -P -F '#{pane_id}') ;;
   *)      tmux display-message "${target[@]}" "$usage"; exit 1 ;;
 esac
 # An empty target makes send-keys type into the active pane: the original Claude session.

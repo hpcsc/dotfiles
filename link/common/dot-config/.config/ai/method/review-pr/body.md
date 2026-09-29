@@ -6,7 +6,7 @@ You are the reader here. The deliverable is understanding, in three artifacts an
 
 1. **The flow** — a diagram of the path through the system that the change lives in, with the parts it adds or moves marked.
 2. **The outcomes** — a table with one row for each case a person can observe, before and after.
-3. **The map** — one line for each question a reviewer asks, against the file that answers it, and the order to read those files in.
+3. **The map** — a diagram of the changed production files, grouped by package, with an arrow from each file to the files it uses, and the file to start at.
 
 Stop there. This method finds no defects and posts nothing. `/code-review` critiques, the repository's own review runs in CI, and a person decides. A brief that also argues turns into a list of maybes the reader has to sort, which is the overload this exists to remove.
 
@@ -55,7 +55,9 @@ A terminal shows Mermaid as source, so print the picture's source and say it ren
 
 **The outcomes.** One row for each case a person can observe, never one row per commit or per file. Include the cases the change leaves alone where a reader expects movement; a row that reads "unchanged" answers a question before it is asked. Put any irreversible outcome in a sentence of its own under the table.
 
-**The map.** The question a reviewer asks, and the file that answers it. End with the reading order and the two sizes from step 2.
+**The map.** Mermaid again: one node for each changed production file, one `subgraph` for each package, and an arrow from each file to every other changed file it calls or uses. Put the symbol the change adds under the file name, and mark a new file with `NEW`. Tests and unchanged files get no node. Give each subgraph a neutral fill, `style <id> fill:#F6F8F7,stroke:#A7B0AB`, because Mermaid's default yellow pulls the eye to the packages instead of the files. Past fifteen files, draw one node for each package; at one or two files, skip the diagram. Render it as you render the flow.
+
+Mermaid puts each file below the files that call it, whatever the order of the source lines, so the wiring usually sits on top. Name the file to start at in one sentence under the diagram. Then write one line for each answer an arrow cannot show: an unchanged file that reacts to an event the change writes, and the test files with the names of their scenarios. End with the two sizes from step 2.
 
 ## 4. Print it
 

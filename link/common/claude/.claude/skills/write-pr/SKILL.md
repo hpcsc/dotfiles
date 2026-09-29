@@ -127,12 +127,13 @@ Rules:
 - One node for every changed production file, and for no other file. A test file, or a file the change leaves alone, gets no node; the lines under the diagram carry the ones a reviewer needs.
 - Under the file name, put the symbol that the change adds or changes in that file. The symbol is what the reviewer greps for.
 - Draw an arrow from each file to every other changed file it calls or uses: a call, a field, a constructor argument, a type. Read the files on the branch, not only the hunks; an arrow the change did not add still shows the reader the structure.
+- Where two files use each other, as files in one package often do, draw one arrow with two heads, `a <--> b`, not two arrows.
 - Mark a new file with `NEW`, as in artifact 1.
 - Give each subgraph the neutral `style` line from the example. Mermaid's default yellow fill pulls the eye to the packages instead of the files.
 - Past fifteen files, draw one node for each package instead, and name its changed files in the node.
 - When the production change is one or two files, skip the diagram and write the lines below alone.
 
-Render it the way step 3 renders the flow, and look at it. Mermaid puts each file one row below the files that call it, and the order of the source lines does not change that. So the wiring usually lands on the top row and the rules a row or two down. Name the file to start at in one sentence under the diagram.
+Render it the way step 3 renders the flow, and look at it. Look hardest for an arrow that runs behind a node on its way to a node in the same row: the reader takes it for an arrow from the node it passes. Add an invisible link from the node it passes to its target, `<passed> ~~~ <target>`, which puts the target one row lower, and render again. Mermaid puts each file one row below the files that call it, and the order of the source lines does not change that. So the wiring usually lands on the top row and the rules a row or two down. Name the file to start at in one sentence under the diagram.
 
 Under that sentence, write one line for each answer that an arrow cannot show:
 

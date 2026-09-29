@@ -51,6 +51,8 @@ bind -n -N "Go left" M-h select-pane -L
 bind -n -N "Previous session" "M-{" switch-client -p
 bind -T copy-mode-vi v send -X begin-selection
 bind -N "Leave a mark" T set -g @mark yes
+bind -N "[tool] Open the dashboard" G run-shell true
+bind -N "[tool] Pick a window" w
 '
 
 # --------------------------------------------------------------------------------
@@ -81,6 +83,17 @@ eq    "prefix bindings precede other tables" yes \
       "$(awk '/^C-b / { last = NR } /^copy-mode/ && !first { first = NR } END { print (first > last) ? "yes" : "no" }' <<<"$ALL")"
 
 # --------------------------------------------------------------------------------
+printf '\ntools\n'
+
+TOOLS=$(on_config "$CONF" --tools)
+has   "a binding whose note starts with the tag shows without the tag" "$TOOLS" '^C-b G +Open the dashboard$'
+lacks "a binding without the tag is left out"                         "$TOOLS" 'Open the thing|Detach'
+has   "a default key whose note alone carries the tag still shows"    "$TOOLS" '^C-b w +Pick a window$'
+has   "the custom list keeps the tag"                                 "$OUT"   '^C-b G +\[tool\] Open the dashboard$'
+eq    "a config with no tagged binding says so" \
+      "no key bindings carry the [tool] tag" "$(on_config '' --tools)"
+
+# --------------------------------------------------------------------------------
 printf '\nfzf rows\n'
 
 ROWS=$(on_config "$CONF" --rows)
@@ -91,17 +104,39 @@ has "a row without a note shows its command"    "$ROWS" $'C-b c .*new-window -c 
 printf '\npicker\n'
 
 # fzf needs a terminal; BSD script(1) lends it one and forwards stdin as keystrokes.
-# The query goes first and Enter a moment later, so the list has loaded by then.
-if [ "$(uname)" = Darwin ] && command -v fzf >/dev/null; then
+# Each key waits a moment, so the list has loaded before the next key arrives.
+# pick <ctrl-a presses> <query> [script args] leaves the fixture server up to inspect.
+pick() {
+  local presses=$1 query=$2
+  shift 2
   start_server "$CONF"
   PANE=$(env -u TMUX tmux -S "$SOCK" list-panes -t fixture -F '#{pane_id}' | head -1)
-  (printf 'Leave a mark'; sleep 1; printf '\r') \
-    | script -q /dev/null env TMUX="$SOCK,0,0" "$SCRIPT" --fzf "$PANE" >/dev/null 2>&1
+  (sleep 1; for ((i = 0; i < presses; i++)); do printf '\001'; sleep 1; done
+   printf '%s' "$query"; sleep 1; printf '\r') \
+    | script -q /dev/null env TMUX="$SOCK,0,0" "$SCRIPT" --fzf "$@" "$PANE" >/dev/null 2>&1
   sleep 1
-  eq "enter runs the chosen binding" yes "$(env -u TMUX tmux -S "$SOCK" show -gv @mark 2>/dev/null)"
+}
+mark()      { env -u TMUX tmux -S "$SOCK" show -gv @mark 2>/dev/null; }
+pane_mode() { env -u TMUX tmux -S "$SOCK" display -p -t "$PANE" '#{pane_mode}'; }
+
+if [ "$(uname)" = Darwin ] && command -v fzf >/dev/null; then
+  pick 0 'Leave a mark'
+  eq "enter runs the chosen binding" yes "$(mark)"
+  stop_server
+
+  pick 1 'Leave a mark' --tools
+  eq "ctrl-a moves from the tools list to the custom list" yes "$(mark)"
+  stop_server
+
+  pick 2 'Show a clock' --tools
+  eq "a second ctrl-a moves on to every binding" clock-mode "$(pane_mode)"
+  stop_server
+
+  pick 3 'Leave a mark' --tools
+  eq "a third ctrl-a comes back to the tools list" "" "$(mark)"
   stop_server
 else
-  skip "enter runs the chosen binding" "needs macOS script(1) and fzf"
+  skip "the picker" "needs macOS script(1) and fzf"
 fi
 
 # --------------------------------------------------------------------------------

@@ -2,13 +2,18 @@
 
 # List the key bindings that ~/.tmux.conf and its plugins add or change — everything
 # that is not a tmux default — each with its -N note; or browse them in fzf, where
-# Enter runs the chosen binding. Bound to Prefix + ? (in a popup), in place of tmux's own.
+# Enter runs the chosen binding. Bound to Prefix + ? (in a popup, on the tools), in
+# place of tmux's own.
 #
 #   tmux-custom-keys                  aligned list of the custom bindings
 #   tmux-custom-keys --all            the same for every binding (what Prefix + ? lists)
+#   tmux-custom-keys --tools          the same for the bindings whose note starts with
+#                                     [tool], shown without the tag
 #   tmux-custom-keys --fzf [pane]     picker; Enter runs the binding in pane (default: the
-#                                     pane under the popup), ctrl-a toggles all ⇄ custom
-#   tmux-custom-keys --rows [--all]   fzf rows: coloured line, TAB, command (feeds --fzf)
+#                                     pane under the popup), ctrl-a cycles the lists:
+#                                     tools → custom → all
+#   tmux-custom-keys --rows [--all | --tools]
+#                                     fzf rows: coloured line, TAB, command (feeds --fzf)
 #
 # tmux has no "non-default" switch, and its plain list-keys output carries no notes,
 # so this diffs the plain listing against a throwaway server started with no config,
@@ -24,26 +29,28 @@ for dir in /opt/homebrew/bin "$HOME/.fzf/bin"; do
 done
 export PATH
 
+tag='[tool] '
 mode=custom format=list pane=
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --all)  mode=all ;;
-    --rows) format=rows ;;
-    --fzf)  format=fzf ;;
-    -*)     echo "usage: tmux-custom-keys [--all] [--rows | --fzf [pane]]" >&2; exit 2 ;;
-    *)      pane=$1 ;;
+    --all)   mode=all ;;
+    --tools) mode=tools ;;
+    --rows)  format=rows ;;
+    --fzf)   format=fzf ;;
+    -*)      echo "usage: tmux-custom-keys [--all | --tools] [--rows | --fzf [pane]]" >&2; exit 2 ;;
+    *)       pane=$1 ;;
   esac
   shift
 done
 
 current=$(tmux list-keys)
-if [[ $mode == all ]]; then
-  listing=$current
-else
+if [[ $mode == custom ]]; then
   scratch=$(mktemp -d)
   trap 'rm -rf "$scratch"' EXIT
   defaults=$(tmux -S "$scratch/sock" -f /dev/null start-server \; list-keys \; kill-server)
   listing=$(comm -13 <(sort <<<"$defaults") <(sort <<<"$current"))
+else
+  listing=$current
 fi
 
 if [[ -z "$listing" ]]; then
@@ -127,12 +134,28 @@ render() {
   '
 }
 
+only_tools() {
+  if [[ $mode != tools ]]; then
+    cat
+    return
+  fi
+  awk -F '\t' -v OFS='\t' -v tag="$tag" \
+    'index($3, tag) == 1 { $3 = substr($3, length(tag) + 1); print }'
+}
+
 rows() {
-  for t in $(tables); do table_tsv "$t"; done | render "$1"
+  for t in $(tables); do table_tsv "$t"; done | only_tools | render "$1"
 }
 
 case $format in
-  list) rows list ;;
+  list)
+    out=$(rows list)
+    if [[ -z "$out" ]]; then
+      echo "no key bindings carry the ${tag% } tag"
+    else
+      printf '%s\n' "$out"
+    fi
+    ;;
   rows) rows rows ;;
   fzf)
     # Resolved up front: by the time Enter is pressed another client may have become
@@ -143,11 +166,13 @@ case $format in
     # leave most of the popup empty.
     row=$(rows rows | FZF_DEFAULT_OPTS= fzf --ansi --delimiter $'\t' --with-nth 1 \
       --layout reverse --info inline --prompt "$mode> " \
-      --header 'enter: run   esc: close   ctrl-a: all ⇄ custom' \
+      --header 'enter: run   esc: close   ctrl-a: tools → custom → all' \
       --preview 'printf "%s\n" {2}' --preview-window 'down,4,wrap' \
-      --bind "ctrl-a:transform:[ \"\$FZF_PROMPT\" = 'custom> ' ] \
-        && echo 'change-prompt(all> )+reload(\"$self\" --rows --all)' \
-        || echo 'change-prompt(custom> )+reload(\"$self\" --rows)'") || exit 0
+      --bind "ctrl-a:transform:case \"\$FZF_PROMPT\" in \
+        'tools> ')  echo 'change-prompt(custom> )+reload(\"$self\" --rows)' ;; \
+        'custom> ') echo 'change-prompt(all> )+reload(\"$self\" --rows --all)' ;; \
+        *)          echo 'change-prompt(tools> )+reload(\"$self\" --rows --tools)' ;; \
+      esac") || exit 0
     # -b -d: the popup must close before the binding runs, or one that opens its own
     # popup or menu (D, R, S) would collide with this one.
     tmux run-shell -b -d 0.2 -t "$pane" -C "${row#*$'\t'}"

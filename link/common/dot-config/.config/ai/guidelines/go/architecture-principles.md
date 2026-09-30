@@ -102,6 +102,41 @@ func (d *Drafter) renderText(draft Draft) string { ... }
 - A private method that the commands share is fine.
 - The full rule, with where each kind of question goes: `architecture/design/domain-modeling.md`, "An Aggregate Takes Commands, Not Questions".
 
+### 10. Type the Values That Code Uses, and Show the Rest as Text
+- Code **uses** a value when it does something different for each value: it branches on the value, groups by it, matches it, or looks something up with it. Code **shows** a value when it puts the value in front of a person, in a log, an error message, a page or a report.
+- A value that code uses gets a type. A value that code only shows is text. For each field of a result type, find the code that reads the field, and give the field the shape that this reader needs:
+
+| Who reads the value | Shape |
+|---|---|
+| A caller that branches on it | A `bool`, or an enum with one value for each branch of the caller |
+| Code that counts or groups by it: a metric, an alert | A stable id from a small set |
+| Another system, by contract: an API error, an event field, a status column | A stable id that the contract names |
+| Only a person, in one language | One text field. Write the text at the place where the code decides. |
+| Only a person, in more than one language | A message key |
+
+- **Do not keep a type for a value that code only shows.** The type costs a table, a test that keeps the table in step, and often a switch.
+  - An enum of many reasons, and the caller branches on one: return a `bool` and one text field.
+  - A long list of codes from a dependency, and the caller has three branches: map the codes one time, beside the code that knows the dependency, and return an enum of three.
+  - A sentinel error that no caller checks with `errors.Is` or `errors.As`: return `fmt.Errorf` text. An exported error is a promise to its callers.
+  - A second enum for a fact that another package owns: put the word of that package into the text. Do not add a switch that translates one enum into the other.
+  - A field that only a test reads: assert the text or the effect.
+- **Do not let code use free text.** Nothing fails until someone changes the sentence.
+  - A metric label that holds a sentence or a customer id makes a new series for each text. Give the metric a stable id from a small set, and keep the text in the log.
+  - A client that matches a sentence in an API error breaks when the sentence changes. Give the contract a stable id, and keep the sentence for the person.
+
+```go
+// ❌ 14 values with an id and a message each, and the caller checks one
+type Decision struct {
+	Reason Reason
+}
+
+// ✅
+type Decision struct {
+	Approved bool
+	Detail   string
+}
+```
+
 ## Application
 
 These principles work together to create:

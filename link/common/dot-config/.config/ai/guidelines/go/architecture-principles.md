@@ -55,7 +55,7 @@
 
 **Order within the file:**
 - Declare the type, then its constructors, then its methods. A reader scrolling the type's behaviour should never pass through a different type to reach the rest of it.
-- Free functions go last, together. A helper dropped between two methods reads as a third method until you check the receiver. After §8, the only free functions left are the ones no single type owns.
+- Free functions go last, together. A helper dropped between two methods reads as a third method until you check the receiver. After §8, the only free functions left are the ones that §8 keeps.
 - A second type in the file is a part of the named one, and where it goes depends on which part. A small value type the named type's fields are written in — an enum, a pair — goes before it, because you need it to read the struct. A collection of it, or a satellite it owns, goes after, with its own methods following it.
 - Keep a blank line between every top-level declaration. `gofmt` does not insert them, so a mechanical reorder can run four declarations together and still format clean.
 
@@ -69,10 +69,10 @@ This is stricter than the standard library, which does spread large types across
 ### 8. A Helper That One Type Uses Is a Method of That Type
 - A private function that only one type's methods call is a method of that type. A package-level function adds a name that every file in the package can see, and it hides which type the behaviour belongs to.
 - This is also true when the helper is pure, reads no field, or sits in its own file. A method that does not use its receiver is fine. Name the receiver as the type's other methods do.
-- Keep a free function in two cases only:
+- Keep a free function in three cases only:
   - Code passes it as a function value, and a method would need two-step construction.
   - It is the logic of a file that owns package-level data, such as a lookup table and the function that reads the table.
-- **Do not share glue between two types that can change apart.** When two services need the same few lines over one dependency, give each service its own private method. A shared function or a new collaborator couples the two, and the first change that makes them differ must take the coupling apart again. Share only logic that belongs to the domain type, and put it on that type: `Rules.WithLLMText()`, `Rule.String()`.
+  - The package holds its rules in free functions over plain data. There, the function sits where every rule sits.
 - Test files are exempt. A test helper is not part of the package that production code sees.
 
 ```go
@@ -82,6 +82,19 @@ func renderText(draft Draft) string { ... }
 // ✅
 func (d *Drafter) renderText(draft Draft) string { ... }
 ```
+
+**A private function that two types call holds a rule that no type owns.** The function gives the rule one text. It does not give the rule one owner: each caller decides again, and a new case that goes into one caller does not reach the other. Ask these questions in order. The first answer that fits gives the place for the rule.
+
+| Question | Answer | Where the rule goes |
+|---|---|---|
+| Do both callers need it for the same reason? | No | One private method on each type, with a name that says why that type needs it. This includes glue: the same few lines over one dependency, in two services that can change apart. |
+| Does it hold a rule of the domain? | No | A type that names the value the callers pass: `QuantityLimit.Apply()`, `Money.String()`. A function that fits no concept of the domain goes in a package of functions. Name that package after what its functions do, not `util`. |
+| Does one type already make the decision? | Yes | That type returns the decision, or its event carries the decision. The other type reads the decision and holds no copy of the rule. |
+| Is every input a field of one type? | Yes | A method on that type: `Customer.IsLoyal()`, `Rules.WithLLMText()`. |
+| Does the rule change for reasons that no caller owns? | Yes | A new type that owns the rule, named after the concept: `ContactHours.Allow()`. Both callers receive it in their constructors. |
+
+- Two copies of one text are correct when they are two pieces of knowledge. A shared function couples the two types, and the first change that makes them differ must take the coupling apart again.
+- When one type starts to read the decision of the other, behaviour can change. Where the two copies of the rule disagreed, the second type now follows the first. Find those cases, and check each one with the person who owns the result.
 
 ### 9. An Aggregate Takes Commands, Not Questions
 - Every exported method on an aggregate takes a command, checks the invariants and returns the events. No exported method answers a question about the aggregate's state: no `HasX()`, no `IsX()`, no `View()`.

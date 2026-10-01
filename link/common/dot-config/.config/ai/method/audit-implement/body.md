@@ -34,6 +34,12 @@ it. The request is the only thing the audit sees that did not come from you.
 `tasks/<story>.md` is being handed a decomposition, and a decomposition came from you.
 Pass the user story it was written from.
 
+**When the work copies or follows existing code, name that code.** A lens reads the diff
+and the changed files, so it does not see the code that the work follows. A run with a
+bound breakdown reads these precedents from the `patterns_to_follow` of each task. For a
+branch with no breakdown, pass `--precedent <path[:start-end]>` once for each file, and
+pass the same precedents again in each later round.
+
 The flags that shape a round:
 
 | Flag | For |
@@ -41,6 +47,7 @@ The flags that shape a round:
 | `--rounds <n>` | how many rounds this audit will run; the first call records it |
 | `--depth deep` | three refuters on every high or medium claim, majority taken |
 | `--fixed-file <p>` | re-auditing after fixes: keeps every lens that owns one of these |
+| `--precedent <path[:start-end]>` | existing code that the work copies or follows, once for each file — for a branch with no bound breakdown. A run with a bound breakdown reads its precedents from the task record |
 | `--lens <key>` | narrow the panel by hand — only when every fix was a quality fix |
 | `--recheck <json>` | every finding of the last round, fixed or declined, so they are re-asked or settled — whole objects, never bare ids: `[{"id": …, "claim": …, "decision": "fixed" \| "declined", "note": "the fix you are reporting, or why you declined"}]`. A declined one is shown to the lenses as settled and any re-raise is dropped before refutation |
 | `--another <why>` | run a round the last one did not earn — no `high`, or `medium` and `runtime`, finding you did not decline — and record why; without it such a round is refused |
@@ -73,6 +80,8 @@ own — its files still reach every other lens as context, and `lenses_not_run` 
    - **Test integrity** (when any test file changed) — the highest-yield lens, because a passing suite says nothing about whether it *could* fail. It hunts source-scanning guards that inverted when code moved, absence assertions that pass with the feature deleted, tautologies and vacuous passthroughs (substitution test), redundant tests, and behaviour no test would catch the loss of.
    - **Concurrency / performance** — only when the scoping pass found a real signal. Both are otherwise skipped and *reported as skipped*, because a specialist lens with nothing to judge returns nothing, every time.
    - **Design** (when the change adds or changes a Go type, function or exported name) — the types, their fields and methods, the exported names and the words they use, judged on their merits against the naming guideline, the language's naming patterns and the design heuristics. clerk decides from the code whether it runs, with `clerk design`, which also gives the lens its view of the change. A change in another language gets no design lens yet, and says so in `lenses_not_run`.
+
+   **Precedents** go to the semantic, tests, concurrency and performance lenses: the `patterns_to_follow` of each task in the bound breakdown, and each `--precedent`. Where the changed code follows a precedent, a lens compares what the two do. It raises a difference only when the request, the brief and the breakdown do not explain it, because a precedent is not a specification: the work can follow it only in part, or differ from it on purpose. The guidelines and design lenses judge names and structure, so they do not get the precedents. The refuters do not get them either: a finding that rests on a precedent names its file and lines in the claim. A `task:N` entry adds no file, because the code of that task is in the diff. clerk names in `held_back` each precedent that it did not give: a file that is not at the base, or a file past the limit of 2000 lines for all precedents.
 
 3. **Dedupe** — findings that name one defect are collapsed **before** refutation, not in the report. Lenses cannot see each other, so a regression gets reported once against the code that causes it and again against the test that fails to catch it; refuting both means paying twice to establish one thing. Exact id collisions merge on their own; one agent groups the rest, and its grouping is accepted only if it accounts for every finding exactly once — a merge that loses a finding would delete a real defect silently. The survivor carries the joined `lens` key of everything that raised it, and the *highest* severity in its cluster.
 

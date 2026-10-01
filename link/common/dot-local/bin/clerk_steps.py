@@ -475,10 +475,12 @@ def next_step(ctx):
     """The step that follows, as `clerk step` would print it. Returned by every command
     that closes a step — --start, each --done, audit accept — so the caller acts on it
     instead of asking for it in a second call. The one write is the run's own
-    `finished`, stamped the first time the table is walked to its end."""
+    `finished` and the commit it ends on, stamped the first time the table is walked to
+    its end."""
     r = evaluate(ctx)
     if r["step"] == "finished" and not ctx.run.finished and not ctx.read_only:
-        ctx.run.put(finished=True, finished_at=now())
+        # The commit the run handed over. What changes after it is what a person corrected.
+        ctx.run.put(finished=True, finished_at=now(), finished_commit=ctx.head)
     if r["step"] == "finished":
         r["stats"] = run_stats_text(ctx)
     return present(ctx, r)

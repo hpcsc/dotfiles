@@ -48,9 +48,12 @@ def cmd_start(slug, request, harness):
         for p in run.dir.iterdir():
             p.unlink()
     clear_archive_record(Repo(cwd).state_dir)
+    # The commit the run starts from. A run's own changes are the ones after it, also for a
+    # deliverable stacked on a sibling branch, where the merge-base with the default branch
+    # would count the sibling's commits as this run's.
     run.write("run.json", {"slug": slug, "request": request, "started_at": now(), "launch_cwd": cwd,
-                           "launch_branch": prep.get("branch"), "harness": harness or detect_harness(),
-                           "session_id": session_id(), "finished": False})
+                           "launch_branch": prep.get("branch"), "start_commit": gitout("rev-parse", "HEAD", cwd=cwd),
+                           "harness": harness or detect_harness(), "session_id": session_id(), "finished": False})
     return {"started": True, "run": slug, "ledger": str(run.dir), "request": request,
             "next": next_step(build_ctx(slug, harness))}
 

@@ -104,6 +104,7 @@ eq "every command answers --help with a USAGE block" "$(printf '%s' "$CMDS" | wc
 eq "and none answers in another shape" "" "$MISSING"
 eq "the ledger lives under the common git dir" "$R/.git/clerk/runs/w1" "$(printf '%s' "$S" | field .ledger)"
 eq "the request is kept verbatim" "Add a widget --gears" "$(jq -r .request "$R/.git/clerk/runs/w1/run.json")"
+eq "and the commit the run starts from" "$(git -C "$R" rev-parse HEAD)" "$(jq -r .start_commit "$R/.git/clerk/runs/w1/run.json")"
 eq "a second --start on an open run is refused" "3" "$(rc "$R" step start w1 --request again)"
 eq "and names the run it would have clobbered" "w1" \
    "$(run "$R" step start w1 --request again 2>/dev/null | field .run.slug)"
@@ -401,6 +402,8 @@ eq "and the run is finished" "finished" "$(run "$WT" step | field .step)"
 eq "and the finished reply carries the run's statistics for the closing message" "true" \
    "$(run "$WT" step | jq -r '.stats | startswith("run w1 ") and contains("build")')"
 eq "which the ledger records" "true" "$(jq -r .finished "$R/.git/clerk/runs/w1/run.json")"
+eq "with the commit the run hands over, so a later correction is told apart from the run's work" \
+   "$(git -C "$WT" rev-parse HEAD)" "$(jq -r .finished_commit "$R/.git/clerk/runs/w1/run.json")"
 
 # --------------------------------------------------------------------------------
 printf '\nstats — where the run went, from the ledger; tokens from the transcript once the session is known\n'

@@ -4,3 +4,4 @@
 .tool-versions
 mise.local.toml
 .scratches/
+.worktrees/

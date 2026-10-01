@@ -74,6 +74,7 @@ Spawn the `decompose-to-deliverables` agent, passing the story **as data**. It e
 Present the deliverables, their **waves** (what runs in parallel), the **base/stacking** choice per dependent deliverable, the branch names, and each deliverable's **certainty and blast radius**. The deliverable boundaries and merge order are expensive to get wrong once pull requests are in flight and cheap to fix now, so this is the single gate:
 
 - Check each deliverable against the sizing rules in `decompose-to-deliverables` Step 3 — one-sentence title, 3–7 tasks, one aggregate, and a judgment-weighted file count in band — and surface any that miss rather than presenting the cut as settled.
+- **Show each deliverable's planned design.** It is Markdown with a Mermaid diagram, which a terminal does not draw, so write it to a file outside the repository and give the path: `clerk design show --planned tasks/<story-slug>/<deliverable-slug>/design.yaml --out <file>`. Name its types in one line beside the path. This is the cheapest moment to correct a type or a name: one line in the file now, against a change in every task that uses it once the wave has built. A deliverable that needs no design shows its reason instead.
 - **Name the `blast_radius: high` deliverables and say what they touch.** This is the one question the plan can answer and the DAG cannot: a wave fires everything ready into background panes at once, so absent a decision here, a deliverable rewriting the permission model is delivered exactly like one adding a formatter. Recommend `--gears` when the cut contains one.
 - **Say how wide the first wave will be**, and offer `--wave-size N` if it is wider than the user will want to read at once. Five deliverables landing together is five pull requests arriving together.
 - Ask the user to approve or request changes.
@@ -186,7 +187,9 @@ The plan already decided the stack: `base: <sibling-id>` means that deliverable'
 clerk story stack tasks/<slug>/plan.yaml --create
 ```
 
-Each PR's title is the deliverable's, and its body is that deliverable's own **Story Reference** and **Boundaries** taken verbatim out of its `tasks.md` — a description written to stand alone, and the out-of-scope list in front of the reviewer rather than in a file nobody opens.
+Each PR's title is the deliverable's, and its body is that deliverable's own **Story Reference** and **Boundaries** taken verbatim out of its `tasks.md` — a description written to stand alone, and the out-of-scope list in front of the reviewer rather than in a file nobody opens. When the deliverable changes a Go type or function, the body ends with a **Design** section: its exported names, the diagram of its types, and the design changes its run recorded with their reasons.
+
+A deliverable that depends on another reads that one's design changes when its own run binds its breakdown, so a later wave builds on the design as built, not as planned. Two deliverables in the same wave do not see each other's changes; the plan made them independent, and the review of the wave is the place to catch the rare case where they share a type.
 
 **Show it again after every merge.** A deliverable whose prerequisite has landed is **retargeted** onto the default branch, because a PR still pointing at a merged branch diffs against code already in the mainline. Merged deliverables, branchless ones and branches carrying no commits are skipped with the reason named, so a re-run is cheap and reads as a status board for the stack.
 

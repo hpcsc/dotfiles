@@ -10,7 +10,10 @@
 
 Announce which task you are starting, **with its `certainty` and `blast_radius`** — both come back on the task object — so the queue's progress is visible in the transcript rather than only in the file, and so a reader can tell a task built fast because it was routine from one built fast because nobody looked.
 
-If a task turns out to be unnecessary or wrong once you are in the code, **stop and say so**. The breakdown is the shared contract; revise it with the user rather than quietly building something else.
+If a task turns out to be wrong once you are in the code, what you do depends on what is wrong:
+
+- **The design is wrong:** a type, a field, a method or a name that the planned design or the task implies does not fit the code. Decide, record the reason, and continue. *When the code leaves the planned design* below says how. The design check judges your decision before the next task builds on it, so a run that nobody watches does not stop here.
+- **The scope is wrong:** the task asks for behaviour the request does not need, or the request needs behaviour that no task delivers. **Stop and say so.** The breakdown is the shared contract for what to build, and scope is the user's decision.
 
 If its *assessment* is obviously wrong once you are in the code, drive on what you found rather than on what the breakdown said — a `high` that is plainly `low` is a reason to slow down even with `gears` off. Record it at the learn step; it is a fact about how this repo gets planned wrong.
 
@@ -31,6 +34,37 @@ Then follow the stopping convention in *Report and continue* below: state what y
 ### 2. Implement
 
 Follow the guidelines you loaded, and the surrounding code where the guidelines are silent. Keep the change to what the task asked for: structure work that reaches beyond the task's own diff belongs to a deliberate pass, not smuggled in here.
+
+### When the code leaves the planned design
+
+The planned design is a first guess, made before any code existed. Leaving it is expected. What must not happen is a departure that nobody can see: a type that the plan did not name, appearing in the diff with no reason beside it.
+
+These are design changes:
+
+- a type that you add, remove, merge or split
+- a responsibility or a business rule that you move to another type
+- a name that the planned design lists and that you change
+- a new dependency between packages
+
+A local name, a private helper, or a field inside one type is your decision, and needs no record.
+
+For each design change, record why before `clerk finish`:
+
+```
+clerk design note <name> "<reason>" [--affects <task numbers>]
+```
+
+The reason says what the code showed that the plan could not know. `--affects` names the open tasks whose text you rewrite for the change. Rewrite only the text that names the old design: never a task's behaviour, its acceptance criteria or its dependencies.
+
+`clerk finish` refuses a design change that has no reason, the way it refuses a lint finding:
+
+- a new type that the planned design does not name
+- at the last task, a planned new type that the code does not declare
+- at the last task, a new exported name that nothing outside its package uses, unless a struct tag or an interface accounts for it
+
+Answer each with a change to the code, or with a note. An export that nothing uses is usually the first: make it unexported. A planned design of `design: none` refuses every new type, so a story that turns out to need one records why.
+
+After the commit, `clerk step` returns a design-check step for each design change that the task recorded. It is not a pause: it reads the change before the next task builds on it.
 
 ### 3. Prove it, don't narrate it
 
@@ -57,6 +91,8 @@ It stages exactly those paths, lints the staged set, and only then sets `done: t
 
 Run into it here rather than at review: the audit would raise the same defects, and there each costs a lens to find, a verifier to confirm and a `--fixup` rebase to fold back into the commit that introduced it — against seconds now, while you are still holding the code in mind.
 
+After the lint, `clerk finish` judges the design against the planned design, as *When the code leaves the planned design* says. A design refusal exits 1 like a lint finding, and keeps the paths staged the same way.
+
 Pass `--retried` when the implementation needed more than one attempt to go green for a reason other than a typo or a missing import — not the count itself, the fact that the first shape you reached for was the wrong one. It is recorded, and with `gears` on it is one of the two signals that downshift the run.
 
 The task record is the only place completion is recorded; the breakdown is prose, and is not rewritten. `clerk status` prints progress when you want to read it. A task record committed without its code makes a later run skip work it never did; code committed without the task record makes it redo work. `clerk finish` refuses a path that does not exist and refuses a task already done, and it never runs `git add -A` — an unrelated file left loose in the tree would otherwise be swept into your commit, and untangling that later means rewriting history.
@@ -81,7 +117,7 @@ Say what landed in one or two lines and act on finish's `after_commit`. **Write 
 **Then read the task back for the two signals that the breakdown was wrong about it.** Both are things you have just observed, and both mean the same thing — the theory is not landing where the breakdown said it would:
 
 - **The implementation needed more than one attempt to go green**, for a reason other than a typo or a missing import. Not the count itself: the fact that the first shape you reached for was the wrong one.
-- **`clerk finish` refused the task on a lint finding.** The guidelines were loaded and still not followed, which is them not landing rather than a rule being obscure.
+- **`clerk finish` refused the task on a lint finding.** The guidelines were loaded and still not followed, which is them not landing rather than a rule being obscure. A design refusal counts here as well: the plan did not foresee what the code needed.
 
 **Report either in the task's line whatever `gears` says.** It is a fact about the run, and it is exactly what someone deciding whether to trust the branch wants and cannot recover from the diff. Say the first with `--retried` on `clerk finish` as well; the second was clerk's refusal and is already on the record.
 

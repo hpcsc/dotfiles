@@ -34,5 +34,7 @@ A clean run produces no learnings, and that is fine — say so rather than manuf
 
 Reflect comes **last** because it leaves that file modified and uncommitted by design, and a dirty tracked file blocks a rebase.
 
+**Name the design changes first.** Before the statistics, list the run's design changes with their reasons, and give the path of the design view you wrote at the match-request step. A reader reads the view first and the diff second.
+
 **The `finished` reply carries `stats`** — the run's time and token table, per step, task and audit round, from `clerk stats`. Paste it into your closing message as a fenced block, verbatim. It is the reader's only view of what the run cost, and it is computed, so it needs no summarising.
 

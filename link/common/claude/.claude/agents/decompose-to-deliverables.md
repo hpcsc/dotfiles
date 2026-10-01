@@ -19,6 +19,7 @@ You emit:
 
 - `tasks/<story-slug>/plan.yaml` — the machine-readable delivery manifest (`deliver-story` reads this to scaffold worktrees and launch a run per deliverable).
 - `tasks/<story-slug>/<deliverable-slug>/tasks.md` — one task breakdown per deliverable, in the exact format of `decompose-to-tasks`, so `implement-flow` can adopt it verbatim.
+- `tasks/<story-slug>/<deliverable-slug>/design.yaml` — the planned design of each deliverable, in the format of `decompose-to-tasks`.
 
 This is the layer **above** `decompose-to-tasks`: that agent turns one story into tasks for one PR; you turn one story into several pull requests, each with its own breakdown.
 
@@ -136,10 +137,13 @@ Deliverable count is a result, not a plan. If you have more deliverables than th
 
 ## Step 4: Write Each Deliverable's tasks.md
 
-For every deliverable, write **two files** in the **exact `decompose-to-tasks` format** so `implement-flow` adopts them unchanged:
+For every deliverable, write **three files** in the **exact `decompose-to-tasks` format** so `implement-flow` adopts them unchanged:
 
 - `tasks/<story-slug>/<deliverable-slug>/tasks.md` — the tasks in prose
-- `tasks/<story-slug>/<deliverable-slug>/tasks.json` — the task record beside it, carrying each task's `n`, `title`, `language`, `testable`, `certainty`, `blast_radius`, `patterns_to_follow`, `depends_on` and `done: false`
+- `tasks/<story-slug>/<deliverable-slug>/tasks.json` — the task record beside it, carrying each task's `n`, `title`, `language`, `testable`, `certainty`, `blast_radius`, `patterns_to_follow`, `depends_on` and `done: false`, and `design_file` naming the third file
+- `tasks/<story-slug>/<deliverable-slug>/design.yaml` — the planned design of this deliverable: the types it adds or changes, what each one does and owns, the main names, and the words. Follow "Save the planned design" in `decompose-to-tasks`, including `design: none` with a reason for a deliverable that needs no design
+
+A type that one deliverable adds and a later one uses belongs to the planned design of the deliverable that adds it. Name the later deliverable's use of it in that deliverable's tasks, not in its planned design.
 
 `patterns_to_follow` in the task record is the references alone, as an array — `internal/events/order.go:40-70`, or `task:2` for a precedent an earlier task in the same deliverable creates. Run `clerk lint --rule certainty-unevidenced <each tasks.json>` before returning and fix what it reports: an assessment of `high` or `medium` with no precedent, or one citing a file that is not there, is a claim with nothing behind it.
 
@@ -236,7 +240,7 @@ After writing the manifest and all deliverable files, return a structured summar
 
 1. The manifest path (`tasks/<story-slug>/plan.yaml`).
 2. The deliverable count and the wave grouping (which deliverables are parallel).
-3. Per deliverable: id, one-line intent, base, certainty, blast radius, and its `tasks.md` path.
+3. Per deliverable: id, one-line intent, base, certainty, blast radius, its `tasks.md` path, and the types its planned design names, or the reason it needs none.
 4. Key codebase findings that drove the cut.
 5. The merge pass: for each adjacent pair, the one-sentence reason they are not one deliverable — so the caller can overrule a cut you kept.
 6. The deliverables you assessed `high` blast radius or `low` certainty, each with its reason, named as the ones least suited to running unattended in a parallel wave.
@@ -259,6 +263,7 @@ Before returning, verify:
 - [ ] No scheduling vocabulary ("PR N", wave numbers) in any deliverable title, task, or text that reaches a commit/PR — only in `plan.yaml` and branch names.
 - [ ] Every deliverable's Boundaries names where it stops, in behavioural terms, without naming the deliverable that picks it up.
 - [ ] Every deliverable has a `tasks.md` in `decompose-to-tasks` format, adoptable by `implement-flow` unchanged.
+- [ ] Every deliverable has a `design.yaml` that `clerk design show --planned` reads, named as `design_file` in its task record.
 - [ ] Branch names are `<story-slug>-<deliverable-slug>` with no author prefix.
 - [ ] The `story-slug` uses the ticket the caller gave, or — none given — is named the way its siblings under `tasks/` are, with the id looked for in the story's header and URLs rather than only its title.
 - [ ] All of the story's acceptance criteria are covered across the deliverables; any deferred ones are named.

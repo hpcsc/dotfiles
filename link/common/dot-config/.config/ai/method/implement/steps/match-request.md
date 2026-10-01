@@ -11,6 +11,8 @@ This costs a read, not an agent, because you are already here. Re-read the reque
 
 Quote the request's own words for anything you raise; if you cannot point at the phrase, you are inventing a requirement. Put mismatches to the user as questions and let them decide — you wrote this code, which makes you the worst-placed reader of your own interpretation of the request — and **stop there**, before recording anything. Finding nothing is the common result; say so in a line.
 
+Then write the design view for the reader of the branch, while you are still on it: `clerk design show --changes --out <a file outside the repository>`. It draws the code against the planned design, with each design change and its reason. Keep the path for the final message.
+
 Record it once the reading is done and anything it raised is settled: `clerk step done match-request`. Clerk holds no state for a mismatch, because the only party who could record one is the party it would constrain; what stops the run is you stopping.
 
 Do this **before** integrating, on the runs where you integrate at all: a mismatch found after the fast-forward is a mismatch found too late.

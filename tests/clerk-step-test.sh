@@ -91,7 +91,7 @@ eq "and only where the step's text is printed, not on every later call" "false" 
    "$(run "$R" step | jq -r 'has("usage")')"
 # Every command, not only the ones a step names: `clerk step` reads the USAGE block out of
 # each --help it needs, so a command that answers in another shape answers with nothing.
-CMDS="audit finish fixup guidelines isolate land learn lint prepare receipt run stats status step story verify watch"
+CMDS="audit design finish fixup guidelines isolate land learn lint prepare receipt run stats status step story verify watch"
 HELPED=0; MISSING=""
 for c in $CMDS; do
   if "$CLERK" $c --help 2>/dev/null | grep -q '^USAGE'; then

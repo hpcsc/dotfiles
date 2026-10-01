@@ -41,6 +41,7 @@ tasks:
       - ./tests/clerk-test.sh
       - ./tests/clerk-step-test.sh
       - ./tests/clerk-run-test.sh
+      - ./tests/clerk-design-test.sh
 
   test:statusline:
     desc: Run the status line fixture tests

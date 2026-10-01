@@ -73,6 +73,7 @@ jobs:
           yq --version
           python3 --version
           ast-grep --version
+          go version
           task --version
 
       # jq here is whatever the runner ships, which trails the version mise pins. That is

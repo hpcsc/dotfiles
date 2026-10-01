@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""clerk design — the types, fields, methods and names a change adds, drawn from its code.
+
+A run decides the design of a change one task at a time, and a reader used to meet those
+decisions only in the finished diff. This command reads them from the code and draws
+them, so the decisions are visible at a glance: the exported names and who uses them,
+the new and changed types as a class diagram, and the parameters that functions keep
+passing together.
+
+    clerk design show [--built] [--base <ref>] [--head <ref>] [--out <file>] [--json]
+
+`--base` defaults to the merge-base with the default branch, and `--head` to the working
+tree. The view is Markdown with a Mermaid diagram: read it in an editor preview or on
+GitHub, because a terminal does not draw Mermaid. With `--out` the view goes to that file
+and the reply is JSON; `--json` prints the design itself rather than the view.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import clerk_design  # noqa: E402
+from clerk_lib import die, emit, gitout, parse, repo, take_verb, usage_if_asked  # noqa: E402
+
+VERBS = ("show",)
+SHOW_SPEC = {"--built": "bool", "--base": "value", "--head": "value", "--out": "value", "--json": "bool"}
+
+
+def default_base(r):
+    if not r.default_branch:
+        die("no default branch to compare with — pass --base <ref>")
+    base = gitout("merge-base", "HEAD", r.default_branch, cwd=r.work_tree)
+    if not base:
+        die(f"no merge-base between HEAD and {r.default_branch} — pass --base <ref>")
+    return base
+
+
+def cmd_show(argv):
+    o, rest = parse(argv, SHOW_SPEC)
+    if rest:
+        die(f"unexpected argument '{rest[0]}'")
+    r = repo()
+    if not r.work_tree:
+        die("not a git repository")
+    base = o["--base"] or default_base(r)
+    head = o["--head"]
+    try:
+        design = clerk_design.built(r.work_tree, base, head, with_uses=head is None)
+    except RuntimeError as e:
+        die(str(e), 1)
+    if o["--json"]:
+        emit(design)
+    title = f"Built design: {head or r.current_branch or 'working tree'}"
+    view = clerk_design.render_built(design, title=title)
+    if o["--out"]:
+        Path(o["--out"]).write_text(view)
+        emit({"written": o["--out"], "not_checked": design.get("not_checked")})
+    sys.stdout.write(view)
+    return 0
+
+
+def main(argv):
+    usage_if_asked(argv, __doc__)
+    verb, rest = take_verb(argv, VERBS, SHOW_SPEC)
+    if verb is None:
+        die("clerk design <verb> — one of " + ", ".join(VERBS))
+    return {"show": cmd_show}[verb](rest)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except json.JSONDecodeError as e:
+        die(f"the design reader returned something that is not JSON: {e}", 1)

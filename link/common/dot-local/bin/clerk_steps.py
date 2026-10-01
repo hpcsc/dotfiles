@@ -247,14 +247,35 @@ def row_decompose(ctx):
     return row("decompose", True, tasks_file=bd["tasks_file"], task_record=breakdown_side(bd))
 
 
+def pending_design_check(ctx, tasks):
+    """The first design change whose task is done and that no design check has judged."""
+    import clerk_design
+    done = {t["n"] for t in tasks if t.get("done") is True}
+    for change in clerk_design.load_state(ctx.run.dir).get("notes") or []:
+        if change.get("check") is None and (change.get("task") is None or change["task"] in done):
+            return change
+    return None
+
+
 def row_build(ctx):
     tf, side, _ = breakdown_files(ctx)
     if tf is None or not side.exists():
         return row("build", False, why_not_done="no task record to read tasks from")
+    tasks = load_task_record(side).get("tasks") or []
     # `next_task` owns which task is ready — the dependency rule is applied, not repeated.
-    nx = next_task(load_task_record(side).get("tasks") or [])
+    nx = next_task(tasks)
     total, remaining = nx.get("total", 0), nx.get("remaining", 0)
     progress = {"done": total - remaining, "total": total, "remaining": remaining, "blocked": nx.get("blocked", 0)}
+    # Before the next task, which would build on the change.
+    change = pending_design_check(ctx, tasks)
+    if change:
+        return row("design-check", False, change=change, progress=progress,
+                   tree_dirty=not ctx.prepare.get("clean"),
+                   why_not_done=f"design change {change['id']} (`{change['name']}`) has no design check",
+                   done_by=f"commit the task if it is not committed; clerk design prompt {change['id']}; "
+                           f"spawn one agent with that prompt; fix what it finds with clerk fixup; "
+                           f"clerk design words --file <its table>; then clerk step done design-check "
+                           f"{change['id']} [--fixed]")
     if nx.get("done"):
         return row("build", True, progress=progress)
     cur = nx.get("task")

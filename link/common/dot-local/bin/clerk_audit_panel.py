@@ -18,6 +18,12 @@ from pathlib import Path
 CALLER_PATTERNS = "~/.config/ai/guidelines/testing/caller-patterns.md"
 COMMENTS_GUIDE = "~/.config/ai/guidelines/comments.md"
 NAMING_GUIDE = "~/.config/ai/guidelines/naming.md"
+OO_HEURISTICS = "~/.config/ai/guidelines/architecture/design/oo-design-heuristics.md"
+NAMING_PATTERNS = {
+    "Go": "~/.config/ai/guidelines/go/naming-patterns.md",
+    "JavaScript/TypeScript": "~/.config/ai/guidelines/javascript/naming-patterns.md",
+    "Elixir": "~/.config/ai/guidelines/elixir/naming-patterns.md",
+}
 
 DISCLOSURE = (
     "Load these with one `clerk guidelines` call rather than reading the files: it cuts each to the sections "
@@ -251,6 +257,34 @@ def _narrow(lenses, not_run, scope, lenses_override, fixed_files):
                                f"is owned by it (fixes touched {len(fixed_files)} file(s))")
         return narrowed, not_run
     return lenses, not_run
+
+
+def design_reading(lang):
+    return ", ".join([OO_HEURISTICS] + ([NAMING_PATTERNS[lang]] if lang in NAMING_PATTERNS else []))
+
+
+def design_lens(prompts, lang):
+    return fill(prompts.get("lens-design", "<!-- missing prompt fragment: lens-design -->"),
+                {"naming_guide": NAMING_GUIDE, "reading": design_reading(lang), "disclosure": DISCLOSURE})
+
+
+def design_check_prompt(prompts, change, commit, lang):
+    """The prompt for the design check of one design change: the change and its reason,
+    the commit that made it, and the design lens. One agent, one change, before the next
+    task builds on it."""
+    task = f"task {change['task']}" if change.get("task") else "the run"
+    return (f"A run recorded a design change in {task}, and committed it as {commit}. The code now "
+            f"differs from the planned design, and the run gave this reason:\n\n"
+            f"  {change['id']} `{change['name']}`: {change['reason']}\n\n"
+            f"Judge the design of that commit (`git show {commit}`) in the context of the whole change "
+            f"so far. The reason says why the run departed from the plan; it does not make the result "
+            f"right. Nothing here is executed, and you must not change the tree.\n\n"
+            + design_lens(prompts, lang) + "\n\n"
+            "Return two things. First, your findings: for each, the file and line, the claim in one "
+            "sentence, and what it costs. Return none rather than a weak one. Second, a Markdown table "
+            "with the columns `| Concept | Words in this change | Finding |`, with one row for each "
+            "concept that has two words in the change, or each word that names two concepts. Return "
+            "only those rows; when there are none, say so in one line.")
 
 
 def scope_prompt(prompts, *, target="branch", base_ref=None, prior_scope=None):

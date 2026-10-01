@@ -127,6 +127,19 @@ def done_pause(ctx, argv):
     return {"done": "pause", "n": int(rest[0])}
 
 
+def done_design_check(ctx, argv):
+    o, rest = parse(argv, {"--fixed": "bool"})
+    if len(rest) != 1:
+        die("clerk step done design-check <id> [--fixed]")
+    state = clerk_design.load_state(ctx.run.dir)
+    change = next((n for n in state.get("notes") or [] if n["id"] == rest[0]), None)
+    if change is None:
+        die(f"no design change {rest[0]} in this run", 1)
+    change["check"] = {"at": now(), "fixed": bool(o["--fixed"]), "code_tree": ctx.head_ct}
+    clerk_design.save_state(ctx.run.dir, state)
+    return {"done": "design-check", "id": rest[0], "fixed": bool(o["--fixed"])}
+
+
 def done_match_request(ctx, argv):
     ctx.run.put(match_request={"code_tree": ctx.head_ct, "at": now()})
     return {"done": "match-request"}
@@ -144,7 +157,8 @@ def done_learn(ctx, argv):
 
 
 # The steps whose completion is a judgment: recorded with `--done`, never derived.
-DONE = {"ground": done_ground, "decompose": done_decompose, "pause": done_pause, "match-request": done_match_request,
+DONE = {"ground": done_ground, "decompose": done_decompose, "pause": done_pause,
+        "design-check": done_design_check, "match-request": done_match_request,
         "verify-run": done_verify_run, "learn": done_learn}
 
 

@@ -12,6 +12,7 @@ passing together.
     clerk design show --changes [--out <file>]
     clerk design note <name> "<reason>" [--affects <n>[,<n>...]]
     clerk design words --file <file>
+    clerk design prompt <id>
 
 `--base` defaults to the commit the open run started from, else to the merge-base with
 the default branch, and `--head` to the working tree. The view is Markdown with Mermaid
@@ -22,7 +23,8 @@ the design itself rather than the view.
 `--planned` draws a planned design, the run's own when no file is named. `--changes`
 draws the code against the planned design the run bound, with each design change and
 its reason. `note` records why the code differs from the planned design; `words` keeps
-the table of words the design check wrote, for the view.
+the table of words the design check wrote, for the view. `prompt` prints the prompt for
+the design check of one design change.
 """
 
 import json
@@ -35,7 +37,7 @@ from clerk_lib import die, emit, gitout, parse, repo, take_verb, usage_if_asked 
 from clerk_repo import breakdown_side, now, run_section  # noqa: E402
 from clerk_tasks import load_task_record, next_task  # noqa: E402
 
-VERBS = ("show", "note", "words")
+VERBS = ("show", "note", "words", "prompt")
 SHOW_SPEC = {"--built": "bool", "--planned": "bool", "--changes": "bool", "--base": "value",
              "--head": "value", "--out": "value", "--json": "bool"}
 NOTE_SPEC = {"--affects": "value"}
@@ -177,6 +179,28 @@ def cmd_words(argv):
     return {"recorded": "words", "lines": len(text.strip().splitlines())}
 
 
+def cmd_prompt(argv):
+    _, rest = parse(argv, {})
+    if len(rest) != 1:
+        die("clerk design prompt <id>")
+    r = repo()
+    ld = run_dir(r)
+    if not ld:
+        die("no run is open on this branch")
+    change = next((n for n in clerk_design.load_state(ld).get("notes") or [] if n["id"] == rest[0]), None)
+    if change is None:
+        die(f"no design change {rest[0]} in this run", 1)
+    import clerk_audit_panel as panel
+    from clerk_repo import detect_languages
+    prompts = panel.load_prompts()
+    if "lens-design" not in prompts:
+        die(f"no lens-design prompt under {panel.prompts_dir()} — set CLERK_AUDIT_PROMPTS or CLERK_METHOD_DIR", 1)
+    langs = [panel.canonical_lang(l) for l in detect_languages(r.work_tree)]
+    lang = next((l for l in langs if l in panel.NAMING_PATTERNS), "Generic")
+    sys.stdout.write(panel.design_check_prompt(prompts, change, r.head_sha, lang) + "\n")
+    sys.exit(0)
+
+
 def main(argv):
     usage_if_asked(argv, __doc__)
     verb, rest = take_verb(argv, VERBS, {**SHOW_SPEC, **NOTE_SPEC, **WORDS_SPEC})
@@ -184,6 +208,8 @@ def main(argv):
         die("clerk design <verb> — one of " + ", ".join(VERBS))
     if verb == "show":
         return cmd_show(rest)
+    if verb == "prompt":
+        return cmd_prompt(rest)
     emit({"note": cmd_note, "words": cmd_words}[verb](rest))
 
 

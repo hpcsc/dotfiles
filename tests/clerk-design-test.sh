@@ -11,6 +11,8 @@ CLERK="$BIN/clerk"
 export PATH="$BIN:$PATH"
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 export CLERK_HARNESS=claude
+# The method text and the lens prompts come from this checkout, not from the stowed copy.
+export CLERK_METHOD_DIR="$BIN/../../dot-config/.config/ai/method/implement"
 # A cache of its own, so the reader is built here as it is on a first run.
 CACHE=$(mktemp -d)
 export XDG_CACHE_HOME="$CACHE"
@@ -390,6 +392,47 @@ printf 'package billing\n\ntype Extra struct{}\n' > "$R2/billing/extra.go"
 eq "and its tasks finish without a design judgment" "true|no planned design is bound to the run" \
    "$(run "$R2" finish 1 -- billing/extra.go | jq -r '[(.done|tostring), .design] | join("|")')"
 rm -rf "$R2"
+
+# --------------------------------------------------------------------------------
+printf '\ndesign check — a design change is judged before the next task builds on it\n'
+
+R=$(new_repo)
+planned_run "$R"
+run "$R" step done ground --caller inbound >/dev/null
+run "$R" step done decompose --tasks-file tasks/refunds.md >/dev/null
+eq "with no design change, the run builds the first task" "build|1" "$(run "$R" step | jq -r '[.step, (.n|tostring)] | join("|")')"
+cat > "$R/billing/refund.go" <<'EOF2'
+package billing
+
+type Refund struct {
+	PaymentID string
+	Amount    int
+}
+
+type Ledger struct{}
+
+func (r Refund) Issue() error { return nil }
+EOF2
+run "$R" design note Ledger "the batch totals need one owner" >/dev/null
+F=$(run "$R" finish 1 -- billing/refund.go)
+eq "the task that made a design change hands over to its design check" "design-check|D1" \
+   "$(printf '%s' "$F" | jq -r '[.after_commit.step, .after_commit.change.id] | join("|")')"
+commit_all "$R" "Task 1"
+S=$(run "$R" step --full)
+eq "and the step stays there after the commit" "design-check" "$(printf '%s' "$S" | jq -r .step)"
+has "with the method text for the step" "## Check a design change" "$(printf '%s' "$S" | jq -r .instructions)"
+P=$(run "$R" design prompt D1)
+has "the prompt holds the change and its reason" 'D1 `Ledger`: the batch totals need one owner' "$P"
+has "and the commit to read" "$(git -C "$R" rev-parse HEAD)" "$P"
+has "and the design lens" "Your lens is DESIGN" "$P"
+has "with the language's naming patterns to read" "go/naming-patterns.md" "$P"
+eq "an unknown design change has no prompt" "1" "$(run "$R" design prompt D9 >/dev/null 2>&1; printf '%s' $?)"
+D=$(run "$R" step done design-check D1 --fixed)
+eq "closing the check moves the run to the next task" "build|2" "$(printf '%s' "$D" | jq -r '[.next.step, (.next.n|tostring)] | join("|")')"
+eq "and the ledger records that the check changed code" "true" "$(jq -r '.notes[0].check.fixed|tostring' "$R/.git/clerk/runs/refunds/design.json")"
+has "the changes view says the check is done" "| D1 | 1 | \`Ledger\` | the batch totals need one owner | fixed |" \
+   "$(run "$R" design show --changes)"
+eq "an unknown design change cannot be closed" "1" "$(run "$R" step done design-check D9 >/dev/null 2>&1; printf '%s' $?)"
 
 # --------------------------------------------------------------------------------
 rm -rf "$R" "$CACHE" 2>/dev/null

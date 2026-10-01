@@ -36,6 +36,15 @@ jobs:
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/0.12.5/install.sh | sh
 
+      # clerk reads the design of Go code with a small Go program that it builds on first
+      # use. The macOS runner has no Go on PATH. The version matches what mise pins for a
+      # working machine, and there is no go.sum for setup-go to cache against.
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.6"
+          cache: false
+
       # `clerk story` shells out to yq to turn a deliverable plan into JSON. Both versions
       # here match what mise pins for a working machine.
       - name: Install yq

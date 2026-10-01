@@ -138,16 +138,92 @@ def remit_for(scope, lang):
     return owned or None
 
 
-def _is_fixed(path, fixed):
+def _listed(path, paths):
     """Paths arrive from `clerk fixup mark` repo-relative and from the scope pass however it
     resolved them. Compare by suffix so one form does not silently match nothing."""
-    return any(path == p or path.endswith("/" + p) or p.endswith("/" + path) for p in fixed)
+    return any(path == p or path.endswith("/" + p) or p.endswith("/" + path) for p in paths)
+
+
+MAX_PRECEDENT_LINES = 2000
+TASK_ENTRY = re.compile(r"task:\d+")
+LINE_RANGE = re.compile(r":(\d+)(?:-(\d+))?$")
+
+
+def parse_precedent(text):
+    text = str(text or "").strip()
+    if TASK_ENTRY.fullmatch(text):
+        return None
+    m = LINE_RANGE.search(text)
+    path = (text[:m.start()] if m else text).removeprefix("./")
+    if not path:
+        return None
+    if not m:
+        return path, None
+    start = int(m.group(1))
+    return path, sorted([start, int(m.group(2) or start)])
+
+
+def group_precedents(entries):
+    by_path = {}
+    for text, task in entries:
+        parsed = parse_precedent(text)
+        if parsed is None:
+            continue
+        path, lines = parsed
+        ranges = by_path.setdefault(path, [])
+        named = next((r for r in ranges if r["lines"] == lines), None)
+        if named is None:
+            named = {"lines": lines, "tasks": []}
+            ranges.append(named)
+        if task is not None and task not in named["tasks"]:
+            named["tasks"].append(task)
+    return [{"path": path, "ranges": sorted(ranges, key=lambda r: r["lines"] or [0])}
+            for path, ranges in by_path.items()]
+
+
+def named_line_count(ranges, total):
+    if any(r["lines"] is None for r in ranges):
+        return total
+    return len({n for r in ranges for n in range(r["lines"][0], min(r["lines"][1], total) + 1)})
+
+
+def select_precedents(precedents, lines_at_base):
+    kept, held_back, left = [], [], MAX_PRECEDENT_LINES
+    for p in precedents:
+        total = lines_at_base(p["path"])
+        if total is None:
+            held_back.append(f"precedent {p['path']} — not in the repository at the base of the diff, "
+                             f"so no lens was given it")
+            continue
+        size = named_line_count(p["ranges"], total)
+        if size > left:
+            held_back.append(f"precedent {p['path']} — it names {size} lines, more than the {left} left of "
+                             f"the {MAX_PRECEDENT_LINES} that all precedents share, so no lens was given it")
+            continue
+        left -= size
+        kept.append(p)
+    return kept, held_back
+
+
+def _range_text(r):
+    lines, tasks = r["lines"], r["tasks"]
+    if lines is None:
+        where = "the whole file"
+    elif lines[0] == lines[1]:
+        where = f"line {lines[0]}"
+    else:
+        where = f"lines {lines[0]}-{lines[1]}"
+    if not tasks:
+        return where
+    return f"{where} ({'task' if len(tasks) == 1 else 'tasks'} {', '.join(str(t) for t in tasks)})"
 
 
 def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
-                request="", brief="", recheck=(), test_commands=None):
+                request="", brief="", recheck=(), test_commands=None, precedents=(), breakdown=None):
     """(lenses, not_run) for this diff. `lenses` are dicts the caller spawns verbatim."""
-    ctxb = _PromptCtx(scope, prompts, request, brief, recheck, test_commands or {})
+    ctxb = _PromptCtx(scope, prompts, request, brief, recheck, test_commands or {},
+                      precedents=precedents, breakdown=breakdown)
+    precedent_paths = [p["path"] for p in precedents or []]
     languages = [canonical_lang(l) for l in (scope.get("languages") or ["Generic"])]
     primary = languages[0] if languages else "Generic"
     signals = scope.get("signals") or {}
@@ -165,7 +241,7 @@ def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
                 f"({', '.join(remit)}), too few to earn a panel of its own; read them yourself")
             continue
         lenses.append({"key": f"semantic:{lang}", "agent": cfg["semantic"],
-                       "prompt": ctxb.semantic(lang, remit)})
+                       "prompt": ctxb.semantic(lang, remit), "precedents": precedent_paths})
         if cfg["guidelines"]:
             lenses.append({"key": f"guidelines:{lang}", "agent": cfg["guidelines"],
                            "prompt": ctxb.guidelines(lang, remit)})
@@ -175,19 +251,19 @@ def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
         owns_test = remit is None or any(TEST_FILE_RE.search(f) for f in remit)
         if signals.get("tests_changed") and owns_test:
             lenses.append({"key": f"tests:{lang}", "agent": cfg["tests"],
-                           "prompt": ctxb.tests(lang, remit)})
+                           "prompt": ctxb.tests(lang, remit), "precedents": precedent_paths})
         elif signals.get("tests_changed"):
             not_run.append(f"test integrity ({lang}) — tests changed in this diff, "
                            f"but none of them is written in {lang}")
 
     if signals.get("concurrency"):
         lenses.append({"key": "concurrency", "agent": LANG[primary]["concurrency"],
-                       "prompt": ctxb.specialist("concurrency")})
+                       "prompt": ctxb.specialist("concurrency"), "precedents": precedent_paths})
     else:
         not_run.append("concurrency — the diff does not add or change concurrent code")
     if signals.get("performance"):
         lenses.append({"key": "performance", "agent": LANG[primary]["performance"],
-                       "prompt": ctxb.specialist("performance")})
+                       "prompt": ctxb.specialist("performance"), "precedents": precedent_paths})
     else:
         not_run.append("performance — the diff has no I/O, query, unbounded loop or "
                        "hot-path allocation to measure")
@@ -242,7 +318,7 @@ def _narrow(lenses, not_run, scope, lenses_override, fixed_files):
     # findings, every one landed in a file some fix had touched.
     def lang_touched(lang):
         remit = remit_for(scope, lang)
-        return remit is None or any(_is_fixed(f, fixed_files) for f in remit)
+        return remit is None or any(_listed(f, fixed_files) for f in remit)
 
     def keep(l):
         m = re.match(r"^(?:semantic|guidelines|tests):(.+)$", l["key"])
@@ -463,10 +539,11 @@ class _PromptCtx:
     """Assembles every prompt from the shared fragments. One instance per phase call, so
     the intent, recheck and mechanical blocks are built once and reused across lenses."""
 
-    def __init__(self, scope, prompts, request, brief, recheck, test_commands):
+    def __init__(self, scope, prompts, request, brief, recheck, test_commands, precedents=(), breakdown=None):
         self.scope, self.P = scope, prompts
         self.request, self.brief, self.recheck = request, brief, list(recheck or [])
         self.test_commands = test_commands
+        self.precedents, self.breakdown = list(precedents or []), breakdown
 
     def _p(self, key):
         return self.P.get(key, f"<!-- missing prompt fragment: {key} -->")
@@ -559,14 +636,28 @@ class _PromptCtx:
                 + self.file_block(remit, label)
                 + self._p("review-rules") + "\n\n")
 
+    def precedent_block(self):
+        if not self.precedents:
+            return ""
+        base, files = self.scope.get("base"), self.scope.get("files") or []
+        rows = []
+        for p in self.precedents:
+            row = f"  {p['path']}: " + ", ".join(_range_text(r) for r in p["ranges"])
+            if _listed(p["path"], files):
+                row += f" — the diff changes this file, so read it at the base: `git show {base}:{p['path']}`"
+            rows.append(row)
+        where = (f"The breakdown is {self.breakdown}. Its task sections say what each task follows, and why.\n"
+                 if self.breakdown else "")
+        return self._p("precedents") + "\n\n" + where + "\n".join(rows) + "\n\n"
+
     def contract(self):
         return "\n\n" + self._p("finding-contract")
 
     def semantic(self, lang, remit):
-        return self.preamble(remit) + self._p("lens-semantic") + self.contract()
+        return self.preamble(remit) + self.precedent_block() + self._p("lens-semantic") + self.contract()
 
     def tests(self, lang, remit):
-        return (self.preamble(remit)
+        return (self.preamble(remit) + self.precedent_block()
                 + fill(self._p("lens-tests"),
                        {"reading": ", ".join(LANG[lang]["reading"]), "disclosure": DISCLOSURE})
                 + self.contract())
@@ -587,7 +678,7 @@ class _PromptCtx:
 
     def specialist(self, kind):
         key = "lens-concurrency" if kind == "concurrency" else "lens-performance"
-        return self.preamble(None) + self._p(key) + self.contract()
+        return self.preamble(None) + self.precedent_block() + self._p(key) + self.contract()
 
     def dedupe(self, findings):
         rows = "\n".join(

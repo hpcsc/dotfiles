@@ -16,6 +16,7 @@ import json
 import os
 import re
 import signal
+import subprocess
 import sys
 import tempfile
 import threading
@@ -29,7 +30,7 @@ from clerk_ledger import (Run, age_seconds, build_ctx, live_of, note_runner_dead
                           receipt_state, runner_alive, runner_view)
 from clerk_render import Out  # noqa: E402
 from clerk_stats import finding_rows, span, unwrap_report  # noqa: E402
-from clerk_steps import next_step  # noqa: E402
+from clerk_steps import breakdown_files, next_step  # noqa: E402
 
 
 # --------------------------------------------------------------------------------
@@ -300,6 +301,34 @@ def declined_match(finding, declined):
     return None
 
 
+def option_precedents(given):
+    bad = [text for text in given if panel.parse_precedent(text) is None]
+    if bad:
+        die(f"--precedent takes a file and an optional line range — <path>, <path>:<line> or "
+            f"<path>:<start>-<end> — and not: {', '.join(bad)}")
+    return [(text, None) for text in given]
+
+
+def record_precedents(record):
+    if not record:
+        return []
+    try:
+        tasks = json.loads(Path(record).read_text()).get("tasks") or []
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return []
+    return [(text, t.get("n")) for t in tasks if isinstance(t, dict)
+            and isinstance(t.get("patterns_to_follow"), list) for text in t["patterns_to_follow"]]
+
+
+def precedents_at_base(precedents, scope, cwd):
+    def lines_at_base(path):
+        # bytes, not text: a precedent that is not UTF-8 fails to decode and stops the round.
+        r = subprocess.run(["git", "cat-file", "-p", f"{scope.get('base')}:{path}"],
+                           cwd=cwd, capture_output=True)
+        return r.stdout.count(b"\n") if r.returncode == 0 else None
+    return panel.select_precedents(precedents, lines_at_base)
+
+
 def audit_begin(ctx, aud, o):
     if live_of(aud) and not o["--restart"]:
         lv = aud["live"]
@@ -307,6 +336,7 @@ def audit_begin(ctx, aud, o):
               "reason": "a round is already in flight here — continue it with `clerk audit next`, "
                         "or start it over with --restart"}, 3)
     recheck = parse_recheck(o["--recheck"])
+    from_options = option_precedents(o["--precedent"] or [])
     if o["--rounds"]:
         if not o["--rounds"].isdigit():
             die("--rounds needs a number")
@@ -322,6 +352,7 @@ def audit_begin(ctx, aud, o):
                             f"the fixes by hand, run the suite, and `clerk audit accept --early \"<why>\"`. "
                             f"To run one anyway, say why with --another \"<why>\"; the reason is recorded.",
                   "findings": last["findings_list"]}, 3)
+    tasks_file, record, _ = breakdown_files(ctx)
     args = {
         "target": o["--target"] or "branch",
         "base_ref": o["--base"],
@@ -334,6 +365,8 @@ def audit_begin(ctx, aud, o):
         "another": o["--another"] or None,
         "test_commands": json.loads(o["--test-commands"]) if o["--test-commands"] else
                          (ctx.prepare.get("test_commands") or {}),
+        "breakdown": str(tasks_file) if tasks_file else None,
+        "precedents": panel.group_precedents(from_options + record_precedents(record)),
     }
     prior = None
     if aud.get("rounds"):
@@ -378,11 +411,14 @@ def job_tools(test_commands, isolation="none"):
     return tools
 
 
-def _spawn(job_id, prompt, schema, agent=None, isolation="none", tools=None, finding_ids=None):
+def _spawn(job_id, prompt, schema, agent=None, isolation="none", tools=None, finding_ids=None,
+           precedents=None):
     job = {"id": job_id, "prompt": prompt, "schema_name": schema,
            "agent": agent, "isolation": isolation, "allowed_tools": tools or []}
     if finding_ids:
         job["finding_ids"] = finding_ids
+    if precedents:
+        job["precedents"] = precedents
     return job
 
 
@@ -421,16 +457,18 @@ def audit_next(ctx, aud, o):
 
     if phase == "review":
         add_design_signal(lv["scope"], ctx.cwd)
+        precedents, held_back = precedents_at_base(a.get("precedents") or [], lv["scope"], ctx.cwd)
         lenses, not_run = panel.build_panel(
             lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],
             request=a["request"], brief=a["brief"], recheck=a["recheck"],
-            test_commands=a["test_commands"])
-        lv["not_run"] = not_run
+            test_commands=a["test_commands"], precedents=precedents, breakdown=a.get("breakdown"))
+        lv["not_run"], lv["precedents"] = not_run + held_back, precedents
         ctx.run.write("audit.json", aud)
         return {"phase": "review", "round": lv["round"], "concurrent": True,
-                "spawn": [_spawn(f"review:{l['key']}", l["prompt"], "REVIEW_SCHEMA", l["agent"], tools=tools)
+                "spawn": [_spawn(f"review:{l['key']}", l["prompt"], "REVIEW_SCHEMA", l["agent"], tools=tools,
+                                 precedents=l.get("precedents"))
                           for l in lenses],
-                "held_back": not_run,
+                "held_back": lv["not_run"],
                 "record_with": "clerk audit record --phase review --results <file>"}
 
     if phase == "dedupe":
@@ -814,11 +852,14 @@ def audit_run(ctx, aud, o):
             trace.append({"phase": nxt["phase"], "jobs": [
                 {"id": j["id"], "agent": j.get("agent"), "isolation": j.get("isolation"),
                  "schema": j.get("schema_name"), "prompt_chars": len(j["prompt"]),
-                 "allowed_tools": j.get("allowed_tools") or []} for j in jobs],
+                 "allowed_tools": j.get("allowed_tools") or [],
+                 "precedents": j.get("precedents") or []} for j in jobs],
                 "held_back": nxt.get("held_back") or []})
+            lv = live_of(aud)
             # Nothing came back, so nothing can advance; a dry run reports the first phase
             # and stops rather than inventing results for the ones after it.
             out.final({"dry_run": True, "phase": nxt["phase"], "plan": trace,
+                       "precedents": lv.get("precedents", lv["args"].get("precedents") or []),
                        "note": "no agent was spawned; record a phase to advance"})
         kept = runner.reusable(nxt["phase"], jobs)
         out.step(_phase_line(nxt, jobs, kept))
@@ -1155,7 +1196,7 @@ AUDIT = {"round": audit_round, "accept": audit_accept,
 def main_audit(argv):
     """As main_step: every branch ends in emit()."""
     if not argv or argv[0] in ("-h", "--help"):
-        print("USAGE\n  clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n      [--fixed-file <p>]... [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n      [--model <m>] [--dry-run] [--quiet | --raw] [--no-detach]\n  clerk audit wait      wait for the round a runner is driving; end on its summary\n  clerk audit stop      end that round; `run` resumes it\n  clerk audit round --report <json|-> [--replan <n>]\n  clerk audit accept [--early <why>] | status\n\n`run` drives the round in a process of its own and relays it, so stopping the command\nstops the wait, not the round. --no-detach drives it in this process instead.")
+        print("USAGE\n  clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n      [--fixed-file <p>]... [--precedent <path[:start-end]>]...\n      [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n      [--model <m>] [--dry-run] [--quiet | --raw] [--no-detach]\n  clerk audit wait      wait for the round a runner is driving; end on its summary\n  clerk audit stop      end that round; `run` resumes it\n  clerk audit round --report <json|-> [--replan <n>]\n  clerk audit accept [--early <why>] | status\n\n`run` drives the round in a process of its own and relays it, so stopping the command\nstops the wait, not the round. --no-detach drives it in this process instead.")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
     handler = AUDIT.get(verb)
@@ -1166,7 +1207,7 @@ def main_audit(argv):
                     "--results": "value", "--target": "value", "--base": "value",
                     "--brief": "value", "--request": "value", "--depth": "value",
                     "--recheck": "value", "--test-commands": "value", "--another": "value",
-                    "--fixed-file": "list", "--lens": "list", "--restart": "bool",
+                    "--fixed-file": "list", "--precedent": "list", "--lens": "list", "--restart": "bool",
                     "--dry-run": "bool", "--model": "value",
                     "--quiet": "bool", "--raw": "bool", "--no-detach": "bool",
                     "--harness-cmd": "value"})

@@ -751,7 +751,7 @@ git -C "$RA" switch -qc story 2>/dev/null
 PR=$(cd "$(mktemp -d)" && pwd -P); mkdir -p "$PR/audit-implement/prompts"
 for f in scope-open scope-rules review-open review-rules finding-contract lens-semantic \
          lens-guidelines lens-tests lens-concurrency lens-performance lens-deliverables \
-         dedupe-open \
+         precedents dedupe-open \
          dedupe-rules dedupe-output refute-open refute-file-rule refute-runtime \
          refute-quality report-open report-rules report-tail regrade mechanical \
          mechanical-tail; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
@@ -1101,6 +1101,95 @@ eq "a claim the reader refuted is gone from the report" "0" \
 eq "a claim it returned no verdict for is kept, as not executed" "plausible|true" \
    "$(printf '%s' "$RB" | jq -r '[.report.findings[] | select(.id=="q3")][0] | [.confidence, (.evidence|startswith("NOT EXECUTED")|tostring)] | join("|")')"
 rm -rf "$FAKE3"
+
+# --------------------------------------------------------------------------------
+printf '\naudit precedents — the lenses that judge behaviour get the code the work follows\n'
+
+RP=$(new_repo)
+mkdir -p "$RP/lib"
+seq 1 300 > "$RP/lib/fold.go"; seq 1 2500 > "$RP/lib/huge.go"; seq 1 20 > "$RP/lib/small.go"
+seed "$RP" story '{"patterns_to_follow": ["lib/huge.go", "lib/fold.go:10-40"]}' \
+  '{"patterns_to_follow": ["lib/fold.go:10-40", "./lib/fold.go:100-120", "task:1", "lib/gone.go:1-5", "lib/small.go"]}'
+commit_all "$RP" "Plan"
+run "$RP" step start story --request "a story" >/dev/null 2>&1
+git -C "$RP" switch -qc story
+run "$RP" step done decompose --tasks-file tasks/story.md >/dev/null 2>&1
+printf 'more\n' >> "$RP/lib/small.go"
+printf 'package lib\n' > "$RP/lib/new.go"; printf 'package lib\n' > "$RP/lib/new_test.go"
+commit_all "$RP" "Work"
+SCOPE_P=$(mktemp)
+jq -n --arg b "$(git -C "$RP" rev-parse main)" --arg h "$(git -C "$RP" rev-parse HEAD)" \
+  '{base: $b, head: $h, summary: "s", files: ["lib/new.go", "lib/new_test.go", "lib/small.go"], languages: ["Go"],
+    by_language: [{language: "Go", files: ["lib/new.go", "lib/new_test.go", "lib/small.go"]}],
+    signals: {tests_changed: true, concurrency: true, performance: false, design: true}}' >| "$SCOPE_P"
+lens_prompt() {  # <reply> <job id>
+  printf '%s' "$1" | jq -r --arg id "$2" '.next.spawn[] | select(.id == $id) | .prompt'
+}
+holds() {  # <text> <line>
+  if printf '%s' "$1" | grep -qF -- "$2"; then printf true; else printf false; fi
+}
+
+run "$RP" audit begin --base main >/dev/null 2>&1
+eq "begin reads the precedents of the bound breakdown, one for each file, and leaves out task:N" \
+   "lib/huge.go,lib/fold.go,lib/gone.go,lib/small.go" \
+   "$(run "$RP" audit status | jq -r '[.live.args.precedents[].path] | join(",")')"
+eq "a range that two tasks name is one range with both tasks" "10-40:1,2|100-120:2" \
+   "$(run "$RP" audit status | jq -r '[.live.args.precedents[] | select(.path == "lib/fold.go") | .ranges[]
+      | "\(.lines | map(tostring) | join("-")):\(.tasks | map(tostring) | join(","))"] | join("|")')"
+eq "a dry run before the scope phase shows the precedents that the round names" \
+   "lib/huge.go,lib/fold.go,lib/gone.go,lib/small.go" \
+   "$(run "$RP" audit run --dry-run | jq -r '[.precedents[].path] | join(",")')"
+
+N=$(run "$RP" audit record --phase scope --results "$SCOPE_P")
+P=$(lens_prompt "$N" review:semantic:Go)
+eq "the lenses that judge behaviour get the precedents, and the lenses of names and structure do not" \
+   "review:semantic:Go,review:tests:Go,review:concurrency" \
+   "$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.prompt | contains("FRAGMENT precedents")) | .id] | join(",")')"
+eq "each precedent is a file with its lines and the tasks that name them" "true" \
+   "$(holds "$P" '  lib/fold.go: lines 10-40 (tasks 1, 2), lines 100-120 (task 2)')"
+eq "the prompt names the breakdown, which can explain a difference" "true" \
+   "$(holds "$P" "The breakdown is $RP/tasks/story.md.")"
+eq "a precedent that the diff changes is read at the base" "true" \
+   "$(holds "$P" "  lib/small.go: the whole file (task 2) — the diff changes this file, so read it at the base: \`git show $(git -C "$RP" rev-parse main):lib/small.go\`")"
+eq "a precedent that is not at the base is held back, and the round says so" "1|false" \
+   "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(startswith("precedent lib/gone.go — not in the repository at the base"))] | length')|$(holds "$P" 'lib/gone.go')"
+eq "a precedent past the line limit is held back, and a later one that fits is still given" "1|true" \
+   "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(startswith("precedent lib/huge.go — it names 2500 lines"))] | length')|$(holds "$P" '  lib/small.go:')"
+eq "a dry run after the scope phase shows which precedents each lens prompt carries" \
+   "semantic:Go=lib/fold.go,lib/small.go|guidelines:Go=" \
+   "$(run "$RP" audit run --dry-run | jq -r '[.plan[0].jobs[] | select(.id == "review:semantic:Go" or .id == "review:guidelines:Go")
+      | "\(.id | sub("^review:"; ""))=\(.precedents | join(","))"] | join("|")')"
+
+REV_P=$(mktemp)
+printf '[{"lens":"semantic:Go","verdict":"fail","findings":[{"id":"p1","severity":"high","nature":"runtime","file":"lib/new.go","claim":"lib/new.go leaves out what lib/fold.go:10-40 adds"}]}]' >| "$REV_P"
+eq "a refuter reads the precedent that the claim names, and gets no list of precedents" "refute|false" \
+   "$(run "$RP" audit record --phase review --results "$REV_P" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("FRAGMENT precedents") | tostring)] | join("|")')"
+
+run "$RP" audit begin --base main --restart --fixed-file lib/new.go >/dev/null 2>&1
+eq "a fix-scoped re-audit reads the breakdown again and keeps the precedents" "true" \
+   "$(holds "$(lens_prompt "$(run "$RP" audit record --phase scope --results "$SCOPE_P")" review:semantic:Go)" '  lib/fold.go: lines 10-40')"
+
+run "$RP" audit begin --base main --restart --precedent lib/fold.go:200-210 >/dev/null 2>&1
+eq "a --precedent comes first, and a file that the breakdown also names keeps both sets of lines" \
+   "lib/fold.go,lib/huge.go|200-210:" \
+   "$(run "$RP" audit status | jq -r '[.live.args.precedents[].path][0:2] | join(",")')|$(run "$RP" audit status | jq -r '.live.args.precedents[0].ranges[-1] | "\(.lines | map(tostring) | join("-")):\(.tasks | join(","))"')"
+eq "--precedent refuses a task:N entry, which names no file" "2" \
+   "$(rc "$RP" audit begin --base main --restart --precedent task:1)"
+
+RQ=$(new_repo)
+mkdir -p "$RQ/lib"; seq 1 50 > "$RQ/lib/x.go"; commit_all "$RQ" "Add x"
+git -C "$RQ" switch -qc work
+printf 'package lib\n' > "$RQ/lib/y.go"; commit_all "$RQ" "Add y"
+SCOPE_Q=$(mktemp)
+jq -n --arg b "$(git -C "$RQ" rev-parse main)" --arg h "$(git -C "$RQ" rev-parse HEAD)" \
+  '{base: $b, head: $h, summary: "s", files: ["lib/y.go"], languages: ["Go"],
+    by_language: [{language: "Go", files: ["lib/y.go"]}],
+    signals: {tests_changed: false, concurrency: false, performance: false, design: false}}' >| "$SCOPE_Q"
+run "$RQ" audit begin --base main --precedent lib/x.go:3-7 --precedent lib/x.go:9 >/dev/null 2>&1
+P=$(lens_prompt "$(run "$RQ" audit record --phase scope --results "$SCOPE_Q")" review:semantic:Go)
+eq "a branch with no breakdown gets the files given with --precedent, and names no breakdown" "true|false" \
+   "$(holds "$P" '  lib/x.go: lines 3-7, line 9')|$(holds "$P" 'The breakdown is')"
+rm -f "$SCOPE_P" "$REV_P" "$SCOPE_Q"
 
 # --------------------------------------------------------------------------------
 printf '\nthe audit as it happens — a round is watchable, not a wait with a number\n'

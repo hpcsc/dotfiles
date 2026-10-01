@@ -470,6 +470,31 @@ eq "a change with no Go type or function has none, and says so" "false|the chang
    "$(signal "$R" main docs | jq -r '[(.[0]|tostring), .[1]] | join("|")')"
 
 # --------------------------------------------------------------------------------
+printf '\nstack — a deliverable'"'"'s pull request carries its design\n'
+
+R=$(new_repo)
+feature "$R"
+commit_all "$R" "Add refunds"
+TF=$(mktemp)
+printf '# refunds\n\n## Story Reference\nRefund a payment.\n\n## Boundaries\nNo chargebacks.\n\n## Tasks\n' > "$TF"
+mkdir -p "$R/.git/clerk/runs/refunds"
+jq -n '{notes: [{id: "D1", task: 1, name: "Ledger", reason: "the batch totals need one owner", check: {fixed: false}}]}' \
+  > "$R/.git/clerk/runs/refunds/design.json"
+describe() { (cd "$BIN" && python3 -c '
+import sys, clerk_stack as s
+print(s.pr_description({"tasks_file": sys.argv[1], "base": sys.argv[2], "branch": sys.argv[3]}, sys.argv[4]))' "$@"); }
+D=$(describe "$TF" main refunds "$R")
+has "the description keeps the breakdown's story reference" "Refund a payment." "$D"
+has "and adds the design under its own heading" "## Design" "$D"
+has "with the diagram of the deliverable's own types" 'class billing__Refund["billing.Refund"]' "$D"
+has "and the design changes its run recorded" "| D1 | 1 | \`Ledger\` | the batch totals need one owner | clean |" "$D"
+git -C "$R" checkout -q -b docs main
+printf 'more\n' >> "$R/README.md"
+commit_all "$R" "Docs"
+hasnt "a deliverable with no Go type or function has no design section" "## Design" "$(describe "$TF" main docs "$R")"
+rm -f "$TF"
+
+# --------------------------------------------------------------------------------
 rm -rf "$R" "$CACHE" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -113,6 +113,32 @@ def pr_body(tasks_file):
     return "\n\n".join(parts) or None
 
 
+def design_section(repo_root, base, branch):
+    """The design of the deliverable's own commits, with the design changes its run
+    recorded, so a reviewer sees the types and names before the diff. None when the
+    deliverable changes no Go type or function, or the design could not be read."""
+    import clerk_design
+    from clerk_lib import gitout
+    start = gitout("merge-base", base, branch, cwd=repo_root)
+    if not start:
+        return None
+    try:
+        design = clerk_design.built(repo_root, start, branch)
+    except RuntimeError:
+        return None
+    if design.get("not_checked") or not design["packages"]:
+        return None
+    common = gitout("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=repo_root)
+    notes = clerk_design.load_state(Path(common) / "clerk" / "runs" / branch).get("notes") if common else None
+    sections = [("Design changes", clerk_design.changes_table(notes))] if notes else []
+    return clerk_design.render_built(design, title="Design", sections=sections, level=2)
+
+
+def pr_description(row, repo_root):
+    parts = [p for p in (pr_body(row["tasks_file"]), design_section(repo_root, row["base"], row["branch"])) if p]
+    return "\n\n".join(parts)
+
+
 def has_origin(repo_root):
     return run("git", "-C", repo_root, "remote", "get-url", "origin")[0] == 0
 
@@ -194,7 +220,7 @@ def apply(rows, repo_root):
                 print(f"  push failed for {r['branch']}: {err}", file=sys.stderr)
                 r["action"] = "failed"
                 continue
-            body = pr_body(r["tasks_file"]) or ""
+            body = pr_description(r, repo_root)
             code, out, err = run("gh", "pr", "create", "--draft", "--base", r["base"],
                                  "--head", r["branch"], "--title", r["title"], "--body", body,
                                  cwd=repo_root)

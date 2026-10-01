@@ -433,26 +433,28 @@ def params_table(design):
     return "\n".join(out) + "\n"
 
 
-def render_built(design, title="Built design", styles=None, sections=(), extra=(), legend=""):
+def render_built(design, title="Built design", styles=None, sections=(), extra=(), legend="", level=1):
     """The design view as Markdown. `sections` are (heading, body) pairs added after the
-    generated ones; `extra` and `legend` add boxes and their meaning to the diagram."""
-    out = [f"# {title}", ""]
+    generated ones; `extra` and `legend` add boxes and their meaning to the diagram.
+    `level` is the depth of the title, so the view can sit inside another document."""
+    h = "#" * (level + 1)
+    out = [f"{'#' * level} {title}", ""]
     if design.get("not_checked"):
         out += [f"The design was not read: {design['not_checked']}.", ""]
         return "\n".join(out)
     if not design["packages"] and not extra:
         out += ["The change adds or changes no Go type or function.", ""]
     else:
-        out += ["## New exported names", "", exported_table(design)]
-        out += ["## Types and functions", "", (LEGEND + " " + legend).strip(), "",
+        out += [f"{h} New exported names", "", exported_table(design)]
+        out += [f"{h} Types and functions", "", (LEGEND + " " + legend).strip(), "",
                 "```mermaid", diagram(design, styles, extra), "```", ""]
         table = params_table(design)
         if table:
-            out += ["## Parameters passed together", "",
+            out += [f"{h} Parameters passed together", "",
                     "Functions that keep taking the same parameters are a type that does not exist yet.", "",
                     table]
     for heading, body in sections:
-        out += [f"## {heading}", "", body.rstrip("\n"), ""]
+        out += [f"{h} {heading}", "", body.rstrip("\n"), ""]
     return "\n".join(out)
 
 

@@ -150,9 +150,10 @@ Sections, in this order:
 2. `## The flow` — artifact 1, with one sentence above it that says what the diagram shows.
 3. `## What changes for a person` — artifact 2.
 4. `## Where the change lives` — artifact 3, with the file to start at and the lines under the diagram.
-5. `## What changed` — one bullet for each commit, in commit order, each stating the rule rather than the edit.
-6. `## Notes for the reviewer` — the decisions a reader cannot see in the diff: what the change leaves open on purpose, what an earlier review already settled, what the tests state about a behaviour that looks wrong at first read. Say that the suite passes, and say where it ran.
-7. `## Links` — the ticket, the initiative trailer, the related pull requests.
+5. `## Design` — only when the change adds or changes a Go type, function or exported name. Run `clerk design show --base origin/<base>` on the branch and take its three sections: the new exported names with who uses each, the diagram of the new and changed types, and the parameters passed together. Leave the section out when the command reports no Go type or function, or says that it did not read the design.
+6. `## What changed` — one bullet for each commit, in commit order, each stating the rule rather than the edit.
+7. `## Notes for the reviewer` — the decisions a reader cannot see in the diff: what the change leaves open on purpose, what an earlier review already settled, what the tests state about a behaviour that looks wrong at first read. Say that the suite passes, and say where it ran.
+8. `## Links` — the ticket, the initiative trailer, the related pull requests.
 
 **Write every word of the prose in Simplified Technical English**, following `~/.config/ai/guidelines/writing/asd-ste100.md`. Read that file before drafting; do not write it from memory. What it asks for, in short: one meaning per sentence, the plain word, the active voice, simple tenses, no `-ing` forms, no contractions, no metaphors, and `must` or `can` in place of `should` or `may`. Identifiers, event names, file paths and quoted text stay exactly as the code writes them.
 
@@ -187,7 +188,7 @@ gh api -X PATCH repos/<owner>/<repo>/pulls/<n> --input <patch>.json --jq .number
 gh pr view <n> --json body --jq .body | head -20
 ```
 
-Read the body back and check three things: both Mermaid blocks survived, the tables did not lose a column, and every pull request number is the one you checked in step 1.
+Read the body back and check three things: every Mermaid block survived, the tables did not lose a column, and every pull request number is the one you checked in step 1.
 
 Then print in chat: the pull request URL, the one-sentence summary, and any claim in the description you could not verify from the diff. Say which of the three artifacts you left out and why, if you left any out.
 

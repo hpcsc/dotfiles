@@ -435,6 +435,41 @@ has "the changes view says the check is done" "| D1 | 1 | \`Ledger\` | the batch
 eq "an unknown design change cannot be closed" "1" "$(run "$R" step done design-check D9 >/dev/null 2>&1; printf '%s' $?)"
 
 # --------------------------------------------------------------------------------
+printf '\naudit — a design lens runs when the change has a design to judge\n'
+
+panel() {  # scope-json
+  (cd "$BIN" && python3 -c '
+import json, sys
+import clerk_audit_panel as p
+lenses, not_run = p.build_panel(json.loads(sys.argv[1]), p.load_prompts())
+print(json.dumps({"lenses": [{"key": l["key"], "agent": l["agent"], "prompt": l["prompt"]} for l in lenses], "not_run": not_run}))
+' "$1")
+}
+SCOPE='{"base": "a", "head": "b", "summary": "s", "languages": ["Go"], "files": ["x.go"], "by_language": [{"language": "Go", "files": ["x.go"]}], "signals": {"design": true}}'
+L=$(panel "$SCOPE")
+eq "a change with a design gets the design lens, on the generic reviewer" "semantic-reviewer" \
+   "$(printf '%s' "$L" | jq -r '.lenses[] | select(.key=="design") | .agent')"
+has "with the lens text inside the audit's own preamble" "Your lens is DESIGN" \
+   "$(printf '%s' "$L" | jq -r '.lenses[] | select(.key=="design") | .prompt')"
+has "and the finding contract" "Every finding needs a stable kebab-case" \
+   "$(printf '%s' "$L" | jq -r '.lenses[] | select(.key=="design") | .prompt')"
+L=$(panel "$(printf '%s' "$SCOPE" | jq -c '.signals = {"design": false, "design_reason": "clerk reads the design of Go code only"}')")
+eq "a change without one names the lens it did not run, and why" "design — clerk reads the design of Go code only" \
+   "$(printf '%s' "$L" | jq -r '.not_run[] | select(startswith("design"))')"
+
+R=$(new_repo)
+feature "$R"
+commit_all "$R" "Add refunds"
+signal() { (cd "$BIN" && python3 -c 'import json, sys, clerk_design as d; print(json.dumps(d.audit_signal(*sys.argv[1:4])))' "$@"); }
+eq "the signal is read from the code between the scope's base and head" "true" \
+   "$(signal "$R" main refunds | jq -r '.[0]|tostring')"
+git -C "$R" checkout -q -b docs main
+printf 'more\n' >> "$R/README.md"
+commit_all "$R" "Docs"
+eq "a change with no Go type or function has none, and says so" "false|the change adds or changes no Go type, function or exported name" \
+   "$(signal "$R" main docs | jq -r '[(.[0]|tostring), .[1]] | join("|")')"
+
+# --------------------------------------------------------------------------------
 rm -rf "$R" "$CACHE" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

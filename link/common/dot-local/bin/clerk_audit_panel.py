@@ -193,6 +193,10 @@ def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
                        "hot-path allocation to measure")
     if not signals.get("tests_changed"):
         not_run.append("test integrity — no test file changed")
+    if signals.get("design"):
+        lenses.append({"key": "design", "agent": LANG["Generic"]["semantic"], "prompt": ctxb.design(primary)})
+    else:
+        not_run.append(f"design — {signals.get('design_reason') or 'the change adds or changes no type, function or exported name'}")
 
     # A file no language claims has nothing a code lens can judge, and used to be left to
     # nobody on that ground. What lands in one is still a criterion: two rounds passed over
@@ -573,6 +577,9 @@ class _PromptCtx:
                        {"comments_guide": COMMENTS_GUIDE, "naming_guide": NAMING_GUIDE,
                         "reading": ", ".join(LANG[lang]["reading"]), "disclosure": DISCLOSURE})
                 + self.contract())
+
+    def design(self, lang):
+        return self.preamble(None) + design_lens(self.P, lang) + self.contract()
 
     def deliverables(self, remit):
         return (self.preamble(remit, label="no programming language owns")

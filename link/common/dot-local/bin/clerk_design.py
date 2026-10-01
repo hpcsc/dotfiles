@@ -743,3 +743,19 @@ def finish_findings(r, side, n):
     if design.get("not_checked"):
         return [], design["not_checked"]
     return design_findings(planned, design, state.get("notes") or [], last), None
+
+
+def audit_signal(cwd, base, head):
+    """(whether the change has a design to judge, why not) for the audit's design lens.
+    A staged target is read from the working tree."""
+    if not base:
+        return False, "the audit's scope names no base to compare with"
+    try:
+        design = built(cwd, base, None if head in (None, "STAGED") else head)
+    except RuntimeError as e:
+        return False, f"the design reader failed: {e}"
+    if design.get("not_checked"):
+        return False, f"the design was not read: {design['not_checked']}"
+    if any(p["types"] or p["functions"] for p in design["packages"]) or design["exported"]:
+        return True, None
+    return False, "the change adds or changes no Go type, function or exported name"

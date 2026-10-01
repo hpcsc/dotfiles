@@ -386,6 +386,20 @@ def _spawn(job_id, prompt, schema, agent=None, isolation="none", tools=None, fin
     return job
 
 
+def add_design_signal(scope, cwd):
+    """Whether the diff has a design for the design lens to judge, decided from the code
+    once per round rather than by the scope agent: the reader settles it without judgment."""
+    signals = scope.setdefault("signals", {})
+    if "design" in signals:
+        return
+    import clerk_design
+    langs = [panel.canonical_lang(l) for l in scope.get("languages") or []]
+    if "Go" not in langs:
+        signals["design"], signals["design_reason"] = False, "clerk reads the design of Go code only"
+        return
+    signals["design"], signals["design_reason"] = clerk_design.audit_signal(cwd, scope.get("base"), scope.get("head"))
+
+
 def audit_next(ctx, aud, o):
     lv = live_of(aud)
     if not lv:
@@ -406,6 +420,7 @@ def audit_next(ctx, aud, o):
                 "record_with": "clerk audit record --phase scope --results <file>"}
 
     if phase == "review":
+        add_design_signal(lv["scope"], ctx.cwd)
         lenses, not_run = panel.build_panel(
             lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],
             request=a["request"], brief=a["brief"], recheck=a["recheck"],

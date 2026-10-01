@@ -12,13 +12,17 @@
 # becomes rows — completed/ is excluded, and a menu needs a distinct key per row and
 # has to fit on screen anyway. Adding a category means one case below and one row in
 # the top menu.
+#
+# `design` is the one category whose rows are not files to open: each row draws a
+# design view with claude-design-view when it is chosen. Its first row is the branch
+# the pane is on, and the rest are the active planned designs under tasks/.
 
 _prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
 [[ -d /opt/homebrew/bin ]] && _prefix="$_prefix:/opt/homebrew/bin"
 export PATH="$_prefix:$PATH"
 unset _prefix
 
-category="${1:?usage: claude-read-menu <tasks|stories> <dir> [client]}"
+category="${1:?usage: claude-read-menu <tasks|stories|design> <dir> [client]}"
 start_dir="${2:-$PWD}"
 client="${3:-}"
 
@@ -34,8 +38,38 @@ root=$(git -C "$start_dir" rev-parse --show-toplevel 2>/dev/null) || {
 case "$category" in
   tasks)   dir="$root/tasks";        title=" tasks " ;;
   stories) dir="$root/user-stories"; title=" user stories " ;;
+  design)  dir="$root/tasks";        title=" design " ;;
   *)       tmux display-message "${target[@]}" "unknown category: $category"; exit 1 ;;
 esac
+
+# <age-748-long-story-name>/<deliverable>/tasks.md reads better as
+# age-748/<deliverable>: the ticket identifies the story, the rest is noise.
+label_for() {
+  printf '%s' "${1#"$dir"/}" | sed -E 's#^([a-zA-Z]+-[0-9]+)-[^/]*/#\1/#'
+}
+
+if [[ "$category" == design ]]; then
+  # Beside this script rather than on PATH, so a new checkout needs no stow first.
+  view_bin="$(dirname "$(readlink -f "$0")")/claude-design-view"
+  menu=("this branch" b "new-pane -x 90% -y 70% -X 5% -Y 1 '\"$view_bin\" \"$root\"'")
+  if [[ -d "$dir" ]]; then
+    key=1
+    while IFS= read -r file; do
+      [[ -n "$file" ]] || continue
+      menu+=(
+        "$(label_for "$file")" "$key"
+        "new-pane -x 90% -y 70% -X 5% -Y 1 '\"$view_bin\" \"$root\" \"$file\"'"
+      )
+      key=$((key + 1))
+      [[ $key -gt 9 ]] && break
+    done < <(
+      fd -I --type f --glob --exclude completed '*design.yaml' "$dir" 2>/dev/null \
+        | xargs -r ls -t 2>/dev/null
+    )
+  fi
+  tmux display-menu "${target[@]}" -x C -y C -T "$title" "${menu[@]}"
+  exit 0
+fi
 
 if [[ ! -d "$dir" ]]; then
   tmux display-message "${target[@]}" "no ${dir##*/}/ in ${root##*/}"
@@ -69,10 +103,7 @@ nvim_bin=$(command -v nvim) || {
 menu=()
 key=1
 for file in "${files[@]}"; do
-  rel=${file#"$dir"/}
-  # <age-748-long-story-name>/<deliverable>/tasks.md reads better as
-  # age-748/<deliverable>: the ticket identifies the story, the rest is noise.
-  label=$(printf '%s' "$rel" | sed -E 's#^([a-zA-Z]+-[0-9]+)-[^/]*/#\1/#')
+  label=$(label_for "$file")
   # Read-only: these are records of work, and editing one by hand desynchronises it
   # from the skill that generated it.
   menu+=(

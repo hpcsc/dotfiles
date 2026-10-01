@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+# Draw a design view with `clerk design show` and open it, read-only, in neovim.
+# Called as: claude-design-view <dir> [<planned design file>]
+#
+# With a file, the view is that planned design. Without one, it is the branch that
+# <dir> is on: against the planned design of its run when a run is open there, else
+# the change from the default branch. The view is drawn when the row is chosen, not
+# when the menu is built, so it describes the code as it is now.
+#
+# The view is Markdown with a Mermaid diagram, which neovim draws through snacks.nvim
+# and mmdc. It goes to a temporary file, because it is generated and nobody edits it.
+
+# A tmux key binding runs this with the server's environment, which can lack the
+# interactive shell's PATH. The mise shim dir supplies nvim, go and yq; ~/.local/bin
+# supplies clerk; /opt/homebrew/bin supplies git on macOS.
+_prefix="$HOME/.local/share/mise/shims:$HOME/.local/bin"
+[[ -d /opt/homebrew/bin ]] && _prefix="$_prefix:/opt/homebrew/bin"
+export PATH="$_prefix:$PATH"
+unset _prefix
+
+# Pause before returning, so a message is readable before its pane closes.
+die() {
+  echo "$1" >&2
+  read -r -s -n 1 -p "press any key"
+  exit 1
+}
+
+start_dir="${1:-$PWD}"
+planned="${2:-}"
+
+root=$(git -C "$start_dir" rev-parse --show-toplevel 2>/dev/null) \
+  || die "not inside a git repository: $start_dir"
+cd "$root" || die "cannot enter $root"
+
+out="$(mktemp -d)/design.md"
+if [[ -n "$planned" ]]; then
+  err=$(clerk design show --planned "$planned" --out "$out" 2>&1) \
+    || die "clerk could not draw $planned: $err"
+elif ! clerk design show --changes --out "$out" >/dev/null 2>&1; then
+  err=$(clerk design show --out "$out" 2>&1) \
+    || die "clerk could not draw the design of ${root##*/}: $err"
+fi
+
+exec nvim -R "$out"

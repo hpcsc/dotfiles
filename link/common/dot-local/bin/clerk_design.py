@@ -339,9 +339,10 @@ def base_type(t):
     return re.sub(r"^[\[\]*.]+", "", t).split("[")[0]
 
 
-def diagram(design, styles=None):
+def diagram(design, styles=None, extra=()):
     """The Mermaid class diagram of the new and changed types and functions. `styles`
-    maps a node id to a style that replaces the default one for its status."""
+    maps a node id to a style that replaces the default one for its status. `extra` adds
+    boxes the code does not have, as (node id, label, members, style)."""
     lines, relations, fills = ["classDiagram", "  direction LR"], set(), []
     for p in design["packages"]:
         local = set(p["declared"])
@@ -380,12 +381,18 @@ def diagram(design, styles=None):
             for ref in f_refs(p["functions"]):
                 if ref in local:
                     relations.add((nid, "..>", node_id(p["dir"], ref)))
+    for nid, label, members, style in extra:
+        lines.append(f'  class {nid}["{label}"] {{')
+        lines += [f"    {m}" for m in members]
+        lines.append("  }")
     ids = {nid for nid, _ in fills} | set((styles or {}).keys())
     for a, arrow, b in sorted(relations):
         if a in ids and b in ids:
             lines.append(f"  {a} {arrow} {b}")
     for nid, status in fills:
         lines.append(f"  style {nid} {(styles or {}).get(nid) or FILLS[status]}")
+    for nid, _, _, style in extra:
+        lines.append(f"  style {nid} {style}")
     return "\n".join(lines)
 
 
@@ -426,18 +433,19 @@ def params_table(design):
     return "\n".join(out) + "\n"
 
 
-def render_built(design, title="Built design", styles=None, sections=()):
+def render_built(design, title="Built design", styles=None, sections=(), extra=(), legend=""):
     """The design view as Markdown. `sections` are (heading, body) pairs added after the
-    generated ones."""
+    generated ones; `extra` and `legend` add boxes and their meaning to the diagram."""
     out = [f"# {title}", ""]
     if design.get("not_checked"):
         out += [f"The design was not read: {design['not_checked']}.", ""]
         return "\n".join(out)
-    if not design["packages"]:
+    if not design["packages"] and not extra:
         out += ["The change adds or changes no Go type or function.", ""]
     else:
         out += ["## New exported names", "", exported_table(design)]
-        out += ["## Types and functions", "", LEGEND, "", "```mermaid", diagram(design, styles), "```", ""]
+        out += ["## Types and functions", "", (LEGEND + " " + legend).strip(), "",
+                "```mermaid", diagram(design, styles, extra), "```", ""]
         table = params_table(design)
         if table:
             out += ["## Parameters passed together", "",
@@ -446,3 +454,227 @@ def render_built(design, title="Built design", styles=None, sections=()):
     for heading, body in sections:
         out += [f"## {heading}", "", body.rstrip("\n"), ""]
     return "\n".join(out)
+
+
+# --------------------------------------------------------------------------------
+# The planned design
+# --------------------------------------------------------------------------------
+
+PLANNED_KEYS = ("design", "reason", "types", "functions", "words", "dependencies")
+TYPE_KEYS = ("name", "package", "change", "does", "owns", "fields", "methods")
+
+
+def string_list(v):
+    return isinstance(v, list) and all(isinstance(x, str) for x in v)
+
+
+def validate_planned(data):
+    """What is wrong with a planned design, as sentences. An unknown key is an error: a
+    misspelt `type:` would otherwise plan nothing and say nothing."""
+    if not isinstance(data, dict):
+        return ["the planned design must be a mapping with a `design` key"]
+    errors = [f"unknown key `{k}` — the keys are {', '.join(PLANNED_KEYS)}" for k in data if k not in PLANNED_KEYS]
+    if data.get("design") not in ("planned", "none"):
+        errors.append("`design` must be `planned` or `none`")
+    if data.get("design") == "none" and not str(data.get("reason") or "").strip():
+        errors.append("`design: none` needs a `reason`: why the story needs no design")
+    types = data.get("types") or []
+    if not isinstance(types, list):
+        errors.append("`types` must be a list")
+        types = []
+    for i, ty in enumerate(types, 1):
+        if not isinstance(ty, dict) or not isinstance(ty.get("name"), str) or not ty.get("name"):
+            errors.append(f"type {i} needs a `name`")
+            continue
+        errors += [f"type `{ty['name']}`: unknown key `{k}`" for k in ty if k not in TYPE_KEYS]
+        if ty.get("change") not in ("new", "changed"):
+            errors.append(f"type `{ty['name']}`: `change` must be `new` or `changed`")
+        for k in ("owns", "fields", "methods"):
+            if k in ty and not string_list(ty[k]):
+                errors.append(f"type `{ty['name']}`: `{k}` must be a list of names")
+    for k in ("functions", "dependencies"):
+        if k in data and not string_list(data[k]):
+            errors.append(f"`{k}` must be a list of strings")
+    words = data.get("words") or []
+    if not isinstance(words, list) or not all(isinstance(w, dict) and w.get("concept") and w.get("word") for w in words):
+        errors.append("each entry in `words` needs a `concept` and a `word`")
+    return errors
+
+
+def normalise_planned(data):
+    types = [{"name": ty["name"], "package": str(ty.get("package") or "").strip("/"), "change": ty["change"],
+              "does": ty.get("does") or "", "owns": ty.get("owns") or [], "fields": ty.get("fields") or [],
+              "methods": ty.get("methods") or []} for ty in data.get("types") or []]
+    words = [{"concept": w["concept"], "word": w["word"], "not": w.get("not") or []} for w in data.get("words") or []]
+    return {"design": data["design"], "reason": data.get("reason") or "", "types": types,
+            "functions": data.get("functions") or [], "words": words,
+            "dependencies": data.get("dependencies") or []}
+
+
+def load_planned(path):
+    """(planned design, errors). The file is YAML, read with yq the way plan.yaml is."""
+    if not Path(path).is_file():
+        return None, [f"no planned design at {path}"]
+    if not shutil.which("yq"):
+        return None, ["yq is not installed, and the planned design is YAML"]
+    r = subprocess.run(["yq", "-o=json", "-I=0", ".", str(path)], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None, [f"{path} is not valid YAML: {r.stderr.strip()}"]
+    try:
+        data = json.loads(r.stdout or "null")
+    except json.JSONDecodeError as e:
+        return None, [f"{path} did not read as YAML: {e}"]
+    errors = validate_planned(data)
+    return (None if errors else normalise_planned(data)), errors
+
+
+def planned_dirs(planned, cwd):
+    """The package directories the planned design names that exist in the working tree."""
+    return sorted({ty["package"] for ty in planned["types"]
+                   if ty["package"] and (Path(cwd) / ty["package"]).is_dir()})
+
+
+def is_planned(planned, pkg_dir, pkg_name, name):
+    for ty in planned["types"]:
+        if ty["name"] != name:
+            continue
+        where = ty["package"]
+        if not where or where in (pkg_dir, pkg_name) or pkg_dir.endswith("/" + where):
+            return True
+    return False
+
+
+def planned_exports(planned):
+    """Every capitalised name the planned design writes down: those are exported on
+    purpose, also when nothing in this repository uses them yet."""
+    text = " ".join([ty["name"] for ty in planned["types"]]
+                    + [n for ty in planned["types"] for n in ty["fields"] + ty["methods"]]
+                    + planned["functions"])
+    return set(re.findall(r"\b[A-Z]\w*", text))
+
+
+def note_covers(note, name, pkg_dir, pkg_name, owner=None):
+    names = {name, f"{pkg_name}.{name}", f"{pkg_dir}.{name}"}
+    if owner:
+        names |= {f"{owner}.{name}", f"{pkg_name}.{owner}.{name}"}
+    return note.get("name") in names
+
+
+def unplanned_types(planned, design, notes):
+    """The new types the planned design does not name and no design change explains."""
+    out = []
+    for p in design.get("packages") or []:
+        for ty in p["types"]:
+            if ty["status"] != "new" or is_planned(planned, p["dir"], p["name"], ty["name"]):
+                continue
+            if any(note_covers(n, ty["name"], p["dir"], p["name"]) for n in notes):
+                continue
+            out.append({"package": p["dir"], "package_name": p["name"], "name": ty["name"], "file": ty["file"]})
+    return out
+
+
+def absent_types(planned, design, notes):
+    """The new types the planned design names that the code read here does not declare,
+    and no design change explains."""
+    declared = {(p["dir"], p["name"], name) for p in design.get("packages") or [] for name in p["declared"]}
+    out = []
+    for ty in planned["types"]:
+        if ty["change"] != "new":
+            continue
+        where = ty["package"]
+        if any(n == ty["name"] and (not where or where in (d, pn) or d.endswith("/" + where)) for d, pn, n in declared):
+            continue
+        if any(n.get("name") in (ty["name"], f"{where}.{ty['name']}") for n in notes):
+            continue
+        out.append(ty)
+    return out
+
+
+def render_planned(planned, title="Planned design"):
+    out = [f"# {title}", ""]
+    if planned["design"] == "none":
+        out += [f"The story needs no design: {planned['reason']}", ""]
+        return "\n".join(out)
+    if planned["types"]:
+        lines = ["classDiagram", "  direction LR"]
+        for ty in planned["types"]:
+            nid = node_id(ty["package"] or "planned", ty["name"])
+            label = f"{Path(ty['package']).name}.{ty['name']}" if ty["package"] else ty["name"]
+            lines.append(f'  class {nid}["{label}"] {{')
+            lines += [f"    {visibility(f)}{f}" for f in ty["fields"]]
+            lines += [f"    {visibility(m)}{m}()" for m in ty["methods"]]
+            lines.append("  }")
+            lines.append(f"  style {nid} {FILLS[ty['change']]}")
+        out += ["## Types", "", "Green: new type. Yellow: changed type.", "", "```mermaid", "\n".join(lines), "```", ""]
+        out += ["| Type | Package | Does | Owns |", "| --- | --- | --- | --- |"]
+        for ty in planned["types"]:
+            out.append(f"| `{ty['name']}` | {ty['package'] or ''} | {ty['does']} | {'; '.join(ty['owns'])} |")
+        out.append("")
+    if planned["functions"]:
+        out += ["## Functions", ""] + [f"- `{f}`" for f in planned["functions"]] + [""]
+    if planned["words"]:
+        out += ["## Words", "", "| Concept | Word | Not |", "| --- | --- | --- |"]
+        out += [f"| {w['concept']} | `{w['word']}` | {', '.join(f'`{x}`' for x in w['not'])} |" for w in planned["words"]]
+        out.append("")
+    if planned["dependencies"]:
+        out += ["## Dependencies", ""] + [f"- `{d}`" for d in planned["dependencies"]] + [""]
+    return "\n".join(out)
+
+
+UNPLANNED_FILL = "fill:#FDEBD0,stroke:#C0620B"
+ABSENT_FILL = "fill:#FFFFFF,stroke:#9E9E9E,stroke-dasharray: 5 5"
+
+
+def changes_table(notes):
+    if not notes:
+        return "The run recorded no design change.\n"
+    out = ["| ID | Task | Name | Reason | Design check |", "| --- | --- | --- | --- | --- |"]
+    for n in notes:
+        check = n.get("check")
+        state = ("fixed" if check.get("fixed") else "clean") if check else "not done"
+        out.append(f"| {n['id']} | {n.get('task') or ''} | `{n['name']}` | {n['reason']} | {state} |")
+    return "\n".join(out) + "\n"
+
+
+def render_changes(design, planned, state, title="Design changes"):
+    """The built design against the planned one: what the plan did not name, what the
+    code does not have, and the reason the run gave for each change."""
+    notes = state.get("notes") or []
+    styles, extra = {}, []
+    if planned and planned["design"] in ("planned", "none") and not design.get("not_checked"):
+        for u in unplanned_types(planned, design, []):
+            styles[node_id(u["package"], u["name"])] = UNPLANNED_FILL
+        for ty in absent_types(planned, design, []):
+            members = [f"{visibility(f)}{f}" for f in ty["fields"]] + [f"{visibility(m)}{m}()" for m in ty["methods"]]
+            label = f"{Path(ty['package']).name}.{ty['name']}" if ty["package"] else ty["name"]
+            extra.append((node_id(ty["package"] or "planned", ty["name"]), label, members, ABSENT_FILL))
+    sections = [("Design changes", changes_table(notes))]
+    if state.get("words"):
+        sections.append(("Words", state["words"]))
+    legend = "Orange: a type the planned design does not name. Dashed: a planned type the code does not have."
+    return render_built(design, title=title, styles=styles, sections=sections, extra=extra, legend=legend)
+
+
+# --------------------------------------------------------------------------------
+# The run's record: the planned design it bound, and the design changes it made
+# --------------------------------------------------------------------------------
+
+def load_state(run_dir):
+    from clerk_repo import ledger_read
+    return ledger_read(Path(run_dir) / "design.json", {}) or {}
+
+
+def save_state(run_dir, state):
+    tmp = Path(run_dir) / "design.json.tmp"
+    tmp.write_text(json.dumps(state, indent=2) + "\n")
+    tmp.replace(Path(run_dir) / "design.json")
+
+
+def run_base(run_dir, cwd):
+    """The commit the run started from, when the ledger has it and git still knows it."""
+    from clerk_repo import ledger_read
+    meta = ledger_read(Path(run_dir) / "run.json", {}) or {}
+    start = meta.get("start_commit")
+    if start and gitout("cat-file", "-t", start, cwd=cwd) == "commit":
+        return start
+    return None

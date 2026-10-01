@@ -174,6 +174,123 @@ eq "--help prints a USAGE block" "1" "$(run "$R" design --help | grep -c '^USAGE
 eq "an unknown verb is a usage error" "2" "$(run "$R" design draw >/dev/null 2>&1; printf '%s' $?)"
 
 # --------------------------------------------------------------------------------
+printf '\nthe planned design — read, bound to a run, and drawn against the code\n'
+
+# A run on its own branch, with a breakdown whose task record names a planned design.
+planned_run() {  # repo
+  local d=$1
+  git -C "$d" checkout -q -b refunds
+  # Work on the branch before the run starts is not the run's work.
+  printf 'package billing\n\ntype Pre struct{}\n' > "$d/billing/pre.go"
+  commit_all "$d" "Earlier work"
+  mkdir -p "$d/tasks"
+  printf '# refunds\n\n### Task 1: Refund\n- [ ] a\n\n### Task 2: Ledger\n- [ ] b\n' > "$d/tasks/refunds.md"
+  jq -n '{story: "refunds", tasks_file: "tasks/refunds.md", design_file: "tasks/refunds.design.yaml", tasks: [
+    {n: 1, title: "Refund", depends_on: [], done: false, certainty: "low", blast_radius: "low", patterns_to_follow: []},
+    {n: 2, title: "Ledger", depends_on: [1], done: false, certainty: "low", blast_radius: "low", patterns_to_follow: []}]}' \
+    > "$d/tasks/refunds.json"
+  cat > "$d/tasks/refunds.design.yaml" <<'EOF2'
+design: planned
+types:
+  - name: Refund
+    package: billing
+    change: new
+    does: returns part or all of one payment
+    owns: [the refunds of a payment never exceed its amount]
+    fields: [PaymentID, Amount]
+    methods: [Issue]
+  - name: Chargeback
+    package: billing
+    change: new
+    does: records money the bank took back
+functions:
+  - NewRefund(payment, amount) (Refund, error)
+words:
+  - concept: money that goes back to the customer
+    word: refund
+    not: [reversal]
+EOF2
+  commit_all "$d" "Breakdown"
+  run "$d" step start refunds --request "Add refunds" >/dev/null
+}
+
+R=$(new_repo)
+planned_run "$R"
+LEDGER="$R/.git/clerk/runs/refunds"
+
+BADDIR=$(mktemp -d)
+printf 'design: planned\ntype:\n  - name: Refund\n' > "$BADDIR/typo.yaml"
+eq "a misspelt key is refused, not read as a design with no types" "1" \
+   "$(run "$R" design show --planned "$BADDIR/typo.yaml" >/dev/null 2>&1; printf '%s' $?)"
+has "and the error names the key" 'unknown key `type`' "$(run "$R" design show --planned "$BADDIR/typo.yaml" 2>/dev/null)"
+printf 'design: none\n' > "$BADDIR/none.yaml"
+has "design: none needs the reason the story has no design" '`design: none` needs a `reason`' \
+   "$(run "$R" design show --planned "$BADDIR/none.yaml" 2>/dev/null)"
+printf 'design: planned\ntypes:\n  - name: Refund\n    change: rewritten\n' > "$BADDIR/change.yaml"
+has "a type is new or changed, nothing else" '`change` must be `new` or `changed`' \
+   "$(run "$R" design show --planned "$BADDIR/change.yaml" 2>/dev/null)"
+printf 'design: none\nreason: one config line\n' > "$BADDIR/none.yaml"
+has "a design of none is drawn as its reason" "The story needs no design: one config line" \
+   "$(run "$R" design show --planned "$BADDIR/none.yaml")"
+
+V=$(run "$R" design show --planned "$R/tasks/refunds.design.yaml")
+has "a planned type is drawn with its planned members" "+Issue()" "$V"
+has "and a new planned type is green" "fill:#E6F4EA" "$V"
+has "what each type does and owns is a table" "| \`Refund\` | billing | returns part or all of one payment | the refunds of a payment never exceed its amount |" "$V"
+has "the planned words are a table" "| money that goes back to the customer | \`refund\` | \`reversal\` |" "$V"
+
+B=$(run "$R" step done decompose --tasks-file tasks/refunds.md)
+eq "binding the breakdown binds its planned design" "true|planned" \
+   "$(printf '%s' "$B" | jq -r '[(.bound|tostring), .design] | join("|")')"
+eq "and the ledger keeps the design as planned" "Refund,Chargeback" \
+   "$(jq -r '[.planned.types[].name] | join(",")' "$LEDGER/design.json")"
+has "a run's own planned design is drawn with no file named" 'class billing__Refund["billing.Refund"]' \
+   "$(run "$R" design show --planned)"
+
+cp "$R/tasks/refunds.design.yaml" "$BADDIR/keep.yaml"
+printf 'design: maybe\n' > "$R/tasks/refunds.design.yaml"
+eq "a planned design that does not read refuses the bind" "1|false" \
+   "$(run "$R" step done decompose --tasks-file tasks/refunds.md >"$BADDIR/out" 2>/dev/null; printf '%s|' $?; jq -r '.bound|tostring' "$BADDIR/out")"
+cp "$BADDIR/keep.yaml" "$R/tasks/refunds.design.yaml"
+run "$R" step done decompose --tasks-file tasks/refunds.md >/dev/null
+
+cat > "$R/billing/refund.go" <<'EOF2'
+package billing
+
+type Refund struct {
+	PaymentID string
+	Amount    int
+}
+
+type Ledger struct{}
+
+func (r Refund) Issue() error { return nil }
+EOF2
+V=$(run "$R" design show)
+hasnt "the default base is the commit the run started from, not the merge-base" "Pre" "$V"
+has "so the run's own type is there" 'class billing__Refund["billing.Refund"]' "$V"
+
+eq "a note without a reason is a usage error" "2" "$(run "$R" design note Ledger "" >/dev/null 2>&1; printf '%s' $?)"
+N=$(run "$R" design note Ledger "the batch totals need one owner" --affects 2)
+eq "a note records the change with the task in flight" "D1|1|2" \
+   "$(printf '%s' "$N" | jq -r '[.recorded, (.note.task|tostring), (.note.affects|map(tostring)|join(","))] | join("|")')"
+
+printf '| Concept | Words in this change | Finding |\n| --- | --- | --- |\n| a refund | `Refund` | none |\n' > "$BADDIR/words.md"
+eq "the design check's words table is kept for the view" "words" "$(run "$R" design words --file "$BADDIR/words.md" | jq -r .recorded)"
+
+V=$(run "$R" design show --changes)
+has "a type the plan does not name is orange" "style billing__Ledger fill:#FDEBD0" "$V"
+has "a planned type the code does not have is a dashed box" 'class billing__Chargeback["billing.Chargeback"]' "$V"
+has "drawn dashed" "stroke-dasharray: 5 5" "$V"
+has "each design change is listed with its reason" "| D1 | 1 | \`Ledger\` | the batch totals need one owner | not done |" "$V"
+has "and the words table follows" "| a refund | \`Refund\` | none |" "$V"
+
+git -C "$R" checkout -q main
+eq "a note off the run's branch is refused" "2" "$(run "$R" design note Ledger "x" >/dev/null 2>&1; printf '%s' $?)"
+git -C "$R" checkout -q refunds
+rm -rf "$BADDIR"
+
+# --------------------------------------------------------------------------------
 rm -rf "$R" "$CACHE" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -12,6 +12,7 @@ was re-read — are recorded here with `--done`, the way `land` takes `--audit-a
 asserted and stamped with the code tree it applies to, never inferred.
 """
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ from clerk_repo import Repo, clear_archive_record, resolve_tasks_arg  # noqa: E4
 from clerk_steps import (ROWS, active_rows, facts_for, file_hash, instructions_for,  # noqa: E402
                          lint_task_record, next_step)
 from clerk_tasks import status_of  # noqa: E402
+import clerk_design  # noqa: E402
 
 
 def cmd_start(slug, request, harness):
@@ -82,13 +84,37 @@ def done_decompose(ctx, argv):
     if findings:
         emit({"bound": False, "reason": "lint certainty-unevidenced reports findings — correct the assessment, do not delete the reference",
               "findings": findings}, 1)
+    planned, design_file = bind_planned_design(ctx, tf, side)
     prev = ctx.run.section("breakdown") or {}
     approved = bool(o["--approved"]) or bool(prev.get("approved"))
     ctx.run.put(breakdown={"tasks_file": str(tf), "task_record": str(side), "approved": approved,
                            "lint_hash": file_hash(side), "at": now()})
     st = status_of(str(tf), str(side), False)
     return {"bound": True, "tasks_file": str(tf), "approved": approved,
-            "breakdown": st.get("progress"), "gears": st.get("gears")}
+            "design": planned["design"] if planned else "not planned: the task record names no design_file",
+            "design_file": design_file, "breakdown": st.get("progress"), "gears": st.get("gears")}
+
+
+def bind_planned_design(ctx, tf, side):
+    """(planned design, its path) when the task record names one, else (None, None). The
+    copy kept in the ledger is the design as planned: the run's later reasons are measured
+    against it, and nothing else keeps it once the file changes."""
+    record = json.loads(Path(side).read_text())
+    name = record.get("design_file")
+    if not name:
+        clerk_design.save_state(ctx.run.dir, {**clerk_design.load_state(ctx.run.dir), "planned": None})
+        return None, None
+    path = Path(name) if Path(name).is_absolute() else Path(ctx.prepare.get("tasks_home") or ctx.cwd) / name
+    if not path.is_file() and (tf.parent / Path(name).name).is_file():
+        path = tf.parent / Path(name).name
+    planned, errors = clerk_design.load_planned(path)
+    if errors:
+        emit({"bound": False, "reason": f"the planned design at {path} does not read", "errors": errors}, 1)
+    state = clerk_design.load_state(ctx.run.dir)
+    state.update({"planned": planned, "planned_file": str(path), "bound_at": now()})
+    state.setdefault("notes", [])
+    clerk_design.save_state(ctx.run.dir, state)
+    return planned, str(path)
 
 
 def done_pause(ctx, argv):

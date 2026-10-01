@@ -8,11 +8,21 @@ the new and changed types as a class diagram, and the parameters that functions 
 passing together.
 
     clerk design show [--built] [--base <ref>] [--head <ref>] [--out <file>] [--json]
+    clerk design show --planned [<design.yaml>] [--out <file>]
+    clerk design show --changes [--out <file>]
+    clerk design note <name> "<reason>" [--affects <n>[,<n>...]]
+    clerk design words --file <file>
 
-`--base` defaults to the merge-base with the default branch, and `--head` to the working
-tree. The view is Markdown with a Mermaid diagram: read it in an editor preview or on
-GitHub, because a terminal does not draw Mermaid. With `--out` the view goes to that file
-and the reply is JSON; `--json` prints the design itself rather than the view.
+`--base` defaults to the commit the open run started from, else to the merge-base with
+the default branch, and `--head` to the working tree. The view is Markdown with Mermaid
+diagrams: read it in an editor preview or on GitHub, because a terminal does not draw
+Mermaid. With `--out` the view goes to that file and the reply is JSON; `--json` prints
+the design itself rather than the view.
+
+`--planned` draws a planned design, the run's own when no file is named. `--changes`
+draws the code against the planned design the run bound, with each design change and
+its reason. `note` records why the code differs from the planned design; `words` keeps
+the table of words the design check wrote, for the view.
 """
 
 import json
@@ -22,12 +32,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import clerk_design  # noqa: E402
 from clerk_lib import die, emit, gitout, parse, repo, take_verb, usage_if_asked  # noqa: E402
+from clerk_repo import breakdown_side, now, run_section  # noqa: E402
+from clerk_tasks import load_task_record, next_task  # noqa: E402
 
-VERBS = ("show",)
-SHOW_SPEC = {"--built": "bool", "--base": "value", "--head": "value", "--out": "value", "--json": "bool"}
+VERBS = ("show", "note", "words")
+SHOW_SPEC = {"--built": "bool", "--planned": "bool", "--changes": "bool", "--base": "value",
+             "--head": "value", "--out": "value", "--json": "bool"}
+NOTE_SPEC = {"--affects": "value"}
+WORDS_SPEC = {"--file": "value"}
+
+
+def run_dir(r):
+    """The open run's ledger, when this checkout is on the run's branch."""
+    ld = r.ledger_dir
+    return ld if ld and Path(ld).name == r.current_branch else None
 
 
 def default_base(r):
+    ld = run_dir(r)
+    if ld:
+        start = clerk_design.run_base(ld, r.work_tree)
+        if start:
+            return start
     if not r.default_branch:
         die("no default branch to compare with — pass --base <ref>")
     base = gitout("merge-base", "HEAD", r.default_branch, cwd=r.work_tree)
@@ -36,13 +62,58 @@ def default_base(r):
     return base
 
 
+def write_view(view, out):
+    if out:
+        Path(out).write_text(view)
+        emit({"written": out})
+    sys.stdout.write(view)
+    sys.exit(0)
+
+
+def show_planned(r, rest, out):
+    if rest:
+        planned, errors = clerk_design.load_planned(rest[0])
+        if errors:
+            emit({"read": False, "errors": errors}, 1)
+        title = f"Planned design: {Path(rest[0]).name}"
+    else:
+        ld = run_dir(r)
+        planned = clerk_design.load_state(ld).get("planned") if ld else None
+        if not planned:
+            die("no planned design is bound to a run here — name the file: clerk design show --planned <design.yaml>")
+        title = f"Planned design: {Path(ld).name}"
+    write_view(clerk_design.render_planned(planned, title=title), out)
+
+
+def show_changes(r, out):
+    ld = run_dir(r)
+    if not ld:
+        die("no run is open on this branch — --changes compares the code with the planned design a run bound")
+    state = clerk_design.load_state(ld)
+    planned = state.get("planned")
+    base = default_base(r)
+    extra = clerk_design.planned_dirs(planned, r.work_tree) if planned else ()
+    try:
+        design = clerk_design.built(r.work_tree, base, None, with_uses=True, extra_dirs=extra)
+    except RuntimeError as e:
+        die(str(e), 1)
+    view = clerk_design.render_changes(design, planned, state, title=f"Design changes: {Path(ld).name}")
+    if not planned:
+        view += "\nThe run bound no planned design, so nothing above is compared with one.\n"
+    write_view(view, out)
+
+
 def cmd_show(argv):
     o, rest = parse(argv, SHOW_SPEC)
-    if rest:
-        die(f"unexpected argument '{rest[0]}'")
     r = repo()
     if not r.work_tree:
         die("not a git repository")
+    if o["--planned"]:
+        show_planned(r, rest, o["--out"])
+    if rest:
+        die(f"unexpected argument '{rest[0]}'")
+    if o["--changes"]:
+        show_changes(r, o["--out"])
     base = o["--base"] or default_base(r)
     head = o["--head"]
     try:
@@ -53,19 +124,67 @@ def cmd_show(argv):
         emit(design)
     title = f"Built design: {head or r.current_branch or 'working tree'}"
     view = clerk_design.render_built(design, title=title)
-    if o["--out"]:
-        Path(o["--out"]).write_text(view)
-        emit({"written": o["--out"], "not_checked": design.get("not_checked")})
-    sys.stdout.write(view)
-    return 0
+    write_view(view, o["--out"])
+
+
+def open_task(ld):
+    """The task the run has in flight: the first unblocked one not done, or None."""
+    bd = run_section(ld, "breakdown")
+    side = breakdown_side(bd)
+    if not side or not Path(side).is_file():
+        return None
+    task = next_task(load_task_record(side).get("tasks") or []).get("task")
+    return task["n"] if task else None
+
+
+def cmd_note(argv):
+    o, rest = parse(argv, NOTE_SPEC)
+    if len(rest) != 2 or not rest[1].strip():
+        die('clerk design note <name> "<reason>" — the reason is the point of the note')
+    r = repo()
+    ld = run_dir(r)
+    if not ld:
+        die("no run is open on this branch — a design change is recorded against a run")
+    affects = []
+    for part in (o["--affects"] or "").split(","):
+        if part.strip():
+            if not part.strip().isdigit():
+                die(f"--affects takes task numbers, not '{part.strip()}'")
+            affects.append(int(part))
+    state = clerk_design.load_state(ld)
+    notes = state.setdefault("notes", [])
+    note = {"id": f"D{len(notes) + 1}", "name": rest[0], "reason": rest[1].strip(), "task": open_task(ld),
+            "affects": affects, "at": now(), "check": None}
+    notes.append(note)
+    clerk_design.save_state(ld, state)
+    return {"recorded": note["id"], "note": note}
+
+
+def cmd_words(argv):
+    o, rest = parse(argv, WORDS_SPEC)
+    if rest or not o["--file"]:
+        die("clerk design words --file <file>")
+    text = Path(o["--file"]).read_text() if Path(o["--file"]).is_file() else None
+    if not text or not text.strip():
+        die(f"no words table in {o['--file']}", 1)
+    r = repo()
+    ld = run_dir(r)
+    if not ld:
+        die("no run is open on this branch — the words table belongs to a run's design view")
+    state = clerk_design.load_state(ld)
+    state["words"] = text.strip() + "\n"
+    clerk_design.save_state(ld, state)
+    return {"recorded": "words", "lines": len(text.strip().splitlines())}
 
 
 def main(argv):
     usage_if_asked(argv, __doc__)
-    verb, rest = take_verb(argv, VERBS, SHOW_SPEC)
+    verb, rest = take_verb(argv, VERBS, {**SHOW_SPEC, **NOTE_SPEC, **WORDS_SPEC})
     if verb is None:
         die("clerk design <verb> — one of " + ", ".join(VERBS))
-    return {"show": cmd_show}[verb](rest)
+    if verb == "show":
+        return cmd_show(rest)
+    emit({"note": cmd_note, "words": cmd_words}[verb](rest))
 
 
 if __name__ == "__main__":

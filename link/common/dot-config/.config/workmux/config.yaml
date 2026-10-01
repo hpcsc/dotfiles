@@ -12,11 +12,9 @@ mode: session
 # after its handle (e.g. handle "dotfiles-test" -> session "dotfiles-test").
 window_prefix: ""
 
-# Each worktree session: full agent pane + small shell pane below.
+# Each worktree session: one agent pane, no shell pane.
 # Live status icons (🤖 working / 💬 waiting / ✅ done) show in the dashboard.
 panes:
   - command: <agent>
     focus: true
-  - split: vertical
-    size: 20
 nerdfont: true

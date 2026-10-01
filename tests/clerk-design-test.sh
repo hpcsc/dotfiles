@@ -495,6 +495,53 @@ hasnt "a deliverable with no Go type or function has no design section" "## Desi
 rm -f "$TF"
 
 # --------------------------------------------------------------------------------
+printf '\ncorrections — what a person changed after the run handed its branch over\n'
+
+R=$(new_repo)
+planned_run "$R"
+run "$R" step done decompose --tasks-file tasks/refunds.md >/dev/null
+run "$R" design note Ledger "the batch totals need one owner" >/dev/null
+eq "a run that has not finished has nothing handed over to compare with" "1" \
+   "$(run "$R" design corrections >/dev/null 2>&1; printf '%s' $?)"
+cat > "$R/billing/refund.go" <<'EOF2'
+package billing
+
+type Refund struct {
+	PaymentID string
+	Amount    int
+}
+
+type Ledger struct{}
+EOF2
+commit_all "$R" "Add refunds"
+# The run hands over here. Recorded the way the step table records it at `finished`.
+RJ="$R/.git/clerk/runs/refunds/run.json"
+jq --arg c "$(git -C "$R" rev-parse HEAD)" '.finished = true | .finished_commit = $c' "$RJ" > "$RJ.tmp" && mv "$RJ.tmp" "$RJ"
+eq "a finished run with no later commits has no corrections" "0" "$(run "$R" design corrections | jq -r '.commits | length')"
+cat > "$R/billing/refund.go" <<'EOF2'
+package billing
+
+type Refund struct {
+	PaymentID string
+	Amount    int
+}
+
+type ledger struct{}
+EOF2
+commit_all "$R" "Keep the ledger unexported"
+C=$(run "$R" design corrections)
+eq "the commits after the hand-over are listed" "Keep the ledger unexported" "$(printf '%s' "$C" | jq -r '.commits[0] | sub("^[0-9a-f]+ "; "")')"
+eq "with the files they changed" "billing/refund.go" "$(printf '%s' "$C" | jq -r '.files | join(",")')"
+eq "and the design of the correction: the exported type went, an unexported one came" "Ledger|ledger" \
+   "$(printf '%s' "$C" | jq -r '.design.packages[0] | [(.removed_types | join(",")), (.types | map(.name) | join(","))] | join("|")')"
+eq "beside the reason the run gave for the type" "the batch totals need one owner" "$(printf '%s' "$C" | jq -r '.notes[0].reason')"
+eq "and the planned design it left" "Refund,Chargeback" "$(printf '%s' "$C" | jq -r '[.planned.types[].name] | join(",")')"
+git -C "$R" checkout -q main
+eq "off the run's branch, the run is named" "Keep the ledger unexported" \
+   "$(run "$R" design corrections --run refunds | jq -r '.commits[0] | sub("^[0-9a-f]+ "; "")')"
+eq "and a run that does not exist is refused" "2" "$(run "$R" design corrections --run nope >/dev/null 2>&1; printf '%s' $?)"
+
+# --------------------------------------------------------------------------------
 rm -rf "$R" "$CACHE" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

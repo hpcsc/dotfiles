@@ -13,6 +13,7 @@ passing together.
     clerk design note <name> "<reason>" [--affects <n>[,<n>...]]
     clerk design words --file <file>
     clerk design prompt <id>
+    clerk design corrections [--run <slug>] [--head <ref>]
 
 `--base` defaults to the commit the open run started from, else to the merge-base with
 the default branch, and `--head` to the working tree. The view is Markdown with Mermaid
@@ -25,6 +26,11 @@ draws the code against the planned design the run bound, with each design change
 its reason. `note` records why the code differs from the planned design; `words` keeps
 the table of words the design check wrote, for the view. `prompt` prints the prompt for
 the design check of one design change.
+
+`corrections` reads what changed after a finished run handed its branch over: the
+commits, the files, and the design of that change, with the planned design and the
+design changes the run recorded. A person's corrections are the lessons a run did not
+learn by itself, and this is the mechanical half of finding them.
 """
 
 import json
@@ -33,15 +39,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import clerk_design  # noqa: E402
-from clerk_lib import die, emit, gitout, parse, repo, take_verb, usage_if_asked  # noqa: E402
-from clerk_repo import breakdown_side, now, run_section  # noqa: E402
+from clerk_lib import die, emit, git_ok, gitout, parse, repo, take_verb, usage_if_asked  # noqa: E402
+from clerk_repo import breakdown_side, ledger_read, now, run_section  # noqa: E402
 from clerk_tasks import load_task_record, next_task  # noqa: E402
 
-VERBS = ("show", "note", "words", "prompt")
+VERBS = ("show", "note", "words", "prompt", "corrections")
 SHOW_SPEC = {"--built": "bool", "--planned": "bool", "--changes": "bool", "--base": "value",
              "--head": "value", "--out": "value", "--json": "bool"}
 NOTE_SPEC = {"--affects": "value"}
 WORDS_SPEC = {"--file": "value"}
+CORRECTIONS_SPEC = {"--run": "value", "--head": "value"}
 
 
 def run_dir(r):
@@ -201,16 +208,49 @@ def cmd_prompt(argv):
     sys.exit(0)
 
 
+def cmd_corrections(argv):
+    o, rest = parse(argv, CORRECTIONS_SPEC)
+    if rest:
+        die(f"unexpected argument '{rest[0]}'")
+    r = repo()
+    if o["--run"]:
+        ld = str(r.runs_dir / o["--run"]) if r.runs_dir else None
+        if not ld or not (Path(ld) / "run.json").is_file():
+            die(f"no run '{o['--run']}'")
+    else:
+        ld = r.ledger_dir
+        if not ld:
+            die("no run belongs to this branch — name it with --run <slug>")
+    slug = Path(ld).name
+    finished = (ledger_read(Path(ld) / "run.json", {}) or {}).get("finished_commit")
+    if not finished:
+        die(f"run '{slug}' has no finished commit: it has not finished, or it finished before clerk recorded one", 1)
+    head = o["--head"] or (slug if git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{slug}", cwd=r.work_tree) else "HEAD")
+    head_sha = gitout("rev-parse", head, cwd=r.work_tree)
+    if not head_sha:
+        die(f"'{head}' does not resolve")
+    try:
+        design = clerk_design.built(r.work_tree, finished, head_sha)
+    except RuntimeError as e:
+        die(str(e), 1)
+    design.pop("names", None)
+    state = clerk_design.load_state(ld)
+    return {"run": slug, "finished_commit": finished, "head": head, "head_commit": head_sha,
+            "commits": (gitout("log", "--format=%h %s", f"{finished}..{head_sha}", cwd=r.work_tree) or "").splitlines(),
+            "files": (gitout("diff", "--name-only", finished, head_sha, cwd=r.work_tree) or "").splitlines(),
+            "design": design, "planned": state.get("planned"), "notes": state.get("notes") or []}
+
+
 def main(argv):
     usage_if_asked(argv, __doc__)
-    verb, rest = take_verb(argv, VERBS, {**SHOW_SPEC, **NOTE_SPEC, **WORDS_SPEC})
+    verb, rest = take_verb(argv, VERBS, {**SHOW_SPEC, **NOTE_SPEC, **WORDS_SPEC, **CORRECTIONS_SPEC})
     if verb is None:
         die("clerk design <verb> — one of " + ", ".join(VERBS))
     if verb == "show":
         return cmd_show(rest)
     if verb == "prompt":
         return cmd_prompt(rest)
-    emit({"note": cmd_note, "words": cmd_words}[verb](rest))
+    emit({"note": cmd_note, "words": cmd_words, "corrections": cmd_corrections}[verb](rest))
 
 
 if __name__ == "__main__":

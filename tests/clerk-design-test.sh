@@ -291,6 +291,107 @@ git -C "$R" checkout -q refunds
 rm -rf "$BADDIR"
 
 # --------------------------------------------------------------------------------
+printf '\nfinish — a design change with no reason refuses the task\n'
+
+R=$(new_repo)
+planned_run "$R"
+run "$R" step done decompose --tasks-file tasks/refunds.md >/dev/null
+cat > "$R/billing/refund.go" <<'EOF2'
+package billing
+
+type Refund struct {
+	PaymentID string
+	Amount    int
+}
+
+type Ledger struct{}
+
+func (r Refund) Issue() error { return nil }
+EOF2
+F=$(run "$R" finish 1 -- billing/refund.go)
+eq "a type the plan does not name refuses the task" "1" "$(run "$R" finish 1 -- billing/refund.go >/dev/null 2>&1; printf '%s' $?)"
+eq "and names the rule and the type" "design-unplanned-type|Ledger" \
+   "$(printf '%s' "$F" | jq -r '.design_findings | map(.rule + "|" + .name) | join(",")')"
+has "with the command that records the reason" 'clerk design note Ledger' "$(printf '%s' "$F" | jq -r '.design_findings[0].message')"
+eq "an export nothing uses waits for the last task: a later one can add the caller" "0" \
+   "$(printf '%s' "$F" | jq -r '[.design_findings[] | select(.rule=="unused-export")] | length')"
+eq "the task is not marked done" "false" "$(jq -r '.tasks[0].done' "$R/tasks/refunds.json")"
+eq "and its files stay staged" "billing/refund.go" "$(git -C "$R" diff --cached --name-only)"
+
+run "$R" design note Ledger "the batch totals need one owner" >/dev/null
+F=$(run "$R" finish 1 -- billing/refund.go)
+eq "with the reason recorded, the same task finishes" "true|clean" \
+   "$(printf '%s' "$F" | jq -r '[(.done|tostring), .design] | join("|")')"
+commit_all "$R" "Task 1"
+
+cat >> "$R/billing/refund.go" <<'EOF2'
+
+func NewRefund(payment Payment, amount int) (Refund, error) { return Refund{}, nil }
+
+func (r Refund) Total() int { return r.Amount }
+EOF2
+F=$(run "$R" finish 2 -- billing/refund.go)
+eq "at the last task, a planned type never built and an unused export refuse it" \
+   "design-absent-type|Chargeback,unused-export|Total" \
+   "$(printf '%s' "$F" | jq -r '.design_findings | map(.rule + "|" + .name) | join(",")')"
+hasnt "an export the plan names is exported on purpose, with or without a caller" "NewRefund" "$F"
+hasnt "and one a design change explains is not refused again" "unused-export|Ledger" \
+   "$(printf '%s' "$F" | jq -r '.design_findings | map(.rule + "|" + .name) | join(",")')"
+
+cat > "$R/billing/refund.go" <<'EOF2'
+package billing
+
+type Refund struct {
+	PaymentID string
+	Amount    int
+}
+
+type Ledger struct{}
+
+func (r Refund) Issue() error { return nil }
+
+func NewRefund(payment Payment, amount int) (Refund, error) { return Refund{}, nil }
+
+func (r Refund) total() int { return r.Amount }
+EOF2
+run "$R" design note Chargeback "a chargeback is a refund the bank starts; Refund carries it" >/dev/null
+eq "unexported, and with the planned type's reason recorded, the last task finishes" "true" \
+   "$(run "$R" finish 2 -- billing/refund.go | jq -r '.done|tostring')"
+commit_all "$R" "Task 2"
+
+# A design that cannot be read does not block a finished task, and does not read as a refusal.
+printf 'package billing\n\ntype Audit struct{}\n' > "$R/billing/audit.go"
+READER=$(ls "$CACHE"/clerk/design-go-* | head -1)
+mv "$READER" "$READER.keep"
+printf '#!/bin/sh\necho broken >&2\nexit 3\n' > "$READER"
+chmod +x "$READER"
+git -C "$R" checkout -q -b crash
+mkdir -p "$R/.git/clerk/runs/crash"
+cp "$R/.git/clerk/runs/refunds/run.json" "$R/.git/clerk/runs/crash/run.json"
+cp "$R/.git/clerk/runs/refunds/design.json" "$R/.git/clerk/runs/crash/design.json"
+jq '.tasks |= map(.done = false)' "$R/tasks/refunds.json" > "$R/tasks/refunds.json.tmp" && mv "$R/tasks/refunds.json.tmp" "$R/tasks/refunds.json"
+F=$(run "$R" finish 1 -- billing/audit.go tasks/refunds.json)
+eq "a reader that fails leaves the task finished, and says why the design was not judged" "true|could not run: RuntimeError: the design reader failed: broken" \
+   "$(printf '%s' "$F" | jq -r '[(.done|tostring), .design] | join("|")')"
+mv "$READER.keep" "$READER"
+git -C "$R" reset -q --hard && git -C "$R" checkout -q refunds
+
+# A breakdown with no planned design is not judged, and says so.
+R2=$(new_repo)
+git -C "$R2" checkout -q -b plain
+mkdir -p "$R2/tasks"
+printf '# plain\n\n### Task 1: One\n- [ ] a\n' > "$R2/tasks/plain.md"
+jq -n '{story: "plain", tasks_file: "tasks/plain.md", tasks: [{n: 1, title: "One", depends_on: [], done: false}]}' > "$R2/tasks/plain.json"
+commit_all "$R2" "Breakdown"
+run "$R2" step start plain --request "Plain" >/dev/null
+B=$(run "$R2" step done decompose --tasks-file tasks/plain.md)
+has "a task record with no design_file binds, and says nothing was planned" "not planned" "$(printf '%s' "$B" | jq -r .design)"
+printf 'package billing\n\ntype Extra struct{}\n' > "$R2/billing/extra.go"
+eq "and its tasks finish without a design judgment" "true|no planned design is bound to the run" \
+   "$(run "$R2" finish 1 -- billing/extra.go | jq -r '[(.done|tostring), .design] | join("|")')"
+rm -rf "$R2"
+
+# --------------------------------------------------------------------------------
 rm -rf "$R" "$CACHE" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

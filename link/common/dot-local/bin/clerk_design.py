@@ -678,3 +678,68 @@ def run_base(run_dir, cwd):
     if start and gitout("cat-file", "-t", start, cwd=cwd) == "commit":
         return start
     return None
+
+
+# --------------------------------------------------------------------------------
+# The refusals at `clerk finish`
+# --------------------------------------------------------------------------------
+
+def unused_exports(planned, design, notes):
+    """The new exported names that nothing outside their package uses, that no struct tag
+    or interface accounts for, that the planned design does not name, and that no design
+    change explains."""
+    planned_names = planned_exports(planned)
+    out = []
+    for e in design.get("exported") or []:
+        if e.get("used_by") or e.get("exempt") or e["name"] in planned_names:
+            continue
+        if any(note_covers(n, e["name"], e["package"], e["package_name"], e["owner"]) for n in notes):
+            continue
+        out.append(e)
+    return out
+
+
+def finding(rule, file, name, message):
+    return {"rule": rule, "file": file, "name": name, "message": message}
+
+
+def design_findings(planned, design, notes, last):
+    """The design changes that have no reason. A new type is judged at every task. A
+    planned type that was never built, and an export nothing uses, are judged at the last
+    task only, because until then a later task can still add the type or the caller."""
+    out = []
+    for u in unplanned_types(planned, design, notes):
+        out.append(finding("design-unplanned-type", f"{u['package']}/{u['file']}", u["name"],
+                           f"type `{u['name']}` in {u['package']} is not in the planned design — record why "
+                           f"with `clerk design note {u['name']} \"<reason>\"`, or change the code"))
+    if last:
+        for ty in absent_types(planned, design, notes):
+            out.append(finding("design-absent-type", ty["package"], ty["name"],
+                               f"the planned design names a new type `{ty['name']}` that the code does not "
+                               f"declare — build it, or record why with `clerk design note {ty['name']} \"<reason>\"`"))
+        for e in unused_exports(planned, design, notes):
+            what = f"{e['kind']} `{e['name']}`" + (f" of `{e['owner']}`" if e["owner"] else "")
+            out.append(finding("unused-export", e["package"], e["name"],
+                               f"{what} is exported, and nothing outside {e['package']} uses it — make it "
+                               f"unexported, or record why with `clerk design note {e['name']} \"<reason>\"`"))
+    return out
+
+
+def finish_findings(r, side, n):
+    """(findings, why the design was not judged) for `clerk finish n` in checkout `r`."""
+    ld = r.ledger_dir
+    if not ld or Path(ld).name != r.current_branch:
+        return [], "no run is open on this branch"
+    state = load_state(ld)
+    planned = state.get("planned")
+    if not planned:
+        return [], "no planned design is bound to the run"
+    tasks = json.loads(Path(side).read_text()).get("tasks") or []
+    still_open = [t for t in tasks if t.get("done") is not True]
+    last = len(still_open) == 1 and still_open[0].get("n") == n
+    base = run_base(ld, r.work_tree) or gitout("merge-base", "HEAD", r.default_branch or "HEAD", cwd=r.work_tree)
+    extra = planned_dirs(planned, r.work_tree) if last else ()
+    design = built(r.work_tree, base, None, with_uses=last, extra_dirs=extra)
+    if design.get("not_checked"):
+        return [], design["not_checked"]
+    return design_findings(planned, design, state.get("notes") or [], last), None

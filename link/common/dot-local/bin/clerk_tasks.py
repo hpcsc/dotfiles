@@ -180,6 +180,21 @@ def cmd_finish(n, files, tasks_override=None):
     else:
         lint_state = "not installed"
 
+    # The design is judged after the lint, on the same staged set: a type the planned
+    # design does not name is a decision the run must give a reason for, and the reason
+    # is cheapest while the code is still in front of it.
+    # A judgment that cannot run is reported and does not block, as the lint's is: exit 1
+    # is this command's refusal, and a crash must not read as one.
+    import clerk_design
+    try:
+        design_findings, design_state = clerk_design.finish_findings(repo, side, n)
+    except Exception as e:  # noqa: BLE001
+        design_findings, design_state = [], f"could not run: {type(e).__name__}: {e}"
+    if design_findings:
+        emit({"task": n, "done": False, "design_findings": design_findings, "staged": list(files),
+              "next_step": "change the code, or record why with clerk design note <name> \"<reason>\"; "
+                           "then run clerk finish again; the paths stay staged"}, 1)
+
     for t in data["tasks"]:
         if t.get("n") == n:
             t["done"] = True
@@ -205,7 +220,8 @@ def cmd_finish(n, files, tasks_override=None):
     records.mkdir(parents=True, exist_ok=True)
     (records / f"{n}.json").write_text(json.dumps({"n": n, "at": now(), "files": list(files)}) + "\n")
     return {"task": n, "done": True, "task_record": side, "breakdown_staged": staged_tasks,
-            "breakdown_tracked": tracked, "lint": lint_state, "staged": list(files),
+            "breakdown_tracked": tracked, "lint": lint_state, "design": design_state or "clean",
+            "staged": list(files),
             "next_step": "invoke the commit skill — the message is judgment, not mechanics"}
 
 

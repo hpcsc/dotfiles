@@ -2369,7 +2369,7 @@ printf '  --caller-gaps\n  --proposals string\n  --proposals-anywhere\n' > "$MS/
 cat > "$MS/survivors.json" <<'EOF'
 {"base":"abc","mutants":[
  {"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}"},
- {"id":"a.go:F:RETURN_ZERO#1","file":"a.go","line":4,"status":"KILLED","operator":"RETURN_ZERO","original":"1","replacement":"0"},
+ {"id":"a.go:F:RETURN_EMPTY#1","file":"a.go","line":4,"status":"KILLED","operator":"RETURN_EMPTY","original":"1","replacement":"0"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#1","file":"cmd/x/main.go","line":5,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"package cmd/x has no test files"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#2","file":"cmd/x/main.go","line":6,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"stop()","replacement":"","detail":"package cmd/x has no test files"},
  {"id":"a.go:F:PROPOSED#123456","file":"a.go","line":7,"status":"KILLED","operator":"PROPOSED","original":"x","replacement":"y","bug":"a bug","refs":["f1","f2"]}],

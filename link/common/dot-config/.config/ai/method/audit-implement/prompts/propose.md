@@ -2,7 +2,7 @@ You propose mutants: small, realistic bugs that a developer could write in the G
 
 Read each changed Go function at `{{head}}`, and the diff `git diff {{base}}...{{head}}`. Read the tests of its package too. Do not run tests or builds, and do not change the tree.
 
-The tool already makes these, so do not propose them: `<` to `<=`, `==` to `!=`, `&&` to `||`, removing one operand of `&&` or `||`, emptying an `if` body, removing an assignment or a call, returning the zero value or `true`, swapping two adjacent fields, removing one field of a literal, moving a time edge (`After` to `!Before`), and `AddDate` to `Add`. The rows that it already gave are below.
+The tool already makes these, so do not propose them: `<` to `<=`, `==` to `!=`, `&&` to `||`, removing one operand of `&&` or `||`, removing a `!`, `+` to `-`, a number one more or one less, emptying an `if`, `else` or `case` body, a `break` at the start or the end of a loop body, removing an assignment or a call, an error return value to `nil`, returning the empty value or `true`, swapping two adjacent named values, removing one named value of a literal, and moving a time edge (`After` to `!Before`). The rows that it already gave are below.
 
 Propose semantic bugs instead: a condition too narrow or too wide for the domain rule, a time window that starts or ends at the wrong event, a state that a command forgets or a reducer ignores, the wrong map key, the wrong customer or case, a filter on the wrong value, a case that treats one value like another.
 

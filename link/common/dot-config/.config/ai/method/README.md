@@ -185,15 +185,24 @@ carries its acceptance criteria as checkboxes, ticked by hand as they are verifi
 leaving those outside the commit would strand them and dirty the tree. It refuses a path that does not exist, refuses a task already done, and never
 runs `git add -A`.
 
-The message is judgment, so it goes to the commit agent. The four prove-it checks — a
-guard shown to fail, an absence assertion with a positive partner, a source-scanning
-test re-verified after a move, and looking at UI in a browser — stay with the model.
+The message is judgment, so it goes to the commit agent. For Go, `clerk mutants` finds a
+guard that no test can break: it changes each line the task changed, one change at a time,
+and lists each change that no test caught. The model writes the tests that catch them. The
+other prove-it checks — an absence assertion with a positive partner, a source-scanning
+test re-verified after a move, two values of one type that differ in a fixture, a loop
+tested with two items, and looking at UI in a browser — stay with the model.
 
 ### Phase 3 — audit, match, close
 
 Suite, then receipt. Audit, fix, then **receipt again** — this is the only point in the
 run where code lands after the last green. Re-audit narrowed to the lenses that raised
 what was fixed, widening to the full panel if any fix touched behaviour.
+
+Before the lenses start, clerk runs `mutants` once for the round, and the tests lens judges
+each change that no test caught. With the run flag `proposals` on, round 1 also has a
+propose phase: one agent writes mutants for the domain, which the built-in operators cannot
+make, and clerk runs them with the rest. In the refute phase, clerk settles each claim that
+names a mutation with `mutants`, and only the other claims get an agent.
 
 #### What the rounds cost, measured
 
@@ -291,6 +300,7 @@ flowchart LR
     m8["which commit a fix belongs to,<br/>when only one touched the file"]
     m9["whether a precedent was named,<br/>and whether it is really there"]
     m10["which step is next,<br/>by the evidence on record"]
+    m11["which changed lines<br/>no test catches"]
   end
   subgraph J["the model · judgment"]
     direction TB
@@ -307,7 +317,7 @@ flowchart LR
   J -.->|"assertions it cannot infer<br/>clerk audit accept · clerk step done"| M
   classDef clerk fill:#D8E6E0,stroke:#2F5D50,stroke-width:1.5px,color:#132520
   classDef you fill:#F2DFD3,stroke:#A8501E,stroke-width:1.5px,color:#3A1A08
-  class m1,m2,m3,m4,m5,m6,m7,m8,m9,m10 clerk
+  class m1,m2,m3,m4,m5,m6,m7,m8,m9,m10,m11 clerk
   class j1,j2,j3,j4,j5,j6,j7,j8 you
 ```
 
@@ -332,6 +342,7 @@ with `--audit-accepted`. Without either, land refuses.
 | `learn add --type <t> --title <s> --learning <s> --apply-when <s>` · `learn list` · `index` · `show <title>` · `drop <title>` | Appends the block to the learnings file resolved from the **repo root**, not the worktree the run is standing in; refuses an exact title collision, leaving dedup on substance to the caller | 0 · **3** title exists |
 | `lint [--staged] [--rule <r>]... [<paths>]` | The conventions a regex settles: a comment naming code by its position in the breakdown, scenario-named sibling tests, a method apart from its type — and, over a breakdown's task record, a certainty assessed `high` or `medium` with no precedent behind it | 0 clean · **1** findings |
 | `verify` | Uncommitted work, unproven suites, scattered tasks, plus `not_checked` | 0 clean · **1** block |
+| `mutants [--base <ref>] [--json] [--operators <list>] [--proposals <file> [--proposals-anywhere]]` · `mutants --id <id>` | The changed lines that no test catches, from `mutants`: each change no test caught, a package with no test files as one row, and the changed lines that no test of a changed caller runs. The work tree against HEAD unless `--base` is given. `--id` runs one mutant again | 0 · **10** survivors or caller gaps · **124** time limit · **2** mutants missing or failed |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 | `step` · `step start <slug> --request <text>` · `step done <step> …` · `step status` · `step rm <slug>` | The first step of the run that is not done, with the method text for it, computed from the repository and the run's ledger on every call; `start` opens a run and records the request verbatim; `done` records the steps whose completion is a judgment | 0 · **3** several open runs |
 | `audit run [--rounds <n>] …` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and land read | 0 · **3** refused |

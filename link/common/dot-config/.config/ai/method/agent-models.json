@@ -137,9 +137,6 @@
       "claude": "sonnet",
       "why": "Kept at the tier it was already set to: a narrow review that matches patterns against a named guideline rather than weighing an open question."
     },
-    "go-mutation-reviewer": {
-      "step": "Review \u00b7 surviving mutants as test gaps"
-    },
     "run-verifier": {
       "step": "the judgment clerk verify leaves in not_checked"
     },

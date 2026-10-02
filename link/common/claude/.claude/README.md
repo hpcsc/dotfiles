@@ -18,7 +18,6 @@ Skills (user-facing)              Agents (autonomous workers)
                            ├────> go-concurrency-reviewer or concurrency-reviewer
                            ├────> go-performance-reviewer or performance-reviewer
                            ├────> go-guidelines-reviewer (Go only)
-                           ├────> go-mutation-reviewer (Go only)
                            └────> commit (committing)
 /tdd ──────────────────────┬────> decompose-to-tasks (planning)
                            ├────> tdd-test-writer (red)
@@ -145,7 +144,6 @@ All review agents output structured JSON: `{decision: "pass|block", findings: [{
 | **performance-reviewer** | `/implement` | Missing timeouts, resource leaks, lack of graceful degradation. |
 | **go-performance-reviewer** | `/implement` (Go) | Same as performance reviewer, with Go-specific performance guidelines. |
 | **go-guidelines-reviewer** | `/implement` (Go) | Naming patterns, architecture principles, development workflow conventions. |
-| **go-mutation-reviewer** | `/implement` (Go) | Runs go-gremlins mutation testing, interprets survived mutants, surfaces actionable test gaps. |
 | **security-reviewer** | `/implement` | Injection patterns, authorization gaps, audit trail verification. |
 | **go-test-reviewer** | `/refactor-go`, (direct use) | Reviews Go tests against behavior-driven testing guidelines. |
 | **test-reviewer** | (direct use) | Reviews tests across all languages against testing guidelines. |

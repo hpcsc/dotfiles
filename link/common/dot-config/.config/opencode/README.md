@@ -104,7 +104,6 @@ copied — they are consulted on demand and read partially by design.
 | **performance-reviewer** | Missing timeouts, resource leaks, graceful degradation |
 | **go-performance-reviewer** | Same + Go performance guidelines |
 | **go-guidelines-reviewer** | Go naming, architecture, workflow conventions |
-| **go-mutation-reviewer** | Runs go-gremlins mutation testing, surfaces actionable test gaps |
 | **security-reviewer** | Injection patterns, authorization gaps, audit trails |
 | **go-test-reviewer** | Go tests against testing guidelines |
 | **test-reviewer** | Tests across all languages |

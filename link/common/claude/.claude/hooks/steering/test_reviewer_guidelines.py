@@ -18,7 +18,6 @@ class TestHandle:
         assert handle({"agent_type": "security-reviewer"}) == {}
         assert handle({"agent_type": "performance-reviewer"}) == {}
         assert handle({"agent_type": "concurrency-reviewer"}) == {}
-        assert handle({"agent_type": "go-mutation-reviewer"}) == {}
 
     def test_go_semantic_reviewer_injects_two_guidelines(self):
         result = handle({"agent_type": "go-semantic-reviewer"})

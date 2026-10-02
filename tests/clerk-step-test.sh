@@ -954,25 +954,29 @@ cat > "$RA/rev-q.json" <<'JSON'
   {"id":"q1","severity":"low","nature":"quality","file":"b.go","claim":"a name"},
   {"id":"q2","severity":"low","nature":"quality","file":"c.go","claim":"a comment"},
   {"id":"q3","severity":"low","nature":"quality","file":"b.go","claim":"another name"},
-  {"id":"t1","severity":"low","nature":"quality","file":"a_test.go","claim":"a vacuous test"}]}]
+  {"id":"t1","severity":"low","nature":"quality","file":"a_test.go","claim":"a vacuous test"},
+  {"id":"t2","severity":"low","nature":"quality","file":"svc/tests/test_a.py","claim":"a vacuous Python test"},
+  {"id":"t3","severity":"low","nature":"quality","file":"svc/conftest.py","claim":"a fixture that hides a failure"}]}]
 JSON
-printf '{"clusters":[{"ids":["r1"]},{"ids":["q1"]},{"ids":["q2"]},{"ids":["q3"]},{"ids":["t1"]}]}' > "$RA/dd-q.json"
+printf '{"clusters":[{"ids":["r1"]},{"ids":["q1"]},{"ids":["q2"]},{"ids":["q3"]},{"ids":["t1"]},{"ids":["t2"]},{"ids":["t3"]}]}' > "$RA/dd-q.json"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
 run "$RA" audit record --phase review --results "$RA/rev-q.json" >/dev/null 2>&1
 N=$(run "$RA" audit record --phase dedupe --results "$RA/dd-q.json")
 eq "quality claims settled by reading share one reader; runtime and test claims keep their own" \
-   "refute:r1,refute:t1,refute:quality-batch-1|q1,q3,q2|none|VERDICTS_SCHEMA" \
-   "$(printf '%s' "$N" | jq -r '[([.next.spawn[].id] | join(",")), (.next.spawn[2].finding_ids | join(",")), .next.spawn[2].isolation, .next.spawn[2].schema_name] | join("|")')"
+   "refute:r1,refute:t1,refute:t2,refute:t3,refute:quality-batch-1|q1,q3,q2|none|VERDICTS_SCHEMA" \
+   "$(printf '%s' "$N" | jq -r '[([.next.spawn[].id] | join(",")), (.next.spawn[4].finding_ids | join(",")), .next.spawn[4].isolation, .next.spawn[4].schema_name] | join("|")')"
 cat > "$RA/vd-q.json" <<'JSON'
 [{"finding_id":"r1","refuted":false,"basis":"ran it"},
  {"finding_id":"t1","refuted":true,"basis":"the test fails with the feature removed"},
+ {"finding_id":"t2","refuted":true,"basis":"the test fails with the feature removed"},
+ {"finding_id":"t3","refuted":true,"basis":"the fixture lets the failure through"},
  {"verdicts":[{"finding_id":"q1","refuted":true,"basis":"no such rule"},
               {"finding_id":"q3","refuted":false,"basis":"naming.md line 12"}]}]
 JSON
 N=$(run "$RA" audit record --phase refute --results "$RA/vd-q.json")
 eq "a batched reply is read as one verdict per claim" "report|true|true" \
-   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED refutation (3)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (2)") | tostring)] | join("|")')"
+   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED refutation (3)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (4)") | tostring)] | join("|")')"
 printf '{"findings":[],"coverage_gaps":[],"summary":"s"}' > "$RA/rep-q.json"
 run "$RA" audit record --phase report --results "$RA/rep-q.json" >/dev/null 2>&1
 eq "a claim no verdict came back for is reported as unchecked, not as confirmed" "plausible" \

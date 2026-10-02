@@ -76,7 +76,7 @@ TEST_FILE_RE = re.compile(r"(^|[/_.-])(test|tests|spec|_test\.|\.test\.|\.spec\.
 # Used to decide whether a quality claim can be settled by reading, or needs a tree to
 # break something in. Proving a test vacuous means breaking what it names and watching it
 # pass anyway; a convention claim cites a rule and a line.
-TEST_PATH_RE = re.compile(r"(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|_test\.exs)$")
+TEST_PATH_RE = re.compile(r"(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|_test\.exs|(^|/)test_[^/]*\.py|_test\.py|(^|/)conftest\.py)$")
 
 READ_ONLY = ("Nothing here is executed, so you are reading the tree the audit reports on. Do not modify "
              "it: a claim settled by naming a rule and a line needs no experiment, and a tree left dirty "

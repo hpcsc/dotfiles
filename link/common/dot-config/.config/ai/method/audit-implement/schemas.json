@@ -223,6 +223,30 @@
                 "null"
               ],
               "description": "the id of the row under MUTANTS that this finding is about, verbatim"
+            },
+            "mutation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "additionalProperties": false,
+              "required": [
+                "file",
+                "old",
+                "new"
+              ],
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "old": {
+                  "type": "string"
+                },
+                "new": {
+                  "type": "string"
+                }
+              },
+              "description": "an exact edit that the claim says no test catches: old occurs once in file, and new replaces it"
             }
           }
         }

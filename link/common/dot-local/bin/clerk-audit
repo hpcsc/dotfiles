@@ -460,6 +460,51 @@ def add_mutants(scope, cwd):
     scope["caller_gaps"] = result["caller_gaps"]
 
 
+def _usable_mutation(m):
+    return isinstance(m, dict) and all(isinstance(m.get(k), str) for k in ("file", "old", "new")) and bool(m["old"])
+
+
+def settle_mutations(lv, cwd):
+    """Verdicts that clerk gives itself, with `mutants`, for the findings that name a
+    mutation. A finding that `mutants` cannot settle goes to an agent refuter."""
+    if "clerk_verdicts" in lv:
+        return
+    import clerk_mutants
+    verdicts = []
+    for f in lv["candidates"]:
+        if not f.get("mutant_id"):
+            continue
+        code, output = clerk_mutants.rerun(cwd, f["mutant_id"], capture=True)
+        if code in (clerk_mutants.RERUN_KILLED, clerk_mutants.RERUN_SURVIVED):
+            first = next((line.strip() for line in output.splitlines() if line.strip()), "")
+            verdicts.append({"finding_id": f["id"], "refuted": code == clerk_mutants.RERUN_KILLED,
+                             "basis": f"`clerk mutants --id {f['mutant_id']}`: {first}"})
+    settled = {v["finding_id"] for v in verdicts}
+    edits = [f for f in lv["candidates"]
+             if f["id"] not in settled and not f.get("mutant_id") and _usable_mutation(f.get("mutation"))]
+    if edits:
+        with tempfile.TemporaryDirectory(prefix="clerk-audit-") as tmp:
+            proposals = Path(tmp) / "proposals.jsonl"
+            proposals.write_text("".join(
+                json.dumps({"file": f["mutation"]["file"], "old": f["mutation"]["old"], "new": f["mutation"]["new"],
+                            "bug": f.get("claim") or f["id"], "ref": f["id"]}) + "\n" for f in edits), encoding="utf-8")
+            _, result = clerk_mutants.run(cwd, (lv.get("scope") or {}).get("base") or "HEAD", proposals=proposals,
+                                          anywhere=True, operators="none", caller_gaps=False)
+        for f in edits:
+            r = result["by_ref"].get(f["id"])
+            if not r or r["status"] not in ("LIVED", "NOT COVERED", "KILLED"):
+                continue
+            where = f"{r.get('file')}:{r.get('line')}"
+            if r["status"] == "KILLED":
+                basis = f"mutants: KILLED at {where}: {r.get('detail') or 'a test fails with this edit'}"
+            elif r["status"] == "LIVED":
+                basis = f"mutants: LIVED at {where}: the tests pass with this edit"
+            else:
+                basis = f"mutants: NOT COVERED at {where}: no test runs this line"
+            verdicts.append({"finding_id": f["id"], "refuted": r["status"] == "KILLED", "basis": basis})
+    lv["clerk_verdicts"] = verdicts
+
+
 def audit_next(ctx, aud, o):
     lv = live_of(aud)
     if not lv:
@@ -505,7 +550,11 @@ def audit_next(ctx, aud, o):
                 "record_with": "clerk audit record --phase dedupe --results <file>"}
 
     if phase == "refute":
-        jobs = panel.refute_jobs(lv["scope"], prompts, lv["candidates"], a["depth"],
+        settle_mutations(lv, ctx.cwd)
+        ctx.run.write("audit.json", aud)
+        settled = {v["finding_id"] for v in lv["clerk_verdicts"]}
+        jobs = panel.refute_jobs(lv["scope"], prompts, [f for f in lv["candidates"] if f["id"] not in settled],
+                                 a["depth"],
                                  request=a["request"], brief=a["brief"],
                                  test_commands=a["test_commands"])
         return {"phase": "refute", "round": lv["round"], "concurrent": True,
@@ -513,6 +562,7 @@ def audit_next(ctx, aud, o):
                                  isolation=j["isolation"],
                                  tools=job_tools(a.get("test_commands"), j["isolation"]),
                                  finding_ids=j.get("finding_ids")) for j in jobs],
+                "settled_by_clerk": sorted(settled),
                 "record_with": "clerk audit record --phase refute --results <file>"}
 
     if phase == "report":
@@ -676,9 +726,10 @@ def audit_record(ctx, aud, o):
     elif ph == "refute":
         rows = data if isinstance(data, list) else [data]
         # A batched refuter answers with `verdicts`, one per claim it was given.
-        lv["verdicts"] = [v for r in rows
-                          for v in (r["verdicts"] if isinstance(r, dict) and isinstance(r.get("verdicts"), list)
-                                    else [r])]
+        from_agents = [v for r in rows
+                       for v in (r["verdicts"] if isinstance(r, dict) and isinstance(r.get("verdicts"), list)
+                                 else [r])]
+        lv["verdicts"] = list(lv.get("clerk_verdicts") or []) + from_agents
         lv["phase"] = "report"
     elif ph == "report":
         lv["report"] = _report(lv, data if isinstance(data, dict) else (data[0] if data else {}))

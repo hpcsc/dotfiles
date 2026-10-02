@@ -778,6 +778,7 @@ cat > "$MA/mutants" <<'EOF'
 dir=$(dirname "$0")
 if [ "$2" = --help ]; then printf -- '--caller-gaps --proposals --proposals-anywhere\n'; exit 0; fi
 printf '%s\n' "$@" > "$dir/argv"
+if [ "$1" = rerun ]; then cat "$dir/rerun_out"; exit "$(cat "$dir/rerun_exit")"; fi
 prev=""; for a in "$@"; do [ "$prev" = --json ] && cp "$dir/report" "$a"; prev=$a; done
 exit "$(cat "$dir/exit")"
 EOF
@@ -976,6 +977,43 @@ printf '{"findings":[],"coverage_gaps":[],"summary":"s"}' > "$RA/rep-q.json"
 run "$RA" audit record --phase report --results "$RA/rep-q.json" >/dev/null 2>&1
 eq "a claim no verdict came back for is reported as unchecked, not as confirmed" "plausible" \
    "$(report_row q2 '.confidence')"
+
+# A claim that names a mutation is settled by clerk with mutants, and only the rest get agents.
+cat > "$RA/rev-m.json" <<'JSON'
+[{"lens":"tests:Go","verdict":"fail","findings":[
+  {"id":"m1","severity":"medium","nature":"quality","file":"a.go","claim":"no test pins the branch","mutant_id":"a.go:F:BRANCH_IF#1"},
+  {"id":"m2","severity":"medium","nature":"quality","file":"a_test.go","claim":"the test passes without the check","mutation":{"file":"a.go","old":"x","new":"y"}},
+  {"id":"m3","severity":"medium","nature":"quality","file":"a_test.go","claim":"the test passes without the sum","mutation":{"file":"a.go","old":"p","new":"q"}},
+  {"id":"m4","severity":"medium","nature":"quality","file":"a_test.go","claim":"an edit that does not build","mutation":{"file":"a.go","old":"r","new":"s"}},
+  {"id":"r1","severity":"high","nature":"runtime","file":"a.go","claim":"boom"}]}]
+JSON
+cat > "$MA/settle.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:F:PROPOSED#100001","file":"a.go","line":4,"status":"LIVED","operator":"PROPOSED","original":"x","replacement":"y","bug":"m2","refs":["m2"]},
+ {"id":"a.go:F:PROPOSED#100002","file":"a.go","line":6,"status":"KILLED","operator":"PROPOSED","original":"p","replacement":"q","bug":"m3","refs":["m3"],"detail":"--- FAIL: TestSum (0.00s)"},
+ {"id":"a.go:F:PROPOSED#100003","file":"a.go","line":8,"status":"NOT VIABLE","operator":"PROPOSED","original":"r","replacement":"s","bug":"m4","refs":["m4"]}],
+ "proposals":{"accepted":3,"rejected":[]}}
+EOF
+printf 'LIVED: a.go:3 BRANCH_IF: { return 1 } -> {}\n' > "$MA/rerun_out"; printf '10' > "$MA/rerun_exit"
+mstub 0 "$MA/empty.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
+run "$RA" audit record --phase review --results "$RA/rev-m.json" >/dev/null 2>&1
+printf '{"clusters":[{"ids":["m1"]},{"ids":["m2"]},{"ids":["m3"]},{"ids":["m4"]},{"ids":["r1"]}]}' > "$RA/dd-m.json"
+mstub 0 "$MA/settle.json"
+N=$(run "$RA" audit record --phase dedupe --results "$RA/dd-m.json")
+eq "clerk settles the claims that name a mutation; one that does not build and a runtime claim keep their agents" \
+   "m1,m2,m3|refute:m4,refute:r1" \
+   "$(printf '%s' "$N" | jq -r '[(.next.settled_by_clerk | join(",")), ([.next.spawn[].id] | join(","))] | join("|")')"
+eq "the edits run once, as proposals only, on any line, with no caller gaps" "true|true|false" \
+   "$(grep -qx -- --operators=none "$MA/argv" && echo true || echo false)|$(grep -qx -- --proposals-anywhere "$MA/argv" && echo true || echo false)|$(grep -qx -- --caller-gaps "$MA/argv" && echo true || echo false)"
+printf '[{"finding_id":"m4","refuted":true,"basis":"could not build it"},{"finding_id":"r1","refuted":false,"basis":"ran it"}]' > "$RA/vd-m.json"
+N=$(run "$RA" audit record --phase refute --results "$RA/vd-m.json")
+eq "clerk's verdicts join the agents': the lived ones survive, the killed one is refuted" "report|true|true" \
+   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED refutation (3)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (2)") | tostring)] | join("|")')"
+eq "and each verdict says what mutants did" "true|true" \
+   "$(run "$RA" audit status | jq -r '[(.live.verdicts[] | select(.finding_id=="m3") | .basis | contains("KILLED at a.go:6: --- FAIL: TestSum")), (.live.verdicts[] | select(.finding_id=="m1") | .basis | contains("LIVED: a.go:3"))] | map(tostring) | join("|")')"
+mstub 0 "$MA/empty.json"
 
 # Fix-scoped narrowing, the three cases that must not narrow.
 narrow() {  # <fixed-file args...> -> the lens keys that would run

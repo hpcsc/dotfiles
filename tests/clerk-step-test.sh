@@ -641,6 +641,17 @@ eq "an exit other than 0 is recorded as it happened" "land|1" \
 eq "a usage error dies before the log and is not evidence" "land|1" \
    "$(run "$RE" finish 9 -- nope >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
 eq "reads are not logged" "3" "$(run "$RE" prepare >/dev/null; run "$RE" status >/dev/null 2>&1; run "$RE" step >/dev/null; wc -l < "$EV" | tr -d ' ')"
+SE=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$SE/mutants" <<'EOF'
+#!/usr/bin/env bash
+if [ "$2" = --help ]; then printf -- '--caller-gaps --proposals --proposals-anywhere\n'; exit 0; fi
+prev=""; for a in "$@"; do [ "$prev" = --json ] && printf '{"base":"x","mutants":[],"callerGaps":[]}' > "$a"; prev=$a; done
+exit 0
+EOF
+chmod +x "$SE/mutants"
+eq "clerk mutants is logged as evidence" "mutants|0" \
+   "$(CLERK_MUTANTS_BIN="$SE/mutants" run "$RE" mutants >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
+rm -rf "$SE"
 WE=$(run "$RE" isolate ev --worktree | field .path)
 eq "isolate is logged against the run it isolates" "isolate|ev" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[0]] | join("|")')"
 receipt_ok "$WE" inner >/dev/null

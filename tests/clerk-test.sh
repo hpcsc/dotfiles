@@ -2348,6 +2348,88 @@ eq "an archived breakdown falls through rather than resolving to a path that is 
    "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
 
 # --------------------------------------------------------------------------------
+printf '\nmutants — the changed lines that no test catches\n'
+
+# A stub stands in for `mutants`. Files beside it give what it prints for `run --help`, the
+# report it writes, its stderr and its exit code, and it keeps the arguments it was given.
+MS=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$MS/mutants" <<'EOF'
+#!/usr/bin/env bash
+dir=$(dirname "$0")
+if [ "$1" = run ] && [ "$2" = --help ]; then cat "$dir/help"; exit 0; fi
+printf '%s\n' "$@" > "$dir/argv"
+out=""; prev=""
+for a in "$@"; do [ "$prev" = --json ] && out=$a; prev=$a; done
+[ -n "$out" ] && [ -f "$dir/report" ] && cp "$dir/report" "$out"
+[ -f "$dir/stderr" ] && cat "$dir/stderr" >&2
+exit "$(cat "$dir/exit")"
+EOF
+chmod +x "$MS/mutants"
+printf '  --caller-gaps\n  --proposals string\n  --proposals-anywhere\n' > "$MS/help"
+cat > "$MS/survivors.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}"},
+ {"id":"a.go:F:RETURN_ZERO#1","file":"a.go","line":4,"status":"KILLED","operator":"RETURN_ZERO","original":"1","replacement":"0"},
+ {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#1","file":"cmd/x/main.go","line":5,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"package cmd/x has no test files"},
+ {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#2","file":"cmd/x/main.go","line":6,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"stop()","replacement":"","detail":"package cmd/x has no test files"},
+ {"id":"a.go:F:PROPOSED#123456","file":"a.go","line":7,"status":"KILLED","operator":"PROPOSED","original":"x","replacement":"y","bug":"a bug","refs":["f1","f2"]}],
+ "callerGaps":[{"file":"lib/l.go","function":"L","lines":[10,11],"callers":["app"]}],
+ "proposals":{"accepted":2,"rejected":[{"file":"a.go","old":"q","new":"r","bug":"b","ref":"f3","reason":"old not found"}]}}
+EOF
+printf '{"base":"abc","mutants":[],"callerGaps":[]}\n' > "$MS/empty.json"
+stub() {  # <exit code> [report file] [stderr text]
+  printf '%s' "$1" > "$MS/exit"
+  rm -f "$MS/report" "$MS/stderr" "$MS/argv"
+  [ -n "${2:-}" ] && cp "$2" "$MS/report"
+  [ -n "${3:-}" ] && printf '%s\n' "$3" > "$MS/stderr"
+  return 0
+}
+RM=$(new_repo)
+mut() { (cd "$RM" && CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
+mutrc() { mut "$@" >/dev/null 2>&1; printf '%s' $?; }
+argv_has() { grep -qxF -- "$1" "$MS/argv" && echo true || echo false; }
+
+NI=$(cd "$RM" && CLERK_MUTANTS_BIN="$MS/none" "$CLERK" mutants --json)
+eq "with no mutants to run, it exits 2 and says how to install it" "false|true" \
+   "$(printf '%s' "$NI" | jq -r '[(.ran|tostring), (.reason|contains("mise install")|tostring)] | join("|")')"
+eq "and the exit is 2" "2" "$(cd "$RM" && CLERK_MUTANTS_BIN="$MS/none" "$CLERK" mutants >/dev/null 2>&1; printf '%s' $?)"
+printf '  --caller-gaps\n  --proposals string\n' > "$MS/help"
+eq "a mutants without a flag clerk passes is refused, and the flag is named" "2|true" \
+   "$(stub 0 "$MS/empty.json"; printf '%s|' "$(mutrc)"; mut --json | jq -r '.reason | contains("--proposals-anywhere") | tostring')"
+printf '  --caller-gaps\n  --proposals string\n  --proposals-anywhere\n' > "$MS/help"
+
+stub 10 "$MS/survivors.json"
+J=$(mut --json)
+eq "survivors exit 10" "10" "$(stub 10 "$MS/survivors.json"; mutrc)"
+eq "only the rows no test caught are kept, with the operator as their type" "1|BRANCH_IF|LIVED" \
+   "$(printf '%s' "$J" | jq -r '[(.mutants|length|tostring), .mutants[0].type, .mutants[0].status] | join("|")')"
+eq "a package with no test files is one row, not one for each mutant" "cmd/x|2" \
+   "$(printf '%s' "$J" | jq -r '.no_tests[0] | [.package, (.mutants|tostring)] | join("|")')"
+eq "caller gaps keep their lines and callers" "lib/l.go|10,11|app" \
+   "$(printf '%s' "$J" | jq -r '.caller_gaps[0] | [.file, (.lines|map(tostring)|join(",")), .callers[0]] | join("|")')"
+eq "each ref gets the verdict of its mutant, and a rejected proposal says so" "KILLED|KILLED|REJECTED|old not found" \
+   "$(printf '%s' "$J" | jq -r '[.by_ref.f1.status, .by_ref.f2.status, .by_ref.f3.status, .by_ref.f3.detail] | join("|")')"
+
+stub 0 "$MS/empty.json"; mut >/dev/null 2>&1
+eq "the open task by default: the work tree against HEAD, with caller gaps, 4 workers and a limit" "true|true|true|true" \
+   "$(printf '%s|%s|%s|%s' "$(argv_has HEAD)" "$(argv_has --caller-gaps)" "$(argv_has 4)" "$(argv_has 600s)")"
+eq "nothing to report exits 0" "0" "$(stub 0 "$MS/empty.json"; mutrc)"
+stub 0 "$MS/empty.json"; printf '{}\n' > "$RM/p.jsonl"
+mut --base main --operators none --proposals p.jsonl --proposals-anywhere >/dev/null 2>&1
+eq "a base, the operators and the proposals pass through, the file as an absolute path" "true|true|true|true" \
+   "$(printf '%s|%s|%s|%s' "$(argv_has main)" "$(argv_has --operators=none)" "$(argv_has "$RM/p.jsonl")" "$(argv_has --proposals-anywhere)")"
+eq "--proposals-anywhere alone is a usage error" "2" "$(stub 0; mutrc --proposals-anywhere)"
+
+eq "a run stopped at its limit exits 124 and keeps what got a verdict" "124|true|false" \
+   "$(stub 124 "$MS/survivors.json"; printf '%s|' "$(mutrc)"; stub 124 "$MS/survivors.json"; mut --json | jq -r '[(.ran|tostring), (.complete|tostring)] | join("|")')"
+eq "a run stopped by a signal is a run that did not finish" "124" "$(stub 130 "$MS/survivors.json"; mutrc)"
+eq "a run that fails says why, from the last line mutants wrote" "2|false|the tests fail with the real code" \
+   "$(stub 2 "" "the tests fail with the real code"; printf '%s|' "$(mutrc)"; stub 2 "" "the tests fail with the real code"; mut --json | jq -r '[(.ran|tostring), .reason] | join("|")')"
+eq "--id reruns one mutant and passes its verdict on" "10|true|true" \
+   "$(stub 10; printf '%s|' "$(mutrc --id 'a.go:F:BRANCH_IF#1')"; printf '%s|%s' "$(argv_has rerun)" "$(argv_has 'a.go:F:BRANCH_IF#1')")"
+rm -rf "$MS" "$RM"
+
+# --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null

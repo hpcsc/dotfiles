@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""clerk mutants — the changed lines that no test catches, from `mutants`.
+
+    clerk mutants [--base <ref>] [--json] [--operators <list>]
+                  [--proposals <file> [--proposals-anywhere]]
+    clerk mutants --id <mutant id>
+
+It changes each line that the work tree changes against <ref> (HEAD unless given: the open
+task), one change at a time, and runs the tests of the package. It also reports the changed
+lines that the tests of their own package run, but that no test of a changed caller runs.
+
+Exit 0 nothing to report, 10 survivors or caller gaps, 124 the time limit, 2 a tool error.
+With --id: 0 a test kills the mutant, 10 it lives or no test runs it, 1 no verdict, 2 an
+unknown id.
+
+Dispatched to by `clerk` when invoked as `clerk mutants`, and runnable on its own.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import Parser, die, repo  # noqa: E402
+import clerk_mutants as mutants  # noqa: E402
+
+USAGE = """\
+  clerk mutants [--base <ref>] [--json] [--operators <list>]
+                [--proposals <file> [--proposals-anywhere]]
+  clerk mutants --id <mutant id>"""
+
+
+def main(argv):
+    ap = Parser()
+    ap.add_argument("--base", default="HEAD", metavar="REF")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--operators", metavar="LIST")
+    ap.add_argument("--proposals", metavar="FILE")
+    ap.add_argument("--proposals-anywhere", action="store_true")
+    ap.add_argument("--id", metavar="ID")
+    args = ap.parse_args(argv)
+    if args.help:
+        print(__doc__.strip().splitlines()[0])
+        print("\nUSAGE\n" + USAGE)
+        return 0
+    if args.proposals_anywhere and not args.proposals:
+        die("--proposals-anywhere needs --proposals")
+
+    r = repo()
+    root = r.work_tree or r.repo_root
+    if not root:
+        die("not a git repository")
+
+    if args.id:
+        code, why = mutants.rerun(root, args.id)
+        if why:
+            print(f"clerk: mutants: {why}", file=sys.stderr)
+        return code
+
+    proposals = str(Path(args.proposals).resolve()) if args.proposals else None
+    code, result = mutants.run(root, args.base, proposals=proposals, anywhere=args.proposals_anywhere,
+                               operators=args.operators, echo=not args.json)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    elif not result["ran"]:
+        print(f"clerk: mutants: {result['reason']}", file=sys.stderr)
+    return code
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as e:  # noqa: BLE001
+        die(f"internal error: {type(e).__name__}: {e}")

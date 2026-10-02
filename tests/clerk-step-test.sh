@@ -765,10 +765,27 @@ for f in scope-open scope-rules review-open review-rules finding-contract lens-s
          precedents dedupe-open \
          dedupe-rules dedupe-output refute-open refute-file-rule refute-runtime \
          refute-quality report-open report-rules report-tail regrade mechanical \
-         mechanical-tail; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
+         mechanical-tail mutants; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
 cp "$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-config/.config/ai/method/audit-implement/schemas.json" \
    "$PR/audit-implement/schemas.json"
 export CLERK_AUDIT_PROMPTS="$PR/audit-implement/prompts"
+# A stub stands in for `mutants`, as in clerk-test.sh: files beside it give the report it
+# writes and its exit code, and it keeps the arguments it was given. By default it reports
+# nothing, so the panel is what the scope alone earns.
+MA=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$MA/mutants" <<'EOF'
+#!/usr/bin/env bash
+dir=$(dirname "$0")
+if [ "$2" = --help ]; then printf -- '--caller-gaps --proposals --proposals-anywhere\n'; exit 0; fi
+printf '%s\n' "$@" > "$dir/argv"
+prev=""; for a in "$@"; do [ "$prev" = --json ] && cp "$dir/report" "$a"; prev=$a; done
+exit "$(cat "$dir/exit")"
+EOF
+chmod +x "$MA/mutants"
+mstub() { printf '%s' "$1" > "$MA/exit"; cp "$2" "$MA/report"; rm -f "$MA/argv"; }
+printf '{"base":"abc","mutants":[],"callerGaps":[]}\n' > "$MA/empty.json"
+mstub 0 "$MA/empty.json"
+export CLERK_MUTANTS_BIN="$MA/mutants"
 
 eq "next before begin is refused" "3" "$(rc "$RA" audit next)"
 
@@ -803,6 +820,47 @@ eq "a remit keeps a lens off the other language's files" "true" \
    "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | contains("YOUR REMIT") | tostring')"
 eq "the brief and story reach the lens as data" "true" \
    "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | (contains("<request>") and contains("a brief")) | tostring')"
+eq "clerk ran mutants once for the round, against the base the scope resolved" "true|abc" \
+   "$(run "$RA" audit status | jq -r '.live.scope.mutants_ran | tostring')|$(grep -A1 -x -- --base "$MA/argv" | tail -1)"
+rm -f "$MA/argv"; run "$RA" audit next >/dev/null
+eq "asking for the review again does not run it again" "false" "$([ -f "$MA/argv" ] && echo true || echo false)"
+
+cat > "$MA/rows.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}"},
+ {"id":"a.go:F:PROPOSED#123456","file":"a.go","line":5,"status":"LIVED","operator":"PROPOSED","original":"x","replacement":"y","bug":"the window ends at the wrong event"},
+ {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#1","file":"cmd/x/main.go","line":5,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"package cmd/x has no test files"},
+ {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#2","file":"cmd/x/main.go","line":6,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"stop()","replacement":"","detail":"package cmd/x has no test files"}],
+ "callerGaps":[{"file":"b.go","function":"(*B).Check","lines":[102,103,104,106],"callers":["app/handler"]}]}
+EOF
+mstub 10 "$MA/rows.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+N=$(run "$RA" audit record --phase scope --results "$RA/scope.json")
+TL=$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.id == "review:tests:Go")][0].prompt')
+eq "survivors earn the Go tests lens, though no test file changed" "true|false" \
+   "$(printf '%s' "$TL" | jq -Rsr 'length > 0 | tostring')|$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(test("test integrity — no test file changed"))] | length > 0 | tostring')"
+eq "the lens reads each row by id, a proposed one by its bug" "true|true|true" \
+   "$(printf '%s' "$TL" | jq -Rsr 'contains("[a.go:F:BRANCH_IF#1] LIVED a.go:3 BRANCH_IF: { return 1 } -> {}") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("LIVED a.go:5 the window ends at the wrong event") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("FRAGMENT mutants") | tostring')"
+eq "a package with no tests is one row, and a caller gap names its lines and callers" "true|true" \
+   "$(printf '%s' "$TL" | jq -Rsr 'contains("package cmd/x has no test files: 2 mutants") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("b.go:102-104,106 (*B).Check, not run by the tests of app/handler") | tostring')"
+eq "the other lenses do not get the rows" "false" \
+   "$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.id == "review:semantic:Go")][0].prompt | contains("MUTANTS:") | tostring')"
+
+jq '.languages = ["JavaScript/TypeScript"] | .by_language = [.by_language[1]] | .files = ["x.js","y.js","z.js","w.js"]' "$RA/scope.json" > "$RA/scope-js.json"
+mstub 0 "$MA/empty.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope-js.json" >/dev/null 2>&1
+eq "a diff with no Go runs no mutants, and says why" "false|clerk runs mutants on Go code only|false" \
+   "$(run "$RA" audit status | jq -r '.live.scope | [(.mutants_ran|tostring), .mutants_reason] | join("|")')|$([ -f "$MA/argv" ] && echo true || echo false)"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+N=$(CLERK_MUTANTS_BIN="$MA/none" run "$RA" audit record --phase scope --results "$RA/scope.json")
+eq "when mutants cannot run, the round names it among what did not run" "true" \
+   "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(startswith("mutants — mutants is not installed"))] | length > 0 | tostring')"
+
+# Rebuild the round the following cases continue from.
+mstub 0 "$MA/empty.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
 
 # One review round, two findings of different natures.
 cat > "$RA/rev.json" <<'JSON'

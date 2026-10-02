@@ -123,6 +123,30 @@ def fill(text, values):
     return text
 
 
+def line_ranges(lines):
+    out, start, prev = [], None, None
+    for n in sorted(lines or []):
+        if start is not None and n == prev + 1:
+            prev = n
+            continue
+        if start is not None:
+            out.append(f"{start}-{prev}" if prev != start else f"{start}")
+        start = prev = n
+    if start is not None:
+        out.append(f"{start}-{prev}" if prev != start else f"{start}")
+    return ",".join(out)
+
+
+def mutant_rows(scope):
+    return bool(scope.get("mutants_ran") and (scope.get("mutants") or scope.get("mutants_no_tests")
+                                              or scope.get("caller_gaps")))
+
+
+def _one_line(text, limit=120):
+    flat = " ".join(str(text or "").split())
+    return flat if len(flat) <= limit else flat[:limit - 3] + "..."
+
+
 def remit_for(scope, lang):
     """The changed files written in `lang`, or None when the scope pass filed none under
     it — in which case the lens reviews the whole change set and cannot be excluded on
@@ -249,7 +273,7 @@ def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
             not_run.append(f"guidelines ({lang}) — no conventions reviewer exists for {lang}, "
                            f"so its files got no conventions pass")
         owns_test = remit is None or any(TEST_FILE_RE.search(f) for f in remit)
-        if signals.get("tests_changed") and owns_test:
+        if (signals.get("tests_changed") and owns_test) or (lang == "Go" and mutant_rows(scope)):
             lenses.append({"key": f"tests:{lang}", "agent": cfg["tests"],
                            "prompt": ctxb.tests(lang, remit), "precedents": precedent_paths})
         elif signals.get("tests_changed"):
@@ -267,7 +291,7 @@ def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
     else:
         not_run.append("performance — the diff has no I/O, query, unbounded loop or "
                        "hot-path allocation to measure")
-    if not signals.get("tests_changed"):
+    if not signals.get("tests_changed") and not any(l["key"].startswith("tests:") for l in lenses):
         not_run.append("test integrity — no test file changed")
     if signals.get("design"):
         lenses.append({"key": "design", "agent": LANG["Generic"]["semantic"], "prompt": ctxb.design(primary)})
@@ -610,6 +634,23 @@ class _PromptCtx:
             mid = "\nIt reported nothing.\n"
         return self._p("mechanical") + "\n" + mid + "\n" + self._p("mechanical-tail") + "\n\n"
 
+    def mutants(self):
+        if not self.scope.get("mutants_ran"):
+            return ""
+        rows = [f"  [{m.get('id')}] {m.get('status')} {m.get('file')}:{m.get('line')} "
+                + (m["bug"] if m.get("bug") else
+                   f"{m.get('type')}: {_one_line(m.get('original'))} -> {_one_line(m.get('replacement'))}")
+                for m in self.scope.get("mutants") or []]
+        rows += [f"  package {e.get('package')} has no test files: {e.get('mutants')} mutants"
+                 for e in self.scope.get("mutants_no_tests") or []]
+        gaps = [f"  {g.get('file')}:{line_ranges(g.get('lines'))} {g.get('function')}, "
+                f"not run by the tests of {', '.join(g.get('callers') or [])}"
+                for g in self.scope.get("caller_gaps") or []]
+        reason = self.scope.get("mutants_reason")
+        return (self._p("mutants") + (f"\nNote: {reason}." if reason else "")
+                + "\n\nMUTANTS:\n" + ("\n".join(rows) or "  (none)")
+                + "\n\nCALLER GAPS:\n" + ("\n".join(gaps) or "  (none)") + "\n\n")
+
     def file_block(self, remit, label="written in your language"):
         files = self.scope.get("files") or []
         if not remit or len(remit) >= len(files):
@@ -657,7 +698,7 @@ class _PromptCtx:
         return self.preamble(remit) + self.precedent_block() + self._p("lens-semantic") + self.contract()
 
     def tests(self, lang, remit):
-        return (self.preamble(remit) + self.precedent_block()
+        return (self.preamble(remit) + self.precedent_block() + self.mutants()
                 + fill(self._p("lens-tests"),
                        {"reading": ", ".join(LANG[lang]["reading"]), "disclosure": DISCLOSURE})
                 + self.contract())

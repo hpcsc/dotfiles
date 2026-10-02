@@ -216,6 +216,13 @@
                 "string",
                 "null"
               ]
+            },
+            "mutant_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "the id of the row under MUTANTS that this finding is about, verbatim"
             }
           }
         }

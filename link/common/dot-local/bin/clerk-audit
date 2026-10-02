@@ -436,6 +436,30 @@ def add_design_signal(scope, cwd):
     signals["design"], signals["design_reason"] = clerk_design.audit_signal(cwd, scope.get("base"), scope.get("head"))
 
 
+
+def add_mutants(scope, cwd):
+    """One run of `mutants` for each round. It takes minutes, so clerk runs it and no agent waits."""
+    if "mutants_ran" in scope:
+        return
+    langs = [panel.canonical_lang(l) for l in scope.get("languages") or []]
+    if "Go" not in langs or scope.get("has_code") is False:
+        scope["mutants_ran"], scope["mutants_reason"] = False, "clerk runs mutants on Go code only"
+        return
+    import clerk_mutants
+    base = scope.get("base") or "HEAD"
+    _, result = clerk_mutants.run(cwd, base)
+    reasons = [result["reason"]] if result["reason"] else []
+    if result["ran"] and not result["complete"]:
+        reasons.append("mutants stopped at its time limit, so the rows hold only the mutants that got a verdict")
+    if result["ran"] and base == "HEAD":
+        reasons.append("the target is the staged changes, and mutants reads the whole work tree")
+    scope["mutants_ran"] = result["ran"]
+    scope["mutants_reason"] = "; ".join(reasons) or None
+    scope["mutants"] = result["mutants"]
+    scope["mutants_no_tests"] = result["no_tests"]
+    scope["caller_gaps"] = result["caller_gaps"]
+
+
 def audit_next(ctx, aud, o):
     lv = live_of(aud)
     if not lv:
@@ -457,12 +481,15 @@ def audit_next(ctx, aud, o):
 
     if phase == "review":
         add_design_signal(lv["scope"], ctx.cwd)
+        add_mutants(lv["scope"], ctx.cwd)
         precedents, held_back = precedents_at_base(a.get("precedents") or [], lv["scope"], ctx.cwd)
         lenses, not_run = panel.build_panel(
             lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],
             request=a["request"], brief=a["brief"], recheck=a["recheck"],
             test_commands=a["test_commands"], precedents=precedents, breakdown=a.get("breakdown"))
         lv["not_run"], lv["precedents"] = not_run + held_back, precedents
+        if lv["scope"].get("mutants_reason") and not lv["scope"].get("mutants_ran"):
+            lv["not_run"].append(f"mutants — {lv['scope']['mutants_reason']}")
         ctx.run.write("audit.json", aud)
         return {"phase": "review", "round": lv["round"], "concurrent": True,
                 "spawn": [_spawn(f"review:{l['key']}", l["prompt"], "REVIEW_SCHEMA", l["agent"], tools=tools,

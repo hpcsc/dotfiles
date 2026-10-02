@@ -20,7 +20,7 @@ from pathlib import Path
 
 STEPS = ["ground", "decompose", "build", "suite", "audit", "match-request",
          "verify-run", "land", "learn"]
-PHASES = ["scope", "review", "dedupe", "refute", "report"]
+PHASES = ["scope", "propose", "review", "dedupe", "refute", "report"]
 # A shorter gap is the model or a tool at work, however slow.
 IDLE_AFTER = 120
 

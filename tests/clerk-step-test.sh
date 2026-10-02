@@ -765,7 +765,7 @@ for f in scope-open scope-rules review-open review-rules finding-contract lens-s
          precedents dedupe-open \
          dedupe-rules dedupe-output refute-open refute-file-rule refute-runtime \
          refute-quality report-open report-rules report-tail regrade mechanical \
-         mechanical-tail mutants; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
+         mechanical-tail mutants propose; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
 cp "$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-config/.config/ai/method/audit-implement/schemas.json" \
    "$PR/audit-implement/schemas.json"
 export CLERK_AUDIT_PROMPTS="$PR/audit-implement/prompts"
@@ -1014,6 +1014,38 @@ eq "clerk's verdicts join the agents': the lived ones survive, the killed one is
 eq "and each verdict says what mutants did" "true|true" \
    "$(run "$RA" audit status | jq -r '[(.live.verdicts[] | select(.finding_id=="m3") | .basis | contains("KILLED at a.go:6: --- FAIL: TestSum")), (.live.verdicts[] | select(.finding_id=="m1") | .basis | contains("LIVED: a.go:3"))] | map(tostring) | join("|")')"
 mstub 0 "$MA/empty.json"
+
+# The propose phase: on with the proposals flag, in round 1 of a Go diff.
+printf 'proposals=true\n' > "$RA/tasks/.environment"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+N=$(run "$RA" audit record --phase scope --results "$RA/scope.json")
+eq "with proposals on, scope hands over to one propose agent" "propose|1|propose|PROPOSALS_SCHEMA" \
+   "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn|length|tostring), .next.spawn[0].id, .next.spawn[0].schema_name] | join("|")')"
+eq "which reads its fragment, the changed Go files and the rows mutants already gave" "true|true|true" \
+   "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | [contains("FRAGMENT propose"), contains("Changed Go files:\n  a.go\n  b.go\n  c.go"), contains("The rows that mutants already gave:\n  (none)")] | map(tostring) | join("|")')"
+cat > "$MA/proposed.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:F:PROPOSED#200001","file":"a.go","line":9,"status":"LIVED","operator":"PROPOSED","original":"x","replacement":"y","bug":"the window ends at the return"}],
+ "proposals":{"accepted":1,"rejected":[{"file":"a.go","old":"z","new":"w","bug":"a stale edit","reason":"old not found"}]}}
+EOF
+printf '{"proposals":[{"file":"a.go","old":"x","new":"y","bug":"the window ends at the return"},{"file":"a.go","old":"z","new":"w","bug":"a stale edit"}]}' > "$RA/prop.json"
+mstub 0 "$MA/proposed.json"
+N=$(run "$RA" audit record --phase propose --results "$RA/prop.json")
+PF="$RA/.git/clerk/runs/story/audit-proposals.jsonl"
+eq "the proposals run once, as proposals only, on the changed lines, and stay in the run for later rounds" "true|false|2" \
+   "$(grep -qx -- --operators=none "$MA/argv" && echo true || echo false)|$(grep -qx -- --proposals-anywhere "$MA/argv" && echo true || echo false)|$(wc -l < "$PF" | tr -d ' ')"
+eq "a proposed survivor reaches the tests lens by its bug" "review|true" \
+   "$(printf '%s' "$N" | jq -r '[.next.phase, ([.next.spawn[] | select(.id == "review:tests:Go")][0].prompt | contains("LIVED a.go:9 the window ends at the return") | tostring)] | join("|")')"
+eq "and the scope keeps what was rejected, and why" "1|old not found" \
+   "$(run "$RA" audit status | jq -r '.live.scope.proposals | [(.accepted|tostring), .rejected[0].reason] | join("|")')"
+rm -f "$PF"; mstub 0 "$MA/empty.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+eq "with no mutants to run, propose steps aside and the review starts" "review" \
+   "$(CLERK_MUTANTS_BIN="$MA/none" run "$RA" audit record --phase scope --results "$RA/scope.json" | jq -r '.next.phase')"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+eq "a diff with no Go has nothing to propose for" "review" \
+   "$(run "$RA" audit record --phase scope --results "$RA/scope-js.json" | jq -r '.next.phase')"
+rm -f "$RA/tasks/.environment"
 
 # Fix-scoped narrowing, the three cases that must not narrow.
 narrow() {  # <fixed-file args...> -> the lens keys that would run

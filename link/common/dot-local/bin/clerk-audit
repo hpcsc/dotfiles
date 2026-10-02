@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """clerk audit — the rounds and the acceptance that the audit step reads.
 
-The audit is a phase machine on the same shape as the step table: scope, review, dedupe,
-refute, report. `clerk audit next` hands out one phase's batch of agents with every prompt
+The audit is a phase machine on the same shape as the step table: scope, propose, review,
+dedupe, refute, report. `clerk audit next` hands out one phase's batch of agents with every prompt
 resolved, `clerk audit record` takes their replies and advances, and `clerk audit run`
 walks the whole machine, shelling out to a headless harness only where a judgment is
 wanted. The walk runs in a process of its own, detached from the command that started it:
@@ -437,7 +437,7 @@ def add_design_signal(scope, cwd):
 
 
 
-def add_mutants(scope, cwd):
+def add_mutants(scope, cwd, proposals=None):
     """One run of `mutants` for each round. It takes minutes, so clerk runs it and no agent waits."""
     if "mutants_ran" in scope:
         return
@@ -447,7 +447,7 @@ def add_mutants(scope, cwd):
         return
     import clerk_mutants
     base = scope.get("base") or "HEAD"
-    _, result = clerk_mutants.run(cwd, base)
+    _, result = clerk_mutants.run(cwd, base, proposals=proposals)
     reasons = [result["reason"]] if result["reason"] else []
     if result["ran"] and not result["complete"]:
         reasons.append("mutants stopped at its time limit, so the rows hold only the mutants that got a verdict")
@@ -458,6 +458,48 @@ def add_mutants(scope, cwd):
     scope["mutants"] = result["mutants"]
     scope["mutants_no_tests"] = result["no_tests"]
     scope["caller_gaps"] = result["caller_gaps"]
+    if proposals:
+        scope["proposals"] = _proposal_summary(result)
+
+
+def _proposal_summary(result):
+    proposals = result.get("proposals") or {}
+    return {"accepted": proposals.get("accepted") or 0,
+            "rejected": [{"bug": r.get("bug"), "reason": r.get("reason")} for r in proposals.get("rejected") or []]}
+
+
+def wants_proposals(ctx, lv):
+    langs = [panel.canonical_lang(l) for l in (lv["scope"] or {}).get("languages") or []]
+    return (bool(ctx.flags.get("proposals")) and lv["round"] == 1 and "Go" in langs
+            and lv["scope"].get("has_code") is not False)
+
+
+def stored_proposals(aud):
+    path = aud.get("proposals_file")
+    return path if path and Path(path).is_file() else None
+
+
+def add_proposals(ctx, aud, lv, data):
+    scope = lv["scope"]
+    given = (data or {}).get("proposals") if isinstance(data, dict) else None
+    usable = [q for q in given or [] if isinstance(q, dict)
+              and all(isinstance(q.get(k), str) for k in ("file", "old", "new", "bug")) and q["old"]]
+    if not usable:
+        scope["proposals"] = {"accepted": 0, "rejected": []}
+        return
+    path = ctx.run.dir / "audit-proposals.jsonl"
+    ctx.run.dir.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps({k: q[k] for k in ("file", "old", "new", "bug")}) + "\n" for q in usable),
+                    encoding="utf-8")
+    aud["proposals_file"] = str(path)
+    import clerk_mutants
+    _, result = clerk_mutants.run(ctx.cwd, scope.get("base") or "HEAD", proposals=path,
+                                  operators="none", caller_gaps=False)
+    if not result["ran"]:
+        scope["proposals_reason"] = result["reason"]
+        return
+    scope["mutants"] = (scope.get("mutants") or []) + result["mutants"]
+    scope["proposals"] = _proposal_summary(result)
 
 
 def _usable_mutation(m):
@@ -524,9 +566,21 @@ def audit_next(ctx, aud, o):
                     prior_scope=lv.get("prior_scope")), "SCOPE_SCHEMA", tools=tools)],
                 "record_with": "clerk audit record --phase scope --results <file>"}
 
+    if phase == "propose":
+        add_mutants(lv["scope"], ctx.cwd)
+        if not lv["scope"].get("mutants_ran"):
+            lv["phase"] = "review"
+            ctx.run.write("audit.json", aud)
+            return audit_next(ctx, aud, o)
+        ctx.run.write("audit.json", aud)
+        ctxb = panel._PromptCtx(lv["scope"], prompts, a["request"], a["brief"], (), a["test_commands"])
+        return {"phase": "propose", "round": lv["round"], "concurrent": False,
+                "spawn": [_spawn("propose", ctxb.propose(), "PROPOSALS_SCHEMA", tools=tools)],
+                "record_with": "clerk audit record --phase propose --results <file>"}
+
     if phase == "review":
         add_design_signal(lv["scope"], ctx.cwd)
-        add_mutants(lv["scope"], ctx.cwd)
+        add_mutants(lv["scope"], ctx.cwd, proposals=stored_proposals(aud))
         precedents, held_back = precedents_at_base(a.get("precedents") or [], lv["scope"], ctx.cwd)
         lenses, not_run = panel.build_panel(
             lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],
@@ -535,6 +589,8 @@ def audit_next(ctx, aud, o):
         lv["not_run"], lv["precedents"] = not_run + held_back, precedents
         if lv["scope"].get("mutants_reason") and not lv["scope"].get("mutants_ran"):
             lv["not_run"].append(f"mutants — {lv['scope']['mutants_reason']}")
+        if lv["scope"].get("proposals_reason"):
+            lv["not_run"].append(f"proposed mutants — {lv['scope']['proposals_reason']}")
         ctx.run.write("audit.json", aud)
         return {"phase": "review", "round": lv["round"], "concurrent": True,
                 "spawn": [_spawn(f"review:{l['key']}", l["prompt"], "REVIEW_SCHEMA", l["agent"], tools=tools,
@@ -674,7 +730,7 @@ def audit_record(ctx, aud, o):
     if not lv:
         emit({"recorded": False, "reason": "no round is in flight — `clerk audit begin` first"}, 3)
     if not o["--phase"]:
-        die("record needs --phase <scope|review|dedupe|verify|report>")
+        die("record needs --phase <scope|propose|review|dedupe|refute|report>")
     if o["--phase"] != lv["phase"]:
         emit({"recorded": False, "phase": lv["phase"],
               "reason": f"this round is on '{lv['phase']}', not '{o['--phase']}' — "
@@ -687,6 +743,9 @@ def audit_record(ctx, aud, o):
     if ph == "scope":
         lv["scope"] = data if isinstance(data, dict) else (data[0] if data else {})
         aud["last_scope"] = lv["scope"]
+        lv["phase"] = "propose" if wants_proposals(ctx, lv) else "review"
+    elif ph == "propose":
+        add_proposals(ctx, aud, lv, data)
         lv["phase"] = "review"
     elif ph == "review":
         rows = data if isinstance(data, list) else [data]
@@ -998,7 +1057,7 @@ def audit_run(ctx, aud, o):
 def _payload_for(phase, jobs, results):
     """Shape each phase's replies the way `record` reads them."""
     ok = {r["id"]: r.get("data") for r in results if r.get("ok")}
-    if phase in ("scope", "dedupe", "report"):
+    if phase in ("scope", "propose", "dedupe", "report"):
         return next(iter(ok.values()), {})
     if phase == "review":
         rows = []

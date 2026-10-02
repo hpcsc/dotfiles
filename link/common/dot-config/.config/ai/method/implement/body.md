@@ -40,7 +40,7 @@ Every step's own refusals arrive with its instructions. Three belong to the loop
 
 ## Flags
 
-Four flags steer a run, and **a flag not in the request may still be on**: each is also a repo setting, because each is as often a property of the repo as of the run — one whose build cannot work from a worktree wants `--in-place` every time.
+Five flags steer a run, and **a flag not in the request may still be on**: each is also a repo setting, because each is as often a property of the repo as of the run — one whose build cannot work from a worktree wants `--in-place` every time.
 
 | Flag | `flags` key | Off again with |
 |---|---|---|
@@ -48,10 +48,13 @@ Four flags steer a run, and **a flag not in the request may still be on**: each 
 | `--integrate` | `integrate` | `--no-integrate` |
 | `--review-breakdown` | `review_breakdown` | `--no-review-breakdown` |
 | `--gears` | `gears` | `--no-gears` |
+| `--proposals` | `proposals` | `--no-proposals` |
 
 `clerk step` resolves both layers on every call and reports the answers in `facts.flags`, with `facts.flag_sources` naming what decided each — **read those, not the request**, wherever a step turns on a flag. The request always outranks the files, in both directions, which is what the third column is for and why a repo may safely default one on. Say in your opening summary which are on and what set them: a run that quietly builds in place because of a file the user forgot is a surprise they paid for with a dirty checkout.
 
 `gears` is the one whose effect its name does not give away. Every task in the breakdown carries two assessments it was written with, and they answer different questions and fail separately — **`certainty`** is how sure the breakdown is that the repo already answers *how* to build this, and **`blast_radius`** is what being wrong would cost whatever the odds of being wrong are. Keeping them apart is the point: a task you have written twenty times before, against the payments ledger, is high certainty and high blast radius at once, and only the second argues for slowing down. Collapsed into one "risk" score it reads as medium and gets neither the speed it earned nor the care it needs. By default both are reported and nothing else. With `gears` on they drive the run, and the build step says how, in one place. Turn it on when the story's shape is not settled, when the work reaches somewhere expensive to be wrong about, or when someone is actually watching; leave it off for a wave of deliverables firing into panes nobody is reading, where a pause is indistinguishable from a run that died.
+
+`proposals` adds a propose phase to round 1 of the audit: one agent writes mutants for the domain, which the operators of `mutants` cannot make, and clerk runs them with the rest. It costs one more agent and one more run of `mutants` with only those edits.
 
 ---
 

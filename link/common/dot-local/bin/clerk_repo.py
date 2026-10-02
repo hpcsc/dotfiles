@@ -17,13 +17,13 @@ from pathlib import Path
 
 from clerk_lib import die, git, gitout
 
-FLAG_KEYS = ("in_place", "integrate", "review_breakdown", "gears")
+FLAG_KEYS = ("in_place", "integrate", "review_breakdown", "gears", "proposals")
 # The spelling a request uses for each flag. Kept beside the resolver because the two
 # must agree: a token this does not list is a flag the caller can type and watch be
 # ignored, which is worse than one that is not offered at all.
 FLAG_WORDS = {"in_place": ("--in-place", "--worktree"), "integrate": ("--integrate", "--no-integrate"),
               "review_breakdown": ("--review-breakdown", "--no-review-breakdown"),
-              "gears": ("--gears", "--no-gears")}
+              "gears": ("--gears", "--no-gears"), "proposals": ("--proposals", "--no-proposals")}
 
 
 def now():

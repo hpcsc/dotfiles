@@ -456,5 +456,49 @@
         "type": "string"
       }
     }
+  },
+  "PROPOSALS_SCHEMA": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "proposals"
+    ],
+    "properties": {
+      "proposals": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "file",
+            "old",
+            "new",
+            "bug"
+          ],
+          "properties": {
+            "file": {
+              "type": "string"
+            },
+            "old": {
+              "type": "string",
+              "description": "exact text that occurs once in file and touches a changed line"
+            },
+            "new": {
+              "type": "string"
+            },
+            "bug": {
+              "type": "string",
+              "description": "the domain bug in one sentence"
+            }
+          }
+        }
+      },
+      "note": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    }
   }
 }

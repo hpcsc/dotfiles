@@ -634,22 +634,31 @@ class _PromptCtx:
             mid = "\nIt reported nothing.\n"
         return self._p("mechanical") + "\n" + mid + "\n" + self._p("mechanical-tail") + "\n\n"
 
-    def mutants(self):
-        if not self.scope.get("mutants_ran"):
-            return ""
+    def mutant_lines(self):
         rows = [f"  [{m.get('id')}] {m.get('status')} {m.get('file')}:{m.get('line')} "
                 + (m["bug"] if m.get("bug") else
                    f"{m.get('type')}: {_one_line(m.get('original'))} -> {_one_line(m.get('replacement'))}")
                 for m in self.scope.get("mutants") or []]
         rows += [f"  package {e.get('package')} has no test files: {e.get('mutants')} mutants"
                  for e in self.scope.get("mutants_no_tests") or []]
+        return "\n".join(rows) or "  (none)"
+
+    def mutants(self):
+        if not self.scope.get("mutants_ran"):
+            return ""
         gaps = [f"  {g.get('file')}:{line_ranges(g.get('lines'))} {g.get('function')}, "
                 f"not run by the tests of {', '.join(g.get('callers') or [])}"
                 for g in self.scope.get("caller_gaps") or []]
         reason = self.scope.get("mutants_reason")
         return (self._p("mutants") + (f"\nNote: {reason}." if reason else "")
-                + "\n\nMUTANTS:\n" + ("\n".join(rows) or "  (none)")
+                + "\n\nMUTANTS:\n" + self.mutant_lines()
                 + "\n\nCALLER GAPS:\n" + ("\n".join(gaps) or "  (none)") + "\n\n")
+
+    def propose(self):
+        go = [f for f in self.scope.get("files") or [] if f.endswith(".go") and not f.endswith("_test.go")]
+        return (fill(self._p("propose"), {"base": self.scope.get("base"), "head": self.scope.get("head")})
+                + "\n\nChanged Go files:\n" + ("\n".join(f"  {f}" for f in go) or "  (none)")
+                + "\n\nThe rows that mutants already gave:\n" + self.mutant_lines() + "\n")
 
     def file_block(self, remit, label="written in your language"):
         files = self.scope.get("files") or []

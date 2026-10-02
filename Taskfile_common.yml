@@ -36,12 +36,9 @@ tasks:
       - task: gen:agent-models
 
   test:clerk:
-    desc: Run the clerk fixture tests
+    desc: Run the clerk fixture tests, the four files at the same time
     cmds:
-      - ./tests/clerk-test.sh
-      - ./tests/clerk-step-test.sh
-      - ./tests/clerk-run-test.sh
-      - ./tests/clerk-design-test.sh
+      - ./tests/run-clerk-tests.sh
 
   test:statusline:
     desc: Run the status line fixture tests

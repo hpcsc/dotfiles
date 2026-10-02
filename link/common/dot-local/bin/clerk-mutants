@@ -6,8 +6,8 @@
     clerk mutants --id <mutant id>
 
 It changes each line that the work tree changes against <ref> (HEAD unless given: the open
-task), one change at a time, and runs the tests of the package. It also reports the changed
-lines that the tests of their own package run, but that no test of a changed caller runs.
+task), one change at a time, and runs the tests. For Go, it also reports the changed lines
+that the tests of their own package run, but that no test of a changed caller runs.
 
 Exit 0 nothing to report, 10 survivors or caller gaps, 124 the time limit, 2 a tool error.
 With --id: 0 a test kills the mutant, 10 it lives or no test runs it, 1 no verdict, 2 an

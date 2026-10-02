@@ -851,8 +851,33 @@ jq '.languages = ["JavaScript/TypeScript"] | .by_language = [.by_language[1]] | 
 mstub 0 "$MA/empty.json"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 run "$RA" audit record --phase scope --results "$RA/scope-js.json" >/dev/null 2>&1
-eq "a diff with no Go runs no mutants, and says why" "false|clerk runs mutants on Go code only|false" \
+eq "a diff with no Go or Python runs no mutants, and says why" "false|the diff changes no Go or Python code outside the tests|false" \
    "$(run "$RA" audit status | jq -r '.live.scope | [(.mutants_ran|tostring), .mutants_reason] | join("|")')|$([ -f "$MA/argv" ] && echo true || echo false)"
+jq '.files = ["a_test.go"] | .by_language = [{language: "Go", files: ["a_test.go"]}] | .languages = ["Go"]' "$RA/scope.json" > "$RA/scope-tests.json"
+mstub 0 "$MA/empty.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope-tests.json" >/dev/null 2>&1
+eq "a diff that changes only tests runs no mutants" "false|false" \
+   "$(run "$RA" audit status | jq -r '.live.scope.mutants_ran | tostring')|$([ -f "$MA/argv" ] && echo true || echo false)"
+cat > "$RA/scope-py.json" <<'JSON'
+{"base":"abc","head":"def","summary":"adds a thing","files":["svc/a.py","svc/b.py","svc/tests/test_a.py"],
+ "languages":["Python"],
+ "by_language":[{"language":"Python","files":["svc/a.py","svc/b.py","svc/tests/test_a.py"]}],
+ "signals":{"tests_changed":false,"concurrency":false,"performance":false}}
+JSON
+cat > "$MA/rows-py.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"svc/a.py:f:BRANCH_IF#1","file":"svc/a.py","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"return 1","replacement":"pass"},
+ {"id":"svc/b.py:g:STATEMENT_REMOVE#1","file":"svc/b.py","line":2,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"no test imports svc/b.py"}],
+ "callerGaps":[]}
+EOF
+mstub 10 "$MA/rows-py.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+N=$(run "$RA" audit record --phase scope --results "$RA/scope-py.json")
+TL=$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.id == "review:tests:Generic")][0].prompt')
+eq "a Python diff runs mutants, and its rows earn the tests lens" "true|true|true" \
+   "$(run "$RA" audit status | jq -r '.live.scope.mutants_ran | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("[svc/a.py:f:BRANCH_IF#1] LIVED svc/a.py:3") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("no test imports svc/b.py: 1 mutants") | tostring')"
+mstub 0 "$MA/empty.json"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 N=$(CLERK_MUTANTS_BIN="$MA/none" run "$RA" audit record --phase scope --results "$RA/scope.json")
 eq "when mutants cannot run, the round names it among what did not run" "true" \
@@ -1025,8 +1050,8 @@ run "$RA" audit begin --base main --restart >/dev/null 2>&1
 N=$(run "$RA" audit record --phase scope --results "$RA/scope.json")
 eq "with proposals on, scope hands over to one propose agent" "propose|1|propose|PROPOSALS_SCHEMA" \
    "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn|length|tostring), .next.spawn[0].id, .next.spawn[0].schema_name] | join("|")')"
-eq "which reads its fragment, the changed Go files and the rows mutants already gave" "true|true|true" \
-   "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | [contains("FRAGMENT propose"), contains("Changed Go files:\n  a.go\n  b.go\n  c.go"), contains("The rows that mutants already gave:\n  (none)")] | map(tostring) | join("|")')"
+eq "which reads its fragment, the changed source files and the rows mutants already gave" "true|true|true" \
+   "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | [contains("FRAGMENT propose"), contains("Changed source files:\n  a.go\n  b.go\n  c.go"), contains("The rows that mutants already gave:\n  (none)")] | map(tostring) | join("|")')"
 cat > "$MA/proposed.json" <<'EOF'
 {"base":"abc","mutants":[
  {"id":"a.go:F:PROPOSED#200001","file":"a.go","line":9,"status":"LIVED","operator":"PROPOSED","original":"x","replacement":"y","bug":"the window ends at the return"}],
@@ -1047,8 +1072,11 @@ run "$RA" audit begin --base main --restart >/dev/null 2>&1
 eq "with no mutants to run, propose steps aside and the review starts" "review" \
    "$(CLERK_MUTANTS_BIN="$MA/none" run "$RA" audit record --phase scope --results "$RA/scope.json" | jq -r '.next.phase')"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
-eq "a diff with no Go has nothing to propose for" "review" \
+eq "a diff with no Go or Python has nothing to propose for" "review" \
    "$(run "$RA" audit record --phase scope --results "$RA/scope-js.json" | jq -r '.next.phase')"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+eq "a Python diff gets a propose agent, which reads the changed Python files but not the tests" "propose|true|false" \
+   "$(run "$RA" audit record --phase scope --results "$RA/scope-py.json" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("Changed source files:\n  svc/a.py\n  svc/b.py\n\n")), (.next.spawn[0].prompt | contains("test_a.py"))] | map(tostring) | join("|")')"
 rm -f "$RA/tasks/.environment"
 
 # Fix-scoped narrowing, the three cases that must not narrow.

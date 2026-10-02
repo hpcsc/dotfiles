@@ -441,9 +441,8 @@ def add_mutants(scope, cwd, proposals=None):
     """One run of `mutants` for each round. It takes minutes, so clerk runs it and no agent waits."""
     if "mutants_ran" in scope:
         return
-    langs = [panel.canonical_lang(l) for l in scope.get("languages") or []]
-    if "Go" not in langs or scope.get("has_code") is False:
-        scope["mutants_ran"], scope["mutants_reason"] = False, "clerk runs mutants on Go code only"
+    if not panel.mutated_files(scope) or scope.get("has_code") is False:
+        scope["mutants_ran"], scope["mutants_reason"] = False, "the diff changes no Go or Python code outside the tests"
         return
     import clerk_mutants
     base = scope.get("base") or "HEAD"
@@ -469,9 +468,9 @@ def _proposal_summary(result):
 
 
 def wants_proposals(ctx, lv):
-    langs = [panel.canonical_lang(l) for l in (lv["scope"] or {}).get("languages") or []]
-    return (bool(ctx.flags.get("proposals")) and lv["round"] == 1 and "Go" in langs
-            and lv["scope"].get("has_code") is not False)
+    scope = lv["scope"] or {}
+    return (bool(ctx.flags.get("proposals")) and lv["round"] == 1 and bool(panel.mutated_files(scope))
+            and scope.get("has_code") is not False)
 
 
 def stored_proposals(aud):

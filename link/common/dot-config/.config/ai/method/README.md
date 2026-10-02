@@ -185,12 +185,12 @@ carries its acceptance criteria as checkboxes, ticked by hand as they are verifi
 leaving those outside the commit would strand them and dirty the tree. It refuses a path that does not exist, refuses a task already done, and never
 runs `git add -A`.
 
-The message is judgment, so it goes to the commit agent. For Go, `clerk mutants` finds a
-guard that no test can break: it changes each line the task changed, one change at a time,
-and lists each change that no test caught. The model writes the tests that catch them. The
-other prove-it checks — an absence assertion with a positive partner, a source-scanning
-test re-verified after a move, two values of one type that differ in a fixture, a loop
-tested with two items, and looking at UI in a browser — stay with the model.
+The message is judgment, so it goes to the commit agent. For Go and Python, `clerk mutants`
+finds a guard that no test can break: it changes each line the task changed, one change at
+a time, and lists each change that no test caught. The model writes the tests that catch
+them. The other prove-it checks — an absence assertion with a positive partner, a
+source-scanning test re-verified after a move, two values of one type that differ in a
+fixture, a loop tested with two items, and looking at UI in a browser — stay with the model.
 
 ### Phase 3 — audit, match, close
 

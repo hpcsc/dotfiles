@@ -77,6 +77,8 @@ TEST_FILE_RE = re.compile(r"(^|[/_.-])(test|tests|spec|_test\.|\.test\.|\.spec\.
 # break something in. Proving a test vacuous means breaking what it names and watching it
 # pass anyway; a convention claim cites a rule and a line.
 TEST_PATH_RE = re.compile(r"(_test\.go|\.test\.[jt]sx?|\.spec\.[jt]sx?|_test\.exs|(^|/)test_[^/]*\.py|_test\.py|(^|/)conftest\.py)$")
+# mutants has an adapter for these languages.
+MUTATED_FILE_RE = re.compile(r"\.(go|py)$")
 
 READ_ONLY = ("Nothing here is executed, so you are reading the tree the audit reports on. Do not modify "
              "it: a claim settled by naming a rule and a line needs no experiment, and a tree left dirty "
@@ -135,6 +137,10 @@ def line_ranges(lines):
     if start is not None:
         out.append(f"{start}-{prev}" if prev != start else f"{start}")
     return ",".join(out)
+
+
+def mutated_files(scope):
+    return [f for f in scope.get("files") or [] if MUTATED_FILE_RE.search(f) and not TEST_PATH_RE.search(f)]
 
 
 def mutant_rows(scope):
@@ -273,7 +279,8 @@ def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
             not_run.append(f"guidelines ({lang}) — no conventions reviewer exists for {lang}, "
                            f"so its files got no conventions pass")
         owns_test = remit is None or any(TEST_FILE_RE.search(f) for f in remit)
-        if (signals.get("tests_changed") and owns_test) or (lang == "Go" and mutant_rows(scope)):
+        owns_rows = mutant_rows(scope) and (remit is None or any(f in remit for f in mutated_files(scope)))
+        if (signals.get("tests_changed") and owns_test) or owns_rows:
             lenses.append({"key": f"tests:{lang}", "agent": cfg["tests"],
                            "prompt": ctxb.tests(lang, remit), "precedents": precedent_paths})
         elif signals.get("tests_changed"):
@@ -655,9 +662,9 @@ class _PromptCtx:
                 + "\n\nCALLER GAPS:\n" + ("\n".join(gaps) or "  (none)") + "\n\n")
 
     def propose(self):
-        go = [f for f in self.scope.get("files") or [] if f.endswith(".go") and not f.endswith("_test.go")]
+        files = mutated_files(self.scope)
         return (fill(self._p("propose"), {"base": self.scope.get("base"), "head": self.scope.get("head")})
-                + "\n\nChanged Go files:\n" + ("\n".join(f"  {f}" for f in go) or "  (none)")
+                + "\n\nChanged source files:\n" + ("\n".join(f"  {f}" for f in files) or "  (none)")
                 + "\n\nThe rows that mutants already gave:\n" + self.mutant_lines() + "\n")
 
     def file_block(self, remit, label="written in your language"):

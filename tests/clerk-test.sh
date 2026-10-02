@@ -2372,6 +2372,9 @@ cat > "$MS/survivors.json" <<'EOF'
  {"id":"a.go:F:RETURN_EMPTY#1","file":"a.go","line":4,"status":"KILLED","operator":"RETURN_EMPTY","original":"1","replacement":"0"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#1","file":"cmd/x/main.go","line":5,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"package cmd/x has no test files"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#2","file":"cmd/x/main.go","line":6,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"stop()","replacement":"","detail":"package cmd/x has no test files"},
+ {"id":"svc/a.py:f:STATEMENT_REMOVE#1","file":"svc/a.py","line":2,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"the Python project in svc has no tests"},
+ {"id":"svc/a.py:f:STATEMENT_REMOVE#2","file":"svc/a.py","line":3,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"stop()","replacement":"","detail":"the Python project in svc has no tests"},
+ {"id":"a.go:F:STATEMENT_REMOVE#1","file":"a.go","line":8,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"log()","replacement":""},
  {"id":"a.go:F:PROPOSED#123456","file":"a.go","line":7,"status":"KILLED","operator":"PROPOSED","original":"x","replacement":"y","bug":"a bug","refs":["f1","f2"]}],
  "callerGaps":[{"file":"lib/l.go","function":"L","lines":[10,11],"callers":["app"]}],
  "proposals":{"accepted":2,"rejected":[{"file":"a.go","old":"q","new":"r","bug":"b","ref":"f3","reason":"old not found"}]}}
@@ -2401,10 +2404,10 @@ printf '  --caller-gaps\n  --proposals string\n  --proposals-anywhere\n' > "$MS/
 stub 10 "$MS/survivors.json"
 J=$(mut --json)
 eq "survivors exit 10" "10" "$(stub 10 "$MS/survivors.json"; mutrc)"
-eq "only the rows no test caught are kept, with the operator as their type" "1|BRANCH_IF|LIVED" \
-   "$(printf '%s' "$J" | jq -r '[(.mutants|length|tostring), .mutants[0].type, .mutants[0].status] | join("|")')"
-eq "a package with no test files is one row, not one for each mutant" "cmd/x|2" \
-   "$(printf '%s' "$J" | jq -r '.no_tests[0] | [.package, (.mutants|tostring)] | join("|")')"
+eq "only the rows no test caught are kept, with the operator as their type" "2|BRANCH_IF|LIVED|NOT COVERED" \
+   "$(printf '%s' "$J" | jq -r '[(.mutants|length|tostring), .mutants[0].type, .mutants[0].status, .mutants[1].status] | join("|")')"
+eq "the mutants that no test runs for one reason are one row, in Go and in Python" "package cmd/x has no test files=2,the Python project in svc has no tests=2" \
+   "$(printf '%s' "$J" | jq -r '.no_tests | map("\(.detail)=\(.mutants)") | join(",")')"
 eq "caller gaps keep their lines and callers" "lib/l.go|10,11|app" \
    "$(printf '%s' "$J" | jq -r '.caller_gaps[0] | [.file, (.lines|map(tostring)|join(",")), .callers[0]] | join("|")')"
 eq "each ref gets the verdict of its mutant, and a rejected proposal says so" "KILLED|KILLED|REJECTED|old not found" \

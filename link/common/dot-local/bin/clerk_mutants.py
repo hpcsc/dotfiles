@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -15,7 +14,6 @@ GRACE_SECONDS = 30
 TIMED_OUT = 124
 RERUN_KILLED = 0
 RERUN_SURVIVED = 10
-NO_TEST_FILES = re.compile(r"^package (\S+) has no test files$")
 
 
 def find_binary():
@@ -57,9 +55,10 @@ def summarise(data, complete=True):
                            "line": m.get("line"), "detail": m.get("detail") or ""}
         if m.get("status") not in REPORTED:
             continue
-        empty = NO_TEST_FILES.match(m.get("detail") or "")
-        if empty:
-            no_tests[empty.group(1)] = no_tests.get(empty.group(1), 0) + 1
+        # mutants gives one detail to each mutant of a group that no test runs, such as a
+        # package with no test files.
+        if m.get("status") == "NOT COVERED" and m.get("detail"):
+            no_tests[m["detail"]] = no_tests.get(m["detail"], 0) + 1
             continue
         rows.append({"id": m.get("id"), "file": m.get("file"), "line": m.get("line"),
                      "status": m.get("status"), "type": m.get("operator"),
@@ -72,7 +71,7 @@ def summarise(data, complete=True):
                                        "line": None, "detail": rejected.get("reason") or ""}
     return {"ran": True, "reason": None, "complete": complete, "base": data.get("base"),
             "mutants": rows,
-            "no_tests": [{"package": p, "mutants": n} for p, n in sorted(no_tests.items())],
+            "no_tests": [{"detail": d, "mutants": n} for d, n in sorted(no_tests.items())],
             "caller_gaps": [{"file": g.get("file"), "function": g.get("function"),
                              "lines": list(g.get("lines") or []), "callers": list(g.get("callers") or [])}
                             for g in data.get("callerGaps") or []],

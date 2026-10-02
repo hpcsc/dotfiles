@@ -639,7 +639,7 @@ class _PromptCtx:
                 + (m["bug"] if m.get("bug") else
                    f"{m.get('type')}: {_one_line(m.get('original'))} -> {_one_line(m.get('replacement'))}")
                 for m in self.scope.get("mutants") or []]
-        rows += [f"  package {e.get('package')} has no test files: {e.get('mutants')} mutants"
+        rows += [f"  {e.get('detail')}: {e.get('mutants')} mutants"
                  for e in self.scope.get("mutants_no_tests") or []]
         return "\n".join(rows) or "  (none)"
 

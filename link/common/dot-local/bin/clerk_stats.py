@@ -2,7 +2,8 @@
 wrote as the run went, and the transcripts the harness wrote beside it.
 
 The ledger alone gives every step's wall clock, each task's, each audit round's and each
-audit agent's, with the dollars the harness reported for the agents. Tokens live only in
+audit agent's, with the dollars the harness reported for the agents, and what mutants did
+in each task and each audit round. Tokens live only in
 the transcripts, which are found from the session id `clerk step start` stamps into
 the run — or, for a run from before that stamp, from `shown.json`, `--session`, or a
 picker over the transcripts that overlap the run.
@@ -21,6 +22,8 @@ from pathlib import Path
 STEPS = ["ground", "decompose", "build", "suite", "audit", "match-request",
          "verify-run", "land", "learn"]
 PHASES = ["scope", "propose", "review", "dedupe", "refute", "report"]
+# The work that clerk does itself in a round, each at the place where the round waits for it.
+ROUND_ORDER = ["scope", "mutants", "propose", "proposals", "review", "dedupe", "settle", "refute", "report"]
 # A shorter gap is the model or a tool at work, however slow.
 IDLE_AFTER = 120
 
@@ -167,8 +170,11 @@ def windows(run):
 
     tasks, prev = [], ends["decompose"] or ends["ground"] or t0
     for n, at in sorted(finishes.items(), key=lambda kv: kv[1]):
+        runs = [e for e in ev if e.get("cmd") == "mutants" and e["_at"] and (prev is None or e["_at"] > prev)
+                and e["_at"] <= at]
         tasks.append({"task": n, "end": iso(at),
-                      "seconds": int((at - prev).total_seconds()) if prev and at >= prev else None})
+                      "seconds": int((at - prev).total_seconds()) if prev and at >= prev else None,
+                      "mutants": mutants_runs(runs)})
         prev = at
 
     audit_rounds, prev = [], suite_end
@@ -184,6 +190,7 @@ def windows(run):
             "agent_seconds": sum(a.get("seconds") or 0 for a in agents) or None,
             "cost_usd": round(sum(a.get("cost_usd") or 0 for a in agents), 4) if agents else None,
             "phases": phase_rows(agents),
+            "mutants": r.get("mutants"),
             "incidents": len(r.get("incidents") or []),
             "recovered_from_report": bool(r.get("recovered_from_report")),
             "agent_rows": agents})
@@ -193,6 +200,15 @@ def windows(run):
     return {"started_at": meta.get("started_at"), "finished_at": meta.get("finished_at"),
             "total_seconds": total, "steps": out, "tasks": tasks, "audit_rounds": audit_rounds,
             "incidents": aud.get("incidents") or []}
+
+
+def mutants_runs(events):
+    """The `clerk mutants` runs of one task, from the event log. None when the task ran none."""
+    if not events:
+        return None
+    timed = [e["seconds"] for e in events if isinstance(e.get("seconds"), (int, float))]
+    return {"runs": len(events), "reruns": sum(1 for e in events if "--id" in (e.get("argv") or [])),
+            "seconds": round(sum(timed)) if timed else None, "last_exit": events[-1].get("exit")}
 
 
 def phase_rows(agents):
@@ -549,6 +565,34 @@ def tokens(n):
     return f"{n / 1_000_000:.1f}M"
 
 
+def mutants_text(m):
+    """The work of clerk in a round, as rows that sit between the phases."""
+    if not m:
+        return {}
+    if not m.get("ran"):
+        return {"mutants": (None, f"did not run: {m.get('reason') or 'no reason recorded'}")}
+    rows = m.get("rows") or {}
+    parts = [f"{sum(rows.values())} rows ({', '.join(f'{n} {s}' for s, n in sorted(rows.items()))})"
+             if rows else "no rows"]
+    if m.get("no_tests"):
+        parts.append(f"{m['no_tests']} with no tests")
+    parts.append(f"{m.get('caller_gaps') or 0} caller gaps")
+    if m.get("complete") is False:
+        parts.append("stopped at the time limit")
+    out = {"mutants": (m.get("seconds"), " · ".join(parts))}
+    pr = m.get("proposals")
+    if pr:
+        out["proposals"] = (pr.get("seconds"), f"did not run: {pr['reason']}" if pr.get("reason") else
+                            f"{pr.get('accepted')} accepted · {pr.get('survived')} survived · {pr.get('rejected')} rejected")
+    settled = m.get("settled")
+    if settled:
+        left = settled["tried"] - settled["stood"] - settled["refuted"]
+        out["settle"] = (settled.get("seconds"),
+                         f"{settled['tried']} claims: {settled['stood']} stood, {settled['refuted']} refuted"
+                         + (f", {left} to agents" if left else ""))
+    return out
+
+
 def render(st):
     total = st.get("total_seconds")
     lines = [f"run {st['run']}   {local(st.get('started_at'))} → "
@@ -576,7 +620,13 @@ def render(st):
         lines.append(row)
         if s["step"] == "build":
             for n, t in sorted(tasks.items(), key=lambda kv: kv[1]["end"] or ""):
-                lines.append(f"  task {n:<10}{span(t['seconds']):>8}")
+                row = f"  task {n:<10}{span(t['seconds']):>8}"
+                mr = t.get("mutants")
+                if mr:
+                    row += (f"   mutants ×{mr['runs']} ({mr['reruns']} --id)"
+                            + (f" · {span(mr['seconds'])}" if mr.get("seconds") is not None else "")
+                            + f" · exit {mr['last_exit']} on the last run")
+                lines.append(row)
         if s["step"] == "audit":
             for r in st.get("audit_rounds") or []:
                 cost = f"${r['cost_usd']:.2f}" if r.get("cost_usd") is not None else "$-"
@@ -586,9 +636,16 @@ def render(st):
                     if r.get("tokens") else ""
                 lines.append(f"  round {r['n']:<9}{span(r['seconds']):>8}       "
                              f"findings {r.get('findings')}  {agents}{tok}  incidents {r['incidents']}")
-                for ph in r.get("phases") or []:
-                    lines.append(f"      {ph['phase']:<8} ×{ph['agents']:<3} slowest {span(ph['critical_seconds']):>6}"
-                                 f" · agent time {span(ph['agent_seconds']):>6} · ${ph['cost_usd']:.2f}")
+                work = mutants_text(r.get("mutants"))
+                rows = [(ph["phase"], ph) for ph in r.get("phases") or []] + list(work.items())
+                order = {name: i for i, name in enumerate(ROUND_ORDER)}
+                for name, row in sorted(rows, key=lambda kv: order.get(kv[0], len(order))):
+                    if name in work:
+                        seconds, text = row
+                        lines.append(f"      {name:<9} clerk  {span(seconds):>6} · {text}")
+                    else:
+                        lines.append(f"      {name:<8} ×{row['agents']:<3} slowest {span(row['critical_seconds']):>6}"
+                                     f" · agent time {span(row['agent_seconds']):>6} · ${row['cost_usd']:.2f}")
     if has_tok:
         t = st["tokens"]["total"]
         lines.append(f"{'total':<16}{'':>8}{'':>7}{'':>8}{'':>8}{t['turns']:>7}"

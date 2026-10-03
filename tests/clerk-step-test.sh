@@ -514,6 +514,35 @@ jq '.rounds[0].agents = [{"phase":"review","seconds":600,"cost_usd":1.5},{"phase
 eq "an audit round breaks down by phase: its agents, the slowest, their agent time, their cost" "review|2|600|900|true|refute|1|120" \
    "$(run "$WT" stats --run w1 --json | jq -r '.audit_rounds[0].phases | [.[0].phase, .[0].agents, .[0].critical_seconds, .[0].agent_seconds, (.[0].cost_usd == 2), .[1].phase, .[1].agents, .[1].critical_seconds] | map(tostring) | join("|")')"
 jq '.rounds[0].agents = []' "$AJW" > "$AJW.new" && /bin/mv -f "$AJW.new" "$AJW"
+eq "a round carries what mutants did in it" "197|19|4" \
+   "$(run "$WT" stats --run w1 --json | jq -r '.audit_rounds[1].mutants | [.seconds, .proposals.seconds, .settled.tried] | map(tostring) | join("|")')"
+jq '.rounds[1].agents = [{"phase":"refute","seconds":60,"cost_usd":0.1},{"phase":"scope","seconds":50,"cost_usd":0.1},
+                         {"phase":"review","seconds":300,"cost_usd":1},{"phase":"propose","seconds":90,"cost_usd":0.2}]' \
+   "$AJW" > "$AJW.new" && /bin/mv -f "$AJW.new" "$AJW"
+SR=$(run "$WT" stats --run w1 --text)
+eq "--text puts the work of clerk where the round waits for it, between the agent phases" \
+   "scope,mutants,propose,proposals,review,settle,refute" \
+   "$(printf '%s\n' "$SR" | sed -n '/^  round 2/,/^[^ ]/p' | awk '/^      [a-z]/{print $1}' | paste -sd, -)"
+eq "and says what it came to" "true|true|true" \
+   "$(printf '%s\n' "$SR" | grep -q 'mutants   clerk    3.3m · 2 rows (1 LIVED, 1 NOT COVERED) · 19 with no tests · 1 caller gaps' && echo true || echo false)|$(printf '%s\n' "$SR" | grep -q 'proposals clerk     19s · 8 accepted · 4 survived · 1 rejected' && echo true || echo false)|$(printf '%s\n' "$SR" | grep -q 'settle    clerk     21s · 4 claims: 2 stood, 1 refuted, 1 to agents' && echo true || echo false)"
+jq '.rounds[1].agents = []' "$AJW" > "$AJW.new" && /bin/mv -f "$AJW.new" "$AJW"
+EVW="$R/.git/clerk/runs/w1/events.jsonl"
+/bin/cp -f "$EVW" "$TD/events.keep.jsonl"
+# Times of its own, so that no task finishes in the second its window opens.
+D=$(run "$WT" stats --run w1 --json | jq -r '.steps[] | select(.step=="decompose") | .end')
+plus() { jq -rn --arg t "$D" --argjson s "$1" '($t|fromdateiso8601) + $s | todateiso8601'; }
+jq -c --arg f1 "$(plus 100)" --arg f2 "$(plus 200)" \
+   'if .cmd == "finish" then .at = (if .argv[0] == "1" then $f1 else $f2 end) else . end' \
+   "$TD/events.keep.jsonl" > "$EVW"
+for e in '"argv":["--base","main"],"exit":10,"seconds":120' '"argv":["--id","a"],"exit":10,"seconds":8' '"argv":["--id","a"],"exit":0,"seconds":7'; do
+  printf '{"cmd":"mutants",%s,"at":"%s","head":"x"}\n' "$e" "$(plus 50)" >> "$EVW"
+done
+eq "a task counts its clerk mutants runs from the event log: runs, --id runs, time and the last exit" "3|2|135|0" \
+   "$(run "$WT" stats --run w1 --json | jq -r '.tasks[0].mutants | [.runs, .reruns, .seconds, .last_exit] | map(tostring) | join("|")')"
+eq "and --text shows them on the task's row" "true" \
+   "$(run "$WT" stats --run w1 --text | grep -q 'mutants ×3 (2 --id) · 2.2m · exit 0 on the last run' && echo true || echo false)"
+eq "a task with no clerk mutants run has none" "null" "$(run "$WT" stats --run w1 --json | jq -c '.tasks[1].mutants')"
+/bin/cp -f "$TD/events.keep.jsonl" "$EVW"
 eq "a session the run recorded is used without being named" "sess-1" \
    "$(jq '.session_id = "sess-1"' "$R/.git/clerk/runs/w1/run.json" > "$TD/run.json" && /bin/cp -f "$TD/run.json" "$R/.git/clerk/runs/w1/run.json"
       CLERK_TRANSCRIPTS_DIR="$TD" run "$WT" stats --run w1 --json | jq -r '.session')"

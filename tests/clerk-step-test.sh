@@ -299,12 +299,31 @@ eq "a round records its counts against the code tree" "true|1|2|1|1" \
    "$(printf '%s' "$RD" | jq -r '[(.recorded|tostring), (.round.n|tostring), (.round.findings|tostring), (.round.refuted|tostring), (.round.coverage_gaps|tostring)] | join("|")')"
 eq "and carries the incidents of its running, even when there were none" "[]" \
    "$(printf '%s' "$RD" | jq -c '.round.incidents')"
+eq "a round whose scope never reached mutants records no mutants work" "null" \
+   "$(printf '%s' "$RD" | jq -c '.round.mutants')"
 eq "and hands back a summary the reader can be shown as it is" "true" \
    "$(printf '%s' "$RD" | jq -r '.summary | startswith("round 1 · ") and contains("findings 2") and contains("gaps 1")')"
 eq "a second round past the plan is refused" "3" "$(rc "$WT" audit round --report "$REP")"
+# What mutants did in the round lives in the live round until the round is recorded.
+AJR="$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/w1/audit.json"
+jq '.live = {"round": 2, "phase": "report",
+             "scope": {"mutants_ran": true, "mutants_reason": null, "mutants_complete": true, "mutants_seconds": 197,
+                       "mutants": [{"id": "a", "type": "BRANCH_IF", "status": "LIVED"},
+                                   {"id": "b", "type": "STATEMENT_REMOVE", "status": "NOT COVERED"},
+                                   {"id": "c", "type": "PROPOSED", "status": "LIVED"}],
+                       "mutants_no_tests": [{"detail": "package x has no test files", "mutants": 19}],
+                       "caller_gaps": [{"file": "b.go", "function": "B", "lines": [3], "callers": ["app"]}],
+                       "proposals": {"accepted": 8, "survived": 4, "rejected": [{"bug": "b", "reason": "old not found"}]},
+                       "proposals_seconds": 19},
+             "clerk_settled": {"tried": 4, "refuted": 1, "stood": 2, "seconds": 21}}' "$AJR" > "$AJR.new" && /bin/mv -f "$AJR.new" "$AJR"
 REP2=$(mktemp); printf '{"findings":[{"id":"f1","severity":"high","nature":"runtime","file":"a.go","line":3,"claim":"boom","confidence":"high","lens":"semantic:Go"},{"id":"f2","severity":"low","nature":"convention","file":"b.go","claim":"meh","confidence":"low","lens":"guidelines:Go"}],"coverage_gaps":["fixtures and documentation reviewed by nobody"],"summary":"s"}' > "$REP2"
 RD2=$(run "$WT" audit round --report "$REP2" --replan 2)
 eq "--replan lets it through, on purpose" "2" "$(printf '%s' "$RD2" | field .round.n)"
+eq "the round keeps what mutants did: its time, rows by status without the proposed ones, groups and caller gaps" \
+   "true|true|197|1|1|19|1" \
+   "$(printf '%s' "$RD2" | jq -r '.round.mutants | [.ran, .complete, .seconds, .rows.LIVED, .rows["NOT COVERED"], .no_tests, .caller_gaps] | map(tostring) | join("|")')"
+eq "and what the proposals and the settled claims came to" "8|4|1|19|4|2|1|21" \
+   "$(printf '%s' "$RD2" | jq -r '.round.mutants | [.proposals.accepted, .proposals.survived, .proposals.rejected, .proposals.seconds, .settled.tried, .settled.stood, .settled.refuted, .settled.seconds] | map(tostring) | join("|")')"
 eq "the summary lists each finding by severity, with its nature and where it is" "true" \
    "$(printf '%s' "$RD2" | jq -r '.summary | contains("findings 2 (1 high, 1 low)") and contains("high    runtime     a.go:3  f1") and contains("(1 repeated)")')"
 eq "and the round keeps those findings, minus the prose, for a later reader" "f1,f2" \
@@ -826,6 +845,8 @@ eq "the brief and story reach the lens as data" "true" \
    "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | (contains("<request>") and contains("a brief")) | tostring')"
 eq "clerk ran mutants once for the round, against the base the scope resolved" "true|abc" \
    "$(run "$RA" audit status | jq -r '.live.scope.mutants_ran | tostring')|$(grep -A1 -x -- --base "$MA/argv" | tail -1)"
+eq "and kept how long it took and whether it finished" "number|true" \
+   "$(run "$RA" audit status | jq -r '.live.scope | [(.mutants_seconds|type), (.mutants_complete|tostring)] | join("|")')"
 rm -f "$MA/argv"; run "$RA" audit next >/dev/null
 eq "asking for the review again does not run it again" "false" "$([ -f "$MA/argv" ] && echo true || echo false)"
 
@@ -1043,6 +1064,8 @@ printf '[{"finding_id":"m4","refuted":true,"basis":"could not build it"},{"findi
 N=$(run "$RA" audit record --phase refute --results "$RA/vd-m.json")
 eq "clerk's verdicts join the agents': the lived ones survive, the killed one is refuted" "report|true|true" \
    "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED refutation (3)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (2)") | tostring)] | join("|")')"
+eq "clerk counts the claims it tried, how many it refuted and how many stood, and the time" "4|1|2|number" \
+   "$(run "$RA" audit status | jq -r '.live.clerk_settled | [.tried, .refuted, .stood, (.seconds|type)] | map(tostring) | join("|")')"
 eq "and each verdict says what mutants did" "true|true" \
    "$(run "$RA" audit status | jq -r '[(.live.verdicts[] | select(.finding_id=="m3") | .basis | contains("KILLED at a.go:6: --- FAIL: TestSum")), (.live.verdicts[] | select(.finding_id=="m1") | .basis | contains("LIVED: a.go:3"))] | map(tostring) | join("|")')"
 mstub 0 "$MA/empty.json"
@@ -1070,6 +1093,8 @@ eq "a proposed survivor reaches the tests lens by its bug" "review|true" \
    "$(printf '%s' "$N" | jq -r '[.next.phase, ([.next.spawn[] | select(.id == "review:tests:Go")][0].prompt | contains("LIVED a.go:9 the window ends at the return") | tostring)] | join("|")')"
 eq "and the scope keeps what was rejected, and why" "1|old not found" \
    "$(run "$RA" audit status | jq -r '.live.scope.proposals | [(.accepted|tostring), .rejected[0].reason] | join("|")')"
+eq "and how many survived, and how long their run took" "1|number" \
+   "$(run "$RA" audit status | jq -r '.live.scope | [(.proposals.survived|tostring), (.proposals_seconds|type)] | join("|")')"
 rm -f "$PF"; mstub 0 "$MA/empty.json"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 eq "with no mutants to run, propose steps aside and the review starts" "review" \

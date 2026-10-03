@@ -195,6 +195,7 @@ def audit_round(ctx, aud, o):
              "suppressed": live.get("suppressed") or [],
              "report": None if o["--report"] == "-" else str(Path(o["--report"]).resolve()), **summary,
              "incidents": [i for i in aud.get("incidents") or [] if i.get("round") == len(aud["rounds"]) + 1],
+             "mutants": mutants_record(live),
              "agents": [{"phase": ph, "id": jid, "ok": rec.get("ok"), "seconds": rec.get("seconds"),
                          "cost_usd": rec.get("cost_usd"), "attempts": rec.get("attempts"),
                          "session_id": rec.get("session_id"), "at": rec.get("at")}
@@ -446,7 +447,10 @@ def add_mutants(scope, cwd, proposals=None):
         return
     import clerk_mutants
     base = scope.get("base") or "HEAD"
+    started = time.monotonic()
     _, result = clerk_mutants.run(cwd, base, proposals=proposals)
+    scope["mutants_seconds"] = round(time.monotonic() - started)
+    scope["mutants_complete"] = result["complete"]
     reasons = [result["reason"]] if result["reason"] else []
     if result["ran"] and not result["complete"]:
         reasons.append("mutants stopped at its time limit, so the rows hold only the mutants that got a verdict")
@@ -464,6 +468,8 @@ def add_mutants(scope, cwd, proposals=None):
 def _proposal_summary(result):
     proposals = result.get("proposals") or {}
     return {"accepted": proposals.get("accepted") or 0,
+            "survived": sum(1 for m in result["mutants"]
+                            if m["type"] == "PROPOSED" and m["status"] in ("LIVED", "NOT COVERED")),
             "rejected": [{"bug": r.get("bug"), "reason": r.get("reason")} for r in proposals.get("rejected") or []]}
 
 
@@ -484,7 +490,7 @@ def add_proposals(ctx, aud, lv, data):
     usable = [q for q in given or [] if isinstance(q, dict)
               and all(isinstance(q.get(k), str) for k in ("file", "old", "new", "bug")) and q["old"]]
     if not usable:
-        scope["proposals"] = {"accepted": 0, "rejected": []}
+        scope["proposals"] = {"accepted": 0, "survived": 0, "rejected": []}
         return
     path = ctx.run.dir / "audit-proposals.jsonl"
     ctx.run.dir.mkdir(parents=True, exist_ok=True)
@@ -492,8 +498,10 @@ def add_proposals(ctx, aud, lv, data):
                     encoding="utf-8")
     aud["proposals_file"] = str(path)
     import clerk_mutants
+    started = time.monotonic()
     _, result = clerk_mutants.run(ctx.cwd, scope.get("base") or "HEAD", proposals=path,
                                   operators="none", caller_gaps=False)
+    scope["proposals_seconds"] = round(time.monotonic() - started)
     if not result["ran"]:
         scope["proposals_reason"] = result["reason"]
         return
@@ -511,6 +519,7 @@ def settle_mutations(lv, cwd):
     if "clerk_verdicts" in lv:
         return
     import clerk_mutants
+    started = time.monotonic()
     verdicts = []
     for f in lv["candidates"]:
         if not f.get("mutant_id"):
@@ -544,6 +553,35 @@ def settle_mutations(lv, cwd):
                 basis = f"mutants: NOT COVERED at {where}: no test runs this line"
             verdicts.append({"finding_id": f["id"], "refuted": r["status"] == "KILLED", "basis": basis})
     lv["clerk_verdicts"] = verdicts
+    tried = sum(1 for f in lv["candidates"] if f.get("mutant_id") or _usable_mutation(f.get("mutation")))
+    if tried:
+        lv["clerk_settled"] = {"tried": tried, "refuted": sum(1 for v in verdicts if v["refuted"]),
+                               "stood": sum(1 for v in verdicts if not v["refuted"]),
+                               "seconds": round(time.monotonic() - started)}
+
+
+def mutants_record(live):
+    """What `mutants` did in the round, kept with the round for clerk stats. None for a
+    round whose scope never got to mutants."""
+    scope = live.get("scope") or {}
+    if "mutants_ran" not in scope:
+        return None
+    by_status = {}
+    for m in scope.get("mutants") or []:
+        if m.get("type") != "PROPOSED":
+            by_status[m.get("status")] = by_status.get(m.get("status"), 0) + 1
+    proposals = scope.get("proposals")
+    return {"ran": scope["mutants_ran"], "reason": scope.get("mutants_reason"),
+            "complete": scope.get("mutants_complete"), "seconds": scope.get("mutants_seconds"),
+            "rows": by_status,
+            "no_tests": sum(e.get("mutants") or 0 for e in scope.get("mutants_no_tests") or []),
+            "caller_gaps": len(scope.get("caller_gaps") or []),
+            "proposals": None if proposals is None and not scope.get("proposals_reason") else {
+                "accepted": (proposals or {}).get("accepted") or 0,
+                "survived": (proposals or {}).get("survived") or 0,
+                "rejected": len((proposals or {}).get("rejected") or []),
+                "seconds": scope.get("proposals_seconds"), "reason": scope.get("proposals_reason")},
+            "settled": live.get("clerk_settled")}
 
 
 def audit_next(ctx, aud, o):

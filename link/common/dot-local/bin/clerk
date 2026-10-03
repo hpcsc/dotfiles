@@ -24,6 +24,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -110,13 +111,15 @@ def run_logged(name, exe, argv):
     # Resolved BEFORE the command runs: `land --integrate` ends on the default branch,
     # where the run can no longer be named by the branch it just merged.
     ldir = ledger_dir()
+    started = time.monotonic()
     r = subprocess.run([exe, *argv], stdout=subprocess.PIPE, text=True)
+    seconds = round(time.monotonic() - started, 1)
     out = r.stdout
     # Exit 2 is a usage error in every command, and a usage error is not evidence of
     # anything. Nor is asking how a command is called, which `clerk step` now does on the
     # run's behalf — logged, it would put a `learn` event after the `land` that ended a run.
     if r.returncode != 2 and not any(a in ("-h", "--help") for a in argv):
-        ledger_log(ldir, name, r.returncode, argv)
+        ledger_log(ldir, name, r.returncode, argv, seconds=seconds)
     if r.returncode == 0 and ldir and name in INLINE_NEXT:
         try:
             reply = json.loads(out)

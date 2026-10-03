@@ -634,6 +634,7 @@ EV="$RE/.git/clerk/runs/ev/events.jsonl"
 eq "from the default branch, the one open run is the ledger" "receipt|--command go test ./... --passed|0" \
    "$(tail -1 "$EV" | jq -r '[.cmd, (.argv | (index("--output-file") as $i | if $i then .[0:$i] else . end) | join(" ")), (.exit|tostring)] | join("|")')"
 eq "and the event carries the HEAD it ran at" "$(git -C "$RE" rev-parse HEAD)" "$(tail -1 "$EV" | jq -r .head)"
+eq "and how long the command took" "true" "$(tail -1 "$EV" | jq -r '.seconds | type == "number" and . >= 0')"
 run "$RE" lint --rule certainty-unevidenced --json README.md >/dev/null 2>&1
 eq "a logged plugin is recorded too" "lint|0" "$(tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
 eq "an exit other than 0 is recorded as it happened" "land|1" \

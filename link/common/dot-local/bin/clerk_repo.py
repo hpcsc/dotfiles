@@ -361,7 +361,7 @@ def breakdown_side(bd):
     return bd.get("task_record") or bd.get("sidecar")
 
 
-def ledger_log(directory, cmd, rc, argv, cwd=None):
+def ledger_log(directory, cmd, rc, argv, cwd=None, seconds=None):
     """Appends one event. Never fails the command it records: a logging error must not
     turn a finished task into a failed one."""
     if not directory or not Path(directory).is_dir():
@@ -369,7 +369,7 @@ def ledger_log(directory, cmd, rc, argv, cwd=None):
     try:
         with (Path(directory) / "events.jsonl").open("a") as fh:
             fh.write(json.dumps({"cmd": cmd, "argv": list(argv), "exit": int(rc), "at": now(),
-                                 "head": head_sha(cwd) or ""}) + "\n")
+                                 "head": head_sha(cwd) or "", "seconds": seconds}) + "\n")
     except OSError:
         pass
 

@@ -652,6 +652,8 @@ EOF
 chmod +x "$SE/mutants"
 eq "clerk mutants is logged as evidence" "mutants|0" \
    "$(CLERK_MUTANTS_BIN="$SE/mutants" run "$RE" mutants >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
+eq "and so is a clerk mutants that exits 2 because mutants is missing" "mutants|2" \
+   "$(CLERK_MUTANTS_BIN="$SE/none" run "$RE" mutants >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
 rm -rf "$SE"
 WE=$(run "$RE" isolate ev --worktree | field .path)
 eq "isolate is logged against the run it isolates" "isolate|ev" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[0]] | join("|")')"

@@ -116,9 +116,11 @@ def run_logged(name, exe, argv):
     seconds = round(time.monotonic() - started, 1)
     out = r.stdout
     # Exit 2 is a usage error in every command, and a usage error is not evidence of
-    # anything. Nor is asking how a command is called, which `clerk step` now does on the
-    # run's behalf — logged, it would put a `learn` event after the `land` that ended a run.
-    if r.returncode != 2 and not any(a in ("-h", "--help") for a in argv):
+    # anything — except in `clerk mutants`, where exit 2 also means that mutants is missing
+    # or failed, and clerk stats counts those runs. Nor is asking how a command is called,
+    # which `clerk step` now does on the run's behalf — logged, it would put a `learn`
+    # event after the `land` that ended a run.
+    if (r.returncode != 2 or name == "mutants") and not any(a in ("-h", "--help") for a in argv):
         ledger_log(ldir, name, r.returncode, argv, seconds=seconds)
     if r.returncode == 0 and ldir and name in INLINE_NEXT:
         try:

@@ -76,7 +76,7 @@ The Taskfile enforces these dependencies:
 ```
 default →
 ├── macos:base/ubuntu:base/fedora:base
-│   └── common:base (parallel: working-folders, prezto, aqua, fonts)
+│   └── common:base (parallel: working-folders, prezto, fonts)
 ├── common:core (sequential: rust → mise → stow → mise-global)
 ├── common:devtools (parallel: vim, neovim, tmux)
 ├── common:langtools (parallel: configure-yazi, python-tools)

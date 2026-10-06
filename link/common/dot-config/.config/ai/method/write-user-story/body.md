@@ -13,7 +13,8 @@ Create detailed, actionable user stories suitable for implementation by a develo
 3. Generate structured user stories based on answers
 4. Draw the dependency diagram from the stories' **Depends on** fields
 5. Save to `user-stories/[feature-name].md`
-6. Ask if any stories need splitting, merging, reprioritizing, or if new stories are needed
+6. If the feature adds to or changes an event model, build the story map (Step 4)
+7. Ask if any stories need splitting, merging, reprioritizing, or if new stories are needed
 
 **Important:** Do NOT start implementing. Just create the user stories.
 
@@ -28,6 +29,7 @@ Create detailed, actionable user stories suitable for implementation by a develo
 - Focus on user needs, business value, and acceptance criteria
 - When the domain is inherently technical (APIs, infrastructure, developer tools), use precise domain terminology in acceptance criteria — this is not the same as prescribing implementation
 - If asked about implementation, redirect to user story refinement
+- The story map (Step 4) is the one exception. It shows the event model that the stories change, and it is a separate file. The stories file stays free of events, automations and gates.
 
 ---
 
@@ -207,11 +209,49 @@ The reader may be a junior developer or AI agent. Therefore:
 
 ---
 
+## Step 4: Story Map (features that change an event model)
+
+When the feature adds events, automations or gates to an event model, or changes them, also write a story map. The story map is an interactive HTML page: the event flow of the feature, with a chip on each part that a story adds or changes. A reader sees which story builds which part without a read of the stories. Select a story, and its parts light up. Select a part, and the page shows its stories.
+
+A slice of value is not a slice of the event model. One story usually crosses several slices of the model, and some stories only add scenarios to a slice that exists. The story map shows this, so do not try to make the stories match the slices of the model.
+
+**Input:** the event-flow SVG of the feature. If none exists, draw it first, with the `draw-event-flow` skill when it is installed. Take the facts from the code or from the event model, not from the names: which automation reacts to which event, and which gate stands on which edge.
+
+**Build:** start from `~/.config/ai/method/write-user-story/templates/story-map.html`. It holds the page, the styles, the script and a small example. Replace these parts:
+
+- The title, the heading, and the link to the stories file
+- The example SVG, with the event-flow SVG of the feature. Keep the `.sm-chip-bg` and `.sm-chip-t` rules of the template, and their dark variants, in the `<style>` of the SVG.
+- `STORIES`, with one entry for each story: `id`, `title`, `value` (the "so that" of the story, as one sentence) and `deps` (its **Depends on**)
+
+Then mark up the SVG:
+
+- Wrap each node, each edge and each edge label in `<g class="sm-part" data-name="..." data-stories="...">`. `data-stories` lists each story that adds, changes or uses that part. Leave it empty for a part that works as today. Keep the paint order of the source SVG: edges, then nodes, then labels.
+- Put a chip only where a story makes its change. Add `data-chips` to the part, `data-chip-pos` for the place of the chip, and the class `sm-anchor` on the element that the chip attaches to:
+  - A new event or a new automation gets the chip on its node (`tr` or `br`). Its own edges need no chip.
+  - A new gate, trigger or result on a part that exists gets the chip on the label of that edge (`after`, `before` or `above`).
+  - A rule that changes with no new part, for example a rule for each client, gets the chip on the label of the gate or the result where the rule decides.
+  - When an automation serves many stories, put the chips on its result edges, not on the automation. Five chips on one node do not show which story adds which result.
+- A story with no part in the flow, for example a view, a report or a gate in another flow, gets a small part in a strip "Parts outside this flow". Each story must have at least one chip.
+- When two stories own different halves of one line, split the line into two segments.
+
+**Check:** run `~/.config/ai/method/write-user-story/templates/check-story-map.mjs` on the page. It fails on a chip that overlaps another chip or a text, a story with no chip, a chip with an unknown ID, a console error, and a horizontal scroll at 390px.
+
+```bash
+node ~/.config/ai/method/write-user-story/templates/check-story-map.mjs user-stories/[feature-name]-story-map.html /tmp/shots
+```
+
+The script needs Node and `puppeteer-core` or `puppeteer`. When Node cannot import either from the script's folder, set `PUPPETEER_CORE` to the entry file of any install, for example the one that mermaid-cli bundles. The script uses the installed Google Chrome. To use another Chrome binary, set `CHROME` to its path. If the check cannot run, open the page in a browser, select each story, and look for chips that cover text.
+
+Then look at the screenshot once, with a story selected, and fix what it shows in one pass.
+
+---
+
 ## Output
 
 - **Format:** Markdown (`.md`)
 - **Location:** `user-stories/`
 - **Filename:** `[feature-name].md` (kebab-case)
+- **Story map**, for a feature that changes an event model: `[feature-name]-story-map.html` in the same folder, with a link to it in the Overview of the stories file
 
 ---
 
@@ -223,7 +263,7 @@ After generating the initial set of stories, ask the user:
 - Should any stories be reprioritized?
 - Are there missing stories or edge cases to add?
 
-Update the file in place based on feedback. Any change to the story set — splitting, merging, adding, reordering, or a new **Depends on** — means redrawing the diagram and rechecking the critical path in the same edit. A stale diagram misdirects the reader who trusts it over the stories.
+Update the file in place based on feedback. Any change to the story set — splitting, merging, adding, reordering, or a new **Depends on** — means redrawing the diagram and rechecking the critical path in the same edit. A stale diagram misdirects the reader who trusts it over the stories. When a story map exists, update its `STORIES`, its `data-stories` and its chips in the same edit, and run its check again.
 
 ---
 
@@ -349,4 +389,5 @@ Before saving:
 - [ ] Stories are listed in recommended implementation order with dependencies noted
 - [ ] Dependency diagram's edges match the **Depends on** fields exactly, with the critical path shaded and read out in prose
 - [ ] Saved to `user-stories/[feature-name].md`
+- [ ] For a feature that changes an event model: story map written, each story has a chip, and `check-story-map.mjs` passes
 - [ ] Asked user if stories need splitting, merging, or reprioritizing

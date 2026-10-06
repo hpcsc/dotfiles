@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FEATURE Story Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sm-bg: #F3F5F4;
+    --sm-panel: #FFFFFF;
+    --sm-ink: #16201B;
+    --sm-muted: #5A6861;
+    --sm-line: #D5DCD8;
+    --sm-chip: #7A4FA3;
+    --sm-chip-ink: #FFFFFF;
+    --sm-sel: #C2410C;
+    --sm-sel-ink: #FFFFFF;
+    --sm-sel-soft: #FDEBDD;
+    --sm-dim: 0.14;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --sm-bg: #0F1513;
+      --sm-panel: #151C19;
+      --sm-ink: #E2E9E5;
+      --sm-muted: #93A199;
+      --sm-line: #2B3632;
+      --sm-chip: #C6A6EA;
+      --sm-chip-ink: #1E1530;
+      --sm-sel: #F59E0B;
+      --sm-sel-ink: #1A1206;
+      --sm-sel-soft: #3A2A10;
+      --sm-dim: 0.18;
+    }
+  }
+  :root[data-theme="dark"] {
+    --sm-bg: #0F1513;
+    --sm-panel: #151C19;
+    --sm-ink: #E2E9E5;
+    --sm-muted: #93A199;
+    --sm-line: #2B3632;
+    --sm-chip: #C6A6EA;
+    --sm-chip-ink: #1E1530;
+    --sm-sel: #F59E0B;
+    --sm-sel-ink: #1A1206;
+    --sm-sel-soft: #3A2A10;
+    --sm-dim: 0.18;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--sm-bg);
+    color: var(--sm-ink);
+    font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .sm-head { max-width: 1760px; margin: 0 auto; padding: 20px 16px 4px; }
+  .sm-head h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+  .sm-head p { margin: 0; color: var(--sm-muted); max-width: 900px; }
+  .sm-head a { color: inherit; }
+
+  .sm-layout {
+    max-width: 1760px;
+    margin: 0 auto;
+    padding: 12px 16px 24px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 16px;
+    align-items: start;
+  }
+  .sm-diagram {
+    background: var(--sm-panel);
+    border: 1px solid var(--sm-line);
+    border-radius: 10px;
+    overflow: auto;
+    min-width: 0;
+  }
+  .sm-diagram svg { display: block; width: 100%; min-width: 960px; height: auto; }
+
+  .sm-side {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+    background: var(--sm-panel);
+    border: 1px solid var(--sm-line);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .sm-side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sm-muted); margin: 0 0 8px; font-weight: 600; }
+  .sm-detail { border: 1px solid var(--sm-line); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; min-height: 64px; }
+  .sm-detail p { margin: 4px 0 0; }
+  .sm-detail .sm-muted, .sm-muted { color: var(--sm-muted); }
+  .sm-detail-title { font-weight: 600; }
+  .sm-links { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }
+  .sm-reset { margin-left: auto; font: inherit; font-size: 12px; background: none; border: 1px solid var(--sm-line); border-radius: 6px; color: var(--sm-ink); padding: 2px 8px; cursor: pointer; }
+
+  .sm-step { font-size: 12px; color: var(--sm-muted); margin: 12px 0 6px; font-weight: 600; }
+  .sm-card {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 10px;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 1px solid var(--sm-line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    cursor: pointer;
+  }
+  .sm-card:hover { border-color: var(--sm-chip); }
+  .sm-card[aria-pressed="true"] { border-color: var(--sm-sel); background: var(--sm-sel-soft); }
+  .sm-card-title { font-weight: 600; }
+  .sm-card-value { grid-column: 2; color: var(--sm-muted); font-size: 13px; }
+
+  .sm-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border-radius: 999px;
+    padding: 1px 7px;
+    background: var(--sm-chip);
+    color: var(--sm-chip-ink);
+    border: 0;
+    font-family: inherit;
+    white-space: nowrap;
+    align-self: start;
+    margin-top: 2px;
+  }
+  button.sm-pill { cursor: pointer; }
+  .sm-pill.sm-on { background: var(--sm-sel); color: var(--sm-sel-ink); }
+
+  /* the diagram */
+  #sm-flow .sm-part, #sm-flow .sm-chip { transition: opacity 0.15s; }
+  #sm-flow .sm-part[data-stories]:not([data-stories=""]) { cursor: pointer; }
+  #sm-flow .sm-chip { cursor: pointer; }
+  #sm-flow.sm-focus .sm-part:not(.sm-on),
+  #sm-flow.sm-focus .sm-chip:not(.sm-on) { opacity: var(--sm-dim); }
+  #sm-flow .sm-chip-bg { fill: var(--sm-chip); }
+  #sm-flow .sm-chip-t { fill: var(--sm-chip-ink); }
+  #sm-flow .sm-chip.sm-on .sm-chip-bg { fill: var(--sm-sel); }
+  #sm-flow .sm-chip.sm-on .sm-chip-t { fill: var(--sm-sel-ink); }
+  #sm-flow .sm-chip:focus { outline: none; }
+  #sm-flow .sm-chip:focus-visible .sm-chip-bg { stroke: var(--sm-ink); stroke-width: 1.5; }
+
+  @media (max-width: 1000px) {
+    .sm-layout { grid-template-columns: minmax(0, 1fr); }
+    .sm-side { position: static; max-height: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="sm-head">
+  <h1>FEATURE: stories on the flow</h1>
+  <p>Each chip names the story that adds or changes that part of the flow. Select a story to light up its
+    parts, or select a part to see its stories. The stories are in
+    <a href="FEATURE.md">FEATURE.md</a>.</p>
+</header>
+
+<main class="sm-layout">
+<div class="sm-diagram">
+<svg id="sm-flow" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 900 300" width="900" height="300" role="img"
+     aria-label="FEATURE: the event flow, with a chip on each part that a story adds or changes.">
+  <style>
+    .bg { fill: #FFFFFF; }
+    .event { fill: #FFE0C0; stroke: #B44E12; stroke-width: 1.5; }
+    .store { fill: #ECEFED; stroke: #5A6861; stroke-width: 1.3; }
+    .note { fill: none; stroke: #C9D2CE; stroke-width: 1; }
+    .rule { stroke: #C9D2CE; stroke-width: 1; }
+    .gear { fill: #16201B; }
+    .gear-hole { fill: #FFFFFF; }
+    .event-dead { fill: #FFE0C0; stroke: #A33A2A; stroke-width: 1.6; stroke-dasharray: 5 4; }
+    .absent { fill: #FFFFFF; stroke: #A33A2A; stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .warn { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 10px; fill: #A33A2A; }
+    .edge-stop { stroke: #A33A2A; stroke-width: 1.5; stroke-dasharray: 5 4; fill: none; }
+    .head-stop { fill: #A33A2A; }
+    .title { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 600; fill: #16201B; }
+    .part { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 12.5px; font-weight: 600; fill: #5A6861; }
+    .event-t { font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 11px; fill: #16201B; }
+    .name { font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 11.5px; font-weight: 600; fill: #16201B; }
+    .sub { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 10px; fill: #5A6861; }
+    .leg { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 11px; fill: #16201B; }
+    .gate-t, .qual { paint-order: stroke; stroke: #FFFFFF; stroke-width: 5px; stroke-linejoin: round; }
+    .gate-t { font-family: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #14705A; }
+    .qual { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 10px; fill: #5A6861; }
+    .edge { stroke: #16201B; stroke-width: 1.4; fill: none; }
+    .edge-gated { stroke: #14705A; stroke-width: 2; fill: none; }
+    .edge-new { stroke: #7A4FA3; stroke-width: 1.8; fill: none; }
+    .head { fill: #16201B; }
+    .head-gated { fill: #14705A; }
+    .head-new { fill: #7A4FA3; }
+    .sm-chip-bg { fill: #7A4FA3; }
+    .sm-chip-t { font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; fill: #FFFFFF; }
+
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #151C19; }
+      .event { fill: #40260F; stroke: #F2A868; }
+      .store { fill: #1E2723; stroke: #93A199; }
+      .note { stroke: #33403A; }
+      .rule { stroke: #33403A; }
+      .gear { fill: #E2E9E5; }
+      .gear-hole { fill: #151C19; }
+      .event-dead { fill: #40260F; stroke: #E88C78; }
+      .absent { fill: #151C19; stroke: #E88C78; }
+      .warn { fill: #E88C78; }
+      .edge-stop { stroke: #E88C78; }
+      .head-stop { fill: #E88C78; }
+      .title, .event-t, .name, .leg { fill: #E2E9E5; }
+      .part, .sub, .qual { fill: #93A199; }
+      .gate-t, .qual { stroke: #151C19; }
+      .gate-t { fill: #53C3A1; }
+      .edge { stroke: #E2E9E5; }
+      .edge-gated { stroke: #53C3A1; }
+      .edge-new { stroke: #C6A6EA; }
+      .head { fill: #E2E9E5; }
+      .head-gated { fill: #53C3A1; }
+      .head-new { fill: #C6A6EA; }
+      .sm-chip-bg { fill: #C6A6EA; }
+      .sm-chip-t { fill: #1E1530; }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="head"/>
+    </marker>
+    <marker id="arrow-gated" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="head-gated"/>
+    </marker>
+    <marker id="arrow-new" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="head-new"/>
+    </marker>
+    <marker id="arrow-stop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" class="head-stop"/>
+    </marker>
+    <g id="gear" class="gear">
+      <circle cx="0" cy="0" r="8.4"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(45)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(90)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(135)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(180)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(225)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(270)"/>
+      <rect x="-2.9" y="-14.2" width="5.8" height="6.8" rx="1.3" transform="rotate(315)"/>
+      <circle cx="0" cy="0" r="3.4" class="gear-hole"/>
+    </g>
+  </defs>
+
+  <rect id="sm-bg" x="0" y="0" width="900" height="300" class="bg"/>
+  <text x="24" y="30" class="title">FEATURE: where each story changes the flow</text>
+
+  <!-- Edges first, then nodes, then labels: the paint order of the source SVG. -->
+  <g class="sm-part" data-name="OrderPlaced → ReserveStock" data-stories="US-001">
+    <line x1="230" y1="100" x2="322" y2="100" class="edge-new" marker-end="url(#arrow-new)"/>
+  </g>
+  <g class="sm-part" data-name="ReserveStock → StockReserved" data-stories="US-001 US-002">
+    <path d="M354,100 H600 V138" class="edge-gated" marker-end="url(#arrow-gated)"/>
+  </g>
+  <g class="sm-part" data-name="ReserveStock → OrderBackordered" data-stories="US-002">
+    <path d="M340,140 V210 H598" class="edge-gated" marker-end="url(#arrow-gated)"/>
+  </g>
+
+  <!-- An existing part: empty data-stories. -->
+  <g class="sm-part" data-name="OrderPlaced" data-stories="">
+    <rect x="40" y="84" width="190" height="32" rx="16" class="event"/>
+    <text x="135" y="104" text-anchor="middle" class="event-t">OrderPlaced</text>
+  </g>
+  <!-- A new automation: the chip goes on its node. -->
+  <g class="sm-part" data-name="ReserveStock" data-stories="US-001 US-002" data-chips="US-001" data-chip-pos="after">
+    <use href="#gear" xlink:href="#gear" transform="translate(340,100)"/>
+    <text x="340" y="130" text-anchor="middle" class="name sm-anchor">ReserveStock</text>
+  </g>
+  <g class="sm-part" data-name="StockReserved" data-stories="US-001">
+    <rect x="500" y="140" width="200" height="32" rx="16" class="event"/>
+    <text x="600" y="160" text-anchor="middle" class="event-t">StockReserved</text>
+  </g>
+  <!-- A new event: the chip goes on its node. -->
+  <g class="sm-part" data-name="OrderBackordered" data-stories="US-002" data-chips="US-002" data-chip-pos="tr">
+    <rect x="600" y="194" width="220" height="32" rx="16" class="event sm-anchor"/>
+    <text x="710" y="214" text-anchor="middle" class="event-t">OrderBackordered</text>
+  </g>
+
+  <!-- A new result on an automation that a story changes: the chip goes on the edge label. -->
+  <g class="sm-part" data-name="Result: in stock" data-stories="US-001 US-003" data-chips="US-003" data-chip-pos="after">
+    <text x="420" y="92" class="gate-t sm-anchor">in stock</text>
+  </g>
+  <g class="sm-part" data-name="Result: out of stock" data-stories="US-002">
+    <text x="350" y="202" class="gate-t">out of stock</text>
+  </g>
+
+  <!-- A part outside the flow, so that a story with no node or edge still has a chip. -->
+  <g class="sm-part" data-name="Stock report" data-stories="US-003" data-chips="US-003" data-chip-pos="tr">
+    <rect x="40" y="240" width="220" height="44" rx="8" class="store sm-anchor"/>
+    <text x="150" y="259" text-anchor="middle" class="name">Stock report</text>
+    <text x="150" y="274" text-anchor="middle" class="sub">one row for each reservation</text>
+  </g>
+</svg>
+</div>
+
+<aside class="sm-side" aria-label="Stories">
+  <h2>Selection</h2>
+  <div class="sm-detail" id="sm-detail" aria-live="polite">
+    <p class="sm-muted">Select a story or a part of the flow.</p>
+  </div>
+  <h2>Stories, in delivery order</h2>
+  <div id="sm-list"></div>
+</aside>
+</main>
+
+<script>
+// One entry for each story: value is the "so that" of the story, as one sentence. deps lists its Depends on.
+const STORIES = [
+  { id: "US-001", title: "Reserve stock for each order", value: "A customer never pays for stock that is not there.", deps: [] },
+  { id: "US-002", title: "Backorder an order with no stock", value: "The customer knows when the order ships.", deps: ["US-001"] },
+  { id: "US-003", title: "Report the reservations", value: "Operations can see the stock that each order holds.", deps: ["US-001"] },
+];
+
+(function () {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById("sm-flow");
+  const detail = document.getElementById("sm-detail");
+  const list = document.getElementById("sm-list");
+  const byId = Object.fromEntries(STORIES.map((s) => [s.id, s]));
+  const parts = [...svg.querySelectorAll(".sm-part")];
+  const storiesOf = (el) => (el.dataset.stories || "").split(/\s+/).filter(Boolean);
+  const dependents = (id) => STORIES.filter((s) => s.deps.includes(id)).map((s) => s.id);
+
+  const step = {};
+  const stepOf = (id) => step[id] || (step[id] = 1 + Math.max(0, ...byId[id].deps.map(stepOf)));
+  STORIES.forEach((s) => stepOf(s.id));
+
+  let selected = null;
+  const chips = [];
+  const cards = [];
+
+  function node(tag, attrs) {
+    const el = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+    return el;
+  }
+
+  function pill(id, onClick) {
+    const b = document.createElement(onClick ? "button" : "span");
+    b.className = "sm-pill" + (id === selected ? " sm-on" : "");
+    b.textContent = id;
+    if (onClick) {
+      b.type = "button";
+      b.title = byId[id] ? byId[id].title : id;
+      b.addEventListener("click", (e) => { e.stopPropagation(); onClick(id); });
+    }
+    return b;
+  }
+
+  function buildChips() {
+    const layer = node("g", { id: "sm-chips" });
+    svg.appendChild(layer);
+    parts.filter((p) => p.dataset.chips).forEach((p) => {
+      const anchor = p.querySelector(".sm-anchor") || p.querySelector("rect, text");
+      const box = anchor.getBBox();
+      const made = p.dataset.chips.split(/\s+/).filter(Boolean).map((id) => {
+        const g = node("g", { class: "sm-chip", "data-story": id, tabindex: "0", role: "button" });
+        const title = node("title");
+        title.textContent = byId[id] ? id + " · " + byId[id].title : id;
+        const rect = node("rect", { class: "sm-chip-bg", rx: "7", height: "14" });
+        const text = node("text", { class: "sm-chip-t", "text-anchor": "middle" });
+        text.textContent = id;
+        g.append(title, rect, text);
+        layer.appendChild(g);
+        const width = Math.ceil(text.getComputedTextLength()) + 12;
+        g.addEventListener("click", (e) => { e.stopPropagation(); select(id); });
+        g.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(id); }
+        });
+        chips.push(g);
+        return { rect, text, width };
+      });
+      const gap = 4;
+      const total = made.reduce((sum, m) => sum + m.width, 0) + gap * (made.length - 1);
+      let x;
+      let y;
+      switch (p.dataset.chipPos || "tr") {
+        case "after": x = box.x + box.width + 6; y = box.y + box.height / 2 - 7; break;
+        case "before": x = box.x - 6 - total; y = box.y + box.height / 2 - 7; break;
+        case "above": x = box.x + box.width / 2 - total / 2; y = box.y - 18; break;
+        case "br": x = box.x + box.width - 8 - total; y = box.y + box.height - 5; break;
+        default: x = box.x + box.width - 8 - total; y = box.y - 9;
+      }
+      made.forEach((m) => {
+        m.rect.setAttribute("x", x);
+        m.rect.setAttribute("y", y);
+        m.rect.setAttribute("width", m.width);
+        m.text.setAttribute("x", x + m.width / 2);
+        m.text.setAttribute("y", y + 10.2);
+        x += m.width + gap;
+      });
+    });
+  }
+
+  function buildList() {
+    const steps = [...new Set(STORIES.map((s) => step[s.id]))].sort((a, b) => a - b);
+    steps.forEach((n) => {
+      const h = document.createElement("div");
+      h.className = "sm-step";
+      h.textContent = "Step " + n;
+      list.appendChild(h);
+      STORIES.filter((s) => step[s.id] === n).forEach((s) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "sm-card";
+        b.dataset.story = s.id;
+        b.setAttribute("aria-pressed", "false");
+        const id = document.createElement("span");
+        id.className = "sm-pill";
+        id.textContent = s.id;
+        const title = document.createElement("span");
+        title.className = "sm-card-title";
+        title.textContent = s.title;
+        const value = document.createElement("span");
+        value.className = "sm-card-value";
+        value.textContent = s.value;
+        b.append(id, title, value);
+        b.addEventListener("click", () => select(s.id === selected ? null : s.id));
+        list.appendChild(b);
+        cards.push(b);
+      });
+    });
+  }
+
+  function showStory(id) {
+    const s = byId[id];
+    const count = parts.filter((p) => storiesOf(p).includes(id)).length;
+    detail.replaceChildren();
+    const head = document.createElement("div");
+    head.className = "sm-links";
+    head.append(pill(id));
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "sm-reset";
+    reset.textContent = "Show all";
+    reset.addEventListener("click", () => select(null));
+    head.append(reset);
+    const title = document.createElement("p");
+    title.className = "sm-detail-title";
+    title.textContent = s.title;
+    const value = document.createElement("p");
+    value.textContent = s.value;
+    const meta = document.createElement("p");
+    meta.className = "sm-muted";
+    meta.textContent = "Step " + step[id] + " · " + count + " parts of the flow";
+    detail.append(head, title, value, meta);
+    if (s.deps.length) detail.append(linkRow("Depends on", s.deps));
+    const next = dependents(id);
+    if (next.length) detail.append(linkRow("Opens", next));
+  }
+
+  function showPart(part) {
+    const ids = storiesOf(part);
+    detail.replaceChildren();
+    const name = document.createElement("p");
+    name.className = "sm-detail-title";
+    name.textContent = part.dataset.name || "A part of the flow";
+    detail.append(name);
+    if (!ids.length) {
+      const p = document.createElement("p");
+      p.className = "sm-muted";
+      p.textContent = "No story changes this part. It works as today.";
+      detail.append(p);
+      return;
+    }
+    detail.append(linkRow("Stories", ids));
+  }
+
+  function linkRow(label, ids) {
+    const row = document.createElement("div");
+    row.className = "sm-links";
+    const l = document.createElement("span");
+    l.className = "sm-muted";
+    l.textContent = label + ":";
+    row.append(l, ...ids.map((id) => pill(id, (x) => select(x))));
+    return row;
+  }
+
+  function select(id) {
+    selected = id;
+    svg.classList.toggle("sm-focus", !!id);
+    parts.forEach((p) => p.classList.toggle("sm-on", !!id && storiesOf(p).includes(id)));
+    chips.forEach((c) => c.classList.toggle("sm-on", c.dataset.story === id));
+    cards.forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.story === id)));
+    if (id) {
+      showStory(id);
+    } else {
+      detail.replaceChildren();
+      const p = document.createElement("p");
+      p.className = "sm-muted";
+      p.textContent = "Select a story or a part of the flow.";
+      detail.append(p);
+    }
+  }
+
+  parts.forEach((p) => p.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const ids = storiesOf(p);
+    const chipped = (p.dataset.chips || "").split(/\s+/).filter(Boolean);
+    const pick = chipped[0] || ids[0] || null;
+    select(pick);
+    showPart(p);
+    if (pick) detail.append(linkRow("Selected", [pick]));
+  }));
+  svg.addEventListener("click", () => select(null));
+
+  buildList();
+  const ready = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  ready.then(buildChips, buildChips);
+})();
+</script>
+</body>
+</html>

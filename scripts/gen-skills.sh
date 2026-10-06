@@ -30,6 +30,8 @@ implement claude   $ROOT/link/common/claude/.claude/skills/implement/SKILL.md
 implement opencode $ROOT/link/common/dot-config/.config/opencode/skills/implement/SKILL.md
 draw-event-flow claude   $ROOT/link/common/claude/.claude/skills/draw-event-flow/SKILL.md
 draw-event-flow opencode $ROOT/link/common/dot-config/.config/opencode/skills/draw-event-flow/SKILL.md
+write-user-story claude   $ROOT/link/common/claude/.claude/skills/write-user-story/SKILL.md
+write-user-story opencode $ROOT/link/common/dot-config/.config/opencode/skills/write-user-story/SKILL.md
 write-pr claude   $ROOT/link/common/claude/.claude/skills/write-pr/SKILL.md
 write-pr opencode $ROOT/link/common/dot-config/.config/opencode/skills/write-pr/SKILL.md
 review-pr claude   $ROOT/link/common/claude/.claude/skills/review-pr/SKILL.md

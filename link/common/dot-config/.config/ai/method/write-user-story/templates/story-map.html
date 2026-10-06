@@ -20,6 +20,9 @@
     --sm-sel-ink: #FFFFFF;
     --sm-sel-soft: #FDEBDD;
     --sm-dim: 0.14;
+    --sm-pre: 0.5;
+    --sm-crit: #FDE68A;
+    --sm-crit-line: #B45309;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -34,6 +37,9 @@
       --sm-sel-ink: #1A1206;
       --sm-sel-soft: #3A2A10;
       --sm-dim: 0.18;
+      --sm-pre: 0.55;
+      --sm-crit: #3A2A10;
+      --sm-crit-line: #F59E0B;
     }
   }
   :root[data-theme="dark"] {
@@ -48,6 +54,9 @@
     --sm-sel-ink: #1A1206;
     --sm-sel-soft: #3A2A10;
     --sm-dim: 0.18;
+    --sm-pre: 0.55;
+    --sm-crit: #3A2A10;
+    --sm-crit-line: #F59E0B;
   }
 
   * { box-sizing: border-box; }
@@ -143,14 +152,38 @@
   #sm-flow .sm-part, #sm-flow .sm-chip { transition: opacity 0.15s; }
   #sm-flow .sm-part[data-stories]:not([data-stories=""]) { cursor: pointer; }
   #sm-flow .sm-chip { cursor: pointer; }
-  #sm-flow.sm-focus .sm-part:not(.sm-on),
-  #sm-flow.sm-focus .sm-chip:not(.sm-on) { opacity: var(--sm-dim); }
+  #sm-flow.sm-focus .sm-part:not(.sm-on):not(.sm-pre),
+  #sm-flow.sm-focus .sm-chip:not(.sm-on):not(.sm-pre) { opacity: var(--sm-dim); }
+  #sm-flow.sm-focus .sm-part.sm-pre:not(.sm-on),
+  #sm-flow.sm-focus .sm-chip.sm-pre { opacity: var(--sm-pre); }
   #sm-flow .sm-chip-bg { fill: var(--sm-chip); }
   #sm-flow .sm-chip-t { fill: var(--sm-chip-ink); }
   #sm-flow .sm-chip.sm-on .sm-chip-bg { fill: var(--sm-sel); }
   #sm-flow .sm-chip.sm-on .sm-chip-t { fill: var(--sm-sel-ink); }
   #sm-flow .sm-chip:focus { outline: none; }
   #sm-flow .sm-chip:focus-visible .sm-chip-bg { stroke: var(--sm-ink); stroke-width: 1.5; }
+
+  /* the dependency graph */
+  .sm-graph-svg { display: block; width: 100%; height: auto; }
+  .sm-graph-key { font-size: 12px; margin: 6px 0 14px; }
+  .sm-g-step { font-size: 10px; fill: var(--sm-muted); }
+  .sm-g-edge { fill: none; stroke: var(--sm-muted); stroke-width: 1.2; opacity: 0.7; }
+  .sm-g-edge.sm-crit { stroke: var(--sm-crit-line); stroke-width: 1.8; opacity: 1; }
+  .sm-g-node { cursor: pointer; }
+  .sm-g-node rect { fill: var(--sm-panel); stroke: var(--sm-line); stroke-width: 1.2; }
+  .sm-g-node.sm-crit rect { fill: var(--sm-crit); stroke: var(--sm-crit-line); }
+  .sm-g-node text { fill: var(--sm-ink); font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em; }
+  .sm-g-node:focus { outline: none; }
+  .sm-g-node:focus-visible rect { stroke: var(--sm-ink); stroke-width: 2; }
+  .sm-gfocus .sm-g-node:not(.sm-on):not(.sm-pre):not(.sm-post) { opacity: 0.35; }
+  .sm-gfocus .sm-g-edge:not(.sm-on):not(.sm-post) { opacity: 0.2; }
+  .sm-g-node.sm-on rect { fill: var(--sm-sel); stroke: var(--sm-sel); }
+  .sm-g-node.sm-on text { fill: var(--sm-sel-ink); }
+  .sm-g-node.sm-pre rect { fill: var(--sm-chip); stroke: var(--sm-chip); }
+  .sm-g-node.sm-pre text { fill: var(--sm-chip-ink); }
+  .sm-g-node.sm-post rect { stroke: var(--sm-chip); stroke-width: 1.6; stroke-dasharray: 3 2; }
+  .sm-g-edge.sm-on { stroke: var(--sm-chip); stroke-width: 1.8; opacity: 1; }
+  .sm-g-edge.sm-post { stroke: var(--sm-chip); stroke-dasharray: 3 2; opacity: 1; }
 
   @media (max-width: 1000px) {
     .sm-layout { grid-template-columns: minmax(0, 1fr); }
@@ -314,6 +347,9 @@
   <div class="sm-detail" id="sm-detail" aria-live="polite">
     <p class="sm-muted">Select a story or a part of the flow.</p>
   </div>
+  <h2>Dependencies</h2>
+  <div id="sm-graph"></div>
+  <p class="sm-graph-key sm-muted" id="sm-graph-key"></p>
   <h2>Stories, in delivery order</h2>
   <div id="sm-list"></div>
 </aside>
@@ -336,14 +372,30 @@ const STORIES = [
   const parts = [...svg.querySelectorAll(".sm-part")];
   const storiesOf = (el) => (el.dataset.stories || "").split(/\s+/).filter(Boolean);
   const dependents = (id) => STORIES.filter((s) => s.deps.includes(id)).map((s) => s.id);
+  const reach = (next) => (id, seen = new Set()) => {
+    next(id).forEach((x) => { if (!seen.has(x)) { seen.add(x); reach(next)(x, seen); } });
+    return seen;
+  };
+  const ancestorsOf = reach((id) => byId[id].deps);
+  const descendantsOf = reach(dependents);
 
   const step = {};
   const stepOf = (id) => step[id] || (step[id] = 1 + Math.max(0, ...byId[id].deps.map(stepOf)));
   STORIES.forEach((s) => stepOf(s.id));
 
+  // A story is on the critical path when the steps before it and the stories after it make the longest chain.
+  const rest = {};
+  const restOf = (id) => rest[id] || (rest[id] = 1 + Math.max(0, ...dependents(id).map(restOf)));
+  STORIES.forEach((s) => restOf(s.id));
+  const depth = Math.max(...STORIES.map((s) => step[s.id]));
+  const critical = new Set(STORIES.filter((s) => step[s.id] + rest[s.id] - 1 === depth).map((s) => s.id));
+
   let selected = null;
   const chips = [];
   const cards = [];
+  const graphNodes = [];
+  const graphEdges = [];
+  let graph = null;
 
   function node(tag, attrs) {
     const el = document.createElementNS(NS, tag);
@@ -408,6 +460,57 @@ const STORIES = [
     });
   }
 
+  function buildGraph() {
+    const W = 58, H = 22, COL = 82, ROW = 30, PAD = 6, TOP = 20;
+    const order = Object.fromEntries(STORIES.map((s, i) => [s.id, i]));
+    const cols = {};
+    STORIES.forEach((s) => { (cols[step[s.id]] = cols[step[s.id]] || []).push(s.id); });
+    const colNums = Object.keys(cols).map(Number).sort((a, b) => a - b);
+    const maxRows = Math.max(...colNums.map((c) => cols[c].length));
+    const pos = {};
+    const middle = (id) => byId[id].deps.reduce((sum, d) => sum + pos[d].y, 0) / byId[id].deps.length;
+    colNums.forEach((c) => {
+      if (c > 1) cols[c].sort((a, b) => middle(a) - middle(b) || order[a] - order[b]);
+      const offset = (maxRows - cols[c].length) * ROW / 2;
+      cols[c].forEach((id, i) => { pos[id] = { x: PAD + (c - 1) * COL, y: TOP + offset + i * ROW }; });
+    });
+    const gw = PAD * 2 + (colNums[colNums.length - 1] - 1) * COL + W;
+    const gh = TOP + maxRows * ROW - (ROW - H) + PAD;
+    graph = node("svg", { viewBox: "0 0 " + gw + " " + gh, class: "sm-graph-svg", role: "img", "aria-label": "Story dependencies, one column for each delivery step" });
+    colNums.forEach((c) => {
+      const t = node("text", { x: PAD + (c - 1) * COL + W / 2, y: 11, "text-anchor": "middle", class: "sm-g-step" });
+      t.textContent = "Step " + c;
+      graph.appendChild(t);
+    });
+    STORIES.forEach((s) => s.deps.forEach((d) => {
+      const x1 = pos[d].x + W, y1 = pos[d].y + H / 2, x2 = pos[s.id].x, y2 = pos[s.id].y + H / 2, mx = (x1 + x2) / 2;
+      const crit = critical.has(d) && critical.has(s.id) && step[s.id] === step[d] + 1 && rest[d] === rest[s.id] + 1;
+      const path = node("path", { d: "M" + x1 + "," + y1 + " C" + mx + "," + y1 + " " + mx + "," + y2 + " " + x2 + "," + y2, class: "sm-g-edge" + (crit ? " sm-crit" : "") });
+      path.dataset.from = d;
+      path.dataset.to = s.id;
+      graph.appendChild(path);
+      graphEdges.push(path);
+    }));
+    STORIES.forEach((s) => {
+      const g = node("g", { class: "sm-g-node" + (critical.has(s.id) ? " sm-crit" : ""), tabindex: "0", role: "button", "data-story": s.id });
+      const title = node("title");
+      title.textContent = s.id + " · " + s.title;
+      const rect = node("rect", { x: pos[s.id].x, y: pos[s.id].y, width: W, height: H, rx: "6" });
+      const text = node("text", { x: pos[s.id].x + W / 2, y: pos[s.id].y + H / 2 + 3.6, "text-anchor": "middle" });
+      text.textContent = s.id;
+      g.append(title, rect, text);
+      g.addEventListener("click", () => select(s.id === selected ? null : s.id));
+      g.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(s.id === selected ? null : s.id); }
+      });
+      graph.appendChild(g);
+      graphNodes.push(g);
+    });
+    document.getElementById("sm-graph").appendChild(graph);
+    document.getElementById("sm-graph-key").textContent = "Shaded: the critical path, " + depth +
+      " steps deep. Select a story, and the stories that it depends on turn purple. The stories that it opens get a dashed border.";
+  }
+
   function buildList() {
     const steps = [...new Set(STORIES.map((s) => step[s.id]))].sort((a, b) => a - b);
     steps.forEach((n) => {
@@ -459,7 +562,13 @@ const STORIES = [
     const meta = document.createElement("p");
     meta.className = "sm-muted";
     meta.textContent = "Step " + step[id] + " · " + count + " parts of the flow";
-    detail.append(head, title, value, meta);
+    const pre = [...ancestorsOf(id)].sort();
+    const tone = document.createElement("p");
+    tone.className = "sm-muted";
+    tone.textContent = pre.length
+      ? "On the flow, strong parts belong to this story. Faded parts belong to the stories that it depends on: " + pre.join(", ") + "."
+      : "On the flow, strong parts belong to this story. It depends on no other story.";
+    detail.append(head, title, value, meta, tone);
     if (s.deps.length) detail.append(linkRow("Depends on", s.deps));
     const next = dependents(id);
     if (next.length) detail.append(linkRow("Opens", next));
@@ -494,9 +603,31 @@ const STORIES = [
 
   function select(id) {
     selected = id;
+    const pre = id ? ancestorsOf(id) : new Set();
+    const post = id ? descendantsOf(id) : new Set();
+    const inPre = (x) => x === id || pre.has(x);
+    const inPost = (x) => x === id || post.has(x);
     svg.classList.toggle("sm-focus", !!id);
-    parts.forEach((p) => p.classList.toggle("sm-on", !!id && storiesOf(p).includes(id)));
-    chips.forEach((c) => c.classList.toggle("sm-on", c.dataset.story === id));
+    parts.forEach((p) => {
+      const ids = storiesOf(p);
+      const on = !!id && ids.includes(id);
+      p.classList.toggle("sm-on", on);
+      p.classList.toggle("sm-pre", !on && ids.some((x) => pre.has(x)));
+    });
+    chips.forEach((c) => {
+      c.classList.toggle("sm-on", c.dataset.story === id);
+      c.classList.toggle("sm-pre", pre.has(c.dataset.story));
+    });
+    graph.classList.toggle("sm-gfocus", !!id);
+    graphNodes.forEach((g) => {
+      g.classList.toggle("sm-on", g.dataset.story === id);
+      g.classList.toggle("sm-pre", pre.has(g.dataset.story));
+      g.classList.toggle("sm-post", post.has(g.dataset.story));
+    });
+    graphEdges.forEach((e) => {
+      e.classList.toggle("sm-on", !!id && inPre(e.dataset.from) && inPre(e.dataset.to));
+      e.classList.toggle("sm-post", !!id && inPost(e.dataset.from) && post.has(e.dataset.to));
+    });
     cards.forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.story === id)));
     if (id) {
       showStory(id);
@@ -521,6 +652,7 @@ const STORIES = [
   svg.addEventListener("click", () => select(null));
 
   buildList();
+  buildGraph();
   const ready = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
   ready.then(buildChips, buildChips);
 })();

@@ -213,6 +213,8 @@ The reader may be a junior developer or AI agent. Therefore:
 
 When the feature adds events, automations or gates to an event model, or changes them, also write a story map. The story map is an interactive HTML page: the event flow of the feature, with a chip on each part that a story adds or changes. A reader sees which story builds which part without a read of the stories. Select a story, and its parts light up. Select a part, and the page shows its stories.
 
+Next to the flow, the page draws a graph of the story dependencies from `deps`, one column for each delivery step, with the critical path shaded. When a story is selected, the stories that it depends on turn purple in the graph, and their parts stay in a faded tone on the flow. So the reader sees what the story builds on. A dependency that shares no part with the story is about the order of the work, for example agent load, and not about what the story uses.
+
 A slice of value is not a slice of the event model. One story usually crosses several slices of the model, and some stories only add scenarios to a slice that exists. The story map shows this, so do not try to make the stories match the slices of the model.
 
 **Input:** the event-flow SVG of the feature. If none exists, draw it first, with the `draw-event-flow` skill when it is installed. Take the facts from the code or from the event model, not from the names: which automation reacts to which event, and which gate stands on which edge.

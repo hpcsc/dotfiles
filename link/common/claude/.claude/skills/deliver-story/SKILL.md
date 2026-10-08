@@ -9,6 +9,8 @@ This is the layer above `implement`. `implement` delivers one story on one branc
 
 **It is the single entry point for every wave.** The first run plans (with a review gate) and delivers the first wave; each later run adopts the existing plan and delivers the next ready wave. You never drop down to the raw driver.
 
+The layer above is `/deliver-project`: it delivers every story of a feature in dependency order, plans each story with the same gate, and starts deliverables with this skill's driver.
+
 ---
 
 ## Phase 1: Plan (or adopt an existing plan)

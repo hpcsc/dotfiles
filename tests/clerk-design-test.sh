@@ -158,7 +158,10 @@ rm -f "$OUT"
 
 # Without go the design is reported as not read, never as a change with no design.
 NOGO=$(mktemp -d)
-for t in git python3 jq tar; do ln -s "$(command -v $t)" "$NOGO/$t"; done
+for t in git jq tar; do ln -s "$(command -v $t)" "$NOGO/$t"; done
+# The interpreter itself, not what PATH names: a mise shim puts the path of every tool
+# back on PATH for the program it starts, go included.
+ln -s "$(python3 -c 'import os, sys; print(os.path.realpath(sys.executable))')" "$NOGO/python3"
 V=$(cd "$R" && PATH="$NOGO:$BIN" "$CLERK" design show --base main)
 has "a machine without go says the design was not read" "The design was not read: go is not installed." "$V"
 rm -rf "$NOGO"

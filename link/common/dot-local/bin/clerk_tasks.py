@@ -195,6 +195,20 @@ def cmd_finish(n, files, tasks_override=None):
               "next_step": "change the code, or record why with clerk design note <name> \"<reason>\"; "
                            "then run clerk finish again; the paths stay staged"}, 1)
 
+    import clerk_mutants
+    mutants_findings, kind, mutants_state = clerk_mutants.finish_check(
+        repo.work_tree or repo.repo_root, repo.ledger_dir, files)
+    if kind == "stale":
+        emit({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
+              "next_step": "run clerk mutants: these files changed after its last run, or no run read them; "
+                           "then run clerk finish again; the paths stay staged"}, 1)
+    if kind == "rows":
+        emit({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
+              "next_step": "for each row, add or change a test and run clerk mutants --id <key> until it exits 0 "
+                           "(for a caller gap or a group with no tests, add the test and run clerk mutants "
+                           "again), or record why no test is worth it with clerk mutants accept <key> "
+                           "\"<reason>\"; then run clerk finish again; the paths stay staged"}, 1)
+
     for t in data["tasks"]:
         if t.get("n") == n:
             t["done"] = True
@@ -221,7 +235,7 @@ def cmd_finish(n, files, tasks_override=None):
     (records / f"{n}.json").write_text(json.dumps({"n": n, "at": now(), "files": list(files)}) + "\n")
     return {"task": n, "done": True, "task_record": side, "breakdown_staged": staged_tasks,
             "breakdown_tracked": tracked, "lint": lint_state, "design": design_state or "clean",
-            "staged": list(files),
+            "mutants": mutants_state, "staged": list(files),
             "next_step": "invoke the commit skill — the message is judgment, not mechanics"}
 
 

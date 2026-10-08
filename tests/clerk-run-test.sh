@@ -13,6 +13,9 @@ CLERK="$BIN/clerk"
 export PATH="$BIN:$PATH"
 unset CLAUDECODE
 export CLERK_HARNESS=claude
+# `clerk finish` reads the last `clerk mutants` run once mutants is installed, so these cases
+# point it at nothing and do not depend on the machine. The mutants cases point it at a stub.
+export CLERK_MUTANTS_BIN=/nonexistent/mutants
 PASS=0
 FAIL=0
 ok()   { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }

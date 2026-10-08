@@ -11,6 +11,9 @@ CLERK="$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-local/bin/clerk"
 # The dispatcher takes clerk-<name> from PATH before the copy beside it, so without this a
 # checkout other than the stowed one tests the stowed commands.
 export PATH="$(dirname "$CLERK"):$PATH"
+# `clerk finish` reads the last `clerk mutants` run once mutants is installed, so these cases
+# point it at nothing and do not depend on the machine. The mutants cases point it at a stub.
+export CLERK_MUTANTS_BIN=/nonexistent/mutants
 MODELS="$(cd "$(dirname "$0")/.." && pwd)/scripts/agent-models.py"
 PASS=0
 FAIL=0
@@ -2456,7 +2459,87 @@ printf '  --base string\n' > "$MS/rerun-help"
 eq "a mutants whose rerun has --base gets the base of the run, HEAD unless given" "true|true|true" \
    "$(stub 0; mutrc --id 'a.go:F:BRANCH_IF#1' >/dev/null; printf '%s|%s|' "$(argv_has --base)" "$(argv_has HEAD)"; stub 0; mutrc --base main --id 'a.go:F:BRANCH_IF#1' >/dev/null; argv_has main)"
 rm -f "$MS/rerun-help"
-rm -rf "$MS" "$RM"
+
+# The open run keeps the last run, and `clerk finish` reads it.
+RF=$(new_repo)
+mkdir -p "$RF/tasks"
+printf '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n### Task 4: Four\n' > "$RF/tasks/story.md"
+cat > "$RF/tasks/story.json" <<'EOF'
+{"story":"story","tasks_file":"tasks/story.md","tasks":[
+ {"n":1,"title":"One","language":"Go","depends_on":[],"affected_files":["a.go"]},
+ {"n":2,"title":"Two","language":"Go","depends_on":[1],"affected_files":["b.go"]},
+ {"n":3,"title":"Three","language":"Go","depends_on":[2],"affected_files":["c.go"]},
+ {"n":4,"title":"Four","language":"Generic","depends_on":[3],"affected_files":["README.md"]}]}
+EOF
+git -C "$RF" add -A && git -C "$RF" commit -qm "Plan"
+run "$RF" step start story --request "a story" >/dev/null 2>&1
+LF="$RF/.git/clerk/runs/story"
+cat > "$MS/task1.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}"},
+ {"id":"a.go:F:ERROR_REMOVE#1","file":"a.go","line":4,"status":"NOT COVERED","operator":"ERROR_REMOVE","original":"err","replacement":"nil","inside":"a.go:F:BRANCH_IF#1"},
+ {"id":"a.go:F:RETURN_EMPTY#1","file":"a.go","line":4,"status":"KILLED","operator":"RETURN_EMPTY","original":"1","replacement":"0"},
+ {"id":"lib/l.go:L:BRANCH_IF#1","file":"lib/l.go","line":2,"status":"LIVED","operator":"BRANCH_IF","original":"{ x() }","replacement":"{}"}],
+ "callerGaps":[{"file":"a.go","function":"(*T).F","lines":[5,6],"callers":["app"]}]}
+EOF
+cat > "$MS/proposed.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:F:PROPOSED#77","file":"a.go","line":3,"status":"LIVED","operator":"PROPOSED","original":"x","replacement":"y","bug":"the gate lets every sender through"}],
+ "proposals":{"accepted":1,"rejected":[]}}
+EOF
+mutf() { (cd "$RF" && CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
+finf() { (cd "$RF" && CLERK_MUTANTS_BIN="${BINF:-$MS/mutants}" "$CLERK" finish "$@"); }
+printf 'package a\n\nfunc F() int { return 1 }\n' > "$RF/a.go"
+
+F=$(finf 1 -- a.go); FRC=$?
+eq "a Go file that no clerk mutants run read refuses the task, and says to run it" "1|a.go|NOT READ BY A RUN|true" \
+   "$FRC|$(printf '%s' "$F" | jq -r '[.mutants_findings[0].file, .mutants_findings[0].status, (.next_step|contains("run clerk mutants")|tostring)] | join("|")')"
+stub 10 "$MS/task1.json"; mutf >/dev/null 2>&1
+eq "a run is kept in the open run, with the content of each changed source file it read" "2|1|true" \
+   "$(jq -r '[(.rows|length|tostring), (.rows[0].uncovered_inside|tostring), (.files["a.go"]|length == 40|tostring)] | join("|")' "$LF/mutants.json")"
+printf '// later\n' >> "$RF/a.go"
+eq "a file changed after the run refuses the task" "1|CHANGED AFTER THE LAST RUN" \
+   "$(finf 1 -- a.go >/dev/null 2>&1; printf '%s|' $?; finf 1 -- a.go | jq -r '.mutants_findings[0].status')"
+stub 10 "$MS/task1.json"; mutf >/dev/null 2>&1
+F=$(finf 1 -- a.go); FRC=$?
+eq "a row left in the task's files refuses the task, by its key: a mutant id, or <file>:<function> of a caller gap" \
+   "1|a.go:F:BRANCH_IF#1,a.go:(*T).F|LIVED,CALLER GAP" \
+   "$FRC|$(printf '%s' "$F" | jq -r '[([.mutants_findings[].key] | join(",")), ([.mutants_findings[].status] | join(","))] | join("|")')"
+eq "and names both ways out" "true|true" \
+   "$(printf '%s' "$F" | jq -r '[(.next_step|contains("clerk mutants --id")|tostring), (.next_step|contains("clerk mutants accept")|tostring)] | join("|")')"
+stub 10 "$MS/proposed.json"; mutf --operators none --proposals tasks/story.md >/dev/null 2>&1
+eq "a run of some operators adds its rows to the kept run, and does not count as a read" "3|true" \
+   "$(jq -r '[(.rows|length|tostring), (.files["a.go"]|length == 40|tostring)] | join("|")' "$LF/mutants.json")"
+eq "so a proposal that lives refuses the task too" "a.go:F:BRANCH_IF#1,a.go:F:PROPOSED#77,a.go:(*T).F" \
+   "$(finf 1 -- a.go | jq -r '[.mutants_findings[].key] | join(",")')"
+eq "accept refuses a key the last run does not have" "2" "$(mutf accept 'a.go:F:NOPE#1' 'a reason' >/dev/null 2>&1; printf '%s' $?)"
+eq "accept refuses an empty reason" "2" "$(mutf accept 'a.go:F:BRANCH_IF#1' ' ' >/dev/null 2>&1; printf '%s' $?)"
+stub 0; mutf --id 'a.go:F:BRANCH_IF#1' >/dev/null 2>&1
+eq "an --id that kills its mutant closes the row" "a.go:F:PROPOSED#77,a.go:(*T).F" \
+   "$(finf 1 -- a.go | jq -r '[.mutants_findings[].key] | join(",")')"
+A=$(mutf accept 'a.go:(*T).F' 'the error branch only logs')
+eq "accept records the reason with the open task" "a.go:(*T).F|1" "$(printf '%s' "$A" | jq -r '[.accepted, (.task|tostring)] | join("|")')"
+mutf accept 'a.go:F:PROPOSED#77' 'a test cannot reach the gate yet' >/dev/null
+F=$(finf 1 -- a.go); FRC=$?
+eq "with each row killed or accepted, the task finishes, and a row in another file does not hold it" "0|true|clean" \
+   "$FRC|$(printf '%s' "$F" | jq -r '[(.done|tostring), .mutants] | join("|")')"
+git -C "$RF" commit -qm "Task 1"
+printf 'package b\n' > "$RF/b.go"
+F=$(BINF="$MS/none" finf 2 -- b.go); FRC=$?
+eq "when mutants is not installed, the task finishes and says so" "0|true" \
+   "$FRC|$(printf '%s' "$F" | jq -r '.mutants | contains("mutants is not installed") | tostring')"
+git -C "$RF" commit -qm "Task 2"
+printf 'package c\n' > "$RF/c.go"
+stub 2 "" "the tests fail with the real code"; mutf >/dev/null 2>&1
+F=$(finf 3 -- c.go); FRC=$?
+eq "when the last run did not run, the task finishes and says so" "0|true" \
+   "$FRC|$(printf '%s' "$F" | jq -r '.mutants | contains("the last clerk mutants did not run") | tostring')"
+git -C "$RF" commit -qm "Task 3"
+printf 'more\n' >> "$RF/README.md"
+F=$(finf 4 -- README.md); FRC=$?
+eq "a task with no Go or Python source is not checked" "0|true" \
+   "$FRC|$(printf '%s' "$F" | jq -r '.mutants | startswith("not checked") | tostring')"
+rm -rf "$MS" "$RM" "$RF"
 
 # --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null

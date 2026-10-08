@@ -11,6 +11,9 @@ CLERK="$BIN/clerk"
 export PATH="$BIN:$PATH"
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 export CLERK_HARNESS=claude
+# `clerk finish` reads the last `clerk mutants` run once mutants is installed, so these cases
+# point it at nothing and do not depend on the machine. The mutants cases point it at a stub.
+export CLERK_MUTANTS_BIN=/nonexistent/mutants
 # The method text and the lens prompts come from this checkout, not from the stowed copy.
 export CLERK_METHOD_DIR="$BIN/../../dot-config/.config/ai/method/implement"
 # A cache of its own, so the reader is built here as it is on a first run.

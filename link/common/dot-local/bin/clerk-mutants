@@ -4,10 +4,17 @@
     clerk mutants [--base <ref>] [--json] [--operators <list>]
                   [--proposals <file> [--proposals-anywhere]]
     clerk mutants --id <mutant id> [--base <ref>]
+    clerk mutants accept <key> "<reason>"
 
 It changes each line that the work tree changes against <ref> (HEAD unless given: the open
 task), one change at a time, and runs the tests. For Go, it also reports the changed lines
 that the tests of their own package run, but that no test of a changed caller runs.
+
+The open run keeps the last run, and `clerk finish` reads it: it refuses a task while a Go
+or Python file of the task changed after that run, or while a row in the task's files is
+neither killed by `--id` nor accepted. `accept` records why no test is worth it for a row.
+Its key is the id of a mutant, <file>:<function> of a caller gap, or the text of a group
+that no test runs, such as "package cmd/x has no test files".
 
 Exit 0 nothing to report, 10 survivors or caller gaps, 124 the time limit, 2 a tool error.
 With --id: 0 a test kills the mutant, 10 it lives or no test runs it, 1 no verdict, 2 an
@@ -22,15 +29,55 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clerk_lib import Parser, die, repo  # noqa: E402
+from clerk_repo import task_record_for  # noqa: E402
+from clerk_tasks import next_task  # noqa: E402
 import clerk_mutants as mutants  # noqa: E402
 
 USAGE = """\
   clerk mutants [--base <ref>] [--json] [--operators <list>]
                 [--proposals <file> [--proposals-anywhere]]
-  clerk mutants --id <mutant id> [--base <ref>]"""
+  clerk mutants --id <mutant id> [--base <ref>]
+  clerk mutants accept <key> "<reason>\""""
+
+
+def open_task(r):
+    tasks, rc = r.breakdown_for(None)
+    if rc != 0:
+        return None
+    side = task_record_for(tasks)
+    try:
+        record = json.loads(Path(side).read_text()) if side else {}
+    except (OSError, json.JSONDecodeError):
+        return None
+    task = next_task(record.get("tasks") or []).get("task")
+    return task.get("n") if task else None
+
+
+def accept(argv):
+    if len(argv) != 2 or not argv[1].strip():
+        die('accept needs a key and a reason: clerk mutants accept <key> "<reason>"')
+    key, reason = argv
+    r = repo()
+    ldir = r.ledger_dir
+    if not ldir:
+        die("no run is open, so there is no clerk mutants run to accept a row of")
+    saved = mutants.load(ldir)
+    if not saved:
+        die("no clerk mutants run is kept for this run — run clerk mutants first")
+    if key not in mutants.keys(saved):
+        die(f"the last clerk mutants run has no row with the key {key!r}: a key is a mutant id, "
+            f"<file>:<function> of a caller gap, or the text of a group that no test runs")
+    task = open_task(r)
+    mutants.accept(ldir, key, reason.strip(), task)
+    print(json.dumps({"accepted": key, "reason": reason.strip(), "task": task}, indent=2))
+    return 0
 
 
 def main(argv):
+    if argv[:1] == ["accept"] and not any(a in ("-h", "--help") for a in argv):
+        return accept(argv[1:])
+    if argv[:1] == ["accept"]:
+        argv = ["--help"]
     ap = Parser()
     ap.add_argument("--base", default="HEAD", metavar="REF")
     ap.add_argument("--json", action="store_true")
@@ -55,11 +102,14 @@ def main(argv):
         code, why = mutants.rerun(root, args.id, base=args.base)
         if why:
             print(f"clerk: mutants: {why}", file=sys.stderr)
+        if code == mutants.RERUN_KILLED:
+            mutants.note_killed(r.ledger_dir, args.id)
         return code
 
     proposals = str(Path(args.proposals).resolve()) if args.proposals else None
     code, result = mutants.run(root, args.base, proposals=proposals, anywhere=args.proposals_anywhere,
                                operators=args.operators, echo=not args.json)
+    mutants.save(r.ledger_dir, root, args.base, result, every_operator=not args.operators)
     if args.json:
         print(json.dumps(result, indent=2))
     elif not result["ran"]:

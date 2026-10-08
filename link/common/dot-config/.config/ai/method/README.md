@@ -188,7 +188,9 @@ runs `git add -A`.
 The message is judgment, so it goes to the commit agent. For Go and Python, `clerk mutants`
 finds a guard that no test can break: it changes each line the task changed, one change at
 a time, and lists each change that no test caught. The model writes the tests that catch
-them. The other prove-it checks — an absence assertion with a positive partner, a
+them, or records with `clerk mutants accept` why no test is worth it, and `clerk finish`
+refuses a task while a row in its files is open or its code changed after the last run.
+The other prove-it checks — an absence assertion with a positive partner, a
 source-scanning test re-verified after a move, two values of one type that differ in a
 fixture, a loop tested with two items, and looking at UI in a browser — stay with the model.
 

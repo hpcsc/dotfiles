@@ -6,9 +6,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from clerk_audit_panel import MUTATED_FILE_RE, TEST_PATH_RE
+from clerk_repo import now
+
 INSTALL = "mise install github:hpcsc/mutants"
 NEEDED_FLAGS = ("--caller-gaps", "--proposals", "--proposals-anywhere")
 REPORTED = ("LIVED", "NOT COVERED", "TIMED OUT", "INFRA ERROR")
+SURVIVED = ("LIVED", "NOT COVERED")
+SAVED = "mutants.json"
+ACCEPTED = "mutants-accepted.jsonl"
 LIMIT_SECONDS = 600
 GRACE_SECONDS = 30
 TIMED_OUT = 124
@@ -44,21 +50,25 @@ def locate():
 
 def not_run(reason):
     return {"ran": False, "reason": reason, "complete": False, "base": None, "mutants": [],
-            "no_tests": [], "caller_gaps": [], "proposals": None, "by_ref": {}}
+            "no_tests": [], "caller_gaps": [], "proposals": None, "by_ref": {}, "killed": []}
 
 
 def summarise(data, complete=True):
-    rows, no_tests, by_ref, inside = [], {}, {}, {}
+    rows, no_tests, by_ref, killed, inside = [], {}, {}, [], {}
     for m in data.get("mutants") or []:
         for ref in m.get("refs") or []:
             by_ref[ref] = {"status": m.get("status"), "id": m.get("id"), "file": m.get("file"),
                            "line": m.get("line"), "detail": m.get("detail") or ""}
+        if m.get("status") == "KILLED":
+            killed.append(m.get("id"))
         if m.get("status") not in REPORTED:
             continue
         # mutants gives one detail to each mutant of a group that no test runs, such as a
         # package with no test files.
         if m.get("status") == "NOT COVERED" and m.get("detail"):
-            no_tests[m["detail"]] = no_tests.get(m["detail"], 0) + 1
+            group = no_tests.setdefault(m["detail"], {"mutants": 0, "files": set()})
+            group["mutants"] += 1
+            group["files"].add(m.get("file"))
             continue
         if m.get("status") == "NOT COVERED" and m.get("inside"):
             inside[m["inside"]] = inside.get(m["inside"], 0) + 1
@@ -77,11 +87,12 @@ def summarise(data, complete=True):
                                        "line": None, "detail": rejected.get("reason") or ""}
     return {"ran": True, "reason": None, "complete": complete, "base": data.get("base"),
             "mutants": rows,
-            "no_tests": [{"detail": d, "mutants": n} for d, n in sorted(no_tests.items())],
+            "no_tests": [{"detail": d, "mutants": g["mutants"], "files": sorted(g["files"])}
+                         for d, g in sorted(no_tests.items())],
             "caller_gaps": [{"file": g.get("file"), "function": g.get("function"),
                              "lines": list(g.get("lines") or []), "callers": list(g.get("callers") or [])}
                             for g in data.get("callerGaps") or []],
-            "proposals": proposals, "by_ref": by_ref}
+            "proposals": proposals, "by_ref": by_ref, "killed": killed}
 
 
 def _limited(argv, cwd, echo):
@@ -142,3 +153,171 @@ def rerun(cwd, mutant_id, capture=False, base=None):
         argv += ["--base", base]
     r = subprocess.run([*argv, mutant_id], cwd=cwd, text=True, capture_output=capture)
     return r.returncode, (r.stdout + r.stderr) if capture else ""
+
+
+# --------------------------------------------------------------------------------
+# The last run of `clerk mutants`, kept in the run's ledger for `clerk finish`
+# --------------------------------------------------------------------------------
+
+def source_file(path):
+    return bool(MUTATED_FILE_RE.search(path)) and not TEST_PATH_RE.search(path)
+
+
+def _git(cwd, *args):
+    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    return r.stdout if r.returncode == 0 else None
+
+
+def changed_sources(cwd, base):
+    # mutants compares the work tree with the merge base, and reads the untracked files too
+    diff = _git(cwd, "diff", "--name-only", "--no-renames", "--diff-filter=d", "--merge-base", base) or ""
+    untracked = _git(cwd, "ls-files", "--others", "--exclude-standard") or ""
+    return sorted({p for p in (diff + untracked).splitlines() if p and source_file(p)})
+
+
+def content_hashes(cwd, paths):
+    paths = [p for p in paths if (Path(cwd) / p).is_file()]
+    if not paths:
+        return {}
+    out = _git(cwd, "hash-object", "--", *paths)
+    return dict(zip(paths, out.split())) if out else {}
+
+
+def load(ldir):
+    p = Path(ldir) / SAVED if ldir else None
+    if not p or not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except json.JSONDecodeError:
+        return None
+
+
+def _write(ldir, record):
+    tmp = Path(ldir) / f"{SAVED}.tmp"
+    tmp.write_text(json.dumps(record, indent=2) + "\n")
+    tmp.replace(Path(ldir) / SAVED)
+
+
+def save(ldir, cwd, base, result, every_operator):
+    """A run of some operators adds its rows and never counts as a read of the content, so it
+    cannot stand in for a run of every operator."""
+    if not ldir or not Path(ldir).is_dir():
+        return
+    saved = load(ldir)
+    if every_operator:
+        record = {"at": now(), "base": base, "ran": result["ran"], "reason": result["reason"],
+                  "complete": result["complete"], "rows": result["mutants"], "no_tests": result["no_tests"],
+                  "caller_gaps": result["caller_gaps"], "killed": [],
+                  "files": content_hashes(cwd, changed_sources(cwd, base)) if result["ran"] else {}}
+    elif not result["ran"]:
+        return
+    elif saved and saved.get("ran"):
+        killed = set(result["killed"])
+        fresh = {r["id"] for r in result["mutants"]}
+        record = dict(saved, rows=[r for r in saved.get("rows") or [] if r["id"] not in killed | fresh]
+                      + result["mutants"],
+                      killed=sorted(set(saved.get("killed") or []) | killed))
+    else:
+        record = {"at": now(), "base": base, "ran": True, "reason": None, "complete": result["complete"],
+                  "rows": result["mutants"], "no_tests": result["no_tests"],
+                  "caller_gaps": result["caller_gaps"], "killed": [], "files": {}}
+    _write(ldir, record)
+
+
+def note_killed(ldir, mutant_id):
+    saved = load(ldir)
+    if not saved:
+        return
+    saved["killed"] = sorted(set(saved.get("killed") or []) | {mutant_id})
+    _write(ldir, saved)
+
+
+def gap_key(gap):
+    return f"{gap.get('file')}:{gap.get('function')}"
+
+
+def keys(saved):
+    saved = saved or {}
+    return ({r.get("id") for r in saved.get("rows") or []}
+            | {gap_key(g) for g in saved.get("caller_gaps") or []}
+            | {g.get("detail") for g in saved.get("no_tests") or []})
+
+
+def accept(ldir, key, reason, task=None):
+    with (Path(ldir) / ACCEPTED).open("a") as fh:
+        fh.write(json.dumps({"key": key, "reason": reason, "at": now(), "task": task}) + "\n")
+
+
+def accepted(ldir):
+    p = Path(ldir) / ACCEPTED if ldir else None
+    if not p or not p.is_file():
+        return {}
+    out = {}
+    for line in p.read_text().splitlines():
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(entry, dict) and entry.get("key") and entry.get("reason"):
+            out[entry["key"]] = entry["reason"]
+    return out
+
+
+def _one_line(text):
+    return " ".join(str(text or "").split())
+
+
+def finish_check(root, ldir, files):
+    """(findings, kind, state): kind is "stale" or "rows" for a refusal, and None for a pass,
+    whose state says what was checked."""
+    top = Path(root).resolve()
+    named = []
+    for f in files:
+        try:
+            named.append(Path(f).resolve().relative_to(top).as_posix())
+        except ValueError:
+            continue
+    sources = [p for p in named if source_file(p)
+               and _git(root, "diff", "--quiet", "HEAD", "--", p) is None]
+    if not sources:
+        return [], None, "not checked: the task changes no Go or Python file outside the tests"
+    if not ldir:
+        return [], None, "not checked: no run is open"
+    saved = load(ldir)
+    if saved and not saved.get("ran"):
+        return [], None, f"not checked: the last clerk mutants did not run: {saved.get('reason')}"
+    hashes = content_hashes(root, sources)
+    read = (saved or {}).get("files") or {}
+    stale = [p for p in sources if read.get(p) != hashes.get(p)]
+    if stale:
+        exe, why = locate()
+        if not exe:
+            return [], None, f"not checked: {why}"
+        return [{"file": p, "status": "CHANGED AFTER THE LAST RUN" if p in read else "NOT READ BY A RUN"}
+                for p in stale], "stale", None
+
+    taken, mine = accepted(ldir), set(sources)
+    closed = set(saved.get("killed") or []) | set(taken)
+    findings = []
+    for r in saved.get("rows") or []:
+        if r.get("status") in SURVIVED and r.get("file") in mine and r.get("id") not in closed:
+            text = r["bug"] if r.get("bug") else (f"{r.get('type')}: {_one_line(r.get('original'))} -> "
+                                                  f"{_one_line(r.get('replacement')) or '(nothing)'}")
+            findings.append({"key": r.get("id"), "file": r.get("file"), "line": r.get("line"),
+                             "status": r.get("status"), "row": text})
+    for g in saved.get("caller_gaps") or []:
+        if g.get("file") in mine and gap_key(g) not in taken:
+            findings.append({"key": gap_key(g), "file": g.get("file"), "status": "CALLER GAP",
+                             "row": f"lines {','.join(map(str, g.get('lines') or []))} not run by the tests of "
+                                    f"{', '.join(g.get('callers') or [])}"})
+    for g in saved.get("no_tests") or []:
+        if mine & set(g.get("files") or []) and g.get("detail") not in taken:
+            findings.append({"key": g.get("detail"), "file": ", ".join(sorted(mine & set(g["files"]))),
+                             "status": "NO TESTS", "row": f"{g.get('mutants')} mutants"})
+    if findings:
+        return findings, "rows", None
+    state = "clean"
+    if not saved.get("complete", True):
+        state += "; the last run stopped at its time limit, so it holds only the mutants that got a verdict"
+    return [], None, state

@@ -170,8 +170,8 @@ def windows(run):
 
     tasks, prev = [], ends["decompose"] or ends["ground"] or t0
     for n, at in sorted(finishes.items(), key=lambda kv: kv[1]):
-        runs = [e for e in ev if e.get("cmd") == "mutants" and e["_at"] and (prev is None or e["_at"] > prev)
-                and e["_at"] <= at]
+        runs = [e for e in ev if e.get("cmd") == "mutants" and (e.get("argv") or [""])[0] != "accept"
+                and e["_at"] and (prev is None or e["_at"] > prev) and e["_at"] <= at]
         tasks.append({"task": n, "end": iso(at),
                       "seconds": int((at - prev).total_seconds()) if prev and at >= prev else None,
                       "mutants": mutants_runs(runs)})

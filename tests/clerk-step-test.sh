@@ -15,6 +15,9 @@ export PATH="$BIN:$PATH"
 # deterministic run is easier to read when it fails.
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 export CLERK_HARNESS=claude
+# `clerk finish` reads the last `clerk mutants` run once mutants is installed, so these cases
+# point it at nothing and do not depend on the machine. The mutants cases point it at a stub.
+export CLERK_MUTANTS_BIN=/nonexistent/mutants
 # The audit's prompts from this checkout, until the fixture prompts below replace them.
 # Without it clerk reads ~/.config/ai/method, which a CI runner does not have.
 export CLERK_AUDIT_PROMPTS="$BIN/../../dot-config/.config/ai/method/audit-implement/prompts"

@@ -94,6 +94,22 @@ eq "opening it with the prompt that begins the work" \
 
 eq "a call without a deliverable is a usage error" "2" "$(open_it s >/dev/null; echo $?)"
 
+printf '\ndeliverable-open, started by a caller that starts several\n'
+eq "--window --background starts it in a window of this session, without a switch" \
+   "workmux add s-fresh --name s-fresh --base ddd4444444 --mode window --background --prompt /implement /t/d.md --in-place" \
+   "$(open_it --window --background s "$FRESH" | tail -1)"
+eq "--window opens an empty worktree in a window too" \
+   "workmux open empty --mode window --prompt /implement /t/e.md --in-place" \
+   "$(open_it --window s "$EMPTY" | tail -1)"
+eq "--gears passes on to implement" \
+   "workmux add s-fresh --name s-fresh --base ddd4444444 --prompt /implement /t/d.md --in-place --gears" \
+   "$(open_it --gears s "$FRESH" | tail -1)"
+PANES='Work:2|/wt/live'
+eq "--background reports a run already under way and does not switch to it" \
+   "live is already running in Work:2" "$(TMUX=/tmp/fake open_it --background s "$LIVE")"
+PANES=""
+eq "an unknown option is a usage error" "2" "$(open_it --fast s "$FRESH" >/dev/null; echo $?)"
+
 rm -rf "$STUBS"
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

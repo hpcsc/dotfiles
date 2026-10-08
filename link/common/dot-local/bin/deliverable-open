@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # deliverable-open — switch to the run of one deliverable, or open or start it.
 #
-#   deliverable-open <story slug> <deliverable json>
+#   deliverable-open [--window] [--background] [--gears] <story slug> <deliverable json>
+#
+#   --window      open or start it in a window of the current session, not a session of its own
+#   --background  do not switch to it, so that a caller can start several in a row
+#   --gears       start implement with --gears
 #
 # The JSON is one deliverable as `clerk story` prints it. State comes from `clerk story`,
 # which derives it from the sidecar, the branch and the worktree list — never from the
@@ -9,14 +13,26 @@
 # deliverable is started by hand.
 set -uo pipefail
 
-if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
-  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
-  exit 0
-fi
+window=0
+background=0
+implement_flags="--in-place"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --window)     window=1 ;;
+    --background) background=1 ;;
+    --gears)      implement_flags="--in-place --gears" ;;
+    --*)          echo "deliverable-open: unknown option $1" >&2; exit 2 ;;
+    *)            break ;;
+  esac
+  shift
+done
 if [ $# -ne 2 ]; then
-  echo "usage: deliverable-open <story slug> <deliverable json>" >&2
+  echo "usage: deliverable-open [--window] [--background] [--gears] <story slug> <deliverable json>" >&2
   exit 2
 fi
+mode=()
+[ "$window" -eq 1 ] && mode=(--mode window)
 
 story=$1
 field() { jq -r --arg f "$1" '.[$f] // "" | if type == "array" then join(",") else tostring end' <<<"$2"; }
@@ -54,6 +70,10 @@ if [ -n "${worktree}" ]; then
     awk -F'|' -v w="${worktree}" '$2 == w || index($2, w "/") == 1 { print $1; exit }')
 fi
 
+if [ -n "${target}" ] && [ "$background" -eq 1 ]; then
+  echo "${id} is already running in ${target}"
+  exit 0
+fi
 if [ -n "${target}" ]; then
   echo "${id} is already running in ${target} — switching to it"
   tmux select-window -t "${target}" 2>/dev/null
@@ -71,10 +91,10 @@ if [ -n "${worktree}" ]; then
   # it; open that one bare, because a fresh /implement would start its story over.
   if [ "${state}" = "scaffolded" ]; then
     echo "${id} has an empty worktree at ${worktree} — starting the run in it"
-    workmux open "$(basename -- "${worktree}")" --prompt "/implement ${tasks} --in-place"
+    workmux open "$(basename -- "${worktree}")" ${mode[@]+"${mode[@]}"} --prompt "/implement ${tasks} ${implement_flags}"
   else
     echo "${id} has a worktree at ${worktree} but nothing running in it — opening it"
-    workmux open "$(basename -- "${worktree}")"
+    workmux open "$(basename -- "${worktree}")" ${mode[@]+"${mode[@]}"}
   fi
   exit $?
 fi
@@ -87,12 +107,13 @@ fi
 # The task file is passed absolute on purpose. A deliverable's worktree branches from the
 # default branch and does not contain a gitignored tasks/ tree, so a path relative to the
 # worktree resolves to nothing.
-# No --mode here: the global config asks for one session per worktree, and a single
-# deliverable started by hand has no reason to override that. `deliver-story` does force
-# window mode, because a whole wave firing at once is better read side by side.
+# Without --window the global config decides the mode: one session per worktree. A caller
+# that starts several at once passes --window, because they are better read side by side.
 # --in-place because workmux is making the worktree: without it the run scaffolds a second
 # one for the work it is already standing in. No --review-breakdown: the deliverable already
 # has a breakdown, so there is nothing to decompose and nothing to approve.
 echo "starting ${id} on ${base:0:10} — /implement ${tasks}"
-workmux add "${handle}" --name "${handle}" ${base:+--base "${base}"} \
-  --prompt "/implement ${tasks} --in-place"
+background_flag=()
+[ "$background" -eq 1 ] && background_flag=(--background)
+workmux add "${handle}" --name "${handle}" ${base:+--base "${base}"} ${mode[@]+"${mode[@]}"} \
+  ${background_flag[@]+"${background_flag[@]}"} --prompt "/implement ${tasks} ${implement_flags}"

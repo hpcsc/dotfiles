@@ -58,9 +58,11 @@ printf '\nusage and refusals\n'
 R=$(new_repo)
 eq "--help prints the usage and exits 0" "0" "$(rc "$R" run --help)"
 eq "an unknown flag is a usage error" "2" "$(rc "$R" run --nope)"
-eq "with no run open and no story, it says what to name" "3" "$(rc "$R" run)"
+# --dry-run, because a real run first refuses a machine with no harness on PATH, and a
+# CI runner has none: the refusal for a missing story would never be reached.
+eq "with no run open and no story, it says what to name" "3" "$(rc "$R" run --dry-run)"
 eq "and says so rather than starting something" "true" \
-   "$(run "$R" run 2>&1 >/dev/null | grep -c -- '--slug' | awk '{print ($1>0)}' | sed 's/1/true/;s/0/false/')"
+   "$(run "$R" run --dry-run 2>&1 >/dev/null | grep -c -- '--slug' | awk '{print ($1>0)}' | sed 's/1/true/;s/0/false/')"
 eq "with no harness on PATH a real run refuses rather than hanging" "3" \
    "$(cd "$R" && CLERK_HARNESS_CMD= PATH=/usr/bin:/bin "$CLERK" run --slug w --request x >/dev/null 2>&1; printf '%s' $?)"
 

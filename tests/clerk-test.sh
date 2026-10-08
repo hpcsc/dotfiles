@@ -1324,6 +1324,16 @@ eq "and one that records a ticket carries it through" "AGE-713" \
 eq "--table renders a row per deliverable" "7" \
    "$(run "$R22" story --table | grep -cE '^  (merged|ready|blocked|scaffolded|in-progress|awaiting-merge)')"
 
+R37=$(new_repo); mkdir -p "$R37/tasks/pair/one" "$R37/tasks/pair/two"
+printf '{"tasks":[{"n":1,"title":"a","depends_on":[],"done":true}]}\n' > "$R37/tasks/pair/one/tasks.json"
+printf '{"tasks":[{"n":1,"title":"b","depends_on":[],"done":false}]}\n' > "$R37/tasks/pair/two/tasks.json"
+{ printf 'story: Pair\nstory_slug: pair\ndeliverables:\n'
+  printf '  - id: both\n    branch: br-both\n    base: main\n    wave: 1\n    depends_on: []\n'
+  printf '    tasks:\n      - tasks/pair/one/tasks.md\n      - tasks/pair/two/tasks.md\n'
+} > "$R37/tasks/pair/plan.yaml"
+eq "a deliverable with two task files counts the tasks of both" "1/2|tasks/pair/one/tasks.md" \
+   "$(run "$R37" story | jq -r '.[0].deliverables[0] | "\(.done)/\(.total)|\(.tasks_file | sub(".*/tasks/pair/"; "tasks/pair/"))"')"
+
 # --------------------------------------------------------------------------------
 printf '\nstack — PR bases derived from the plan DAG\n'
 
@@ -2436,6 +2446,6 @@ rm -rf "$MS" "$RM"
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R13" "$R14" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36C" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R13" "$R14" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36C" "$R37" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

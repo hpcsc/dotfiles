@@ -60,18 +60,25 @@ def load_plan(path):
         die(f"{path} is not valid YAML")
 
 
-def task_record_progress(tasks_home, tasks_rel):
-    """(total, done) from the breakdown's task record, which is the run's own record of what
-    it finished — written in the same commit as the code it stands for."""
-    if not tasks_rel:
-        return 0, 0
-    side = Path(tasks_home) / (tasks_rel[:-3] + ".json" if tasks_rel.endswith(".md") else tasks_rel + ".json")
-    try:
-        data = json.loads(side.read_text())
-    except (OSError, json.JSONDecodeError):
-        return 0, 0
-    tasks = data.get("tasks") or []
-    return len(tasks), sum(1 for t in tasks if t.get("done") is True)
+def task_files_of(deliverable):
+    files = deliverable.get("tasks") or []
+    return [files] if isinstance(files, str) else list(files)
+
+
+def task_record_progress(tasks_home, task_files):
+    """(total, done) from the breakdowns' task records, which are the run's own record of what
+    it finished — written in the same commit as the code they stand for."""
+    total = done = 0
+    for rel in task_files:
+        side = Path(tasks_home) / (rel[:-3] + ".json" if rel.endswith(".md") else rel + ".json")
+        try:
+            data = json.loads(side.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        tasks = data.get("tasks") or []
+        total += len(tasks)
+        done += sum(1 for t in tasks if t.get("done") is True)
+    return total, done
 
 
 def branch_alias_for(deliverable_id):
@@ -119,8 +126,8 @@ def describe(deliverable, tasks_home, ref, worktrees):
     d = deliverable
     did = d.get("id") or ""
     branch = d.get("branch") or ""
-    tasks_rel = d.get("tasks") or ""
-    total, done = task_record_progress(tasks_home, tasks_rel)
+    task_files = task_files_of(d)
+    total, done = task_record_progress(tasks_home, task_files)
 
     alias = None
     effective = branch
@@ -145,7 +152,7 @@ def describe(deliverable, tasks_home, ref, worktrees):
         "title": d.get("title") or "",
         "wave": d.get("wave", 1),
         "branch": branch,
-        "tasks_file": str(Path(tasks_home) / tasks_rel) if tasks_rel else "",
+        "tasks_file": str(Path(tasks_home) / task_files[0]) if task_files else "",
         "base": d.get("base") or None,
         "base_commit": None,
         "depends_on": list(d.get("depends_on") or []),

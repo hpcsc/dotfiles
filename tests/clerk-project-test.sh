@@ -104,6 +104,29 @@ eq "a repository with no plans reads every story without a plan" "ready" "$(prin
 eq "next refuses a limit below 1" "2" "$(run "$V" project next shape.md --limit 0 >/dev/null 2>&1; echo $?)"
 
 # --------------------------------------------------------------------------------
+printf '\nthe delivery steps\n'
+
+{ story US-001 T-1 ""               "Root"
+  story US-002 T-2 "US-001"         "Left"
+  story US-003 T-3 "US-001"         "Right"
+  story US-004 T-4 "US-002, US-003" "Join"
+  story US-005 T-5 ""               "Alone"
+} > "$V/graph.md"
+G=$(run "$V" project graph.md)
+eq "a story's step is one more than the step of its deepest dependency" "1,2,2,3,1" \
+   "$(printf '%s' "$G" | jq -r '[.stories[].step] | map(tostring) | join(",")')"
+eq "the stories on a longest chain are critical" "US-001,US-002,US-003,US-004" \
+   "$(printf '%s' "$G" | jq -r '[.stories[] | select(.critical) | .id] | join(",")')"
+eq "each story names the stories that wait on it directly" "US-002,US-003" \
+   "$(printf '%s' "$G" | jq -r '.stories[0].dependents | join(",")')"
+GRAPH=$(run "$V" project graph.md --graph)
+eq "--graph puts the stories of each step together, with the critical ones marked" \
+   "step 3  * US-004  T-4       blocked        <- US-002, US-003" "$(grep 'US-004' <<<"$GRAPH")"
+eq "and a story off the critical path has no mark" \
+   "          US-005  T-5       ready" "$(grep 'US-005' <<<"$GRAPH")"
+eq "and it ends with the length of the critical path" "* critical path: 3 steps" "$(tail -1 <<<"$GRAPH")"
+
+# --------------------------------------------------------------------------------
 printf '\nthe state of each story\n'
 
 P=$(new_repo)

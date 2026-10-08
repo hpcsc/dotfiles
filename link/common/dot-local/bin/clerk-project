@@ -5,7 +5,7 @@ The stories file holds the decisions: each story, its ticket and the stories it 
 on. Whether a story is planned, under way or merged is an observation. It comes from the
 plans under tasks/, through `clerk story`, and from the history of the default branch.
 
-    clerk project <stories.md> [--table]
+    clerk project <stories.md> [--table | --graph]
     clerk project next <stories.md> [--limit <n>]
 """
 
@@ -104,12 +104,17 @@ def find_cycle(stories):
     return None
 
 
-def dependents_count(stories):
-    """For each story, how many stories wait on it, directly or through another story."""
+def direct_dependents(stories):
     waiting = {s["id"]: [] for s in stories}
     for s in stories:
         for dep in s["depends_on"]:
             waiting[dep].append(s["id"])
+    return waiting
+
+
+def dependents_count(stories):
+    """For each story, how many stories wait on it, directly or through another story."""
+    waiting = direct_dependents(stories)
 
     def reach(node, seen):
         for nxt in waiting[node]:
@@ -119,6 +124,20 @@ def dependents_count(stories):
         return seen
 
     return {node: len(reach(node, set())) for node in waiting}
+
+
+def delivery_steps(stories):
+    """{id: (step, critical)}. A story's step is one more than the step of its deepest
+    dependency, and a story is critical when it is on a longest chain."""
+    order = dependencies_first(stories)
+    waiting = direct_dependents(stories)
+    step, height = {}, {}
+    for s in order:
+        step[s["id"]] = 1 + max((step[d] for d in s["depends_on"]), default=0)
+    for s in reversed(order):
+        height[s["id"]] = 1 + max((height[w] for w in waiting[s["id"]]), default=0)
+    longest = max(step.values())
+    return {i: (step[i], step[i] + height[i] - 1 == longest) for i in step}
 
 
 def live_plans(tasks_home):
@@ -242,6 +261,8 @@ def derive(stories_path):
             plans_by_ticket.setdefault(p["ticket"], []).append(p)
     history = tickets_in_history(ref, [s["ticket"] for s in stories if s["ticket"] not in plans_by_ticket])
     unblocks = dependents_count(stories)
+    steps = delivery_steps(stories)
+    waiting = direct_dependents(stories)
 
     by_id = {}
     for s in dependencies_first(stories):
@@ -255,6 +276,9 @@ def derive(stories_path):
             **s,
             "blocked_by": blocked_by,
             "unblocks": unblocks[s["id"]],
+            "dependents": waiting[s["id"]],
+            "step": steps[s["id"]][0],
+            "critical": steps[s["id"]][1],
             "state": state,
             "evidence": evidence,
             "plans": [p["plan"] for p in mine],
@@ -330,9 +354,23 @@ def render_table(project):
     return "\n".join(lines)
 
 
+def render_graph(project):
+    stories = project["stories"]
+    lines, last = [], None
+    for s in sorted(stories, key=lambda s: s["step"]):
+        label = f"step {s['step']}" if s["step"] != last else ""
+        last = s["step"]
+        row = f"{label:<8}{'*' if s['critical'] else ' '} {s['id']:<8}{s['ticket']:<10}{s['state']:<15}"
+        if s["depends_on"]:
+            row += "<- " + ", ".join(s["depends_on"])
+        lines.append(row.rstrip())
+    lines.append(f"\n* critical path: {max(s['step'] for s in stories)} steps")
+    return "\n".join(lines)
+
+
 def main(argv):
     usage_if_asked(argv, __doc__)
-    opts, rest = parse(argv, {"--table": "bool", "--limit": "value"})
+    opts, rest = parse(argv, {"--table": "bool", "--graph": "bool", "--limit": "value"})
     wants_next = rest[:1] == ["next"]
     if wants_next:
         rest = rest[1:]
@@ -346,6 +384,9 @@ def main(argv):
         emit(next_actions(project, int(limit)))
     if opts["--table"]:
         print(render_table(project))
+        return 0
+    if opts["--graph"]:
+        print(render_graph(project))
         return 0
     emit(project)
 

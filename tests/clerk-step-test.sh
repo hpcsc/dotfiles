@@ -888,6 +888,7 @@ eq "asking for the review again does not run it again" "false" "$([ -f "$MA/argv
 cat > "$MA/rows.json" <<'EOF'
 {"base":"abc","mutants":[
  {"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}"},
+ {"id":"a.go:F:ERROR_REMOVE#1","file":"a.go","line":4,"status":"NOT COVERED","operator":"ERROR_REMOVE","original":"err","replacement":"nil","inside":"a.go:F:BRANCH_IF#1"},
  {"id":"a.go:F:PROPOSED#123456","file":"a.go","line":5,"status":"LIVED","operator":"PROPOSED","original":"x","replacement":"y","bug":"the window ends at the wrong event"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#1","file":"cmd/x/main.go","line":5,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"package cmd/x has no test files"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#2","file":"cmd/x/main.go","line":6,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"stop()","replacement":"","detail":"package cmd/x has no test files"}],
@@ -901,6 +902,8 @@ eq "survivors earn the Go tests lens, though no test file changed" "true|false" 
    "$(printf '%s' "$TL" | jq -Rsr 'length > 0 | tostring')|$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(test("test integrity — no test file changed"))] | length > 0 | tostring')"
 eq "the lens reads each row by id, a proposed one by its bug" "true|true|true" \
    "$(printf '%s' "$TL" | jq -Rsr 'contains("[a.go:F:BRANCH_IF#1] LIVED a.go:3 BRANCH_IF: { return 1 } -> {}") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("LIVED a.go:5 the window ends at the wrong event") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("FRAGMENT mutants") | tostring')"
+eq "a mutant that no test runs inside another row is counted on that row, not shown as its own" "true|false" \
+   "$(printf '%s' "$TL" | jq -Rsr 'contains("{ return 1 } -> {} (and 1 mutants inside it that no test runs)") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("ERROR_REMOVE") | tostring')"
 eq "a package with no tests is one row, and a caller gap names its lines and callers" "true|true" \
    "$(printf '%s' "$TL" | jq -Rsr 'contains("package cmd/x has no test files: 2 mutants") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("b.go:102-104,106 (*B).Check, not run by the tests of app/handler") | tostring')"
 eq "the other lenses do not get the rows" "false" \

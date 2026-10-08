@@ -48,7 +48,7 @@ def not_run(reason):
 
 
 def summarise(data, complete=True):
-    rows, no_tests, by_ref = [], {}, {}
+    rows, no_tests, by_ref, inside = [], {}, {}, {}
     for m in data.get("mutants") or []:
         for ref in m.get("refs") or []:
             by_ref[ref] = {"status": m.get("status"), "id": m.get("id"), "file": m.get("file"),
@@ -60,10 +60,16 @@ def summarise(data, complete=True):
         if m.get("status") == "NOT COVERED" and m.get("detail"):
             no_tests[m["detail"]] = no_tests.get(m["detail"], 0) + 1
             continue
+        if m.get("status") == "NOT COVERED" and m.get("inside"):
+            inside[m["inside"]] = inside.get(m["inside"], 0) + 1
+            continue
         rows.append({"id": m.get("id"), "file": m.get("file"), "line": m.get("line"),
                      "status": m.get("status"), "type": m.get("operator"),
                      "original": m.get("original") or "", "replacement": m.get("replacement") or "",
                      "bug": m.get("bug") or None})
+    for row in rows:
+        if row["id"] in inside:
+            row["uncovered_inside"] = inside[row["id"]]
     proposals = data.get("proposals")
     for rejected in (proposals or {}).get("rejected") or []:
         if rejected.get("ref"):

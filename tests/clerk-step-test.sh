@@ -15,6 +15,9 @@ export PATH="$BIN:$PATH"
 # deterministic run is easier to read when it fails.
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID
 export CLERK_HARNESS=claude
+# The runner cases need two agents at once. Left to the machine, a runner with three
+# cores runs one, and the cases fail for the machine rather than for the code.
+export CLERK_WORKERS=4
 PASS=0
 FAIL=0
 ok()   { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }

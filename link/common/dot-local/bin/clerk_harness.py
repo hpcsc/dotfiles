@@ -44,7 +44,16 @@ def names_own_sessions(harness):
 # What the machine can actually run at once. A literal count is wrong in both directions
 # — too many on a laptop, far too few on a build box — so it is derived the way Claude
 # Code's own workflow engine derives it, leaving two cores for everything else.
-DEFAULT_WORKERS = max(1, min(16, (os.cpu_count() or 4) - 2))
+# CLERK_WORKERS overrides it. A machine with three cores runs one agent at a time, and a
+# caller that needs two at once, a test of a concurrent phase among them, says so.
+def default_workers():
+    v = os.environ.get("CLERK_WORKERS", "")
+    if v.isdigit() and int(v) > 0:
+        return min(16, int(v))
+    return max(1, min(16, (os.cpu_count() or 4) - 2))
+
+
+DEFAULT_WORKERS = default_workers()
 
 MAX_ATTEMPTS = 3
 # A lens reads a whole diff and may run a suite; a scope pass is seconds. The ceiling is

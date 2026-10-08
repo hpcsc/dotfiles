@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# deliverable-open — switch to the run of one deliverable, or open or start it.
+#
+#   deliverable-open <story slug> <deliverable json>
+#
+# The JSON is one deliverable as `clerk story` prints it. State comes from `clerk story`,
+# which derives it from the sidecar, the branch and the worktree list — never from the
+# plan's own status field, which is a latch the driver sets and nothing updates when a
+# deliverable is started by hand.
+set -uo pipefail
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+  exit 0
+fi
+if [ $# -ne 2 ]; then
+  echo "usage: deliverable-open <story slug> <deliverable json>" >&2
+  exit 2
+fi
+
+story=$1
+field() { jq -r --arg f "$1" '.[$f] // "" | if type == "array" then join(",") else tostring end' <<<"$2"; }
+id=$(field id "$2")
+state=$(field state "$2")
+tasks=$(field tasks_file "$2")
+worktree=$(field worktree "$2")
+base=$(field base_commit "$2")
+blocked=$(field blocked_by "$2")
+
+case "${state}" in
+  merged|awaiting-merge)
+    echo "${id} is ${state} — nothing to start. Review or land it instead." >&2
+    exit 1
+    ;;
+  blocked)
+    echo "${id} is blocked by ${blocked} — finish those first, or start one of them." >&2
+    exit 1
+    ;;
+esac
+
+# Opening beats starting whenever a worktree already exists: `workmux add` would scaffold a
+# second one for a deliverable someone is already building, and the first one's commits would
+# be stranded on a branch nobody is looking at.
+handle="${story}-${id}"
+
+# Find the window already showing this worktree, by the path its panes sit in. workmux
+# identifies a tmux target by NAME — with `window_prefix: ""` the worktree handle is the
+# session name — and keeps no worktree-to-target registry. An agent working in a worktree
+# from a window named anything else is invisible to that lookup, so `workmux open` sees no
+# target, honours `mode: session`, and starts a second session beside the running work.
+target=""
+if [ -n "${worktree}" ]; then
+  target=$(tmux list-panes -a -F '#{session_name}:#{window_index}|#{pane_current_path}' 2>/dev/null |
+    awk -F'|' -v w="${worktree}" '$2 == w || index($2, w "/") == 1 { print $1; exit }')
+fi
+
+if [ -n "${target}" ]; then
+  echo "${id} is already running in ${target} — switching to it"
+  tmux select-window -t "${target}" 2>/dev/null
+  if [ -n "${TMUX:-}" ]; then
+    tmux switch-client -t "${target%%:*}"
+  else
+    tmux attach -t "${target%%:*}"
+  fi
+  exit 0
+fi
+
+if [ -n "${worktree}" ]; then
+  # Scaffolded means the worktree exists and nothing was ever built in it, so it needs the
+  # prompt that starts the run. A worktree with commits in it has an agent's work behind
+  # it; open that one bare, because a fresh /implement would start its story over.
+  if [ "${state}" = "scaffolded" ]; then
+    echo "${id} has an empty worktree at ${worktree} — starting the run in it"
+    workmux open "$(basename -- "${worktree}")" --prompt "/implement ${tasks} --in-place"
+  else
+    echo "${id} has a worktree at ${worktree} but nothing running in it — opening it"
+    workmux open "$(basename -- "${worktree}")"
+  fi
+  exit $?
+fi
+
+if [ "${state}" != "ready" ]; then
+  echo "${id} is ${state} but has no worktree — its branch carries commits made elsewhere. Check it out yourself." >&2
+  exit 1
+fi
+
+# The task file is passed absolute on purpose. A deliverable's worktree branches from the
+# default branch and does not contain a gitignored tasks/ tree, so a path relative to the
+# worktree resolves to nothing.
+# No --mode here: the global config asks for one session per worktree, and a single
+# deliverable started by hand has no reason to override that. `deliver-story` does force
+# window mode, because a whole wave firing at once is better read side by side.
+# --in-place because workmux is making the worktree: without it the run scaffolds a second
+# one for the work it is already standing in. No --review-breakdown: the deliverable already
+# has a breakdown, so there is nothing to decompose and nothing to approve.
+echo "starting ${id} on ${base:0:10} — /implement ${tasks}"
+workmux add "${handle}" --name "${handle}" ${base:+--base "${base}"} \
+  --prompt "/implement ${tasks} --in-place"

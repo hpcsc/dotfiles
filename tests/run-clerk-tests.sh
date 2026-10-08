@@ -6,7 +6,7 @@ set -u
 
 dir=$(cd "$(dirname "$0")" && pwd)
 out=$(mktemp -d) || exit 2
-names=(clerk-test clerk-step-test clerk-run-test clerk-design-test)
+names=(clerk-test clerk-step-test clerk-run-test clerk-design-test clerk-project-test)
 pids=()
 for name in "${names[@]}"; do
   bash "$dir/$name.sh" > "$out/$name.log" 2>&1 &

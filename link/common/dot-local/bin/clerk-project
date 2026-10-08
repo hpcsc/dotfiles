@@ -1,0 +1,325 @@
+#!/usr/bin/env python3
+"""clerk project — a feature's stories, in dependency order, with their state derived.
+
+The stories file holds the decisions: each story, its ticket and the stories it depends
+on. Whether a story is planned, under way or merged is an observation. It comes from the
+plans under tasks/, through `clerk story`, and from the history of the default branch.
+
+    clerk project <stories.md> [--table]
+    clerk project next <stories.md> [--limit <n>]
+"""
+
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import clerk, die, emit, gitout, parse, repo, usage_if_asked  # noqa: E402
+
+STORY_HEADING = re.compile(r"^###\s+([A-Z][A-Z0-9]*-\d+):\s*(.+?)\s*$")
+SECTION_END = re.compile(r"^#{1,3}\s")
+FIELD = re.compile(r"^\*\*(Ticket|Depends on):\*\*\s*(.*?)\s*$")
+ID = re.compile(r"[A-Z][A-Z0-9]*-\d+")
+STARTED = {"in-progress", "scaffolded"}
+DEFAULT_LIMIT = 2
+
+
+def read_stories(path):
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError as e:
+        die(f"cannot read {path}: {e.strerror}")
+    stories, current, in_fence = [], None, False
+    for line in lines:
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        heading = STORY_HEADING.match(line)
+        if heading:
+            current = {"id": heading[1], "title": heading[2], "ticket": None, "depends_on": []}
+            stories.append(current)
+            continue
+        if SECTION_END.match(line):
+            current = None
+            continue
+        field = FIELD.match(line)
+        if current is None or not field:
+            continue
+        ids = ID.findall(field[2])
+        if field[1] == "Ticket":
+            current["ticket"] = ids[0] if ids else None
+        else:
+            current["depends_on"] = ids
+    check_stories(path, stories)
+    return stories
+
+
+def check_stories(path, stories):
+    if not stories:
+        die(f"{path} has no story heading of the form '### US-001: Title'")
+    ids = [s["id"] for s in stories]
+    repeated = sorted({i for i in ids if ids.count(i) > 1})
+    if repeated:
+        die(f"{path} names {', '.join(repeated)} more than once")
+    no_ticket = [s["id"] for s in stories if not s["ticket"]]
+    if no_ticket:
+        die(f"{', '.join(no_ticket)} in {path} have no **Ticket:** line, and a story's plan is found by its ticket")
+    tickets = [s["ticket"] for s in stories]
+    shared = sorted({t for t in tickets if tickets.count(t) > 1})
+    if shared:
+        die(f"{path} gives {', '.join(shared)} to more than one story")
+    unknown = [f"{s['id']} -> {d}" for s in stories for d in s["depends_on"] if d not in ids]
+    if unknown:
+        die(f"{path} depends on stories it does not hold: {', '.join(unknown)}")
+    cycle = find_cycle(stories)
+    if cycle:
+        die(f"{path} has a dependency cycle: {' -> '.join(cycle)}")
+
+
+def find_cycle(stories):
+    deps = {s["id"]: s["depends_on"] for s in stories}
+    state = {}
+
+    def visit(node, trail):
+        state[node] = "open"
+        for dep in deps[node]:
+            if state.get(dep) == "open":
+                return trail[trail.index(dep):] + [dep]
+            if dep not in state:
+                found = visit(dep, trail + [dep])
+                if found:
+                    return found
+        state[node] = "closed"
+        return None
+
+    for node in deps:
+        if node not in state:
+            found = visit(node, [node])
+            if found:
+                return found
+    return None
+
+
+def dependents_count(stories):
+    """For each story, how many stories wait on it, directly or through another story."""
+    waiting = {s["id"]: [] for s in stories}
+    for s in stories:
+        for dep in s["depends_on"]:
+            waiting[dep].append(s["id"])
+
+    def reach(node, seen):
+        for nxt in waiting[node]:
+            if nxt not in seen:
+                seen.add(nxt)
+                reach(nxt, seen)
+        return seen
+
+    return {node: len(reach(node, set())) for node in waiting}
+
+
+def live_plans(tasks_home):
+    root = Path(tasks_home) / "tasks"
+    return [p for p in root.rglob("plan.y*ml") if p.is_file() and "completed" not in p.parts]
+
+
+def story_plans(tasks_home):
+    if not live_plans(tasks_home):
+        return []
+    rc, data, err = clerk("story")
+    if rc != 0 or data is None:
+        die(f"clerk story failed: {err or 'no output'}")
+    return data
+
+
+def ticket_pattern(tickets):
+    return rf"(^|[^A-Z0-9-])({'|'.join(re.escape(t) for t in tickets)})([^0-9]|$)"
+
+
+def tickets_in_history(ref, tickets):
+    """{ticket: number of commits on ref whose message names it}."""
+    if not tickets:
+        return {}
+    log = gitout("log", ref, "-E", f"--grep={ticket_pattern(tickets)}", "--format=%B%x1e") or ""
+    found = {t: 0 for t in tickets}
+    for message in log.split("\x1e"):
+        for t in {m[2] for m in re.finditer(ticket_pattern(tickets), message, re.M)}:
+            found[t] += 1
+    return found
+
+
+def ticket_branch(ref, ticket):
+    """(branch, unmerged commits) for a local branch named after the ticket, the way a
+    tracker names one: `age-967` or `age-967-<title>`."""
+    prefix = ticket.lower()
+    for name in (gitout("for-each-ref", "--format=%(refname:short)", "refs/heads") or "").splitlines():
+        if name != prefix and not name.startswith(prefix + "-"):
+            continue
+        cherry = gitout("cherry", ref, name) or ""
+        unmerged = sum(1 for line in cherry.splitlines() if line.startswith("+"))
+        if unmerged:
+            return name, unmerged
+    return None, 0
+
+
+def count_states(deliverables):
+    counts = {}
+    for d in deliverables:
+        counts[d["state"]] = counts.get(d["state"], 0) + 1
+    return ", ".join(f"{n} {state}" for state, n in sorted(counts.items()))
+
+
+def state_from_plans(plans, blocked_by):
+    deliverables = [d for p in plans for d in p["deliverables"]]
+    states = {d["state"] for d in deliverables}
+    if deliverables and states == {"merged"}:
+        return "merged", f"every deliverable is merged ({len(deliverables)})"
+    if deliverables and states <= {"merged", "awaiting-merge"}:
+        return "awaiting-merge", count_states(deliverables)
+    if states - {"ready", "blocked"}:
+        return "in-progress", count_states(deliverables)
+    if blocked_by:
+        return "blocked", f"{', '.join(blocked_by)} not merged"
+    unapproved = [p["plan"] for p in plans if not p.get("approved")]
+    if unapproved:
+        return "planned", f"no approved: line in {', '.join(unapproved)}"
+    return "approved", f"approved on {', '.join(sorted({str(p['approved']) for p in plans}))}"
+
+
+def state_without_plan(story, blocked_by, ref, history):
+    branch, unmerged = ticket_branch(ref, story["ticket"])
+    if branch:
+        return "in-progress", f"branch {branch} has {unmerged} commits that are not on {ref}, and no plan names {story['ticket']}"
+    if history.get(story["ticket"]):
+        return "merged", f"commits on {ref} that name {story['ticket']}: {history[story['ticket']]}, and no plan names it"
+    if blocked_by:
+        return "blocked", f"{', '.join(blocked_by)} not merged"
+    return "ready", f"no plan names {story['ticket']}"
+
+
+def derive(stories_path):
+    stories = read_stories(stories_path)
+    r = repo()
+    tasks_home = r.tasks_home or r.repo_root
+    if not r.default_branch:
+        die("no default branch resolved, and every merged test is taken against one")
+    ref = r.default_branch
+    if gitout("rev-parse", "--verify", "--quiet", f"origin/{ref}^{{commit}}"):
+        ref = f"origin/{ref}"
+
+    plans = story_plans(tasks_home)
+    plans_by_ticket = {}
+    for p in plans:
+        if p.get("ticket"):
+            plans_by_ticket.setdefault(p["ticket"], []).append(p)
+    history = tickets_in_history(ref, [s["ticket"] for s in stories if s["ticket"] not in plans_by_ticket])
+    unblocks = dependents_count(stories)
+
+    by_id = {}
+    for s in dependencies_first(stories):
+        blocked_by = [d for d in s["depends_on"] if by_id[d]["state"] != "merged"]
+        mine = plans_by_ticket.get(s["ticket"], [])
+        if mine:
+            state, evidence = state_from_plans(mine, blocked_by)
+        else:
+            state, evidence = state_without_plan(s, blocked_by, ref, history)
+        by_id[s["id"]] = {
+            **s,
+            "blocked_by": blocked_by,
+            "unblocks": unblocks[s["id"]],
+            "state": state,
+            "evidence": evidence,
+            "plans": [p["plan"] for p in mine],
+            "deliverables": [{"plan": p["plan"], "id": d["id"], "state": d["state"]} for p in mine for d in p["deliverables"]],
+        }
+    running = [
+        f"{p['story_slug'] or p['plan']}/{d['id']}" for p in plans for d in p["deliverables"] if d["state"] in STARTED
+    ]
+    return {
+        "stories_file": str(stories_path),
+        "default_branch": ref,
+        "stories": [by_id[s["id"]] for s in stories],
+        "running": running,
+    }
+
+
+def dependencies_first(stories):
+    by_id = {s["id"]: s for s in stories}
+    done, order = set(), []
+
+    def visit(story):
+        if story["id"] in done:
+            return
+        done.add(story["id"])
+        for dep in story["depends_on"]:
+            visit(by_id[dep])
+        order.append(story)
+
+    for s in stories:
+        visit(s)
+    return order
+
+
+def next_actions(project, limit):
+    stories = project["stories"]
+    position = {s["id"]: i for i, s in enumerate(stories)}
+    by_priority = sorted(stories, key=lambda s: (-s["unblocks"], position[s["id"]]))
+    budget = max(0, limit - len(project["running"]))
+
+    def brief(s):
+        return {"id": s["id"], "ticket": s["ticket"], "title": s["title"], "unblocks": s["unblocks"]}
+
+    start, left = [], budget
+    for s in by_priority:
+        if s["blocked_by"] or s["state"] not in ("approved", "in-progress") or not left:
+            continue
+        for plan in s["plans"]:
+            ready = [d["id"] for d in s["deliverables"] if d["plan"] == plan and d["state"] == "ready"][:left]
+            if ready:
+                start.append({**brief(s), "plan": plan, "deliverables": ready})
+                left -= len(ready)
+    return {
+        "limit": limit,
+        "running": project["running"],
+        "budget": budget,
+        "plan": [brief(s) for s in by_priority if s["state"] == "ready"],
+        "approve": [{**brief(s), "plans": s["plans"]} for s in by_priority if s["state"] == "planned"],
+        "start": start,
+    }
+
+
+def render_table(project):
+    lines = []
+    for s in project["stories"]:
+        row = f"{s['id']:<8}{s['ticket']:<10}{s['state']:<15}unblocks {s['unblocks']:<3} {s['title']}"
+        if s["blocked_by"]:
+            row += f"  [blocked by {', '.join(s['blocked_by'])}]"
+        lines.append(row)
+    if project["running"]:
+        lines.append(f"\nrunning: {', '.join(project['running'])}")
+    return "\n".join(lines)
+
+
+def main(argv):
+    usage_if_asked(argv, __doc__)
+    opts, rest = parse(argv, {"--table": "bool", "--limit": "value"})
+    wants_next = rest[:1] == ["next"]
+    if wants_next:
+        rest = rest[1:]
+    if len(rest) != 1:
+        die("name one stories file: clerk project [next] <stories.md>")
+    project = derive(rest[0])
+    if wants_next:
+        limit = opts["--limit"] or str(DEFAULT_LIMIT)
+        if not limit.isdigit() or int(limit) < 1:
+            die(f"--limit takes a number of 1 or more, got '{limit}'")
+        emit(next_actions(project, int(limit)))
+    if opts["--table"]:
+        print(render_table(project))
+        return 0
+    emit(project)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

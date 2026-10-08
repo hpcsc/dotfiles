@@ -16,7 +16,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from clerk_lib import CLERK, clerk, die, git, gitout, worktree_for
+from clerk_lib import CLERK, clerk, die, gitout, worktree_for
 from clerk_method import Renderer
 from clerk_repo import archive_record, breakdown_side
 from clerk_tasks import load_task_record, next_task

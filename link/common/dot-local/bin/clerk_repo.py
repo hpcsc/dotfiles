@@ -9,7 +9,6 @@ command reads the answer rather than deriving its own.
 
 import hashlib
 import json
-import os
 import re
 from datetime import datetime, timezone
 from functools import cached_property

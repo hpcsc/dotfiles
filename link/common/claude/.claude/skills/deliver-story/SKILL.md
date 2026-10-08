@@ -24,7 +24,7 @@ Resolve the plan the run will deliver, in this order:
 3. **`$ARGUMENTS` is empty and exactly one `tasks/**/plan.yaml` exists** → **adopt it** (the "deliver the next wave" shorthand).
 4. **Otherwise** → no plan yet; **decompose** (below).
 
-**On adopt:** present the story's current state, then skip `decompose-to-deliverables` entirely and go to Phase 2.
+**On adopt:** present the story's current state, then skip `decompose-to-deliverables` entirely and go to Phase 2 — unless the plan has not passed the gate. `clerk story` reports `approved: null` for a plan with no `approved:` line: a plan that an agent wrote and that no person has checked yet. If no deliverable of that plan has started, run the gate below before Phase 2. A plan whose deliverables have started passed a gate before the line existed, so do not stop it.
 
 ```
 clerk story --table              # every unarchived plan in the repo
@@ -80,6 +80,7 @@ Present the deliverables, their **waves** (what runs in parallel), the **base/st
 - Ask the user to approve or request changes.
 - On changes, either let the user edit `plan.yaml` directly, or re-spawn `decompose-to-deliverables` with the feedback, then re-present.
 - Loop until approved. Do NOT proceed to Phase 2 until the plan is approved.
+- **Record the approval in the plan**, with the date of the day: `yq -i '.approved = "<YYYY-MM-DD>"' tasks/<story-slug>/plan.yaml`. The approval is a decision, so it goes in the file. `clerk story` reports it, which tells a plan that a person checked from a plan that an agent just wrote. If the cut changes after the approval, delete the line (`yq -i 'del(.approved)'`) and run the gate again.
 
 ---
 

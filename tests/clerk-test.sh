@@ -1321,6 +1321,10 @@ eq "a plan with no ticket reports none" "null" "$(run "$R22" story | jq -r '.[0]
 printf 'ticket: "AGE-713"\n' >> "$R22/tasks/story-a/plan.yaml"
 eq "and one that records a ticket carries it through" "AGE-713" \
    "$(run "$R22" story | jq -r '.[0].ticket')"
+eq "a plan that nobody approved reports no approval" "null" "$(run "$R22" story | jq -r '.[0].approved')"
+printf 'approved: 2026-10-08\n' >> "$R22/tasks/story-a/plan.yaml"
+eq "and an approved plan carries the date of the approval" "2026-10-08" \
+   "$(run "$R22" story | jq -r '.[0].approved')"
 eq "--table renders a row per deliverable" "7" \
    "$(run "$R22" story --table | grep -cE '^  (merged|ready|blocked|scaffolded|in-progress|awaiting-merge)')"
 

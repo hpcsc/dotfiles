@@ -148,6 +148,9 @@ eq "a plan with no approved: line is planned" "planned" "$(st US-005)"
 eq "a plan with an approved: line is approved" "approved" "$(st US-006)"
 has "and the evidence gives the date" "2026-10-08" "$(field US-006 evidence)"
 eq "a plan with a deliverable under way is in-progress" "in-progress" "$(st US-007)"
+eq "and each deliverable carries what clerk story says of it, with its story slug" "s7|1|1/2|br-s7-x|tasks/s7/x/tasks.md" \
+   "$(printf '%s' "$S" | jq -r '.stories[] | select(.id == "US-007") | .deliverables[] | select(.id == "x") |
+      "\(.story_slug)|\(.wave)|\(.done)/\(.total)|\(.branch)|\(.tasks_file | sub(".*/tasks/s7/"; "tasks/s7/"))"')"
 eq "a branch named after the ticket, with no plan, is in-progress" "in-progress" "$(st US-008)"
 has "and the evidence names the branch" "t-8-by-hand" "$(field US-008 evidence)"
 eq "a plan whose deliverables all merged is merged" "merged" "$(st US-010)"

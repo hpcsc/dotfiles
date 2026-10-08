@@ -258,7 +258,7 @@ def derive(stories_path):
             "state": state,
             "evidence": evidence,
             "plans": [p["plan"] for p in mine],
-            "deliverables": [{"plan": p["plan"], "id": d["id"], "state": d["state"]} for p in mine for d in p["deliverables"]],
+            "deliverables": [{"plan": p["plan"], "story_slug": p["story_slug"], **d} for p in mine for d in p["deliverables"]],
             "files": files_of_unmerged_deliverables(mine),
         }
     running = [

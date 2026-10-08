@@ -438,7 +438,7 @@ def add_design_signal(scope, cwd):
 
 
 
-def add_mutants(scope, cwd, proposals=None):
+def add_mutants(scope, cwd, ldir, proposals=None):
     """One run of `mutants` for each round. It takes minutes, so clerk runs it and no agent waits."""
     if "mutants_ran" in scope:
         return
@@ -458,6 +458,16 @@ def add_mutants(scope, cwd, proposals=None):
         reasons.append("the target is the staged changes, and mutants reads the whole work tree")
     scope["mutants_ran"] = result["ran"]
     scope["mutants_reason"] = "; ".join(reasons) or None
+    taken = clerk_mutants.accepted(ldir)
+    for m in result["mutants"]:
+        if m["id"] in taken:
+            m["accepted"] = taken[m["id"]]
+    for e in result["no_tests"]:
+        if e["detail"] in taken:
+            e["accepted"] = taken[e["detail"]]
+    for g in result["caller_gaps"]:
+        if clerk_mutants.gap_key(g) in taken:
+            g["accepted"] = taken[clerk_mutants.gap_key(g)]
     scope["mutants"] = result["mutants"]
     scope["mutants_no_tests"] = result["no_tests"]
     scope["caller_gaps"] = result["caller_gaps"]
@@ -605,7 +615,7 @@ def audit_next(ctx, aud, o):
                 "record_with": "clerk audit record --phase scope --results <file>"}
 
     if phase == "propose":
-        add_mutants(lv["scope"], ctx.cwd)
+        add_mutants(lv["scope"], ctx.cwd, ctx.run.dir)
         if not lv["scope"].get("mutants_ran"):
             lv["phase"] = "review"
             ctx.run.write("audit.json", aud)
@@ -618,7 +628,7 @@ def audit_next(ctx, aud, o):
 
     if phase == "review":
         add_design_signal(lv["scope"], ctx.cwd)
-        add_mutants(lv["scope"], ctx.cwd, proposals=stored_proposals(aud))
+        add_mutants(lv["scope"], ctx.cwd, ctx.run.dir, proposals=stored_proposals(aud))
         precedents, held_back = precedents_at_base(a.get("precedents") or [], lv["scope"], ctx.cwd)
         lenses, not_run = panel.build_panel(
             lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],

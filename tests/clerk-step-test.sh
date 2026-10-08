@@ -898,6 +898,8 @@ cat > "$MA/rows.json" <<'EOF'
  "callerGaps":[{"file":"b.go","function":"(*B).Check","lines":[102,103,104,106],"callers":["app/handler"]}]}
 EOF
 mstub 10 "$MA/rows.json"
+printf '%s\n' '{"key":"a.go:F:PROPOSED#123456","reason":"the window has no test clock yet","at":"x","task":1}' \
+  '{"key":"b.go:(*B).Check","reason":"only a log line","at":"x","task":1}' > "$RA/.git/clerk/runs/story/mutants-accepted.jsonl"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 N=$(run "$RA" audit record --phase scope --results "$RA/scope.json")
 TL=$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.id == "review:tests:Go")][0].prompt')
@@ -907,6 +909,9 @@ eq "the lens reads each row by id, a proposed one by its bug" "true|true|true" \
    "$(printf '%s' "$TL" | jq -Rsr 'contains("[a.go:F:BRANCH_IF#1] LIVED a.go:3 BRANCH_IF: { return 1 } -> {}") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("LIVED a.go:5 the window ends at the wrong event") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("FRAGMENT mutants") | tostring')"
 eq "a mutant that no test runs inside another row is counted on that row, not shown as its own" "true|false" \
    "$(printf '%s' "$TL" | jq -Rsr 'contains("{ return 1 } -> {} (and 1 mutants inside it that no test runs)") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("ERROR_REMOVE") | tostring')"
+eq "a row that the build accepted carries its reason, a caller gap too" "true|true" \
+   "$(printf '%s' "$TL" | jq -Rsr 'contains("the window ends at the wrong event — accepted at build: the window has no test clock yet") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("app/handler — accepted at build: only a log line") | tostring')"
+rm -f "$RA/.git/clerk/runs/story/mutants-accepted.jsonl"
 eq "a package with no tests is one row, and a caller gap names its lines and callers" "true|true" \
    "$(printf '%s' "$TL" | jq -Rsr 'contains("package cmd/x has no test files: 2 mutants") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("b.go:102-104,106 (*B).Check, not run by the tests of app/handler") | tostring')"
 eq "the other lenses do not get the rows" "false" \

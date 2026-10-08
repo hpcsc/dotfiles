@@ -153,6 +153,10 @@ def _one_line(text, limit=120):
     return flat if len(flat) <= limit else flat[:limit - 3] + "..."
 
 
+def _accepted(row):
+    return f" — accepted at build: {_one_line(row['accepted'], 300)}" if row.get("accepted") else ""
+
+
 def remit_for(scope, lang):
     """The changed files written in `lang`, or None when the scope pass filed none under
     it — in which case the lens reviews the whole change set and cannot be excluded on
@@ -647,8 +651,9 @@ class _PromptCtx:
                    f"{m.get('type')}: {_one_line(m.get('original'))} -> {_one_line(m.get('replacement'))}")
                 + (f" (and {m['uncovered_inside']} mutants inside it that no test runs)"
                    if m.get("uncovered_inside") else "")
+                + _accepted(m)
                 for m in self.scope.get("mutants") or []]
-        rows += [f"  {e.get('detail')}: {e.get('mutants')} mutants"
+        rows += [f"  {e.get('detail')}: {e.get('mutants')} mutants" + _accepted(e)
                  for e in self.scope.get("mutants_no_tests") or []]
         return "\n".join(rows) or "  (none)"
 
@@ -656,7 +661,7 @@ class _PromptCtx:
         if not self.scope.get("mutants_ran"):
             return ""
         gaps = [f"  {g.get('file')}:{line_ranges(g.get('lines'))} {g.get('function')}, "
-                f"not run by the tests of {', '.join(g.get('callers') or [])}"
+                f"not run by the tests of {', '.join(g.get('callers') or [])}" + _accepted(g)
                 for g in self.scope.get("caller_gaps") or []]
         reason = self.scope.get("mutants_reason")
         return (self._p("mutants") + (f"\nNote: {reason}." if reason else "")

@@ -126,10 +126,13 @@ def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gap
     return code, summarise(data, complete=code != TIMED_OUT)
 
 
-def rerun(cwd, mutant_id, capture=False):
+def rerun(cwd, mutant_id, capture=False, base=None):
     exe, reason = locate()
     if not exe:
         return 2, reason
-    r = subprocess.run([exe, "rerun", mutant_id], cwd=cwd, text=True,
-                       capture_output=capture)
+    argv = [exe, "rerun"]
+    # an older mutants has no --base on rerun
+    if base and "--base" in subprocess.run([exe, "rerun", "--help"], capture_output=True, text=True).stdout:
+        argv += ["--base", base]
+    r = subprocess.run([*argv, mutant_id], cwd=cwd, text=True, capture_output=capture)
     return r.returncode, (r.stdout + r.stderr) if capture else ""

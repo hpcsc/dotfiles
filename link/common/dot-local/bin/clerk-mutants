@@ -3,7 +3,7 @@
 
     clerk mutants [--base <ref>] [--json] [--operators <list>]
                   [--proposals <file> [--proposals-anywhere]]
-    clerk mutants --id <mutant id>
+    clerk mutants --id <mutant id> [--base <ref>]
 
 It changes each line that the work tree changes against <ref> (HEAD unless given: the open
 task), one change at a time, and runs the tests. For Go, it also reports the changed lines
@@ -27,7 +27,7 @@ import clerk_mutants as mutants  # noqa: E402
 USAGE = """\
   clerk mutants [--base <ref>] [--json] [--operators <list>]
                 [--proposals <file> [--proposals-anywhere]]
-  clerk mutants --id <mutant id>"""
+  clerk mutants --id <mutant id> [--base <ref>]"""
 
 
 def main(argv):
@@ -52,7 +52,7 @@ def main(argv):
         die("not a git repository")
 
     if args.id:
-        code, why = mutants.rerun(root, args.id)
+        code, why = mutants.rerun(root, args.id, base=args.base)
         if why:
             print(f"clerk: mutants: {why}", file=sys.stderr)
         return code

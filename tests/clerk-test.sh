@@ -2374,6 +2374,7 @@ cat > "$MS/mutants" <<'EOF'
 #!/usr/bin/env bash
 dir=$(dirname "$0")
 if [ "$1" = run ] && [ "$2" = --help ]; then cat "$dir/help"; exit 0; fi
+if [ "$1" = rerun ] && [ "$2" = --help ]; then cat "$dir/rerun-help" 2>/dev/null; exit 0; fi
 printf '%s\n' "$@" > "$dir/argv"
 out=""; prev=""
 for a in "$@"; do [ "$prev" = --json ] && out=$a; prev=$a; done
@@ -2447,6 +2448,11 @@ eq "a run that fails says why, from the last line mutants wrote" "2|false|the te
    "$(stub 2 "" "the tests fail with the real code"; printf '%s|' "$(mutrc)"; stub 2 "" "the tests fail with the real code"; mut --json | jq -r '[(.ran|tostring), .reason] | join("|")')"
 eq "--id reruns one mutant and passes its verdict on" "10|true|true" \
    "$(stub 10; printf '%s|' "$(mutrc --id 'a.go:F:BRANCH_IF#1')"; printf '%s|%s' "$(argv_has rerun)" "$(argv_has 'a.go:F:BRANCH_IF#1')")"
+eq "a mutants whose rerun has no --base gets none" "false" "$(stub 0; mutrc --id 'a.go:F:BRANCH_IF#1' >/dev/null; argv_has --base)"
+printf '  --base string\n' > "$MS/rerun-help"
+eq "a mutants whose rerun has --base gets the base of the run, HEAD unless given" "true|true|true" \
+   "$(stub 0; mutrc --id 'a.go:F:BRANCH_IF#1' >/dev/null; printf '%s|%s|' "$(argv_has --base)" "$(argv_has HEAD)"; stub 0; mutrc --base main --id 'a.go:F:BRANCH_IF#1' >/dev/null; argv_has main)"
+rm -f "$MS/rerun-help"
 rm -rf "$MS" "$RM"
 
 # --------------------------------------------------------------------------------

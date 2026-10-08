@@ -1758,8 +1758,11 @@ git -C "$RX" checkout -q -- task1.go
 # An --in-place run commits to the default branch, where there is no other branch to
 # fork from. The base is then where the branch and its upstream last agreed.
 RUP=$(cd "$(mktemp -d)" && pwd -P)
-git init -q --bare "$RUP/remote.git"
+git init -q --bare -b main "$RUP/remote.git"
 git clone -q "$RUP/remote.git" "$RUP/work" 2>/dev/null
+# A clone of an empty remote names its first branch after init.defaultBranch, which is
+# `master` on a machine with no global config. The push below needs `main`.
+git -C "$RUP/work" symbolic-ref HEAD refs/heads/main
 git -C "$RUP/work" config user.email clerk@test
 git -C "$RUP/work" config user.name Clerk
 git -C "$RUP/work" config commit.gpgsign false

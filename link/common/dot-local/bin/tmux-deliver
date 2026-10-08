@@ -1,0 +1,339 @@
+#!/usr/bin/env bash
+# tmux-deliver — the stories of a feature, their deliverables and their runs, in a tmux popup.
+#
+# Bound to Prefix + P. The first screen picks a feature: a stories file with **Ticket:**
+# lines, or every plan in tasks/. The second lists the stories of the feature with their
+# state from `clerk project`. The third lists the deliverables of one story, with the state
+# of their agents from `workmux status`. Tab marks several rows.
+#
+#   tmux-deliver <client> <pane path>    open the popup on that client
+set -uo pipefail
+
+# A key binding runs this with the tmux server's PATH, which has no mise shims and no
+# Homebrew. They go last, so that a caller's own PATH still decides.
+_suffix="$HOME/.local/share/mise/shims:$HOME/.local/bin:$HOME/.fzf/bin"
+[[ -d /opt/homebrew/bin ]] && _suffix="$_suffix:/opt/homebrew/bin"
+export PATH="$PATH:$_suffix"
+unset _suffix
+
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+LIMIT="${TMUX_DELIVER_LIMIT:-2}"
+STATE="${TMUX_DELIVER_STATE:-}"
+
+JQ_LIB='
+def pad($n): tostring | . + ([range(0; $n - length)] | map(" ") | join(""));
+def paint($state):
+  ({"merged": "32", "awaiting-merge": "36", "in-progress": "33", "scaffolded": "33",
+    "approved": "34", "planned": "35", "ready": "1", "blocked": "2"}[$state] // "0") as $c
+  | "\u001b[\($c)m\($state | pad(15))\u001b[0m";
+def dim($text): "\u001b[2m\($text)\u001b[0m";
+def blocked_note: if (.blocked_by | length) > 0 then "  " + dim("[blocked by \(.blocked_by | join(", "))]") else "" end;
+def deliverables:
+  if type == "array" then [.[] | .story_slug as $slug | .plan as $plan | .deliverables[] | . + {story_slug: $slug, plan: $plan}]
+  else [.stories[].deliverables[]] end;
+'
+
+fail() { printf 'tmux-deliver: %s\n' "$1" >&2; exit 1; }
+get() { cat "$STATE/$1" 2>/dev/null; }
+put() { printf '%s' "$2" > "$STATE/$1"; }
+
+main_root() {
+  local common
+  common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
+  dirname "$common"
+}
+
+feature_files() {
+  local dir
+  cd "$(get root)" || return
+  for dir in .scratches/write-user-story user-stories; do
+    [ -d "$dir" ] && grep -rl --include='*.md' '^\*\*Ticket:\*\*' "$dir"
+  done | sort
+}
+
+refresh() {
+  local root feature
+  root=$(get root)
+  feature=$(get feature)
+  if [ "$feature" = ALL ]; then
+    if ! (cd "$root" && clerk story) > "$STATE/data.json.new" 2> "$STATE/error"; then
+      put message "$(tail -1 "$STATE/error")"
+      echo '[]' > "$STATE/data.json.new"
+    fi
+  elif ! (cd "$root" && clerk project "$feature") > "$STATE/data.json.new" 2> "$STATE/error"; then
+    put message "$(tail -1 "$STATE/error")"
+    echo '{"stories": [], "running": []}' > "$STATE/data.json.new"
+  fi
+  mv -f "$STATE/data.json.new" "$STATE/data.json"
+  (cd "$root" && workmux status --json 2>/dev/null) > "$STATE/agents.json"
+  jq -e 'type == "array"' "$STATE/agents.json" >/dev/null 2>&1 || echo '[]' > "$STATE/agents.json"
+}
+
+data() {
+  [ -s "$STATE/data.json" ] || refresh
+  cat "$STATE/data.json"
+}
+
+rows() {
+  case "$1" in
+    features)
+      local f title
+      while IFS= read -r f; do
+        title=$(grep -m1 '^# ' "$(get root)/$f" | sed 's/^# //')
+        printf '%s  \e[2m%s\e[0m\t%s\n' "${title:-$f}" "$f" "$f"
+      done < <(feature_files)
+      printf 'every plan in tasks/  \e[2mclerk story\e[0m\tALL\n'
+      ;;
+    stories)
+      data | jq -r "$JQ_LIB"'
+        .stories[] |
+        [ paint(.state) + (.id | pad(8)) + (.ticket | pad(10)) + ("↑\(.unblocks)" | pad(5)) + .title + blocked_note,
+          .id ] | @tsv'
+      ;;
+    deliverables)
+      data | jq -r --slurpfile agents "$STATE/agents.json" --arg story "$(get story)" "$JQ_LIB"'
+        def agent($branch):
+          [$agents[0][] | select(.branch == $branch) | .status] as $s
+          | if ($s | index("working")) then "🤖" elif ($s | index("waiting")) then "💬"
+            elif ($s | length) > 0 then "✅" else "  " end;
+        (if $story == "" then deliverables else [.stories[] | select(.id == $story) | .deliverables[]] end)[] |
+        [ paint(.state) + ("w\(.wave)" | pad(4)) + ("\(.done)/\(.total)" | pad(7)) + agent(.branch_alias // .branch)
+            + " " + .id + (if $story == "" then "  " + dim(.story_slug) else "" end) + blocked_note,
+          .plan, .id, .tasks_file ] | @tsv'
+      ;;
+  esac
+}
+
+header() {
+  local title running keys
+  case "$1" in
+    features)
+      title="deliver · pick a feature"
+      keys="enter open · ctrl-o /deliver-project session · esc close" ;;
+    stories)
+      title="deliver · $(grep -m1 '^# ' "$(get root)/$(get feature)" 2>/dev/null | sed 's/^# //')"
+      keys="enter deliverables · ctrl-o next step · tab mark · ctrl-t graph · ctrl-r reload · alt-← back" ;;
+    deliverables)
+      if [ -z "$(get story)" ]; then
+        title="deliver · every plan"
+      else
+        title="deliver · $(data | jq -r --arg id "$(get story)" '.stories[] | select(.id == $id) | "\(.id) \(.ticket) \(.title)"')"
+      fi
+      keys="enter jump/start · ctrl-s start · ctrl-g start --gears · tab mark · ctrl-r reload · alt-← back" ;;
+  esac
+  if [ "$1" != features ]; then
+    running=$(data | jq -r "$JQ_LIB"'if type == "array" then [deliverables[] | select(.state == "in-progress" or .state == "scaffolded")] | length else .running | length end')
+    title="$title · runs $running (limit $LIMIT)"
+  fi
+  printf '%s%s\n%s' "$title" "$(get message | sed 's/^./ · &/')" "$keys"
+}
+
+preview_story() {
+  data | jq -r --arg id "$1" "$JQ_LIB"'
+    .stories as $all
+    | def states($ids): [$ids[] as $i | $all[] | select(.id == $i) | "\($i) \(.state)"] | join(", ") | if . == "" then "nothing" else . end;
+    .stories[] | select(.id == $id)
+    | "\(.id)  \(.ticket)  \(paint(.state))  step \(.step)\(if .critical then "  critical path" else "" end)",
+      .title,
+      "",
+      "waits on:      \(states(.depends_on))",
+      "waited on by:  \(states(.dependents))",
+      "unblocks:      \(.unblocks) stories in all",
+      "evidence:      \(.evidence)",
+      (if (.deliverables | length) > 0
+       then "", "deliverables:", (.deliverables[] | "  " + paint(.state) + "w\(.wave)  \(.done)/\(.total)  \(.id)")
+       else empty end),
+      (if (.plans | length) > 0 then "", "plans:", (.plans[] | "  \(.)") else empty end)'
+}
+
+preview_graph() {
+  data | jq -r "$JQ_LIB"'
+    (.stories | sort_by(.step)) as $s
+    | (range(0; $s | length) as $i | $s[$i] as $x
+       | (if $i == 0 or $s[$i - 1].step != $x.step then "step \($x.step)" else "" end | pad(8))
+         + (if $x.critical then "* " else "  " end) + ($x.id | pad(8)) + paint($x.state)
+         + (if ($x.depends_on | length) > 0 then "<- " + ($x.depends_on | join(", ")) else "" end)),
+      "",
+      "* critical path: \($s | map(.step) | max // 0) steps · ctrl-t: back to the story"'
+}
+
+deliverable_json() {
+  data | jq -c --arg plan "$1" --arg id "$2" "$JQ_LIB"'deliverables[] | select(.plan == $plan and .id == $id)'
+}
+
+claude_window() {
+  local name=$1 prompt=$2 session
+  session=$(tmux display-message -p '#{session_name}')
+  if ! tmux list-windows -t "$session" -F '#{window_name}' | grep -qxF "$name"; then
+    tmux new-window -d -t "$session:" -n "$name" -c "$(get root)"
+    tmux send-keys -t "$session:$name" -l "claude '${prompt//\'/\'\\\'\'}'"
+    tmux send-keys -t "$session:$name" Enter
+  fi
+  printf '%s:%s\n' "$session" "$name"
+}
+
+start_deliverables() {
+  local gears=() row plan id json slug out messages=()
+  if [ "${1:-}" = --gears ]; then gears=(--gears); shift; fi
+  for row in "$@"; do
+    plan=$(cut -f2 <<<"$row")
+    id=$(cut -f3 <<<"$row")
+    json=$(deliverable_json "$plan" "$id")
+    slug=$(jq -r '.story_slug' <<<"$json")
+    out=$(deliverable-open --window --background ${gears[@]+"${gears[@]}"} "$slug" "$json" 2>&1)
+    messages+=("$(tail -1 <<<"$out")")
+  done
+  put message "$(IFS=";"; printf "%s" "${messages[*]+${messages[*]}}")"
+}
+
+# Prints the windows it opened, one per line, so that the caller can switch to one.
+next_step() {
+  local id state ticket slug messages=() feature
+  feature="$(get root)/$(get feature)"
+  for id in "$@"; do
+    IFS=$'\t' read -r state ticket < <(data | jq -r --arg id "$id" '.stories[] | select(.id == $id) | [.state, .ticket] | @tsv')
+    slug=$(tr '[:upper:]' '[:lower:]' <<<"$ticket")
+    case "$state" in
+      ready)
+        claude_window "$slug-plan" "/deliver-story $ticket: deliver story $id of $feature. Read its section, from its ### heading to the next heading, as the story." ;;
+      planned)
+        claude_window "$slug-gate" "/deliver-story $(data | jq -r --arg id "$id" '.stories[] | select(.id == $id) | .plans[0]')" ;;
+      approved|in-progress)
+        local ready
+        ready=$(data | jq -r --arg id "$id" '.stories[] | select(.id == $id) | .deliverables[] | select(.state == "ready") | "x\t\(.plan)\t\(.id)"')
+        if [ -z "$ready" ]; then
+          messages+=("$id has no ready deliverable")
+        else
+          local rows_to_start=() row
+          while IFS= read -r row; do rows_to_start+=("$row"); done <<<"$ready"
+          start_deliverables "${rows_to_start[@]}"
+          messages+=("$(get message)")
+        fi ;;
+      *)
+        messages+=("$id is $state: no next step here") ;;
+    esac
+  done
+  put message "$(IFS=";"; printf "%s" "${messages[*]+${messages[*]}}")"
+  rm -f "$STATE/data.json"
+}
+
+# fzf exits 1 when the list is empty, which is not a reason to close: alt-left must still
+# go back from a story with no deliverables. 130 is esc or ctrl-c.
+fzf_screen() {
+  local rc
+  fzf --ansi --reverse --cycle --no-info --height 100% --delimiter '\t' --with-nth 1 \
+    --prompt '  ' --pointer '▶' --marker '✓' "$@" < /dev/null
+  rc=$?
+  [ "$rc" -eq 0 ] || [ "$rc" -eq 1 ]
+}
+
+menu() {
+  local client=$1 root out key selected level targets
+  root=$(main_root "$PWD") || fail "not in a git repository: $PWD"
+  STATE=$(mktemp -d)
+  export TMUX_DELIVER_STATE=$STATE
+  trap 'rm -rf "$STATE"' EXIT
+  put root "$root"
+  put preview story
+
+  level=features
+  if [ "$(feature_files | wc -l)" -eq 1 ]; then
+    put feature "$(feature_files)"
+    level=stories
+  fi
+
+  while :; do
+    case "$level" in
+      features)
+        out=$(fzf_screen --header "$(header features)" --expect enter,ctrl-o \
+          --bind "start:reload($SELF --rows features)") || return 0
+        key=$(sed -n 1p <<<"$out")
+        selected=$(sed -n 2p <<<"$out" | cut -f2)
+        [ -n "$selected" ] || return 0
+        [ "$selected" = "$(get feature)" ] || rm -f "$STATE/data.json"
+        put feature "$selected"
+        put message ""
+        if [ "$selected" = ALL ]; then
+          put story ""
+          level=deliverables
+        elif [ "$key" = ctrl-o ]; then
+          targets=$(claude_window "deliver-$(basename "${selected%.md}")" "/deliver-project $root/$selected")
+          tmux switch-client -c "$client" -t "$targets"
+          return 0
+        else
+          level=stories
+        fi
+        ;;
+      stories)
+        out=$(fzf_screen --multi --expect enter,ctrl-o,alt-left \
+          --header 'loading the stories…' \
+          --preview "$SELF --preview story {2}" --preview-window 'right,48%' \
+          --bind "start:reload($SELF --rows stories)" \
+          --bind "load:transform-header($SELF --header stories)" \
+          --bind "ctrl-r:execute-silent($SELF --forget)+reload($SELF --rows stories)" \
+          --bind "ctrl-t:execute-silent($SELF --toggle-preview)+refresh-preview") || return 0
+        key=$(sed -n 1p <<<"$out")
+        case "$key" in
+          alt-left) level=features ;;
+          enter)
+            selected=$(sed -n 2p <<<"$out" | cut -f2)
+            [ -n "$selected" ] && { put story "$selected"; level=deliverables; } ;;
+          ctrl-o)
+            local ids=() id
+            while IFS= read -r id; do [ -n "$id" ] && ids+=("$id"); done < <(sed 1d <<<"$out" | cut -f2)
+            [ ${#ids[@]} -gt 0 ] || continue
+            targets=$(next_step "${ids[@]}")
+            if [ -n "$targets" ]; then
+              tmux switch-client -c "$client" -t "$(head -1 <<<"$targets")"
+              return 0
+            fi ;;
+        esac
+        ;;
+      deliverables)
+        out=$(fzf_screen --multi --expect enter,alt-left \
+          --header 'loading the deliverables…' \
+          --preview "bat --style=plain --color=always {4} 2>/dev/null || cat {4}" --preview-window 'right,55%' \
+          --bind "start:reload($SELF --rows deliverables)" \
+          --bind "load:transform-header($SELF --header deliverables)" \
+          --bind "ctrl-r:execute-silent($SELF --forget)+reload($SELF --rows deliverables)" \
+          --bind "ctrl-s:execute-silent($SELF --start {+})+reload($SELF --rows deliverables)" \
+          --bind "ctrl-g:execute-silent($SELF --start --gears {+})+reload($SELF --rows deliverables)") || return 0
+        key=$(sed -n 1p <<<"$out")
+        selected=$(sed -n 2p <<<"$out")
+        case "$key" in
+          alt-left)
+            if [ -z "$(get story)" ]; then level=features; else level=stories; fi ;;
+          enter)
+            [ -n "$selected" ] || continue
+            local json
+            json=$(deliverable_json "$(cut -f2 <<<"$selected")" "$(cut -f3 <<<"$selected")")
+            if out=$(deliverable-open --window --client "$client" "$(jq -r '.story_slug' <<<"$json")" "$json" 2>&1); then
+              return 0
+            fi
+            put message "$(tail -1 <<<"$out")" ;;
+        esac
+        ;;
+    esac
+  done
+}
+
+case "${1:-}" in
+  -h|--help)
+    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+  --menu)            menu "$2" ;;
+  --rows)            rows "$2" ;;
+  --header)          header "$2" ;;
+  --forget)          rm -f "$STATE/data.json" ;;
+  --toggle-preview)  if [ "$(get preview)" = graph ]; then put preview story; else put preview graph; fi ;;
+  --preview)
+    if [ "$(get preview)" = graph ]; then preview_graph; else preview_story "$3"; fi ;;
+  --start)           shift; start_deliverables "$@"; rm -f "$STATE/data.json" ;;
+  --next-step)       shift; next_step "$@" ;;
+  "")                fail "usage: tmux-deliver <client> <pane path>" ;;
+  *)
+    client=$1
+    tmux display-popup -c "$client" -E -w 92% -h 85% -d "${2:-$PWD}" -T ' Deliver ' \
+      "$SELF --menu '$client'"
+    ;;
+esac

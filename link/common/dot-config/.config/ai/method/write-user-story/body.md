@@ -154,6 +154,7 @@ Rules:
 
 Each story needs:
 - **Title:** Short descriptive name
+- **Ticket** *(once the tickets exist)*: The ID of the story's ticket in the tracker. `clerk project` finds the plan of a story by this ID, because the plan that `/deliver-story` writes carries the same ID in its `ticket:` field
 - **Description:** "As a [user], I want [feature] so that [benefit]"
 - **Acceptance Criteria:** Verifiable checklist of what "done" means — how we verify this story works
 - **Context** *(optional)*: Background information helpful for the implementer — domain knowledge, related behavior elsewhere in the system, or why this story exists. Do not prescribe solutions.
@@ -162,6 +163,8 @@ Each story needs:
 **Format:**
 ```markdown
 ### US-001: [Title]
+**Ticket:** [Once the ticket exists, e.g., AGE-969]
+
 **Description:** As a [user], I want [feature] so that [benefit].
 
 **Acceptance Criteria:**
@@ -266,6 +269,8 @@ After generating the initial set of stories, ask the user:
 - Are there missing stories or edge cases to add?
 
 Update the file in place based on feedback. Any change to the story set — splitting, merging, adding, reordering, or a new **Depends on** — means redrawing the diagram and rechecking the critical path in the same edit. A stale diagram misdirects the reader who trusts it over the stories. When a story map exists, update its `STORIES`, its `data-stories` and its chips in the same edit, and run its check again.
+
+When the tickets are created, write the ID of each one into the **Ticket:** line of its story in the same pass. `clerk project` refuses a stories file with a story that has no ticket, because it cannot find that story's plan.
 
 ---
 
@@ -390,6 +395,7 @@ Before saving:
 - [ ] Non-goals section defines clear boundaries
 - [ ] Stories are listed in recommended implementation order with dependencies noted
 - [ ] Dependency diagram's edges match the **Depends on** fields exactly, with the critical path shaded and read out in prose
+- [ ] Once the tickets exist, each story has a **Ticket:** line with its ID
 - [ ] Saved to `user-stories/[feature-name].md`
 - [ ] For a feature that changes an event model: story map written, each story has a chip, and `check-story-map.mjs` passes
 - [ ] Asked user if stories need splitting, merging, or reprioritizing

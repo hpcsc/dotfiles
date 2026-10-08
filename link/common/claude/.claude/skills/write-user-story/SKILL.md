@@ -15,7 +15,7 @@ Create detailed, actionable user stories suitable for implementation by a develo
 
 1. Receive a feature description from the user
 2. Ask clarifying questions if the description is ambiguous (with lettered options)
-3. Generate structured user stories based on answers
+3. Generate structured user stories based on answers, and merge the stories that must ship together
 4. Draw the dependency diagram from the stories' **Depends on** fields
 5. Save to `user-stories/[feature-name].md`
 6. If the feature adds to or changes an event model, build the story map (Step 4)
@@ -95,7 +95,14 @@ Every user story must follow the **INVEST** criteria:
 
 ### Story Sizing
 
-A well-sized story should have 3-7 acceptance criteria. If you have more than 7, the story likely needs splitting. If fewer than 2, it may be too granular to stand alone.
+A well-sized story should have 3-7 acceptance criteria. If you have more than 7, the story likely needs splitting, unless its parts must ship as one increment (next section). If fewer than 2, it may be too granular to stand alone.
+
+### Stories That Must Ship Together Are One Story
+
+Each story must be safe to ship alone. Before you draw the Delivery Order, test each **Depends on**: if the prerequisite ships alone, does it leave the product worse? Examples are a public page with no limit on guesses, a flow that misbehaves until the next story lands, or a gap that a user falls into. If yes, the two stories are one increment, so merge them into one story.
+
+- Two stories that the design delivers in the same step are not one increment for that reason alone. Keep them separate when each one delivers value alone, or when each one serves a different user.
+- A merged story can have more than 7 acceptance criteria. Keep it whole, and merge criteria that say the same thing. In its **Context**, say why its parts ship as one. The implementer splits it into tasks, not into stories.
 
 ### Prioritize and Sequence Stories By:
 
@@ -137,13 +144,13 @@ flowchart LR
 
     A --> B
     A --> C
-    B -- ships together --> C
+    B --> C
 
     classDef critical fill:#fde68a,stroke:#b45309,stroke-width:2px,color:#1f2937
-    class A,B critical
+    class A,B,C critical
 ```
 
-[Two or three sentences: what everything blocks on, how deep the critical path runs, which stories must ship as one increment.]
+[Two or three sentences: what everything blocks on, and how deep the critical path runs.]
 ````
 
 Rules:
@@ -151,7 +158,7 @@ Rules:
 - **`flowchart LR`**, so dependency depth reads as columns left to right
 - **One node per story**, labelled with its ID and a title short enough to stay legible — abbreviate the story title rather than wrapping it over three lines
 - **Shade the critical path** (the longest chain) with the `classDef`, and say how deep it runs. That number is the floor on delivery time no amount of parallelism removes
-- **Label an edge only when the relationship is stronger than ordering** — "ships together" for two stories that must land as one increment because the first alone leaves the product worse. Leave plain ordering edges unlabelled; labelling every edge makes the strong ones invisible
+- **Leave the edges unlabelled.** Each edge means only that the dependent story needs the prerequisite first. Never label an edge "ships together": two stories that must land as one increment are one story (Step 2)
 - **Name the bottleneck in prose.** A story that many others depend on is the one to start, and saying so is the diagram's main job
 - **When no story depends on another**, write one line saying they can be built in any order and skip the diagram
 
@@ -196,6 +203,7 @@ Remaining questions, areas needing clarification, and any assumptions made if cl
 ## Quality Standards
 
 - Each story should be small enough for a single focused session (3-7 acceptance criteria)
+- Each story is safe to ship alone. Stories that must ship together are one story
 - Stories should build incrementally toward the full solution
 - Avoid technical tasks disguised as user stories — every story should deliver value a user or operator can observe
 - Cross-cutting constraints (backward compatibility, performance, security) are not stories. They are properties every story must satisfy. Evaluate each story against these constraints instead of making them standalone items.
@@ -395,6 +403,7 @@ Before saving:
 - [ ] Asked clarifying questions tailored to the feature (or noted assumptions if skipped)
 - [ ] Incorporated user's answers
 - [ ] User stories are small (3-7 acceptance criteria) and follow INVEST criteria
+- [ ] Each story is safe to ship alone: no prerequisite leaves the product worse until its dependent lands, and no edge says "ships together"
 - [ ] Acceptance criteria are verifiable and describe observable behavior
 - [ ] No implementation details or technical solutions included
 - [ ] Non-goals section defines clear boundaries

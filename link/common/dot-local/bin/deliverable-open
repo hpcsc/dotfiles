@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # deliverable-open — switch to the run of one deliverable, or open or start it.
 #
-#   deliverable-open [--window] [--background] [--gears] <story slug> <deliverable json>
+#   deliverable-open [--window] [--background] [--gears] [--client <name>] <story slug> <deliverable json>
 #
 #   --window      open or start it in a window of the current session, not a session of its own
 #   --background  do not switch to it, so that a caller can start several in a row
 #   --gears       start implement with --gears
+#   --client      the tmux client to switch, for a caller in a popup, whose tty names no client
 #
 # The JSON is one deliverable as `clerk story` prints it. State comes from `clerk story`,
 # which derives it from the sidecar, the branch and the worktree list — never from the
@@ -15,20 +16,22 @@ set -uo pipefail
 
 window=0
 background=0
+client=()
 implement_flags="--in-place"
 while [ $# -gt 0 ]; do
   case "$1" in
-    -h|--help)    sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)    sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --window)     window=1 ;;
     --background) background=1 ;;
     --gears)      implement_flags="--in-place --gears" ;;
+    --client)     client=(-c "${2:?--client needs a name}"); shift ;;
     --*)          echo "deliverable-open: unknown option $1" >&2; exit 2 ;;
     *)            break ;;
   esac
   shift
 done
 if [ $# -ne 2 ]; then
-  echo "usage: deliverable-open [--window] [--background] [--gears] <story slug> <deliverable json>" >&2
+  echo "usage: deliverable-open [--window] [--background] [--gears] [--client <name>] <story slug> <deliverable json>" >&2
   exit 2
 fi
 mode=()
@@ -78,7 +81,7 @@ if [ -n "${target}" ]; then
   echo "${id} is already running in ${target} — switching to it"
   tmux select-window -t "${target}" 2>/dev/null
   if [ -n "${TMUX:-}" ]; then
-    tmux switch-client -t "${target%%:*}"
+    tmux switch-client ${client[@]+"${client[@]}"} -t "${target%%:*}"
   else
     tmux attach -t "${target%%:*}"
   fi

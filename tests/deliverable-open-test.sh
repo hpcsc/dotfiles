@@ -107,6 +107,8 @@ eq "--gears passes on to implement" \
 PANES='Work:2|/wt/live'
 eq "--background reports a run already under way and does not switch to it" \
    "live is already running in Work:2" "$(TMUX=/tmp/fake open_it --background s "$LIVE")"
+eq "--client switches that client, for a caller in a popup" "tmux switch-client -c /dev/ttys004 -t Work" \
+   "$(TMUX=/tmp/fake open_it --client /dev/ttys004 s "$LIVE" | tail -1)"
 PANES=""
 eq "an unknown option is a usage error" "2" "$(open_it --fast s "$FRESH" >/dev/null; echo $?)"
 

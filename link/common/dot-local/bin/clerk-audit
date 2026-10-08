@@ -902,8 +902,13 @@ class Runner:
             self.save()
 
     def agent_landed(self, j, r):
-        """Returns how long the agent took, from the start it recorded."""
+        """Returns how long the agent took, from the start it recorded. Once the runner is
+        marked dead nothing more lands: the agent the signal handler killed returns here
+        before the process exits, and recording it would contradict the incident that
+        names it lost."""
         with self.lock:
+            if self.record().get("died"):
+                return 0
             a = self.agents().setdefault(j["id"], {})
             since = age_seconds(a.get("started_at"))
             a.update({**r, "landed_at": now(), "at": now(), "code_tree": self.ctx.head_ct,
@@ -997,8 +1002,10 @@ def audit_run(ctx, aud, o):
     def on_signal(signum, frame):
         name = signal.Signals(signum).name
         stopped = stop_requested(ctx) == os.getpid()
-        landed, in_flight = runner.roster()
+        # The roster and the mark under one lock, so an agent lands before both or not at
+        # all: agent_landed checks the mark under the same lock.
         with runner.lock:
+            landed, in_flight = runner.roster()
             runner.record()["died"] = now()
             if stopped:
                 runner.incident("runner-stopped", by="clerk audit stop", kept=landed, lost=in_flight)

@@ -197,7 +197,26 @@ commit_on "$Q" br-s2-x x.txt "Half of x"
 eq "a story under way whose dependency is not merged starts nothing more" "in-progress|0" \
    "$(run "$Q" project stories.md | jq -r '.stories[1].state')|$(run "$Q" project next stories.md --limit 9 | jq -r '.start | length')"
 
+F=$(new_repo)
+{ story US-001 T-1 "" "Planned"; story US-002 T-2 "" "Approved"; story US-003 T-3 "" "Merged"; } > "$F/stories.md"
+plan "$F" s1 T-1 ""         a
+plan "$F" s2 T-2 2026-10-08 b m
+plan "$F" s3 T-3 2026-10-01 c
+affected() {  # repo slug id done files...
+  local r=$1 slug=$2 id=$3 done=$4; shift 4
+  mkdir -p "$r/tasks/$slug/$id"; printf '# %s\n' "$id" > "$r/tasks/$slug/$id/tasks.md"
+  jq -n --argjson done "$done" '{tasks: [{n: 1, title: "t", depends_on: [], done: $done, affected_files: $ARGS.positional}]}' \
+    --args "$@" > "$r/tasks/$slug/$id/tasks.json"
+}
+affected "$F" s1 a false shared.go one.go landed.go
+affected "$F" s2 b false two.go shared.go
+affected "$F" s2 m true  landed.go
+affected "$F" s3 c true  shared.go
+eq "next names the files that two stories in flight both plan to change, and leaves out merged deliverables" \
+   '[{"stories":["US-001","US-002"],"files":["shared.go"]}]' \
+   "$(run "$F" project next stories.md | jq -c '.shared_files')"
+
 # --------------------------------------------------------------------------------
-rm -rf "$V" "$P" "$O" "$Q" 2>/dev/null
+rm -rf "$V" "$P" "$O" "$Q" "$F" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

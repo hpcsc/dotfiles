@@ -17,7 +17,7 @@ Create detailed, actionable user stories suitable for implementation by a develo
 3. Generate structured user stories based on answers, and merge the stories that must ship together
 4. Draw the dependency diagram from the stories' **Depends on** fields
 5. Save to `user-stories/[feature-name].md`
-6. If the feature adds to or changes an event model, build the story map (Step 4)
+6. If the feature adds to or changes an event model, build the story map (Step 4), check it, and open it in the browser
 7. Ask if any stories need splitting, merging, reprioritizing, or if new stories are needed
 
 **Important:** Do NOT start implementing. Just create the user stories.
@@ -261,6 +261,13 @@ The script needs Node and `puppeteer-core` or `puppeteer`. When Node cannot impo
 
 Then look at the screenshot once, with a story selected, and fix what it shows in one pass.
 
+**Open:** when the check passes, open the page in the user's browser, so that the user sees the map without a search for the file:
+
+```bash
+open user-stories/[feature-name]-story-map.html      # macOS
+xdg-open user-stories/[feature-name]-story-map.html  # Linux
+```
+
 ---
 
 ## Output
@@ -280,7 +287,7 @@ After generating the initial set of stories, ask the user:
 - Should any stories be reprioritized?
 - Are there missing stories or edge cases to add?
 
-Update the file in place based on feedback. Any change to the story set — splitting, merging, adding, reordering, or a new **Depends on** — means redrawing the diagram and rechecking the critical path in the same edit. A stale diagram misdirects the reader who trusts it over the stories. When a story map exists, update its `STORIES`, its `data-stories` and its chips in the same edit, and run its check again.
+Update the file in place based on feedback. Any change to the story set — splitting, merging, adding, reordering, or a new **Depends on** — means redrawing the diagram and rechecking the critical path in the same edit. A stale diagram misdirects the reader who trusts it over the stories. When a story map exists, update its `STORIES`, its `data-stories` and its chips in the same edit, run its check again, and open it again.
 
 When the tickets are created, write the ID of each one into the **Ticket:** line of its story in the same pass. `clerk project` refuses a stories file with a story that has no ticket, because it cannot find that story's plan.
 
@@ -410,5 +417,5 @@ Before saving:
 - [ ] Dependency diagram's edges match the **Depends on** fields exactly, with the critical path shaded and read out in prose
 - [ ] Once the tickets exist, each story has a **Ticket:** line with its ID
 - [ ] Saved to `user-stories/[feature-name].md`
-- [ ] For a feature that changes an event model: story map written, each story has a chip, and `check-story-map.mjs` passes
+- [ ] For a feature that changes an event model: story map written, each story has a chip, `check-story-map.mjs` passes, and the page is open in the browser
 - [ ] Asked user if stories need splitting, merging, or reprioritizing

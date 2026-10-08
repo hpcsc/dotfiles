@@ -61,6 +61,19 @@ jobs:
             -o "$HOME/.local/bin/yq"
           chmod +x "$HOME/.local/bin/yq"
 
+      # tmux-custom-keys starts throwaway tmux servers. The macOS runner has no tmux,
+      # and the Ubuntu one has an older version than a working machine. mise installs
+      # the prebuilt tmux it pins for a working machine. The install directory goes on
+      # PATH, not the shims: a shim puts every mise tool on PATH for what it starts. The
+      # token keeps mise's calls to GitHub clear of the rate limit for anonymous calls.
+      - name: Install tmux
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -fsSL https://mise.run | MISE_VERSION=v2026.9.18 sh
+          "$HOME/.local/bin/mise" install tmux@3.7c
+          echo "$("$HOME/.local/bin/mise" where tmux@3.7c)" >> "$GITHUB_PATH"
+
       # clerk finds its own subcommands the way git does — an executable named clerk-<name>
       # on PATH. Without the repo's bin directory there, every plugin dispatch fails.
       - name: Put clerk and task on PATH
@@ -83,6 +96,7 @@ jobs:
           python3 --version
           ast-grep --version
           go version
+          tmux -V
           task --version
 
       # jq here is whatever the runner ships, which trails the version mise pins. That is

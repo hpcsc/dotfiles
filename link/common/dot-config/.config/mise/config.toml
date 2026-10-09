@@ -38,7 +38,7 @@ node = "26.10.0"
 "npm:@mermaid-js/mermaid-cli" = "12.0.0"
 
 "pipx:git-machete" = "3.46.0"
-"github:hpcsc/mutants" = { version = "0.4.0", prerelease = true }
+"github:hpcsc/mutants" = { version = "0.5.0", prerelease = true }
 
 [settings]
 experimental = true

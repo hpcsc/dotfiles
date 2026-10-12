@@ -11,12 +11,15 @@ task), one change at a time, and runs the tests. For Go, it also reports the cha
 that the tests of their own package run, but that no test of a changed caller runs.
 
 The open run keeps the last run, and `clerk finish` reads it: it refuses a task while a Go
-or Python file of the task changed after that run, or while a row in the task's files is
-neither killed by `--id` nor accepted. `accept` records why no test is worth it for a row.
-Its key is the id of a mutant, <file>:<function> of a caller gap, or the text of a group
-that no test runs, such as "package cmd/x has no test files".
+or Python file of the task changed after that run, while a row in the task's files is
+neither killed by `--id` nor accepted, or while a proposal is rejected. A row of a proposal
+stays until a run with that proposal closes it. `accept` records why no test is worth it for
+a row. Its key is the id of a mutant, <file>:<function> of a caller gap, the text of a group
+that no test runs, such as "package cmd/x has no test files", or the bug of a rejected
+proposal.
 
-Exit 0 nothing to report, 10 survivors or caller gaps, 124 the time limit, 2 a tool error.
+Exit 0 nothing to report, 10 survivors, caller gaps or rejected proposals, 124 the time
+limit, 2 a tool error.
 With --id: 0 a test kills the mutant, 10 it lives or no test runs it, 1 no verdict, 2 an
 unknown id.
 
@@ -66,7 +69,8 @@ def accept(argv):
         die("no clerk mutants run is kept for this run — run clerk mutants first")
     if key not in mutants.keys(saved):
         die(f"the last clerk mutants run has no row with the key {key!r}: a key is a mutant id, "
-            f"<file>:<function> of a caller gap, or the text of a group that no test runs")
+            f"<file>:<function> of a caller gap, the text of a group that no test runs, "
+            f"or the bug of a rejected proposal")
     task = open_task(r)
     mutants.accept(ldir, key, reason.strip(), task)
     print(json.dumps({"accepted": key, "reason": reason.strip(), "task": task}, indent=2))

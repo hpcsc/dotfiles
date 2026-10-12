@@ -13,6 +13,7 @@ INSTALL = "mise install github:hpcsc/mutants"
 NEEDED_FLAGS = ("--caller-gaps", "--proposals", "--proposals-anywhere")
 REPORTED = ("LIVED", "NOT COVERED", "TIMED OUT", "INFRA ERROR")
 SURVIVED = ("LIVED", "NOT COVERED")
+PROPOSED = "PROPOSED"
 SAVED = "mutants.json"
 ACCEPTED = "mutants-accepted.jsonl"
 LIMIT_SECONDS = 600
@@ -50,7 +51,8 @@ def locate():
 
 def not_run(reason):
     return {"ran": False, "reason": reason, "complete": False, "base": None, "mutants": [],
-            "no_tests": [], "caller_gaps": [], "proposals": None, "by_ref": {}, "killed": []}
+            "no_tests": [], "caller_gaps": [], "proposals": None, "rejected": [], "proposed": [],
+            "by_ref": {}, "killed": []}
 
 
 def summarise(data, complete=True):
@@ -81,10 +83,14 @@ def summarise(data, complete=True):
         if row["id"] in inside:
             row["uncovered_inside"] = inside[row["id"]]
     proposals = data.get("proposals")
+    rejections = []
     for rejected in (proposals or {}).get("rejected") or []:
         if rejected.get("ref"):
             by_ref[rejected["ref"]] = {"status": "REJECTED", "id": None, "file": rejected.get("file"),
                                        "line": None, "detail": rejected.get("reason") or ""}
+        rejections.append({"key": rejected.get("bug") or "", "file": rejected.get("file"),
+                           "reason": rejected.get("reason") or ""})
+    proposed = [m.get("bug") or "" for m in data.get("mutants") or [] if m.get("operator") == PROPOSED]
     return {"ran": True, "reason": None, "complete": complete, "base": data.get("base"),
             "mutants": rows,
             "no_tests": [{"detail": d, "mutants": g["mutants"], "files": sorted(g["files"])}
@@ -92,7 +98,8 @@ def summarise(data, complete=True):
             "caller_gaps": [{"file": g.get("file"), "function": g.get("function"),
                              "lines": list(g.get("lines") or []), "callers": list(g.get("callers") or [])}
                             for g in data.get("callerGaps") or []],
-            "proposals": proposals, "by_ref": by_ref, "killed": killed}
+            "proposals": proposals, "rejected": rejections, "proposed": proposed,
+            "by_ref": by_ref, "killed": killed}
 
 
 def _limited(argv, cwd, echo):
@@ -199,28 +206,43 @@ def _write(ldir, record):
     tmp.replace(Path(ldir) / SAVED)
 
 
+def open_proposals(saved, result):
+    """The rows and the rejections of the saved proposals that this run did not run and no rerun
+    killed: a run without the file of proposals cannot close them."""
+    ran = set(result["proposed"]) | {r["key"] for r in result["rejected"]}
+    killed = set(saved.get("killed") or [])
+    rows = [r for r in saved.get("rows") or []
+            if r.get("type") == PROPOSED and r.get("bug") not in ran and r.get("id") not in killed]
+    rejections = [r for r in saved.get("rejected") or [] if r.get("key") not in ran]
+    return rows, rejections
+
+
 def save(ldir, cwd, base, result, every_operator):
     """A run of some operators adds its rows and never counts as a read of the content, so it
     cannot stand in for a run of every operator."""
     if not ldir or not Path(ldir).is_dir():
         return
     saved = load(ldir)
+    kept = saved if saved and saved.get("ran") else {}
+    proposal_rows, rejections = open_proposals(kept, result) if result["ran"] else ([], [])
     if every_operator:
         record = {"at": now(), "base": base, "ran": result["ran"], "reason": result["reason"],
-                  "complete": result["complete"], "rows": result["mutants"], "no_tests": result["no_tests"],
+                  "complete": result["complete"], "rows": result["mutants"] + proposal_rows,
+                  "rejected": result["rejected"] + rejections, "no_tests": result["no_tests"],
                   "caller_gaps": result["caller_gaps"], "killed": [],
                   "files": content_hashes(cwd, changed_sources(cwd, base)) if result["ran"] else {}}
     elif not result["ran"]:
         return
-    elif saved and saved.get("ran"):
+    elif kept:
         killed = set(result["killed"])
         fresh = {r["id"] for r in result["mutants"]}
-        record = dict(saved, rows=[r for r in saved.get("rows") or [] if r["id"] not in killed | fresh]
-                      + result["mutants"],
-                      killed=sorted(set(saved.get("killed") or []) | killed))
+        others = [r for r in kept.get("rows") or [] if r.get("type") != PROPOSED and r["id"] not in killed | fresh]
+        record = dict(kept, rows=others + proposal_rows + result["mutants"],
+                      rejected=result["rejected"] + rejections,
+                      killed=sorted(set(kept.get("killed") or []) | killed))
     else:
         record = {"at": now(), "base": base, "ran": True, "reason": None, "complete": result["complete"],
-                  "rows": result["mutants"], "no_tests": result["no_tests"],
+                  "rows": result["mutants"], "rejected": result["rejected"], "no_tests": result["no_tests"],
                   "caller_gaps": result["caller_gaps"], "killed": [], "files": {}}
     _write(ldir, record)
 
@@ -241,7 +263,8 @@ def keys(saved):
     saved = saved or {}
     return ({r.get("id") for r in saved.get("rows") or []}
             | {gap_key(g) for g in saved.get("caller_gaps") or []}
-            | {g.get("detail") for g in saved.get("no_tests") or []})
+            | {g.get("detail") for g in saved.get("no_tests") or []}
+            | {r.get("key") for r in saved.get("rejected") or []})
 
 
 def accept(ldir, key, reason, task=None):
@@ -315,6 +338,10 @@ def finish_check(root, ldir, files):
         if mine & set(g.get("files") or []) and g.get("detail") not in taken:
             findings.append({"key": g.get("detail"), "file": ", ".join(sorted(mine & set(g["files"]))),
                              "status": "NO TESTS", "row": f"{g.get('mutants')} mutants"})
+    for r in saved.get("rejected") or []:
+        if r.get("key") not in taken:
+            findings.append({"key": r.get("key"), "file": r.get("file"), "status": "REJECTED",
+                             "row": r.get("reason")})
     if findings:
         return findings, "rows", None
     state = "clean"

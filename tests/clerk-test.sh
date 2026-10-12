@@ -2436,6 +2436,8 @@ eq "caller gaps keep their lines and callers" "lib/l.go|10,11|app" \
    "$(printf '%s' "$J" | jq -r '.caller_gaps[0] | [.file, (.lines|map(tostring)|join(",")), .callers[0]] | join("|")')"
 eq "each ref gets the verdict of its mutant, and a rejected proposal says so" "KILLED|KILLED|REJECTED|old not found" \
    "$(printf '%s' "$J" | jq -r '[.by_ref.f1.status, .by_ref.f2.status, .by_ref.f3.status, .by_ref.f3.detail] | join("|")')"
+eq "a rejected proposal is a row whose key is its bug, and each proposal that ran is named by its bug" "b|a.go|old not found|a bug" \
+   "$(printf '%s' "$J" | jq -r '[.rejected[0].key, .rejected[0].file, .rejected[0].reason, (.proposed|join(","))] | join("|")')"
 
 stub 0 "$MS/empty.json"; mut >/dev/null 2>&1
 eq "the open task by default: the work tree against HEAD, with caller gaps, 4 workers and a limit" "true|true|true|true" \
@@ -2487,6 +2489,15 @@ cat > "$MS/proposed.json" <<'EOF'
  {"id":"a.go:F:PROPOSED#77","file":"a.go","line":3,"status":"LIVED","operator":"PROPOSED","original":"x","replacement":"y","bug":"the gate lets every sender through"}],
  "proposals":{"accepted":1,"rejected":[]}}
 EOF
+cat > "$MS/rejected.json" <<'EOF'
+{"base":"abc","mutants":[],
+ "proposals":{"accepted":0,"rejected":[{"file":"gone.go","old":"x","new":"y","bug":"the gate lets a stranger through","reason":"the file does not exist"}]}}
+EOF
+cat > "$MS/accepted.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:F:PROPOSED#88","file":"a.go","line":3,"status":"KILLED","operator":"PROPOSED","original":"x","replacement":"y","bug":"the gate lets a stranger through"}],
+ "proposals":{"accepted":1,"rejected":[]}}
+EOF
 mutf() { (cd "$RF" && CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
 finf() { (cd "$RF" && CLERK_MUTANTS_BIN="${BINF:-$MS/mutants}" "$CLERK" finish "$@"); }
 printf 'package a\n\nfunc F() int { return 1 }\n' > "$RF/a.go"
@@ -2511,6 +2522,18 @@ stub 10 "$MS/proposed.json"; mutf --operators none --proposals tasks/story.md >/
 eq "a run of some operators adds its rows to the kept run, and does not count as a read" "3|true" \
    "$(jq -r '[(.rows|length|tostring), (.files["a.go"]|length == 40|tostring)] | join("|")' "$LF/mutants.json")"
 eq "so a proposal that lives refuses the task too" "a.go:F:BRANCH_IF#1,a.go:F:PROPOSED#77,a.go:(*T).F" \
+   "$(finf 1 -- a.go | jq -r '[.mutants_findings[].key] | join(",")')"
+stub 10 "$MS/rejected.json"; mutf --operators none --proposals tasks/story.md >/dev/null 2>&1
+F=$(finf 1 -- a.go); FRC=$?
+eq "a rejected proposal refuses the task by its bug, also when its file is not a file of the task" \
+   "1|the gate lets a stranger through|REJECTED|the file does not exist|true" \
+   "$FRC|$(printf '%s' "$F" | jq -r '(.mutants_findings | last | [.key, .status, .row]) + [(.next_step|contains("--proposals-anywhere")|tostring)] | join("|")')"
+stub 10 "$MS/task1.json"; mutf >/dev/null 2>&1
+eq "a run without the file of proposals keeps the proposal that lives and the rejected one" \
+   "a.go:F:BRANCH_IF#1,a.go:F:PROPOSED#77,a.go:(*T).F,the gate lets a stranger through" \
+   "$(finf 1 -- a.go | jq -r '[.mutants_findings[].key] | join(",")')"
+stub 0 "$MS/accepted.json"; mutf --operators none --proposals tasks/story.md >/dev/null 2>&1
+eq "a run that accepts the proposal closes its rejection" "a.go:F:BRANCH_IF#1,a.go:F:PROPOSED#77,a.go:(*T).F" \
    "$(finf 1 -- a.go | jq -r '[.mutants_findings[].key] | join(",")')"
 eq "accept refuses a key the last run does not have" "2" "$(mutf accept 'a.go:F:NOPE#1' 'a reason' >/dev/null 2>&1; printf '%s' $?)"
 eq "accept refuses an empty reason" "2" "$(mutf accept 'a.go:F:BRANCH_IF#1' ' ' >/dev/null 2>&1; printf '%s' $?)"

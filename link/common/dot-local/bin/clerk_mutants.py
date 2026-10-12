@@ -129,7 +129,7 @@ def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gap
         return 2, not_run(reason)
     with tempfile.TemporaryDirectory(prefix="clerk-mutants-") as tmp:
         report = Path(tmp) / "report.json"
-        argv = [exe, "run", "--base", base, "--workers", "4", "--limit", f"{LIMIT_SECONDS}s",
+        argv = [exe, "run", "--base", base, "--limit", f"{LIMIT_SECONDS}s",
                 "--json", str(report)]
         if caller_gaps:
             argv.append("--caller-gaps")

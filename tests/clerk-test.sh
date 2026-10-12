@@ -2440,8 +2440,8 @@ eq "a rejected proposal is a row whose key is its bug, and each proposal that ra
    "$(printf '%s' "$J" | jq -r '[.rejected[0].key, .rejected[0].file, .rejected[0].reason, (.proposed|join(","))] | join("|")')"
 
 stub 0 "$MS/empty.json"; mut >/dev/null 2>&1
-eq "the open task by default: the work tree against HEAD, with caller gaps, 4 workers and a limit" "true|true|true|true" \
-   "$(printf '%s|%s|%s|%s' "$(argv_has HEAD)" "$(argv_has --caller-gaps)" "$(argv_has 4)" "$(argv_has 600s)")"
+eq "the open task by default: the work tree against HEAD, with caller gaps and a limit, and the workers of the mutants settings" "true|true|true|false" \
+   "$(printf '%s|%s|%s|%s' "$(argv_has HEAD)" "$(argv_has --caller-gaps)" "$(argv_has 600s)" "$(argv_has --workers)")"
 eq "nothing to report exits 0" "0" "$(stub 0 "$MS/empty.json"; mutrc)"
 stub 0 "$MS/empty.json"; printf '{}\n' > "$RM/p.jsonl"
 mut --base main --operators none --proposals p.jsonl --proposals-anywhere >/dev/null 2>&1

@@ -438,8 +438,8 @@ def add_design_signal(scope, cwd):
         return
     import clerk_design
     langs = [panel.canonical_lang(l) for l in scope.get("languages") or []]
-    if "Go" not in langs:
-        signals["design"], signals["design_reason"] = False, "clerk reads the design of Go code only"
+    if not {"Go", "Elixir"} & set(langs):
+        signals["design"], signals["design_reason"] = False, "clerk reads the design of Go and Elixir code only"
         return
     signals["design"], signals["design_reason"] = clerk_design.audit_signal(cwd, scope.get("base"), scope.get("head"))
 

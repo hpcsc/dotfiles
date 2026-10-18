@@ -292,6 +292,7 @@ dependencies:
 - **Name each type after the concept the domain uses**, with the word in `words`. Check that no other package already uses the word for something else.
 - **Give each type one main concept**, and put the data beside the behaviour that uses it. A sentence in `does` that needs "and" is two types.
 - **Plan an exported name only where a caller outside its package needs it.** Every capitalised name in this file is exported on purpose, and the run keeps it exported also before a caller exists. Any other export that nothing outside its package uses is refused at the last task.
+- **In Elixir, a type is a module.** Write its full name (`Billing.Refund`), the directory of its file as `package`, its struct or schema fields under `fields`, and its public functions under `methods`. Each name in this file is public on purpose. Any other public function that no other file names is refused at the last task; for a module under `test/`, the tests count as callers.
 - **List the main fields and methods, not all of them.** The run decides the rest, and the design check reads what it decides.
 
 The planned design is a first guess. When the code shows that a type or a name is wrong, the run changes it and records the reason; `clerk finish` refuses a new type that this file does not name until it has one. So plan the types you are sure the story needs, and leave out the ones you are not.

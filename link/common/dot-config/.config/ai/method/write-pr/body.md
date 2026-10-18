@@ -145,7 +145,7 @@ Sections, in this order:
 2. `## The flow` — artifact 1, with one sentence above it that says what the diagram shows.
 3. `## What changes for a person` — artifact 2.
 4. `## Where the change lives` — artifact 3, with the file to start at and the lines under the diagram.
-5. `## Design` — only when the change adds or changes a Go type, function or exported name. Run `clerk design show --base origin/<base>` on the branch and take its three sections: the new exported names with who uses each, the diagram of the new and changed types, and the parameters passed together. Leave the section out when the command reports no Go type or function, or says that it did not read the design.
+5. `## Design` — only when the change adds or changes a type, function or exported name in Go or Elixir. Run `clerk design show --base origin/<base>` on the branch and take its three sections: the new exported names with who uses each, the diagram of the new and changed types, and the parameters passed together. Leave the section out when the command reports no type or function, or says that it did not read the design.
 6. `## What changed` — one bullet for each commit, in commit order, each stating the rule rather than the edit.
 7. `## Notes for the reviewer` — the decisions a reader cannot see in the diff: what the change leaves open on purpose, what an earlier review already settled, what the tests state about a behaviour that looks wrong at first read. Say that the suite passes, and say where it ran.
 8. `## Links` — the ticket, the initiative trailer, the related pull requests.

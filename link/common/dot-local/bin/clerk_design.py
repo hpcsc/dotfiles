@@ -2,10 +2,13 @@
 fields and methods, its package functions, the exported names it adds, and every name it
 declares. `clerk design` draws it, and the comparison with a planned design reads it.
 
-The Go source is read by a small program under share/clerk/design-go, built on first use
-into the cache. It reads syntax only, so it needs no build of the code it reads. A
-language with no reader, and a machine with no Go, are reported as `not_checked` rather
-than as a change with no design: an empty design and an unread one must not look alike.
+Go source is read by a small program under share/clerk/design-go, built on first use into
+the cache, and Elixir source by the script share/clerk/design-elixir/design.exs, which the
+repository's own Elixir runs. Both read syntax only, so they need no build of the code they
+read, and both give one shape: an Elixir module is a type, and its functions are its
+methods. A language with no reader, and a machine without the reader's toolchain, are
+reported as `not_checked` rather than as a change with no design: an empty design and an
+unread one must not look alike.
 """
 
 import hashlib
@@ -22,6 +25,7 @@ from clerk_lib import gitout
 
 HERE = Path(__file__).resolve().parent
 READER_SRC = HERE.parent / "share" / "clerk" / "design-go"
+ELIXIR_READER = HERE.parent / "share" / "clerk" / "design-elixir" / "design.exs"
 
 # Methods that a type exports to satisfy an interface of the standard library, which no
 # scan of the repository can find.
@@ -32,12 +36,20 @@ STD_INTERFACE_METHODS = {
     "Read", "Write", "Close", "Len", "Less", "Swap", "Seek", "ReadFrom", "WriteTo",
 }
 
+# Functions that a module makes public for a behaviour it does not always name with
+# `@impl`: a plug's init/call, a supervised process's start_link and child_spec.
+ELIXIR_CALLBACKS = {
+    "init", "call", "start_link", "child_spec", "handle_call", "handle_cast", "handle_info",
+    "handle_continue", "terminate", "code_change", "format_status", "mount", "handle_params",
+    "handle_event", "render", "update", "__using__", "__before_compile__",
+}
+
 
 # --------------------------------------------------------------------------------
 # The reader
 # --------------------------------------------------------------------------------
 
-def reader():
+def go_reader():
     """(path of the built reader, None) or (None, why it is not available)."""
     go = shutil.which("go")
     if not go:
@@ -58,10 +70,31 @@ def reader():
     return str(exe), None
 
 
-def read_packages(exe, root, dirs):
+def elixir_reader():
+    """(path of elixir, None) or (None, why it is not available)."""
+    exe = shutil.which("elixir")
+    if not exe and shutil.which("mise"):
+        # mise puts its tools on PATH only in a shell that activates it, which an agent's shell does not.
+        r = subprocess.run(["mise", "which", "elixir"], capture_output=True, text=True)
+        exe = r.stdout.strip() if r.returncode == 0 else None
+    if not exe:
+        return None, "elixir is not installed"
+    return exe, None
+
+
+READERS = {"go": go_reader, "elixir": elixir_reader}
+
+
+def read_packages(language, exe, root, dirs, cwd):
     if not dirs:
         return []
-    r = subprocess.run([exe, "design", *dirs], cwd=root, capture_output=True, text=True)
+    if language == "elixir":
+        # Run from the repository, whose version file picks its Elixir; `root` can be a
+        # temporary folder that has none.
+        argv, run_in = [exe, str(ELIXIR_READER), "design", str(root), *dirs], cwd
+    else:
+        argv, run_in = [exe, "design", *dirs], root
+    r = subprocess.run(argv, cwd=run_in, capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"the design reader failed: {r.stderr.strip()}")
     return parse_reply(r.stdout)
@@ -78,25 +111,40 @@ def parse_reply(text):
 # What changed, and the two sides of it
 # --------------------------------------------------------------------------------
 
-def is_go_source(path):
-    return path.endswith(".go") and not path.endswith("_test.go")
+def source_language(path):
+    """The language whose reader reads `path`, or None."""
+    if path.endswith(".go") and not path.endswith("_test.go"):
+        return "go"
+    if path.endswith(".ex"):
+        return "elixir"
+    return None
 
 
-def tracks_go_source(cwd):
-    return any(is_go_source(p) for p in (gitout("ls-files", cwd=cwd) or "").splitlines())
+def tracks_read_source(cwd):
+    return any(source_language(p) for p in (gitout("ls-files", cwd=cwd) or "").splitlines())
 
 
 def changed_dirs(cwd, base, head=None):
-    """The package directories whose Go source differs between `base` and `head`, or the
-    working tree when `head` is None. The working tree counts staged and untracked files
-    too, because `clerk finish` reads the design before the commit exists."""
+    """{language: the directories whose source in that language differs between `base` and
+    `head`}, or the working tree when `head` is None. The working tree counts staged and
+    untracked files too, because `clerk finish` reads the design before the commit exists."""
     if head is None:
         listed = (gitout("diff", "--name-only", base, cwd=cwd) or "").splitlines()
         listed += (gitout("ls-files", "--others", "--exclude-standard", cwd=cwd) or "").splitlines()
     else:
         listed = (gitout("diff", "--name-only", base, head, cwd=cwd) or "").splitlines()
-    dirs = {str(Path(p).parent) for p in listed if is_go_source(p)}
-    return sorted(dirs)
+    out = {}
+    for p in listed:
+        language = source_language(p)
+        if language:
+            out.setdefault(language, set()).add(str(Path(p).parent))
+    return out
+
+
+def dir_language(cwd, d):
+    """The language of the source a directory holds, for a directory no change names."""
+    names = [p.name for p in (Path(cwd) / d).glob("*")]
+    return next((source_language(n) for n in names if source_language(n)), None)
 
 
 def dirs_at(cwd, ref, dirs):
@@ -112,11 +160,11 @@ def dirs_at(cwd, ref, dirs):
     return out
 
 
-def read_side(exe, cwd, ref, dirs):
+def read_side(language, exe, cwd, ref, dirs):
     """The packages in `dirs` as `ref` has them, or as the working tree has them."""
     present = dirs_at(cwd, ref, dirs)
     if ref is None:
-        return read_packages(exe, cwd, present)
+        return read_packages(language, exe, cwd, present, cwd)
     if not present:
         return []
     with tempfile.TemporaryDirectory(prefix="clerk-design-") as tmp:
@@ -126,7 +174,7 @@ def read_side(exe, cwd, ref, dirs):
         untar = subprocess.run(["tar", "-x", "-C", tmp], input=archive.stdout, capture_output=True)
         if untar.returncode != 0:
             raise RuntimeError(f"tar could not unpack {ref}: {untar.stderr.decode(errors='replace').strip()}")
-        return read_packages(exe, tmp, present)
+        return read_packages(language, exe, tmp, present, cwd)
 
 
 # --------------------------------------------------------------------------------
@@ -135,6 +183,16 @@ def read_side(exe, cwd, ref, dirs):
 
 def exported(name):
     return bool(name) and name[0].isupper()
+
+
+def is_public(f):
+    """A function the reader marks public (Elixir's def), else Go's capital letter."""
+    return f["exported"] if "exported" in f else exported(f["name"])
+
+
+def func_key(f):
+    # Elixir functions of one name and two arities are two functions.
+    return (f["receiver"], f["name"], f.get("arity"))
 
 
 def signature(f):
@@ -163,14 +221,18 @@ def compare(base_pkgs, head_pkgs):
     for p in head_pkgs:
         bp = base.get(p["dir"]) or {"types": [], "funcs": []}
         is_main = p.get("name") == "main"
+        language = p.get("language", "go")
+        # Elixir has no private module and no private struct field: of its names, only a
+        # function can answer "nothing uses it" by becoming private.
+        hides_types = language != "elixir"
         btypes = {t["name"]: t for t in bp["types"]}
-        bfuncs = {(f["receiver"], f["name"]): f for f in bp["funcs"]}
+        bfuncs = {func_key(f): f for f in bp["funcs"]}
         by_receiver = {}
         for f in p["funcs"]:
             by_receiver.setdefault(f["receiver"], []).append(f)
 
         def note_names(f, where):
-            old = bfuncs.get((f["receiver"], f["name"]))
+            old = bfuncs.get(func_key(f))
             old_params = {q["name"] for q in (old or {}).get("params", [])}
             old_locals = set((old or {}).get("locals", []))
             for q in f["params"]:
@@ -187,11 +249,12 @@ def compare(base_pkgs, head_pkgs):
             new_fields = [x for x in t["fields"] if (x["name"], x["type"]) not in old_fields]
             methods = []
             for m in by_receiver.get(t["name"], []):
-                prev = bfuncs.get((m["receiver"], m["name"]))
+                prev = bfuncs.get(func_key(m))
                 if prev is None or signature(prev) != signature(m):
                     methods.append({"name": m["name"], "signature": short_signature(m),
                                     "status": "new" if prev is None else "changed",
-                                    "exported": exported(m["name"])})
+                                    "exported": is_public(m), "file": m["file"],
+                                    "callback": bool(m.get("impl"))})
                 if prev is None or prev["locals"] != m["locals"] or signature(prev) != signature(m):
                     note_names(m, f"{t['name']}.{m['name']}")
             if old and not new_fields and not methods:
@@ -205,13 +268,13 @@ def compare(base_pkgs, head_pkgs):
             types.append(entry)
             if status == "new":
                 names.append({"kind": "type", "name": t["name"], "package": p["dir"], "where": t["file"]})
-                if exported(t["name"]) and not is_main:
+                if exported(t["name"]) and not is_main and hides_types:
                     exports.append({"name": t["name"], "kind": "type", "package": p["dir"],
                                     "package_name": p.get("name"), "owner": None, "tagged": False})
             for x in new_fields:
                 if x["name"]:
                     names.append({"kind": "field", "name": x["name"], "package": p["dir"], "where": t["name"]})
-                    if exported(x["name"]) and not is_main:
+                    if exported(x["name"]) and not is_main and hides_types:
                         exports.append({"name": x["name"], "kind": "field", "package": p["dir"],
                                         "package_name": p.get("name"), "owner": t["name"],
                                         "tagged": bool(x["tag"])})
@@ -219,12 +282,14 @@ def compare(base_pkgs, head_pkgs):
                 if m["status"] == "new":
                     names.append({"kind": "method", "name": m["name"], "package": p["dir"], "where": t["name"]})
                     if m["exported"] and not is_main:
-                        exports.append({"name": m["name"], "kind": "method", "package": p["dir"],
-                                        "package_name": p.get("name"), "owner": t["name"], "tagged": False})
+                        exports.append({"name": m["name"], "kind": "method" if hides_types else "function",
+                                        "package": p["dir"], "package_name": p.get("name"), "owner": t["name"],
+                                        "tagged": False, "language": language,
+                                        "file": f"{p['dir']}/{m['file']}", "callback": m["callback"]})
 
         functions = []
         for f in by_receiver.get("", []):
-            prev = bfuncs.get(("", f["name"]))
+            prev = bfuncs.get(func_key(f))
             if prev is None or signature(prev) != signature(f):
                 functions.append({"name": f["name"], "signature": short_signature(f), "file": f["file"],
                                   "status": "new" if prev is None else "changed",
@@ -241,13 +306,15 @@ def compare(base_pkgs, head_pkgs):
 
         removed = sorted(set(btypes) - {t["name"] for t in p["types"]})
         if types or functions or removed:
-            packages.append({"dir": p["dir"], "name": p.get("name"), "types": types, "functions": functions,
+            packages.append({"dir": p["dir"], "name": p.get("name"), "language": language,
+                             "types": types, "functions": functions,
                              "removed_types": removed, "declared": sorted(t["name"] for t in p["types"]),
                              "field_types": {t["name"]: [x["type"] for x in t["fields"]] for t in p["types"]}})
     for dir_ in sorted(set(base) - {p["dir"] for p in head_pkgs}):
         removed = sorted(t["name"] for t in base[dir_]["types"])
         if removed:
-            packages.append({"dir": dir_, "name": base[dir_].get("name"), "types": [], "functions": [],
+            packages.append({"dir": dir_, "name": base[dir_].get("name"), "language": base[dir_].get("language", "go"),
+                             "types": [], "functions": [],
                              "removed_types": removed, "declared": [], "field_types": {}})
     return {"packages": packages, "exported": exports, "names": names,
             "params_together": params_together(packages)}
@@ -279,12 +346,44 @@ def params_together(packages):
     return out
 
 
-def find_uses(exe, root, design):
+def find_uses(exes, root, design):
     """Who outside each package uses the exported names the change adds. Annotates each
     entry of design["exported"] with `used_by` (files) and `exempt` (why it is exported
-    without a use, or None)."""
+    without a use, or None). `exes` maps a language to its reader."""
+    go = [e for e in design["exported"] if e.get("language", "go") == "go"]
+    if go:
+        go_uses(exes["go"], root, go)
+    elixir_uses(root, [e for e in design["exported"] if e.get("language") == "elixir"])
+    return design
+
+
+# A use of an Elixir function in a file of these is not a use: prose names functions too.
+NOT_CODE = (":(exclude,glob)**/*.md", ":(exclude)tasks/")
+# A module outside the tests is used by code outside the tests, the way a Go package does
+# not count its _test.go files.
+TEST_CODE = (":(exclude,glob)**/test/**", ":(exclude,glob)**/*_test.exs")
+
+
+def elixir_uses(root, entries):
+    """A use is counted from text alone: the function's name as a word in a file other
+    than the one that defines it — a call, a capture, an atom in a router, a component in a
+    template. That over-counts, which keeps a name in the "used" column rather than
+    reporting it as unused when it is not."""
+    for e in entries:
+        if e.get("callback") or e["name"] in ELIXIR_CALLBACKS:
+            e["used_by"], e["exempt"] = [], "a behaviour callback"
+            continue
+        in_tests = e["file"].startswith("test/") or "/test/" in e["file"]
+        spec = ["."] + list(NOT_CODE) + ([] if in_tests else list(TEST_CODE))
+        word = e["name"].rstrip("?!")
+        out = gitout("grep", "-l", "-w", "-F", "--untracked", "-e", word, "--", *spec, cwd=root) or ""
+        e["used_by"] = sorted(f for f in out.splitlines() if f and f != e["file"])
+        e["exempt"] = None
+
+
+def go_uses(exe, root, entries):
     by_pkg = {}
-    for e in design["exported"]:
+    for e in entries:
         by_pkg.setdefault(e["package"], []).append(e)
     for pkg_dir, entries in by_pkg.items():
         keys = sorted({("member:" if e["kind"] in ("field", "method") else "pkg:") + e["name"] for e in entries})
@@ -302,24 +401,33 @@ def find_uses(exe, root, design):
                 e["exempt"] = "an interface method"
             else:
                 e["exempt"] = None
-    return design
 
 
 def built(cwd, base, head=None, with_uses=False, extra_dirs=()):
     """The design of the change from `base` to `head` (the working tree when None), or
     {"not_checked": why}."""
-    dirs = sorted(set(changed_dirs(cwd, base, head)) | set(extra_dirs))
-    if not dirs:
+    by_language = changed_dirs(cwd, base, head)
+    if not by_language and not extra_dirs:
         return {"packages": [], "exported": [], "names": [], "params_together": [], "dirs": []}
-    if not tracks_go_source(cwd):
-        return {"not_checked": "the repository has no Go source, and the design reader reads only Go"}
-    exe, why = reader()
-    if not exe:
-        return {"not_checked": why}
-    design = compare(read_side(exe, cwd, base, dirs), read_side(exe, cwd, head, dirs))
-    design["dirs"] = dirs
+    if not tracks_read_source(cwd):
+        return {"not_checked": "the repository has no Go or Elixir source, and clerk reads the design of those only"}
+    for d in extra_dirs:
+        language = dir_language(cwd, d)
+        if language:
+            by_language.setdefault(language, set()).add(d)
+    exes = {}
+    for language in sorted(by_language):
+        exes[language], why = READERS[language]()
+        if not exes[language]:
+            return {"not_checked": why}
+    base_pkgs, head_pkgs = [], []
+    for language, dirs in sorted(by_language.items()):
+        base_pkgs += read_side(language, exes[language], cwd, base, sorted(dirs))
+        head_pkgs += read_side(language, exes[language], cwd, head, sorted(dirs))
+    design = compare(base_pkgs, head_pkgs)
+    design["dirs"] = sorted(set().union(*by_language.values())) if by_language else []
     if with_uses and head is None and design["exported"]:
-        find_uses(exe, cwd, design)
+        find_uses(exes, cwd, design)
     return design
 
 
@@ -341,6 +449,15 @@ def visibility(name):
     return "+" if exported(name) else "-"
 
 
+def qualified(name):
+    """An Elixir module name, which holds its namespace: `CustomerPortal.Sessions`."""
+    return "." in name
+
+
+def type_label(short, name):
+    return name if qualified(name) else f"{short}.{name}"
+
+
 def base_type(t):
     return re.sub(r"^[\[\]*.]+", "", t).split("[")[0]
 
@@ -353,10 +470,11 @@ def diagram(design, styles=None, extra=()):
     for p in design["packages"]:
         local = set(p["declared"])
         short = p["name"] or Path(p["dir"]).name
+        public_fields = p.get("language") == "elixir"
         for t in p["types"]:
             nid = node_id(p["dir"], t["name"])
             mark = " ★" if t["status"] == "changed" else ""
-            lines.append(f'  class {nid}["{short}.{t["name"]}"] {{')
+            lines.append(f'  class {nid}["{type_label(short, t["name"])}"] {{')
             if t["kind"] == "interface" or re.fullmatch(r"[\w.]+", t["kind"]) and t["kind"] != "struct":
                 lines.append(f"    <<{t['kind']}>>")
             for x in t["fields"]:
@@ -364,12 +482,14 @@ def diagram(design, styles=None, extra=()):
                     lines.append(f"    {visibility(x['name'])}{x['name']}(){mark}")
                     continue
                 label = x["name"] or "(embedded)"
-                lines.append(f"    {visibility(x['name'] or 'x')}{label} {short_type(x['type'])}{mark}")
+                sign = "+" if public_fields else visibility(x["name"] or "x")
+                kind = f" {short_type(x['type'])}" if x["type"] else ""
+                lines.append(f"    {sign}{label}{kind}{mark}")
             if t["fields_unchanged"] and t["status"] == "changed":
                 lines.append(f"    …{t['fields_unchanged']} fields unchanged")
             for m in t["methods"]:
                 tail = " ✎" if m["status"] == "changed" else mark
-                lines.append(f"    {visibility(m['name'])}{m['signature']}{tail}")
+                lines.append(f"    {'+' if m['exported'] else '-'}{m['signature']}{tail}")
             lines.append("  }")
             fills.append((nid, t["status"]))
             for ft in p["field_types"].get(t["name"], []):
@@ -449,7 +569,7 @@ def render_built(design, title="Built design", styles=None, sections=(), extra=(
         out += [f"The design was not read: {design['not_checked']}.", ""]
         return "\n".join(out)
     if not design["packages"] and not extra:
-        out += ["The change adds or changes no Go type or function.", ""]
+        out += ["The change adds or changes no type or function in Go or Elixir.", ""]
     else:
         out += [f"{h} New exported names", "", exported_table(design)]
         out += [f"{h} Types and functions", "", (LEGEND + " " + legend).strip(), "",
@@ -542,23 +662,22 @@ def planned_dirs(planned, cwd):
                    if ty["package"] and (Path(cwd) / ty["package"]).is_dir()})
 
 
+def in_package(where, pkg_dir, pkg_name, name):
+    # An Elixir module name is unique in its project, so its directory does not decide.
+    return not where or qualified(name) or where in (pkg_dir, pkg_name) or pkg_dir.endswith("/" + where)
+
+
 def is_planned(planned, pkg_dir, pkg_name, name):
-    for ty in planned["types"]:
-        if ty["name"] != name:
-            continue
-        where = ty["package"]
-        if not where or where in (pkg_dir, pkg_name) or pkg_dir.endswith("/" + where):
-            return True
-    return False
+    return any(ty["name"] == name and in_package(ty["package"], pkg_dir, pkg_name, name) for ty in planned["types"])
 
 
 def planned_exports(planned):
-    """Every capitalised name the planned design writes down: those are exported on
-    purpose, also when nothing in this repository uses them yet."""
+    """Every name the planned design writes down: those are public on purpose, also when
+    nothing in this repository uses them yet. Lower case too, for Elixir's functions."""
     text = " ".join([ty["name"] for ty in planned["types"]]
                     + [n for ty in planned["types"] for n in ty["fields"] + ty["methods"]]
                     + planned["functions"])
-    return set(re.findall(r"\b[A-Z]\w*", text))
+    return set(re.findall(r"[A-Za-z_]\w*[?!]?", text))
 
 
 def note_covers(note, name, pkg_dir, pkg_name, owner=None):
@@ -590,7 +709,7 @@ def absent_types(planned, design, notes):
         if ty["change"] != "new":
             continue
         where = ty["package"]
-        if any(n == ty["name"] and (not where or where in (d, pn) or d.endswith("/" + where)) for d, pn, n in declared):
+        if any(n == ty["name"] and in_package(where, d, pn, n) for d, pn, n in declared):
             continue
         if any(n.get("name") in (ty["name"], f"{where}.{ty['name']}") for n in notes):
             continue
@@ -607,10 +726,9 @@ def render_planned(planned, title="Planned design"):
         lines = ["classDiagram", "  direction LR"]
         for ty in planned["types"]:
             nid = node_id(ty["package"] or "planned", ty["name"])
-            label = f"{Path(ty['package']).name}.{ty['name']}" if ty["package"] else ty["name"]
+            label, members = planned_box(ty)
             lines.append(f'  class {nid}["{label}"] {{')
-            lines += [f"    {visibility(f)}{f}" for f in ty["fields"]]
-            lines += [f"    {visibility(m)}{m}()" for m in ty["methods"]]
+            lines += [f"    {m}" for m in members]
             lines.append("  }")
             lines.append(f"  style {nid} {FILLS[ty['change']]}")
         out += ["## Types", "", "Green: new type. Yellow: changed type.", "", "```mermaid", "\n".join(lines), "```", ""]
@@ -627,6 +745,14 @@ def render_planned(planned, title="Planned design"):
     if planned["dependencies"]:
         out += ["## Dependencies", ""] + [f"- `{d}`" for d in planned["dependencies"]] + [""]
     return "\n".join(out)
+
+
+def planned_box(ty):
+    """The label and the members of a planned type. An Elixir module plans public names:
+    its fields and functions are lower case, and none of them is private."""
+    label = type_label(Path(ty["package"]).name, ty["name"]) if ty["package"] else ty["name"]
+    sign = (lambda n: "+") if qualified(ty["name"]) else visibility
+    return label, [f"{sign(f)}{f}" for f in ty["fields"]] + [f"{sign(m)}{m}()" for m in ty["methods"]]
 
 
 UNPLANNED_FILL = "fill:#FDEBD0,stroke:#C0620B"
@@ -653,8 +779,7 @@ def render_changes(design, planned, state, title="Design changes"):
         for u in unplanned_types(planned, design, []):
             styles[node_id(u["package"], u["name"])] = UNPLANNED_FILL
         for ty in absent_types(planned, design, []):
-            members = [f"{visibility(f)}{f}" for f in ty["fields"]] + [f"{visibility(m)}{m}()" for m in ty["methods"]]
-            label = f"{Path(ty['package']).name}.{ty['name']}" if ty["package"] else ty["name"]
+            label, members = planned_box(ty)
             extra.append((node_id(ty["package"] or "planned", ty["name"]), label, members, ABSENT_FILL))
     sections = [("Design changes", changes_table(notes))]
     if state.get("words"):
@@ -727,9 +852,13 @@ def design_findings(planned, design, notes, last):
                                f"declare — build it, or record why with `clerk design note {ty['name']} \"<reason>\"`"))
         for e in unused_exports(planned, design, notes):
             what = f"{e['kind']} `{e['name']}`" + (f" of `{e['owner']}`" if e["owner"] else "")
-            out.append(finding("unused-export", e["package"], e["name"],
-                               f"{what} is exported, and nothing outside {e['package']} uses it — make it "
-                               f"unexported, or record why with `clerk design note {e['name']} \"<reason>\"`"))
+            if e.get("language") == "elixir":
+                message = (f"{what} is public, and no file but {e['file']} names it — make it private "
+                           f"with defp, or record why with `clerk design note {e['owner']}.{e['name']} \"<reason>\"`")
+            else:
+                message = (f"{what} is exported, and nothing outside {e['package']} uses it — make it "
+                           f"unexported, or record why with `clerk design note {e['name']} \"<reason>\"`")
+            out.append(finding("unused-export", e["package"], e["name"], message))
     return out
 
 
@@ -766,4 +895,4 @@ def audit_signal(cwd, base, head):
         return False, f"the design was not read: {design['not_checked']}"
     if any(p["types"] or p["functions"] for p in design["packages"]) or design["exported"]:
         return True, None
-    return False, "the change adds or changes no Go type, function or exported name"
+    return False, "the change adds or changes no type, function or exported name in Go or Elixir"

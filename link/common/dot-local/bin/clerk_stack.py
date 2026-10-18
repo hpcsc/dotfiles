@@ -116,7 +116,7 @@ def pr_body(tasks_file):
 def design_section(repo_root, base, branch):
     """The design of the deliverable's own commits, with the design changes its run
     recorded, so a reviewer sees the types and names before the diff. None when the
-    deliverable changes no Go type or function, or the design could not be read."""
+    deliverable changes no type or function in Go or Elixir, or the design could not be read."""
     import clerk_design
     from clerk_lib import gitout
     start = gitout("merge-base", base, branch, cwd=repo_root)

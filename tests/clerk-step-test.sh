@@ -1252,6 +1252,17 @@ eq "and names the agent behind each job" "go-semantic-reviewer" \
 # checkout's edits only for the agent that was given one.
 eq "every job may run clerk without asking, and a lens may not edit the tree" "true|false" \
    "$(printf '%s' "$DR" | jq -r '[([.plan[0].jobs[].allowed_tools | index("Bash(clerk:*)") != null] | all), (.plan[0].jobs[0].allowed_tools | index("Edit") != null)] | map(tostring) | join("|")')"
+eq "a Go diff gets no Mix command" "false" \
+   "$(printf '%s' "$DR" | jq -r '.plan[0].jobs[0].allowed_tools | index("Bash(mix test:*)") != null')"
+# A Mix project's suite often runs through `make test`, and a refuter proves a claim with one
+# test file, so an Elixir diff may also run `mix test` and `mix compile`.
+jq '.languages = ["Elixir"] | .by_language = [{language: "Elixir", files: ["lib/a.ex"]}] | .files = ["lib/a.ex"]' \
+   "$RA/scope.json" > "$RA/scope-ex.json"
+run "$RA" audit begin --base main --restart --test-commands '{"default":"make test"}' >/dev/null 2>&1
+run "$RA" audit record --phase scope --results "$RA/scope-ex.json" >/dev/null 2>&1
+DRX=$(run "$RA" audit run --dry-run)
+eq "an Elixir diff lets each job run one test file and the build, beside the repo's test command" "true|true|true" \
+   "$(printf '%s' "$DRX" | jq -r '.plan[0].jobs[0].allowed_tools | [index("Bash(make test:*)") != null, index("Bash(mix test:*)") != null, index("Bash(mix compile:*)") != null] | map(tostring) | join("|")')"
 eq "with no harness on PATH a real run refuses rather than hanging" "3" \
    "$(CLERK_HARNESS_CMD= PATH=/usr/bin:/bin rc "$RA" audit run)"
 

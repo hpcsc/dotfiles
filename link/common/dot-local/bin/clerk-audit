@@ -389,9 +389,12 @@ READ_TOOLS = ["Bash(clerk:*)", "Bash(rg:*)", "Bash(git diff:*)", "Bash(git log:*
               "Bash(git status:*)", "Bash(git grep:*)", "Bash(git rev-parse:*)", "Bash(git merge-base:*)",
               "Bash(git ls-files:*)", "Bash(git blame:*)"]
 TWO_WORD_RUNNERS = ("go", "make", "npm", "pnpm", "yarn", "mix", "cargo", "task", "bundle", "uv")
+# The commands that run one test or build the code, for a language whose suite a repo
+# runs through a wrapper such as `make test`: a refuter proves a claim with one test file.
+LANGUAGE_TOOLS = {"Elixir": ["Bash(mix test:*)", "Bash(mix compile:*)"]}
 
 
-def job_tools(test_commands, isolation="none"):
+def job_tools(test_commands, isolation="none", languages=()):
     """What a headless agent may run without asking. A `-p` session has nobody to answer
     a permission prompt, so anything not on this list is silently refused — which is how
     every `clerk lint` and `clerk guidelines` in a round came back "refused by the
@@ -405,6 +408,10 @@ def job_tools(test_commands, isolation="none"):
             continue
         head = " ".join(words[:2]) if words[0] in TWO_WORD_RUNNERS and len(words) > 1 else words[0]
         for pat in ([f"Bash({head}:*)"] + (["Bash(go vet:*)", "Bash(go build:*)"] if words[0] == "go" else [])):
+            if pat not in tools:
+                tools.append(pat)
+    for lang in languages:
+        for pat in LANGUAGE_TOOLS.get(panel.canonical_lang(lang), []):
             if pat not in tools:
                 tools.append(pat)
     if isolation == "worktree":
@@ -606,7 +613,7 @@ def audit_next(ctx, aud, o):
             f"or CLERK_METHOD_DIR to the method directory")
     phase = lv["phase"]
 
-    tools = job_tools(a.get("test_commands"))
+    tools = job_tools(a.get("test_commands"), languages=(lv.get("scope") or {}).get("languages") or ())
     if phase == "scope":
         return {"phase": "scope", "round": lv["round"], "concurrent": False,
                 "spawn": [_spawn("scope", panel.scope_prompt(
@@ -664,7 +671,8 @@ def audit_next(ctx, aud, o):
         return {"phase": "refute", "round": lv["round"], "concurrent": True,
                 "spawn": [_spawn(f"refute:{j['id']}", j["prompt"], j["schema"],
                                  isolation=j["isolation"],
-                                 tools=job_tools(a.get("test_commands"), j["isolation"]),
+                                 tools=job_tools(a.get("test_commands"), j["isolation"],
+                                                 (lv.get("scope") or {}).get("languages") or ()),
                                  finding_ids=j.get("finding_ids")) for j in jobs],
                 "settled_by_clerk": sorted(settled),
                 "record_with": "clerk audit record --phase refute --results <file>"}

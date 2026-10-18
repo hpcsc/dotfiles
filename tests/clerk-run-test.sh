@@ -159,7 +159,7 @@ case "$step" in
   build)    case "$n" in 1) f=a.go ;; *) f=b.go ;; esac
             printf 'package main\n' > "$f"
             clerk finish "$n" -- "$f" >/dev/null && git commit -qm "Task $n" ;;
-  match-request) clerk step done match-request >/dev/null ;;
+  match-request) clerk step done match-request --guarded-by "a_test.go: TestA" >/dev/null ;;
   verify-run) clerk step done verify-run >/dev/null ;;
   learn)    clerk step done learn --none >/dev/null ;;
 esac

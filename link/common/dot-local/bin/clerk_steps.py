@@ -358,7 +358,8 @@ def row_match_request(ctx):
         return row("match-request", True)
     why = "the request was not re-read against this code tree" if not rec else "matched at an earlier code tree — the code changed since"
     return row("match-request", False, why_not_done=why,
-               done_by="clerk step done match-request", **fields)
+               done_by='clerk step done match-request --guarded-by "<the test that failed when you broke the headline>"',
+               **fields)
 
 
 

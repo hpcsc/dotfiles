@@ -13,7 +13,7 @@ Quote the request's own words for anything you raise; if you cannot point at the
 
 Then write the design view for the reader of the branch, while you are still on it: `clerk design show --changes --out <a file outside the repository>`. It draws the code against the planned design, with each design change and its reason. Keep the path for the final message.
 
-Record it once the reading is done and anything it raised is settled: `clerk step done match-request`. Clerk holds no state for a mismatch, because the only party who could record one is the party it would constrain; what stops the run is you stopping.
+Record it once the reading is done and anything it raised is settled, with the test that failed when you broke the headline criterion: `clerk step done match-request --guarded-by "<the test>"`. When the request states no behaviour that a test can hold — a version bump, a config value, a document — say why instead: `--no-guard "<why>"`. Clerk refuses the step with neither, because the one run that closed it in a single call had read nothing, and its headline had no guard. Clerk holds no state for a mismatch, because the only party who could record one is the party it would constrain; what stops the run is you stopping.
 
 Do this **before** integrating, on the runs where you integrate at all: a mismatch found after the fast-forward is a mismatch found too late.
 

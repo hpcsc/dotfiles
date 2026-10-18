@@ -389,8 +389,13 @@ eq "and the four questions" "4" "$(printf '%s' "$V" | jq -r '.questions | length
 WTREC="$(git -C "$WT" rev-parse --absolute-git-dir)/clerk/tasks/w1"
 jq '.files = ["a.go", "b.go"]' "$WTREC/2.json" > "$WTREC/2.tmp" && /bin/mv -f "$WTREC/2.tmp" "$WTREC/2.json"
 
-run "$WT" step done match-request >/dev/null
-eq "asserted, the run moves on" "verify-run" "$(run "$WT" step | field .step)"
+eq "the reading is refused with no test that guards the headline, and with both answers at once" "2|2|match-request" \
+   "$(run "$WT" step done match-request >/dev/null 2>&1; printf '%s|' $?; run "$WT" step done match-request --guarded-by t --no-guard w >/dev/null 2>&1; printf '%s|' $?; run "$WT" step | field .step)"
+eq "and the refusal names both ways to close it" "true|true" \
+   "$(run "$WT" step done match-request 2>&1 | jq -Rsr '[contains("--guarded-by"), contains("--no-guard")] | map(tostring) | join("|")')"
+run "$WT" step done match-request --guarded-by "widget_test.go: TestWidget/renders the title" >/dev/null
+eq "asserted with its guard, the run moves on, and the run keeps the guard" "verify-run|widget_test.go: TestWidget/renders the title" \
+   "$(run "$WT" step | field .step)|$(jq -r '.match_request.guarded_by' "$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)/clerk/runs/w1/run.json")"
 
 # A tasks/-only commit still must not stale the receipt — the archive is one.
 printf '\nnotes again\n' >> "$WT/tasks/w1.md"; commit_all "$WT" "Breakdown notes"
@@ -610,7 +615,7 @@ seed "$WL" lz; run "$WL" step done decompose --tasks-file tasks/lz.md >/dev/null
 build_tasks "$WL"
 receipt_ok "$WL" true >/dev/null
 run "$WL" audit round --report "$REP" >/dev/null; run "$WL" audit accept >/dev/null
-run "$WL" step done match-request >/dev/null
+run "$WL" step done match-request --no-guard "the fixture states no behaviour" >/dev/null
 receipt_ok "$WL" true >/dev/null
 run "$WL" step done verify-run >/dev/null
 eq "the worktree run reaches land" "land" "$(run "$WL" step | field .step)"
@@ -730,7 +735,7 @@ seed "$RJ" ij; run "$RJ" step done decompose --tasks-file tasks/ij.md >/dev/null
 build_tasks "$RJ"
 receipt_ok "$RJ" true >/dev/null
 run "$RJ" audit round --report "$REP" >/dev/null; run "$RJ" audit accept >/dev/null
-run "$RJ" step done match-request >/dev/null
+run "$RJ" step done match-request --guarded-by "a_test.go: TestA" >/dev/null
 receipt_ok "$RJ" true >/dev/null
 run "$RJ" step done verify-run >/dev/null
 eq "the in-place run reaches land" "land" "$(run "$RJ" step | field .step)"

@@ -145,8 +145,17 @@ def done_design_check(ctx, argv):
 
 
 def done_match_request(ctx, argv):
-    ctx.run.put(match_request={"code_tree": ctx.head_ct, "at": now()})
-    return {"done": "match-request"}
+    """The reading closes on the test that guards the request's headline: one run closed
+    this step in one call with nothing read, and its headline criterion had no test that
+    failed when it was broken."""
+    o, _ = parse(argv, {"--guarded-by": "value", "--no-guard": "value"})
+    guard, no_guard = (o["--guarded-by"] or "").strip(), (o["--no-guard"] or "").strip()
+    if bool(guard) == bool(no_guard):
+        die('match-request needs one of --guarded-by "<the test that failed when you broke the '
+            'headline criterion>" and --no-guard "<why the request states no behaviour that a test can hold>"')
+    ctx.run.put(match_request={"code_tree": ctx.head_ct, "at": now(),
+                               "guarded_by": guard or None, "no_guard": no_guard or None})
+    return {"done": "match-request", **({"guarded_by": guard} if guard else {"no_guard": no_guard})}
 
 
 def done_verify_run(ctx, argv):

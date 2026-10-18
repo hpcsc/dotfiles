@@ -70,6 +70,7 @@
         "required": [
           "concurrency",
           "performance",
+          "security",
           "tests_changed"
         ],
         "properties": {
@@ -80,6 +81,10 @@
           "performance": {
             "type": "boolean",
             "description": "true only if the diff actually adds/changes I/O, queries, loops over unbounded input, allocation in hot paths, or a benchmark exists to measure against"
+          },
+          "security": {
+            "type": "boolean",
+            "description": "true only if the diff actually adds/changes sign-in, sessions, cookies, tokens, credentials or secrets, permissions or access policies, signing or encryption, personal data, or input from outside that reaches a query, a shell, a template, a redirect or a file path"
           },
           "tests_changed": {
             "type": "boolean",

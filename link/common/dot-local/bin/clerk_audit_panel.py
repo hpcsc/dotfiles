@@ -59,6 +59,10 @@ LANG = {
     },
 }
 
+# One reviewer for every language: what it judges is a path from an input to a harm, which
+# no language's conventions decide.
+SECURITY_AGENT = "security-reviewer"
+
 LANG_ALIASES = {
     "go": "Go", "golang": "Go",
     "js": "JavaScript/TypeScript", "ts": "JavaScript/TypeScript",
@@ -302,6 +306,12 @@ def build_panel(scope, prompts, *, fixed_files=None, lenses_override=None,
     else:
         not_run.append("performance — the diff has no I/O, query, unbounded loop or "
                        "hot-path allocation to measure")
+    if signals.get("security"):
+        lenses.append({"key": "security", "agent": SECURITY_AGENT,
+                       "prompt": ctxb.specialist("security"), "precedents": precedent_paths})
+    else:
+        not_run.append("security — the diff does not touch sign-in, sessions, credentials, "
+                       "permissions, signing, personal data or input from outside")
     if not signals.get("tests_changed") and not any(l["key"].startswith("tests:") for l in lenses):
         not_run.append("test integrity — no test file changed")
     if signals.get("design"):
@@ -357,8 +367,8 @@ def _narrow(lenses, not_run, scope, lenses_override, fixed_files):
 
     def keep(l):
         m = re.match(r"^(?:semantic|guidelines|tests):(.+)$", l["key"])
-        # concurrency and performance read the whole diff rather than one language's
-        # remit, and are one agent each against a language panel's three.
+        # concurrency, performance and security read the whole diff rather than one
+        # language's remit, and are one agent each against a language panel's three.
         return lang_touched(m.group(1)) if m else True
 
     narrowed = [l for l in lenses if keep(l)]
@@ -741,8 +751,7 @@ class _PromptCtx:
                 + self._p("lens-deliverables") + self.contract())
 
     def specialist(self, kind):
-        key = "lens-concurrency" if kind == "concurrency" else "lens-performance"
-        return self.preamble(None) + self.precedent_block() + self._p(key) + self.contract()
+        return self.preamble(None) + self.precedent_block() + self._p(f"lens-{kind}") + self.contract()
 
     def dedupe(self, findings):
         rows = "\n".join(

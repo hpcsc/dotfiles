@@ -826,7 +826,7 @@ run "$RA" step start story --request "a story" >/dev/null 2>&1
 git -C "$RA" switch -qc story 2>/dev/null
 PR=$(cd "$(mktemp -d)" && pwd -P); mkdir -p "$PR/audit-implement/prompts"
 for f in scope-open scope-rules review-open review-rules finding-contract lens-semantic \
-         lens-guidelines lens-tests lens-concurrency lens-performance lens-deliverables \
+         lens-guidelines lens-tests lens-concurrency lens-performance lens-security lens-deliverables \
          precedents dedupe-open \
          dedupe-rules dedupe-output refute-open refute-file-rule refute-runtime \
          refute-quality report-open report-rules report-tail regrade mechanical \
@@ -1268,6 +1268,17 @@ run "$RA" audit record --phase scope --results "$RA/scope-ex.json" >/dev/null 2>
 DRX=$(run "$RA" audit run --dry-run)
 eq "an Elixir diff lets each job run one test file and the build, beside the repo's test command" "true|true|true" \
    "$(printf '%s' "$DRX" | jq -r '.plan[0].jobs[0].allowed_tools | [index("Bash(make test:*)") != null, index("Bash(mix test:*)") != null, index("Bash(mix compile:*)") != null] | map(tostring) | join("|")')"
+# A sign-in or a session is reviewed for what an attacker reaches, by one reviewer for every
+# language, only when the scoping pass found such code in the diff.
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+NN=$(run "$RA" audit record --phase scope --results "$RA/scope.json")
+eq "a diff with no security signal names the lens it did not run, and why" "false|1" \
+   "$(printf '%s' "$NN" | jq -r '[([.next.spawn[].id] | index("review:security") != null | tostring), ([.next.held_back[] | select(startswith("security — the diff does not touch"))] | length | tostring)] | join("|")')"
+jq '.signals.security = true' "$RA/scope.json" > "$RA/scope-sec.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+NS=$(run "$RA" audit record --phase scope --results "$RA/scope-sec.json")
+eq "a diff with one earns one security lens, on the security reviewer, with its own lens text" "security-reviewer|true|1" \
+   "$(printf '%s' "$NS" | jq -r '[.next.spawn[] | select(.id == "review:security")] | [.[0].agent, (.[0].prompt | contains("FRAGMENT lens-security") | tostring), (length | tostring)] | join("|")')"
 eq "with no harness on PATH a real run refuses rather than hanging" "3" \
    "$(CLERK_HARNESS_CMD= PATH=/usr/bin:/bin rc "$RA" audit run)"
 

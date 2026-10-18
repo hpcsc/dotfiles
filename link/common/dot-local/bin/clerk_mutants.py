@@ -304,7 +304,7 @@ def finish_check(root, ldir, files):
     sources = [p for p in named if source_file(p)
                and _git(root, "diff", "--quiet", "HEAD", "--", p) is None]
     if not sources:
-        return [], None, "not checked: the task changes no Go or Python file outside the tests"
+        return [], None, "not checked: the task changes no Go, Python or Elixir file outside the tests"
     if not ldir:
         return [], None, "not checked: no run is open"
     saved = load(ldir)

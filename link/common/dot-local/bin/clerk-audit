@@ -443,7 +443,7 @@ def add_mutants(scope, cwd, ldir, proposals=None):
     if "mutants_ran" in scope:
         return
     if not panel.mutated_files(scope) or scope.get("has_code") is False:
-        scope["mutants_ran"], scope["mutants_reason"] = False, "the diff changes no Go or Python code outside the tests"
+        scope["mutants_ran"], scope["mutants_reason"] = False, "the diff changes no Go, Python or Elixir code outside the tests"
         return
     import clerk_mutants
     base = scope.get("base") or "HEAD"

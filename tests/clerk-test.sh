@@ -2465,13 +2465,14 @@ rm -f "$MS/rerun-help"
 # The open run keeps the last run, and `clerk finish` reads it.
 RF=$(new_repo)
 mkdir -p "$RF/tasks"
-printf '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n### Task 4: Four\n' > "$RF/tasks/story.md"
+printf '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n### Task 4: Four\n### Task 5: Five\n' > "$RF/tasks/story.md"
 cat > "$RF/tasks/story.json" <<'EOF'
 {"story":"story","tasks_file":"tasks/story.md","tasks":[
  {"n":1,"title":"One","language":"Go","depends_on":[],"affected_files":["a.go"]},
  {"n":2,"title":"Two","language":"Go","depends_on":[1],"affected_files":["b.go"]},
  {"n":3,"title":"Three","language":"Go","depends_on":[2],"affected_files":["c.go"]},
- {"n":4,"title":"Four","language":"Generic","depends_on":[3],"affected_files":["README.md"]}]}
+ {"n":4,"title":"Four","language":"Generic","depends_on":[3],"affected_files":["README.md"]},
+ {"n":5,"title":"Five","language":"Elixir","depends_on":[4],"affected_files":["lib/a.ex"]}]}
 EOF
 git -C "$RF" add -A && git -C "$RF" commit -qm "Plan"
 run "$RF" step start story --request "a story" >/dev/null 2>&1
@@ -2560,8 +2561,21 @@ eq "when the last run did not run, the task finishes and says so" "0|true" \
 git -C "$RF" commit -qm "Task 3"
 printf 'more\n' >> "$RF/README.md"
 F=$(finf 4 -- README.md); FRC=$?
-eq "a task with no Go or Python source is not checked" "0|true" \
+eq "a task with no Go, Python or Elixir source is not checked" "0|true" \
    "$FRC|$(printf '%s' "$F" | jq -r '.mutants | startswith("not checked") | tostring')"
+git -C "$RF" commit -qm "Task 4"
+stub 0 "$MS/empty.json"; mutf >/dev/null 2>&1
+mkdir -p "$RF/lib" "$RF/test/support"
+printf 'defmodule A do\n  def f, do: 1\nend\n' > "$RF/lib/a.ex"
+printf 'defmodule A.Stub do\nend\n' > "$RF/test/support/stub.ex"
+F=$(finf 5 -- lib/a.ex test/support/stub.ex); FRC=$?
+eq "an Elixir file that no clerk mutants run read refuses the task, as a Go file does, and test support code does not" \
+   "1|lib/a.ex|NOT READ BY A RUN|1" \
+   "$FRC|$(printf '%s' "$F" | jq -r '[.mutants_findings[0].file, .mutants_findings[0].status, (.mutants_findings | length | tostring)] | join("|")')"
+stub 0 "$MS/empty.json"; mutf >/dev/null 2>&1
+F=$(finf 5 -- lib/a.ex test/support/stub.ex); FRC=$?
+eq "after a run reads it, the task finishes" "0|true|clean" \
+   "$FRC|$(printf '%s' "$F" | jq -r '[(.done|tostring), .mutants] | join("|")')"
 rm -rf "$MS" "$RM" "$RF"
 
 # --------------------------------------------------------------------------------

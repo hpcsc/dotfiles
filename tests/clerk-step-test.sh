@@ -921,7 +921,7 @@ jq '.languages = ["JavaScript/TypeScript"] | .by_language = [.by_language[1]] | 
 mstub 0 "$MA/empty.json"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 run "$RA" audit record --phase scope --results "$RA/scope-js.json" >/dev/null 2>&1
-eq "a diff with no Go or Python runs no mutants, and says why" "false|the diff changes no Go or Python code outside the tests|false" \
+eq "a diff with no Go, Python or Elixir runs no mutants, and says why" "false|the diff changes no Go, Python or Elixir code outside the tests|false" \
    "$(run "$RA" audit status | jq -r '.live.scope | [(.mutants_ran|tostring), .mutants_reason] | join("|")')|$([ -f "$MA/argv" ] && echo true || echo false)"
 jq '.files = ["a_test.go"] | .by_language = [{language: "Go", files: ["a_test.go"]}] | .languages = ["Go"]' "$RA/scope.json" > "$RA/scope-tests.json"
 mstub 0 "$MA/empty.json"
@@ -1146,7 +1146,7 @@ run "$RA" audit begin --base main --restart >/dev/null 2>&1
 eq "with no mutants to run, propose steps aside and the review starts" "review" \
    "$(CLERK_MUTANTS_BIN="$MA/none" run "$RA" audit record --phase scope --results "$RA/scope.json" | jq -r '.next.phase')"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
-eq "a diff with no Go or Python has nothing to propose for" "review" \
+eq "a diff with no Go, Python or Elixir has nothing to propose for" "review" \
    "$(run "$RA" audit record --phase scope --results "$RA/scope-js.json" | jq -r '.next.phase')"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 eq "a Python diff gets a propose agent, which reads the changed Python files but not the tests" "propose|true|false" \

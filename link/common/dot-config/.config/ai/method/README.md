@@ -185,9 +185,9 @@ carries its acceptance criteria as checkboxes, ticked by hand as they are verifi
 leaving those outside the commit would strand them and dirty the tree. It refuses a path that does not exist, refuses a task already done, and never
 runs `git add -A`.
 
-The message is judgment, so it goes to the commit agent. For Go and Python, `clerk mutants`
-finds a guard that no test can break: it changes each line the task changed, one change at
-a time, and lists each change that no test caught. The model writes the tests that catch
+The message is judgment, so it goes to the commit agent. For Go, Python and Elixir, `clerk
+mutants` finds a guard that no test can break: it changes each line the task changed, one
+change at a time, and lists each change that no test caught. The model writes the tests that catch
 them, or records with `clerk mutants accept` why no test is worth it, and `clerk finish`
 refuses a task while a row in its files is open or its code changed after the last run.
 The audit shows each accepted reason beside its row, for a lens to judge.

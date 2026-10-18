@@ -82,6 +82,10 @@ def is_go_source(path):
     return path.endswith(".go") and not path.endswith("_test.go")
 
 
+def tracks_go_source(cwd):
+    return any(is_go_source(p) for p in (gitout("ls-files", cwd=cwd) or "").splitlines())
+
+
 def changed_dirs(cwd, base, head=None):
     """The package directories whose Go source differs between `base` and `head`, or the
     working tree when `head` is None. The working tree counts staged and untracked files
@@ -307,6 +311,8 @@ def built(cwd, base, head=None, with_uses=False, extra_dirs=()):
     dirs = sorted(set(changed_dirs(cwd, base, head)) | set(extra_dirs))
     if not dirs:
         return {"packages": [], "exported": [], "names": [], "params_together": [], "dirs": []}
+    if not tracks_go_source(cwd):
+        return {"not_checked": "the repository has no Go source, and the design reader reads only Go"}
     exe, why = reader()
     if not exe:
         return {"not_checked": why}

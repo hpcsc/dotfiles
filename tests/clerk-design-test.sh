@@ -546,6 +546,35 @@ git -C "$R" checkout -q main
 eq "off the run's branch, the run is named" "Keep the ledger unexported" \
    "$(run "$R" design corrections --run refunds | jq -r '.commits[0] | sub("^[0-9a-f]+ "; "")')"
 eq "and a run that does not exist is refused" "2" "$(run "$R" design corrections --run nope >/dev/null 2>&1; printf '%s' $?)"
+rm -rf "$R"
+
+# --------------------------------------------------------------------------------
+printf '\nfinish — a repository with no Go source has no design to judge\n'
+
+R=$(cd "$(mktemp -d)" && pwd -P)
+git -C "$R" init -q -b main
+git -C "$R" config user.email clerk@test
+git -C "$R" config user.name  Clerk
+git -C "$R" config commit.gpgsign false
+mkdir -p "$R/lib/billing" "$R/tasks"
+printf 'defmodule Billing.Payment do\nend\n' > "$R/lib/billing/payment.ex"
+commit_all "$R" "Seed"
+git -C "$R" checkout -q -b refunds
+printf '# refunds\n\n### Task 1: Refund\n- [ ] a\n' > "$R/tasks/refunds.md"
+jq -n '{story: "refunds", tasks_file: "tasks/refunds.md", design_file: "tasks/refunds.design.yaml", tasks: [
+  {n: 1, title: "Refund", depends_on: [], done: false, certainty: "low", blast_radius: "low", patterns_to_follow: []}]}' \
+  > "$R/tasks/refunds.json"
+printf 'design: planned\ntypes:\n  - name: Billing.Refund\n    package: lib/billing\n    change: new\n    does: returns part or all of one payment\n' \
+  > "$R/tasks/refunds.design.yaml"
+commit_all "$R" "Breakdown"
+run "$R" step start refunds --request "Add refunds" >/dev/null
+run "$R" step done decompose --tasks-file tasks/refunds.md >/dev/null
+printf 'defmodule Billing.Refund do\nend\n' > "$R/lib/billing/refund.ex"
+F=$(run "$R" finish 1 -- lib/billing/refund.ex)
+eq "the last task finishes: the reader cannot see a type in a language it does not read" "true" \
+   "$(printf '%s' "$F" | jq -r '.done')"
+eq "and says why the design was not judged" "the repository has no Go source, and the design reader reads only Go" \
+   "$(printf '%s' "$F" | jq -r '.design')"
 
 # --------------------------------------------------------------------------------
 rm -rf "$R" "$CACHE" 2>/dev/null

@@ -2405,6 +2405,39 @@ eq "an archived breakdown falls through rather than resolving to a path that is 
    "$(run "$R33" status | jq -r '.tasks_file | split("/") | last')"
 
 # --------------------------------------------------------------------------------
+printf '\nland — each deliverable of a story keeps its own archive\n'
+
+# Every deliverable's breakdown is tasks/<story>/<deliverable>/tasks.md. Archived by the file
+# name alone, the second to land overwrote the first, and the story lost the progress and
+# the Story Reference of both.
+RD=$(new_repo)
+printf 'tasks/\n' >> "$RD/.git/info/exclude"
+mkdir -p "$RD/tasks/pair"
+{ printf 'story: Pair\nstory_slug: pair\ndeliverables:\n'
+  for d in alpha beta; do
+    printf '  - id: %s\n    branch: %s\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/pair/%s/tasks.md\n    status: pending\n' "$d" "$d" "$d"
+  done
+} > "$RD/tasks/pair/plan.yaml"
+for d in alpha beta; do
+  mkdir -p "$RD/tasks/pair/$d"
+  printf '# %s\n\n## Story Reference\n\nThe %s part.\n\n## Tasks\n\n### Task 1: One\n- [x] a\n' "$d" "$d" > "$RD/tasks/pair/$d/tasks.md"
+  printf '{"story":"%s","tasks":[{"n":1,"title":"One","depends_on":[],"done":true}]}\n' "$d" > "$RD/tasks/pair/$d/tasks.json"
+done
+for d in alpha beta; do
+  git -C "$RD" checkout -q -b "$d" main
+  printf '%s\n' "$d" > "$RD/$d.txt"; git -C "$RD" add "$d.txt"; git -C "$RD" commit -qm "$d"
+  receipt_ok "$RD" >/dev/null
+  run "$RD" land --audit-accepted --no-integrate --tasks-file "tasks/pair/$d/tasks.md" >/dev/null
+done
+eq "two deliverables of one story land side by side, each with its own task record" "# alpha|# beta|alpha|beta" \
+   "$(head -1 "$RD/tasks/completed/pair/alpha/tasks.md")|$(head -1 "$RD/tasks/completed/pair/beta/tasks.md")|$(jq -r .story "$RD/tasks/completed/pair/alpha/tasks.json")|$(jq -r .story "$RD/tasks/completed/pair/beta/tasks.json")"
+eq "and the story still reads the progress of each from its archive" "awaiting-merge:1/1,awaiting-merge:1/1" \
+   "$(run "$RD" story tasks/pair/plan.yaml | jq -r '[.[0].deliverables[] | "\(.state):\(.done)/\(.total)"] | join(",")')"
+eq "and the pull request text of each from its own breakdown" "The alpha part." \
+   "$(cd "$(dirname "$CLERK")" && python3 -c 'import sys, clerk_stack; print(clerk_stack.pr_body(sys.argv[1]))' "$RD/tasks/pair/alpha/tasks.md" | tail -1)"
+rm -rf "$RD"
+
+# --------------------------------------------------------------------------------
 printf '\nmutants — the changed lines that no test catches\n'
 
 # A stub stands in for `mutants`. Files beside it give what it prints for `run --help`, the

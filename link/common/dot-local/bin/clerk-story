@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clerk_lib import Parser, die, git_ok, gitout, repo, worktree_for  # noqa: E402
-from clerk_repo import resolve_tasks_arg  # noqa: E402
+from clerk_repo import find_archived, resolve_tasks_arg  # noqa: E402
 
 
 def git(*args):
@@ -71,6 +71,8 @@ def task_record_progress(tasks_home, task_files):
     total = done = 0
     for rel in task_files:
         side = Path(tasks_home) / (rel[:-3] + ".json" if rel.endswith(".md") else rel + ".json")
+        # `clerk land` moves a landed deliverable's breakdown into tasks/completed/.
+        side = side if side.is_file() else (find_archived(side) or side)
         try:
             data = json.loads(side.read_text())
         except (OSError, json.JSONDecodeError):

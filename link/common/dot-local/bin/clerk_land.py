@@ -15,7 +15,7 @@ from pathlib import Path
 
 from clerk_lib import copy_untracked_build_files, die, emit, git, gitout
 from clerk_ledger import Run
-from clerk_repo import (Repo, archive_record, common_dir, current_branch, default_branch,
+from clerk_repo import (Repo, archive_path, archive_record, common_dir, current_branch, default_branch,
                         env_get, ledger_dir, now, repo_root, resolve_flag, run_records_dir,
                         task_record_for, tasks_hint)
 
@@ -268,29 +268,32 @@ def land(integrate=None, audit=False, name=None, tasks_override=None, check=Fals
     # belongs to. It also has to come before any rebase: `git mv` leaves a dirty tree.
     archived = None
     if tasks and Path(tasks).is_file():
-        name = name or Path(tasks).name.removesuffix(".md")
-        archive_dir = Path(th) / "tasks" / "completed"
-        archive_dir.mkdir(parents=True, exist_ok=True)
+        target = archive_path(tasks)
+        done_dir = next((p for p in target.parents if p.name == "completed"), target.parent)
+        name = name or target.relative_to(done_dir).as_posix().removesuffix(".md")
+        target.parent.mkdir(parents=True, exist_ok=True)
         side = Path(tasks).with_suffix(".json")
+        side_target = archive_path(side)
         if here.is_ignored(str(Path(tasks).parent), Path(tasks).name):
             # Machine-local: a plain move and no archive commit.
             try:
-                shutil.move(tasks, archive_dir / Path(tasks).name)
+                shutil.move(tasks, target)
                 if side.is_file():
-                    shutil.move(str(side), archive_dir / side.name)
+                    shutil.move(str(side), side_target)
             except OSError:
                 die(f"could not archive {tasks}")
-            archived = str(archive_dir / Path(tasks).name)
+            archived = str(target)
         else:
-            if git("mv", tasks, str(archive_dir / Path(tasks).name)).returncode != 0:
+            if git("mv", tasks, str(target)).returncode != 0:
                 die(f"could not archive {tasks}")
             if side.is_file():
-                git("mv", str(side), str(archive_dir / side.name))
+                git("mv", str(side), str(side_target))
             if git("commit", "-qm", f"Archive completed task: {name}").returncode != 0:
                 die("archive commit failed")
-            archived = f"tasks/completed/{Path(tasks).name}"
+            archived = os.path.relpath(target, wt)
         Path(state).mkdir(parents=True, exist_ok=True)
-        (Path(state) / "archived.json").write_text(json.dumps({"path": archived, "name": name}) + "\n")
+        (Path(state) / "archived.json").write_text(
+            json.dumps({"path": archived, "name": name, "source": str(Path(tasks).resolve())}) + "\n")
         # The records stop meaning anything once the breakdown has left tasks/.
         shutil.rmtree(run_records_dir(state, tasks), ignore_errors=True)
 

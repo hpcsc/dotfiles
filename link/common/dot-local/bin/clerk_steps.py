@@ -18,7 +18,7 @@ from pathlib import Path
 
 from clerk_lib import CLERK, clerk, die, gitout, worktree_for
 from clerk_method import Renderer
-from clerk_repo import archive_record, breakdown_side
+from clerk_repo import archive_record, breakdown_side, find_archived
 from clerk_tasks import load_task_record, next_task
 from clerk_verify import verify
 from clerk_ledger import (age_seconds, fixup_ambiguities, gear, guidelines_read, is_ancestor,
@@ -122,9 +122,8 @@ def breakdown_files(ctx):
     tf, side = Path(bd["tasks_file"]), Path(breakdown_side(bd))
     if tf.exists():
         return tf, side, False
-    home = Path(ctx.prepare.get("tasks_home") or ctx.cwd)
-    atf = home / "tasks" / "completed" / tf.name
-    if atf.exists():
+    atf = find_archived(tf, legacy=True)
+    if atf:
         return atf, atf.with_suffix(".json"), True
     return tf, side, False
 

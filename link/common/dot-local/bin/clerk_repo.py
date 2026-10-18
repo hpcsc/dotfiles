@@ -270,6 +270,35 @@ def state_dir(cwd=None):
     return Repo(cwd).state_dir
 
 
+def _tasks_dir(path):
+    """The tasks/ folder at the root of a checkout that holds `path`, or None."""
+    for d in Path(path).parents:
+        if d.name == "tasks" and (d.parent / ".git").exists():
+            return d
+    return None
+
+
+def archive_path(path):
+    """Where `clerk land` archives a breakdown or its task record: under tasks/completed/,
+    at the path the file has under tasks/. Every deliverable's breakdown is
+    tasks/<story>/<deliverable>/tasks.md, so the file name alone makes one deliverable's
+    archive overwrite another's."""
+    p = Path(path)
+    d = _tasks_dir(p)
+    return d / "completed" / p.relative_to(d) if d else p.parent / "completed" / p.name
+
+
+def find_archived(path, legacy=False):
+    """The archive of `path` when `clerk land` moved it there, or None. With `legacy`, also
+    the bare tasks/completed/<file name> that an earlier clerk wrote, which for a
+    deliverable can be another deliverable's file."""
+    p = Path(path)
+    found = [archive_path(p)]
+    if legacy and _tasks_dir(p):
+        found.append(_tasks_dir(p) / "completed" / p.name)
+    return next((c for c in found if c.is_file()), None)
+
+
 def archive_record(state, tasks_file=None):
     """The archive `clerk land` wrote in this checkout, or None when it is not the archive
     of `tasks_file`. The file holds one record, names no run, and nothing removes it, so a
@@ -278,9 +307,12 @@ def archive_record(state, tasks_file=None):
     rec = ledger_read(Path(state) / "archived.json") if state else None
     if not rec:
         return None
-    if tasks_file and Path(rec.get("path") or "").name != Path(tasks_file).name:
-        return None
-    return rec
+    if not tasks_file:
+        return rec
+    if rec.get("source"):
+        return rec if Path(rec["source"]).resolve() == Path(tasks_file).resolve() else None
+    # A record from before the source was kept names only the archive.
+    return rec if Path(rec.get("path") or "").name == Path(tasks_file).name else None
 
 
 def clear_archive_record(state):

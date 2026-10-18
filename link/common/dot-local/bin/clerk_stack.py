@@ -26,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clerk_lib import Parser, clerk, die, repo, take_verb  # noqa: E402
+from clerk_repo import find_archived  # noqa: E402
 
 
 def run(*args, cwd=None):
@@ -93,6 +94,9 @@ def pr_body(tasks_file):
     front of the reviewer rather than leaving it in a file they will not open."""
     if not tasks_file:
         return None
+    # `clerk land` moves a landed deliverable's breakdown into tasks/completed/.
+    if not Path(tasks_file).is_file():
+        tasks_file = find_archived(tasks_file) or tasks_file
     try:
         text = Path(tasks_file).read_text()
     except OSError:

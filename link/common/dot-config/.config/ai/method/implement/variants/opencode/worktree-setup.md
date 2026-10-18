@@ -12,7 +12,7 @@ Otherwise create it and step into it:
 cd "$(clerk isolate <kebab-feature-name> | jq -r .path)"
 ```
 
-It puts the tree under `.worktrees/` beside the git dir, branches from HEAD (`--base <ref>` to branch from elsewhere), and adds `.worktrees/` to the repo's `info/exclude` so the directory it just made does not read as a dirty tree to the next step. It reports whether it `created` the worktree or `adopted` one that was already there.
+It puts the tree under `.worktrees/` beside the git dir, branches from HEAD (`--base <ref>` to branch from elsewhere), and adds `.worktrees/` to the repo's `info/exclude` so the directory it just made does not read as a dirty tree to the next step. It reports whether it `created` the worktree or `adopted` one that was already there. In a Mix project it also copies the files that git ignores and the tests need — `deps/`, `_build/` and `.env` — from the main checkout, and names them under `copied`: without them the tree neither compiles nor runs a test. `clerk step start` copies them the same way into a worktree that another tool made.
 
 Once inside, `git` and file operations run against the worktree naturally — no `-C` prefix needed. Call `clerk step` after the `cd` and read its `facts` again: they report `repo_root` and `build_tree` separately, and the learnings file and `tasks/test-commands.json` live under the former, not under your cwd. A relative path resolved in the wrong checkout is how a file looks deleted while still sitting in the other one.
 

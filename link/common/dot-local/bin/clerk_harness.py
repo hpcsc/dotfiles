@@ -436,6 +436,8 @@ def _make_worktree(repo):
         path = tempfile.mkdtemp(prefix="clerk-audit-")
         subprocess.run(["git", "worktree", "add", "--detach", path, head], cwd=repo,
                        capture_output=True, text=True, check=True)
+        from clerk_lib import copy_untracked_build_files
+        copy_untracked_build_files(repo, path)
         return path
     except (subprocess.CalledProcessError, OSError):
         return None

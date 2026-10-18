@@ -13,7 +13,7 @@ import os
 import shutil
 from pathlib import Path
 
-from clerk_lib import die, emit, git, gitout
+from clerk_lib import copy_untracked_build_files, die, emit, git, gitout
 from clerk_ledger import Run
 from clerk_repo import (Repo, archive_record, common_dir, current_branch, default_branch,
                         env_get, ledger_dir, now, repo_root, resolve_flag, run_records_dir,
@@ -82,7 +82,8 @@ def make_worktree(name, base=None):
         die(f"'{name}' is checked out in the main tree at {parent} — switch it away, or build there with --in-place")
     if existing:
         return {"mode": "worktree", "path": existing, "branch": name, "created": False, "adopted": True,
-                "excluded": None, "note": "this feature already has a worktree; enter it rather than creating a second"}
+                "excluded": None, "copied": copy_untracked_build_files(parent, existing),
+                "note": "this feature already has a worktree; enter it rather than creating a second"}
 
     excluded = False
     exclude = Path(common) / "info" / "exclude"
@@ -105,6 +106,7 @@ def make_worktree(name, base=None):
             die(f"git worktree add failed (is '{name}' checked out elsewhere?)")
     return {"mode": "worktree", "path": path, "branch": name, "dir": d, "created": not branch_exists,
             "adopted": branch_exists, "excluded": excluded, "base": base or None,
+            "copied": copy_untracked_build_files(parent, path),
             "note": ("the branch already existed; its commits are here" if branch_exists
                      else "branched from HEAD" + (f" via {base}" if base else ""))}
 

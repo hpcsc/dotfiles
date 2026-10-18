@@ -9,6 +9,7 @@ what it stopped being is the only copy of these.
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -77,6 +78,47 @@ def gitout(*args, cwd=None):
 
 def git_ok(*args, cwd=None):
     return git(*args, cwd=cwd).returncode == 0
+
+
+# The files that git ignores and that the tests of a project need, by the file that marks
+# the project. A new worktree has none of them, and a Mix project neither compiles nor runs
+# a test without its deps.
+UNTRACKED_BUILD_FILES = {"mix.exs": ("deps", "_build", ".env")}
+
+
+def copy_untracked_build_files(src, dst):
+    """Copy into the worktree `dst` each ignored file of `src` that its project needs and
+    that `dst` does not have. The paths copied."""
+    copied = []
+    if Path(src).resolve() == Path(dst).resolve():
+        return copied
+    for marker, names in UNTRACKED_BUILD_FILES.items():
+        if not (Path(src) / marker).is_file():
+            continue
+        for name in names:
+            source, target = Path(src) / name, Path(dst) / name
+            if not source.exists() or target.exists() or not git_ok("check-ignore", "-q", name, cwd=src):
+                continue
+            if clone(source, target):
+                copied.append(name)
+    return copied
+
+
+def clone(source, target):
+    """A copy-on-write copy where the file system makes one, so the hundreds of megabytes
+    of a Mix project's deps and build cost seconds and no space; a plain copy elsewhere. It
+    keeps the file times, because Mix compiles again a dependency whose files look newer."""
+    # /bin/cp by path: the BSD cp takes -c, and a GNU cp earlier on PATH does not.
+    command = ["/bin/cp", "-a", "-c"] if sys.platform == "darwin" else ["cp", "-a", "--reflink=auto"]
+    for argv in (command, [command[0], "-a"]):
+        if subprocess.run([*argv, str(source), str(target)], capture_output=True).returncode == 0:
+            return True
+        # A copy that stopped half way is a folder, and cp copies into a folder, not over it.
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target, ignore_errors=True)
+        elif target.exists() or target.is_symlink():
+            target.unlink()
+    return False
 
 
 def plugin_bin(name):

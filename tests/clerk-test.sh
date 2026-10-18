@@ -288,6 +288,39 @@ eq "a name git would refuse is refused here, with a name in the message" "2" \
 eq "and so is no name at all" "2" "$(run "$RW2" isolate --worktree >/dev/null 2>&1; printf '%s' $?)"
 eq "a branch checked out in the main tree cannot be worktreed over" "2" \
    "$(run "$RW2" isolate main --worktree >/dev/null 2>&1; printf '%s' $?)"
+eq "a project with no mix.exs gets nothing copied into its worktree" "" \
+   "$(run "$RW2" isolate plain --worktree | jq -r '.copied | join(",")')"
+
+# A Mix project neither compiles nor runs a test without the deps and the build that git
+# ignores, so a new worktree gets a copy of them, and of the ignored .env.
+RX=$(new_repo)
+printf 'defmodule X.MixProject do\nend\n' > "$RX/mix.exs"
+printf '/deps/\n/_build/\n.env\n' > "$RX/.gitignore"
+git -C "$RX" add -A && git -C "$RX" commit -qm "Mix project"
+mkdir -p "$RX/deps/req" "$RX/_build/test/lib/req"
+printf 'dep\n' > "$RX/deps/req/mix.exs"
+printf 'beam\n' > "$RX/_build/test/lib/req/req.app"
+ln -s ../../../../deps/req "$RX/_build/test/lib/req/priv"
+printf 'DB_PORT=5439\n' > "$RX/.env"
+XW=$(run "$RX" isolate add-login --worktree)
+XP=$(printf '%s' "$XW" | jq -r '.path')
+eq "a new worktree of a Mix project gets the ignored deps, build and .env, and says so" "deps,_build,.env|dep|beam|DB_PORT=5439" \
+   "$(printf '%s' "$XW" | jq -r '.copied | join(",")')|$(cat "$XP/deps/req/mix.exs")|$(cat "$XP/_build/test/lib/req/req.app")|$(cat "$XP/.env")"
+eq "a link inside the build still points inside the new tree" "dep" "$(cat "$XP/_build/test/lib/req/priv/mix.exs")"
+eq "and the copy leaves the new tree clean" "" "$(git -C "$XP" status --porcelain)"
+printf 'mine\n' > "$XP/.env"
+eq "a worktree that has them is left as it is" "|mine" \
+   "$(run "$RX" isolate add-login --worktree | jq -r '.copied | join(",")')|$(cat "$XP/.env")"
+XH=$(cd "$(mktemp -d)" && pwd -P)/by-hand
+git -C "$RX" worktree add -q -b by-hand "$XH"
+eq "a run started in a worktree that another tool made copies them too" "deps,_build,.env" \
+   "$(cd "$XH" && "$CLERK" step start by-hand --request "x" | jq -r '.copied | join(",")')"
+eq "and so does the checkout an audit gives a verifier" "deps,_build,.env" \
+   "$(cd "$(dirname "$CLERK")" && python3 -c 'import os, sys, clerk_harness as h
+p = h._make_worktree(sys.argv[1])
+print(",".join(n for n in ("deps", "_build", ".env") if os.path.exists(os.path.join(p, n))))
+h._remove_worktree(sys.argv[1], p)' "$RX")"
+rm -rf "$RX" "$(dirname "$XH")"
 
 # --------------------------------------------------------------------------------
 printf '\nisolate — in place, a branch\n'

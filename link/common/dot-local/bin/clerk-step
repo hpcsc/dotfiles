@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import clerk, die, emit, git, gitout, parse, take_verb  # noqa: E402
+from clerk_lib import clerk, copy_untracked_build_files, die, emit, git, gitout, parse, take_verb  # noqa: E402
 from clerk_ledger import (CALLERS, Run, build_ctx, detect_harness, now, open_run_summaries,  # noqa: E402
                           run_summary, runs_root, session_id)
 from clerk_repo import Repo, clear_archive_record, resolve_tasks_arg  # noqa: E402
@@ -56,8 +56,12 @@ def cmd_start(slug, request, harness):
     run.write("run.json", {"slug": slug, "request": request, "started_at": now(), "launch_cwd": cwd,
                            "launch_branch": prep.get("branch"), "start_commit": gitout("rev-parse", "HEAD", cwd=cwd),
                            "harness": harness or detect_harness(), "session_id": session_id(), "finished": False})
+    # A worktree that another tool made, such as workmux for a deliverable, has none of the
+    # ignored files the tests need; `clerk isolate` copies them into the trees it makes.
+    top = gitout("rev-parse", "--show-toplevel", cwd=cwd)
+    copied = copy_untracked_build_files(Path(common).parent, top) if top else []
     return {"started": True, "run": slug, "ledger": str(run.dir), "request": request,
-            "next": next_step(build_ctx(slug, harness))}
+            **({"copied": copied} if copied else {}), "next": next_step(build_ctx(slug, harness))}
 
 
 def done_ground(ctx, argv):

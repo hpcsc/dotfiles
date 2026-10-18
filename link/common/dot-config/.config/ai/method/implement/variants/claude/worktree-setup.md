@@ -12,7 +12,7 @@ Otherwise create it, then enter it:
 clerk isolate <kebab-feature-name>
 ```
 
-It puts the tree beside the git dir — under `.claude/worktrees/` when it can see it is running inside Claude Code, `.worktrees/` under any other harness — branches from HEAD (`--base <ref>` to branch from elsewhere), and adds whichever directory it used to the repo's `info/exclude` so the directory it just made does not read as a dirty tree to the next step. It reports the `path` and the `dir` it chose, and whether it `created` the worktree or `adopted` one that was already there.
+It puts the tree beside the git dir — under `.claude/worktrees/` when it can see it is running inside Claude Code, `.worktrees/` under any other harness — branches from HEAD (`--base <ref>` to branch from elsewhere), and adds whichever directory it used to the repo's `info/exclude` so the directory it just made does not read as a dirty tree to the next step. It reports the `path` and the `dir` it chose, and whether it `created` the worktree or `adopted` one that was already there. In a Mix project it also copies the files that git ignores and the tests need — `deps/`, `_build/` and `.env` — from the main checkout, and names them under `copied`: without them the tree neither compiles nor runs a test. `clerk step start` copies them the same way into a worktree that another tool made.
 
 Then call **EnterWorktree** with that `path` (this skill is the explicit instruction that tool requires). It switches the session's working directory into the worktree — same window, same session, no new tmux anything. Every command from here runs there, and relative paths work normally.
 

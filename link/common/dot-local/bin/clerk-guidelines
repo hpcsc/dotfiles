@@ -68,6 +68,12 @@ OPTIONAL_FILES = {
 
 ALWAYS = ["testing/caller-patterns.md", "comments.md", "naming.md"]
 
+# What a run must have loaded when it names no concept and no caller: how to find its caller
+# pattern and the quick reference, and from its language's testing guideline what to test,
+# the unit of behaviour and the assertions. Naming a concept asks for that instead.
+DEFAULT_CALLER_CONCEPTS = ["identify-caller", "caller-quick-reference"]
+DEFAULT_TESTING_CONCEPTS = ["what-to-test", "unit-of-behavior", "assertions"]
+
 # The guidelines that declare concepts, and so are read in parts. Everything else is
 # short enough that slicing would cost a heading map to save nothing, and arrives whole.
 # Membership is explicit rather than inferred from the filename: `cue/testing-patterns.md`
@@ -320,6 +326,10 @@ def main():
     # What was asked for, by concept. --caller is the one bit of sugar: which caller a
     # component has is a per-task judgment, not a fixed part of any role's reading.
     asked = list(dict.fromkeys(args.concept + ([CALLERS[args.caller]] if args.caller else [])))
+    defaults = not asked and not args.only
+    if defaults:
+        asked = DEFAULT_CALLER_CONCEPTS + (DEFAULT_TESTING_CONCEPTS if any(
+            lang in LANGUAGE_FILES for lang in languages) else [])
 
     out, resolved, absent = [], set(), []
     listing = []
@@ -358,7 +368,7 @@ def main():
     print("\nEverything below is the guideline text itself. Read it; do not re-fetch it.")
     if args.caller:
         print(f"Caller pattern requested: {args.caller}.")
-    elif "testing/caller-patterns.md" in plan:
+    elif defaults:
         print("No --caller given, so only the identification section and the Quick Reference "
               "are here.\nOnce you know which pattern this work is, re-run with --caller to "
               "get that section.")

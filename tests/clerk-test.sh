@@ -1555,10 +1555,14 @@ eq "and nothing else from the same file" "0" \
 eq "short files in the bundle still come whole" "3" \
    "$(printf '%s' "$G" | grep -cE 'naming-body|arch-body|workflow-body')"
 
-# Naming no concept is not an error: the index says what there is to ask for.
+# A call that names nothing gets what a run must have loaded, and the index of the rest.
 B=$(gl --language Go)
-eq "a bundle with no concept named emits no sections" "0" \
-   "$(printf '%s' "$B" | grep -cE 'what-body|assert-body')"
+eq "a bundle with no concept named emits what a run must have, and nothing else" "5|0" \
+   "$(printf '%s' "$B" | grep -cE 'identify-body|quickref-body|what-body|unit-body|assert-body')|$(printf '%s' "$B" | grep -cE 'ui-body|indep-body|noise-body')"
+eq "and says that the caller section comes with --caller" "1" \
+   "$(printf '%s' "$B" | grep -c 'No --caller given')"
+eq "a language with no guideline set still gets the caller's sections" "2|0" \
+   "$(R=$(gl --language Rust); printf '%s|%s' "$(printf '%s' "$R" | grep -cE 'identify-body|quickref-body')" "$(printf '%s' "$R" | grep -c 'what-to-test')")"
 eq "but does emit an index per sliced file, saying what to ask for" "2" \
    "$(printf '%s' "$B" | grep -c 'every section it has')"
 eq "listing every section, including ones no role reads" "1" \

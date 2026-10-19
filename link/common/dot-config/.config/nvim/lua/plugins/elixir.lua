@@ -13,6 +13,8 @@ return {
 			nextls = { enable = false },
 			elixirls = {
 				enable = true,
+				-- elixir-tools installs ElixirLS v0.22.0 by default, which does not support Elixir 1.20
+				tag = "v0.31.1",
 				settings = elixirls.settings({
 					dialyzerEnabled = true,
 					enableTestLenses = true,

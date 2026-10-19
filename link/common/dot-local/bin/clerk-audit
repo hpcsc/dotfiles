@@ -504,6 +504,7 @@ def add_mutants(scope, cwd, ldir, proposals=None):
         if clerk_mutants.gap_key(g) in taken:
             g["accepted"] = taken[clerk_mutants.gap_key(g)]
     scope["mutants"] = result["mutants"]
+    scope["mutants_kills"] = result["kills"]
     scope["mutants_no_tests"] = result["no_tests"]
     scope["caller_gaps"] = result["caller_gaps"]
     if proposals:
@@ -551,6 +552,7 @@ def add_proposals(ctx, aud, lv, data):
         scope["proposals_reason"] = result["reason"]
         return
     scope["mutants"] = (scope.get("mutants") or []) + result["mutants"]
+    scope["mutants_kills"] = (scope.get("mutants_kills") or []) + result["kills"]
     scope["proposals"] = _proposal_summary(result)
 
 

@@ -667,6 +667,16 @@ class _PromptCtx:
                  for e in self.scope.get("mutants_no_tests") or []]
         return "\n".join(rows) or "  (none)"
 
+    def kills(self):
+        rows = [f"  {k.get('file')}:{k.get('line')} "
+                + (k["bug"] if k.get("bug") else
+                   f"{k.get('type')}: {_one_line(k.get('original'))} -> {_one_line(k.get('replacement'))}")
+                + (f" — {_one_line(k.get('test'), 160)}" if k.get("test") else "")
+                for k in self.scope.get("mutants_kills") or []]
+        if not rows:
+            return ""
+        return self._p("kills") + "\n\nKILLED:\n" + "\n".join(rows) + "\n\n"
+
     def mutants(self):
         if not self.scope.get("mutants_ran"):
             return ""
@@ -728,10 +738,11 @@ class _PromptCtx:
         return "\n\n" + self._p("finding-contract")
 
     def semantic(self, lang, remit):
-        return self.preamble(remit) + self.precedent_block() + self._p("lens-semantic") + self.contract()
+        return (self.preamble(remit) + self.precedent_block() + self.kills() + self._p("lens-semantic")
+                + self.contract())
 
     def tests(self, lang, remit):
-        return (self.preamble(remit) + self.precedent_block() + self.mutants()
+        return (self.preamble(remit) + self.precedent_block() + self.mutants() + self.kills()
                 + fill(self._p("lens-tests"),
                        {"reading": ", ".join(LANG[lang]["reading"]), "disclosure": DISCLOSURE})
                 + self.contract())
@@ -751,7 +762,8 @@ class _PromptCtx:
                 + self._p("lens-deliverables") + self.contract())
 
     def specialist(self, kind):
-        return self.preamble(None) + self.precedent_block() + self._p(f"lens-{kind}") + self.contract()
+        return (self.preamble(None) + self.precedent_block() + (self.kills() if kind == "concurrency" else "")
+                + self._p(f"lens-{kind}") + self.contract())
 
     def dedupe(self, findings):
         rows = "\n".join(
@@ -828,5 +840,6 @@ class _PromptCtx:
             out += "What the lenses deliberately did not flag:\n" + "\n".join(f"- {n}" for n in lens_notes) + "\n\n"
         if gaps:
             out += "Lenses NOT run on this diff:\n" + "\n".join(f"- {g}" for g in gaps) + "\n\n"
+        out += self.kills()
         out += self._p("regrade") + "\n\n" + self._p("report-rules") + "\n\n" + self._p("report-tail")
         return out

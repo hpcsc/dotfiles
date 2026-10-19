@@ -57,17 +57,21 @@ def locate():
 def not_run(reason, tests_fail=False):
     return {"ran": False, "reason": reason, "tests_fail": tests_fail, "complete": False, "base": None,
             "mutants": [], "no_tests": [], "caller_gaps": [], "proposals": None, "rejected": [],
-            "proposed": [], "by_ref": {}, "killed": []}
+            "proposed": [], "by_ref": {}, "killed": [], "kills": []}
 
 
 def summarise(data, complete=True):
-    rows, no_tests, by_ref, killed, inside = [], {}, {}, [], {}
+    rows, no_tests, by_ref, killed, kills, inside = [], {}, {}, [], [], {}
     for m in data.get("mutants") or []:
         for ref in m.get("refs") or []:
             by_ref[ref] = {"status": m.get("status"), "id": m.get("id"), "file": m.get("file"),
                            "line": m.get("line"), "detail": m.get("detail") or ""}
         if m.get("status") == "KILLED":
             killed.append(m.get("id"))
+            kills.append({"id": m.get("id"), "file": m.get("file"), "line": m.get("line"),
+                          "type": m.get("operator"), "original": m.get("original") or "",
+                          "replacement": m.get("replacement") or "", "bug": m.get("bug") or None,
+                          "test": m.get("detail") or ""})
         if m.get("status") not in REPORTED:
             continue
         # mutants gives one detail to each mutant of a group that no test runs, such as a
@@ -104,7 +108,27 @@ def summarise(data, complete=True):
                              "lines": list(g.get("lines") or []), "callers": list(g.get("callers") or [])}
                             for g in data.get("callerGaps") or []],
             "proposals": proposals, "rejected": rejections, "proposed": proposed,
-            "by_ref": by_ref, "killed": killed}
+            "by_ref": by_ref, "killed": killed, "kills": kills}
+
+
+def kills_by_line(kills):
+    by_line = {}
+    for k in kills:
+        by_line.setdefault((str(k.get("file")), k.get("line") or 0), []).append(k.get("type"))
+    if not by_line:
+        return ""
+    rows = []
+    for (file, line), types in sorted(by_line.items()):
+        counted = ", ".join(t if types.count(t) == 1 else f"{t} ({types.count(t)})" for t in dict.fromkeys(types))
+        rows.append(f"  {file}:{line} {counted}\n")
+    return "KILLED:\n" + "".join(rows)
+
+
+def _with_kills(out, kills):
+    """The counts of mutants stay last: a reader who cuts the output with tail must still see them."""
+    lines = out.splitlines(keepends=True)
+    at = next((i for i, line in enumerate(lines) if line.startswith("mutants: ")), len(lines))
+    return "".join(lines[:at]) + kills_by_line(kills) + "".join(lines[at:])
 
 
 def _read(stream, lines, echo):
@@ -172,15 +196,21 @@ def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gap
             data = json.loads(report.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             data = None
-    if echo:
-        sys.stdout.write(out)
-        sys.stdout.flush()
     if code not in (0, 10, TIMED_OUT) or not isinstance(data, dict):
+        _echo(out, echo)
         reason, tests_fail = _failure(code, err)
         if code == TIMED_OUT:
             return TIMED_OUT, not_run(reason)
         return (TESTS_FAIL if tests_fail else 2), not_run(reason, tests_fail)
-    return code, summarise(data, complete=code != TIMED_OUT)
+    result = summarise(data, complete=code != TIMED_OUT)
+    _echo(_with_kills(out, result["kills"]), echo)
+    return code, result
+
+
+def _echo(out, echo):
+    if echo:
+        sys.stdout.write(out)
+        sys.stdout.flush()
 
 
 def rerun(cwd, mutant_id, capture=False, base=None):

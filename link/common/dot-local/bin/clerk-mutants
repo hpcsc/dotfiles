@@ -8,7 +8,9 @@
 
 It changes each line that the work tree changes against <ref> (HEAD unless given: the open
 task), one change at a time, and runs the tests. For Go, it also reports the changed lines
-that the tests of their own package run, but that no test of a changed caller runs.
+that the tests of their own package run, but that no test of a changed caller runs. Under
+KILLED, it lists each changed line where a test caught a change, with the operators of those
+changes: a gate whose line shows a change of its condition needs no proposal for it.
 
 The open run keeps the last run, and `clerk finish` reads it: it refuses a task while the
 tests of that run fail with the real code, while a Go, Python or Elixir file of the task

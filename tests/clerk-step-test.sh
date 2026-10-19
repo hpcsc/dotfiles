@@ -860,7 +860,7 @@ for f in scope-open scope-rules review-open review-rules finding-contract lens-s
          precedents dedupe-open \
          dedupe-rules dedupe-output refute-open refute-file-rule refute-runtime \
          refute-quality report-open report-rules report-tail regrade mechanical \
-         mechanical-tail mutants propose; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
+         mechanical-tail mutants propose kills; do printf 'FRAGMENT %s\n' "$f" > "$PR/audit-implement/prompts/$f.md"; done
 cp "$(cd "$(dirname "$0")/.." && pwd)/link/common/dot-config/.config/ai/method/audit-implement/schemas.json" \
    "$PR/audit-implement/schemas.json"
 export CLERK_AUDIT_PROMPTS="$PR/audit-implement/prompts"
@@ -928,6 +928,7 @@ cat > "$MA/rows.json" <<'EOF'
  {"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}"},
  {"id":"a.go:F:ERROR_REMOVE#1","file":"a.go","line":4,"status":"NOT COVERED","operator":"ERROR_REMOVE","original":"err","replacement":"nil","inside":"a.go:F:BRANCH_IF#1"},
  {"id":"a.go:F:PROPOSED#123456","file":"a.go","line":5,"status":"LIVED","operator":"PROPOSED","original":"x","replacement":"y","bug":"the window ends at the wrong event"},
+ {"id":"a.go:F:CONDITIONALS_NEGATION#1","file":"a.go","line":6,"status":"KILLED","operator":"CONDITIONALS_NEGATION","original":"a == b","replacement":"a != b","detail":"--- FAIL: TestF (0.00s)"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#1","file":"cmd/x/main.go","line":5,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"package cmd/x has no test files"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#2","file":"cmd/x/main.go","line":6,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"stop()","replacement":"","detail":"package cmd/x has no test files"}],
  "callerGaps":[{"file":"b.go","function":"(*B).Check","lines":[102,103,104,106],"callers":["app/handler"]}]}
@@ -951,6 +952,10 @@ eq "a package with no tests is one row, and a caller gap names its lines and cal
    "$(printf '%s' "$TL" | jq -Rsr 'contains("package cmd/x has no test files: 2 mutants") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("b.go:102-104,106 (*B).Check, not run by the tests of app/handler") | tostring')"
 eq "the other lenses do not get the rows" "false" \
    "$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.id == "review:semantic:Go")][0].prompt | contains("MUTANTS:") | tostring')"
+KR='a.go:6 CONDITIONALS_NEGATION: a == b -> a != b — --- FAIL: TestF (0.00s)'
+eq "the tests and semantic lenses get each change that a test caught, with the test, and the guidelines lens does not" \
+   "true|true|true|false" \
+   "$(printf '%s' "$TL" | jq -Rsr --arg r "$KR" 'contains("FRAGMENT kills\n\nKILLED:\n  " + $r) | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("[a.go:F:CONDITIONALS_NEGATION#1]") | not | tostring')|$(printf '%s' "$N" | jq -r --arg r "$KR" '[.next.spawn[] | select(.id == "review:semantic:Go")][0].prompt | contains($r) | tostring')|$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.id == "review:guidelines:Go")][0].prompt | contains("KILLED:") | tostring')"
 
 jq '.languages = ["JavaScript/TypeScript"] | .by_language = [.by_language[1]] | .files = ["x.js","y.js","z.js","w.js"]' "$RA/scope.json" > "$RA/scope-js.json"
 mstub 0 "$MA/empty.json"
@@ -988,8 +993,9 @@ N=$(CLERK_MUTANTS_BIN="$MA/none" run "$RA" audit record --phase scope --results 
 eq "when mutants cannot run, the round names it among what did not run" "true" \
    "$(printf '%s' "$N" | jq -r '[.next.held_back[] | select(startswith("mutants — mutants is not installed"))] | length > 0 | tostring')"
 
-# Rebuild the round the following cases continue from.
-mstub 0 "$MA/empty.json"
+# Rebuild the round the following cases continue from, with one mutant that a test killed.
+printf '{"base":"abc","mutants":[{"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"KILLED","operator":"BRANCH_IF","original":"{ f() }","replacement":"{}","detail":"--- FAIL: TestF (0.00s)"}],"callerGaps":[]}\n' > "$MA/kills.json"
+mstub 0 "$MA/kills.json"
 run "$RA" audit begin --base main --restart >/dev/null 2>&1
 run "$RA" audit record --phase scope --results "$RA/scope.json" >/dev/null 2>&1
 
@@ -1033,6 +1039,8 @@ eq "the report is handed what survived and what did not" "report|true|true" \
    "$(printf '%s' "$N" | jq -r '[.next.phase, (.next.spawn[0].prompt | contains("SURVIVED refutation (1)") | tostring), (.next.spawn[0].prompt | contains("REFUTED and dropped (1)") | tostring)] | join("|")')"
 eq "a lens note reaches the report rather than dying with the lens" "true" \
    "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | contains("looked at the fixture") | tostring')"
+eq "and so does each change that a test caught, so that a gap does not say nobody tried it" "true" \
+   "$(printf '%s' "$N" | jq -r '.next.spawn[0].prompt | contains("KILLED:\n  a.go:3 BRANCH_IF: { f() } -> {} — --- FAIL: TestF (0.00s)") | tostring')"
 printf '{"findings":[],"summary":"done"}' > "$RA/rep.json"
 N=$(run "$RA" audit record --phase report --results "$RA/rep.json")
 eq "the round ends pointing at the command that records it" "done|true" \
@@ -1442,8 +1450,11 @@ eq "a dry run before the scope phase shows the precedents that the round names" 
    "lib/huge.go,lib/fold.go,lib/gone.go,lib/small.go" \
    "$(run "$RP" audit run --dry-run | jq -r '[.precedents[].path] | join(",")')"
 
+mstub 0 "$MA/kills.json"
 N=$(run "$RP" audit record --phase scope --results "$SCOPE_P")
 P=$(lens_prompt "$N" review:semantic:Go)
+eq "the concurrency lens gets each change that a test caught too" "true" \
+   "$(holds "$(lens_prompt "$N" review:concurrency)" '  a.go:3 BRANCH_IF: { f() } -> {} — --- FAIL: TestF (0.00s)')"
 eq "the lenses that judge behaviour get the precedents, and the lenses of names and structure do not" \
    "review:semantic:Go,review:tests:Go,review:concurrency" \
    "$(printf '%s' "$N" | jq -r '[.next.spawn[] | select(.prompt | contains("FRAGMENT precedents")) | .id] | join(",")')"

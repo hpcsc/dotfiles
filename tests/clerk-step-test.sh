@@ -355,6 +355,35 @@ eq "code changed after acceptance reopens the audit" "audit|true" \
 eq "accept with no round at this tree needs --early and a reason" "3" "$(rc "$WT" audit accept)"
 eq "given one, it is recorded" "trivial fix" "$(run "$WT" audit accept --early "trivial fix" | field .early)"
 
+# No round reads a fix made after the last one, so accept reads the last clerk mutants instead.
+MK=$(cd "$(mktemp -d)" && pwd -P)
+cat > "$MK/mutants" <<'EOF'
+#!/usr/bin/env bash
+dir=$(dirname "$0")
+if [ "$2" = --help ]; then printf -- '--caller-gaps --proposals --proposals-anywhere\n'; exit 0; fi
+prev=""; for a in "$@"; do [ "$prev" = --json ] && cp "$dir/report" "$a"; prev=$a; done
+exit "$(cat "$dir/exit")"
+EOF
+chmod +x "$MK/mutants"
+printf '{"base":"main","mutants":[{"id":"f.go:F:BRANCH_IF#1","file":"f.go","line":1,"status":"LIVED","operator":"BRANCH_IF","original":"{ f() }","replacement":"{}"}],"callerGaps":[]}\n' > "$MK/lived.json"
+mstub_k() { printf '%s' "$1" > "$MK/exit"; cp "$2" "$MK/report"; }
+printf 'f\n' > "$WT/f.go"; commit_all "$WT" "Fix after the last round"
+receipt_ok "$WT" "go test ./..." >/dev/null
+A=$(CLERK_MUTANTS_BIN="$MK/mutants" run "$WT" audit accept --early "a small fix")
+eq "a Go file that a fix after the last round changed, and that no clerk mutants run read, holds the acceptance" \
+   "false|e.go,f.go|NOT READ BY A RUN|true" \
+   "$(printf '%s' "$A" | jq -r '[(.accepted|tostring), ([.mutants_findings[].file] | join(",")), .mutants_findings[0].status, (.reason | contains("run clerk mutants --base")|tostring)] | join("|")')"
+# The plugin alone, not through clerk: the cases of clerk stats below count the logged runs of this run.
+mut_k() { (cd "$WT" && CLERK_MUTANTS_BIN="$MK/mutants" "$BIN/clerk-mutants" "$@"); }
+mstub_k 10 "$MK/lived.json"; mut_k --base main >/dev/null 2>&1
+A=$(CLERK_MUTANTS_BIN="$MK/mutants" run "$WT" audit accept --early "a small fix")
+eq "after a run reads it, a row left open in such a file holds it, by its key" "false|f.go:F:BRANCH_IF#1|LIVED" \
+   "$(printf '%s' "$A" | jq -r '[(.accepted|tostring), .mutants_findings[0].key, .mutants_findings[0].status] | join("|")')"
+mut_k accept 'f.go:F:BRANCH_IF#1' 'the branch only logs' >/dev/null
+eq "and with the row closed, the audit is accepted" "true" \
+   "$(CLERK_MUTANTS_BIN="$MK/mutants" run "$WT" audit accept --early "a small fix" | field .accepted)"
+rm -rf "$MK"
+
 # --------------------------------------------------------------------------------
 # --------------------------------------------------------------------------------
 printf '\nthe verbs — positional, the way clerk audit and clerk story spell theirs\n'
@@ -712,11 +741,12 @@ prev=""; for a in "$@"; do [ "$prev" = --json ] && printf '{"base":"x","mutants"
 exit 0
 EOF
 chmod +x "$SE/mutants"
+printf 'package m\n' > "$RE/m.go"
 eq "clerk mutants is logged as evidence" "mutants|0" \
    "$(CLERK_MUTANTS_BIN="$SE/mutants" run "$RE" mutants >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
 eq "and so is a clerk mutants that exits 2 because mutants is missing" "mutants|2" \
    "$(CLERK_MUTANTS_BIN="$SE/none" run "$RE" mutants >/dev/null 2>&1; tail -1 "$EV" | jq -r '[.cmd, (.exit|tostring)] | join("|")')"
-rm -rf "$SE"
+rm -rf "$SE" "$RE/m.go"
 WE=$(run "$RE" isolate ev --worktree | field .path)
 eq "isolate is logged against the run it isolates" "isolate|ev" "$(tail -1 "$EV" | jq -r '[.cmd, .argv[0]] | join("|")')"
 receipt_ok "$WE" inner >/dev/null

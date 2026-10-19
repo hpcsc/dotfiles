@@ -78,3 +78,5 @@ Two failures sit either side of that rule, and neither is defensible: stopping b
 
 If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix receipt is the evidence that matters, and `clerk audit accept --early "<why>"` records that decision.
 
+**No round reads a fix made after the last one, so `clerk mutants` must.** `clerk audit accept` refuses while a Go, Python or Elixir file that changed after the last round has an open row of `clerk mutants`, or no run read the file since. Run `clerk mutants --base <the base of the run>` after the last fix, and close each row as the build step says. Against `HEAD`, a fix that is already folded is no change, and `clerk mutants` exits 3.
+

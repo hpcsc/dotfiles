@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import die, emit, parse  # noqa: E402
+from clerk_lib import die, emit, git_ok, parse  # noqa: E402
 import clerk_audit_panel as panel  # noqa: E402
 from clerk_ledger import (Run, age_seconds, build_ctx, live_of, note_runner_dead, now,  # noqa: E402
                           receipt_state, runner_alive, runner_view)
@@ -230,6 +230,9 @@ def audit_accept(ctx, aud, o):
         emit({"accepted": False, "reason": "no round describes this code tree — run a round, or pass --early \"<why the fixes need no re-audit>\""}, 3)
     if planned is not None and len(rounds) < planned and not o["--early"]:
         emit({"accepted": False, "reason": f"{planned} rounds planned, {len(rounds)} recorded — run the rest, or pass --early \"<why>\""}, 3)
+    held = mutants_after_last_round(ctx, rounds[-1])
+    if held:
+        emit({"accepted": False, **held}, 3)
     aud["accepted"] = {"at": now(), "code_tree": ctx.head_ct, "sha": ctx.head,
                        "rounds": len(rounds), "reason": o["--early"]}
     aud.setdefault("accepts", []).append(aud["accepted"])
@@ -240,6 +243,31 @@ def audit_accept(ctx, aud, o):
     return {"accepted": True, "rounds": len(rounds), "early": o["--early"], "summary": summary,
             "next": next_step(ctx)}
 
+
+
+def mutants_after_last_round(ctx, last):
+    """No audit round reads a fix made after the last one, so the last `clerk mutants` must."""
+    import clerk_mutants
+    sha = last.get("sha")
+    if not sha or not git_ok("cat-file", "-e", f"{sha}^{{commit}}", cwd=ctx.cwd):
+        return None
+    sources = clerk_mutants.sources_changed_since(ctx.cwd, sha)
+    if not sources:
+        return None
+    findings, kind, _ = clerk_mutants.check_sources(ctx.cwd, str(ctx.run.dir), sources)
+    if not kind:
+        return None
+    start = (ctx.run.meta.get("start_commit") or "")[:10] or "<the base of the run>"
+    reason = {
+        "tests_fail": "the tests of the last clerk mutants fail with the real code: make them pass, "
+                      f"run clerk mutants --base {start} again, then accept again",
+        "stale": f"a fix after round {last.get('n')} changed these files, and no clerk mutants run read them "
+                 f"since: run clerk mutants --base {start}, close each row, then accept again",
+        "rows": "a row of the last clerk mutants is open in a file that a fix after the last round changed: "
+                "kill it with clerk mutants --id <key>, or record why no test is worth it with clerk mutants "
+                "accept <key> \"<reason>\", then accept again",
+    }[kind]
+    return {"reason": reason, "mutants_findings": findings}
 
 
 # ---------------------------------------------------------------------------------

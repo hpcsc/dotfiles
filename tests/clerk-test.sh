@@ -2483,6 +2483,7 @@ stub() {  # <exit code> [report file] [stderr text] [stdout text]
   return 0
 }
 RM=$(new_repo)
+printf 'package a\n' > "$RM/a.go"
 mut() { (cd "$RM" && CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
 mutrc() { mut "$@" >/dev/null 2>&1; printf '%s' $?; }
 argv_has() { grep -qxF -- "$1" "$MS/argv" && echo true || echo false; }
@@ -2521,6 +2522,16 @@ mut --base main --operators none --proposals p.jsonl --proposals-anywhere >/dev/
 eq "a base, the operators and the proposals pass through, the file as an absolute path" "true|true|true|true" \
    "$(printf '%s|%s|%s|%s' "$(argv_has main)" "$(argv_has --operators=none)" "$(argv_has "$RM/p.jsonl")" "$(argv_has --proposals-anywhere)")"
 eq "--proposals-anywhere alone is a usage error" "2" "$(stub 0; mutrc --proposals-anywhere)"
+RN=$(new_repo)
+mutn() { (cd "$RN" && CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
+eq "with no changed source file against the base, it runs no mutant, exits 3, and says to pass a base" "3|false|true" \
+   "$(stub 0 "$MS/empty.json"; mutn >/dev/null 2>&1; printf '%s|' $?; [ -f "$MS/argv" ] && printf 'true|' || printf 'false|'; printf '%s' "$(mutn)" | grep -qF 'pass --base <the commit before it>' && echo true || echo false)"
+eq "and --json gives it as a run that did not run" "false|true" \
+   "$(stub 0 "$MS/empty.json"; mutn --json | jq -r '[(.ran|tostring), (.reason|contains("no Go, Python or Elixir file outside the tests changes against HEAD")|tostring)] | join("|")')"
+printf '{}\n' > "$RN/p.jsonl"
+eq "a run of proposals on such a tree still runs, because a proposal can name a line that is already in a commit" "0|true" \
+   "$(stub 0 "$MS/empty.json"; mutn --operators none --proposals p.jsonl --proposals-anywhere >/dev/null 2>&1; printf '%s|' $?; [ -f "$MS/argv" ] && echo true || echo false)"
+rm -rf "$RN"
 
 eq "a run stopped at its limit exits 124 and keeps what got a verdict" "124|true|false" \
    "$(stub 124 "$MS/survivors.json"; printf '%s|' "$(mutrc)"; stub 124 "$MS/survivors.json"; mut --json | jq -r '[(.ran|tostring), (.complete|tostring)] | join("|")')"
@@ -2650,7 +2661,9 @@ F=$(finf 4 -- README.md); FRC=$?
 eq "a task with no Go, Python or Elixir source is not checked" "0|true" \
    "$FRC|$(printf '%s' "$F" | jq -r '.mutants | startswith("not checked") | tostring')"
 git -C "$RF" commit -qm "Task 4"
-stub 0 "$MS/empty.json"; mutf >/dev/null 2>&1
+eq "after a commit, a run against HEAD runs no mutant, and names the commit that the run started at" "3|true" \
+   "$(stub 0 "$MS/empty.json"; mutf >/dev/null 2>&1; printf '%s|' $?; printf '%s' "$(mutf)" | grep -qF "this run started at $(jq -r '.start_commit[:10]' "$LF/run.json")" && echo true || echo false)"
+printf 'package d\n' > "$RF/d.go"; stub 0 "$MS/empty.json"; mutf >/dev/null 2>&1; rm "$RF/d.go"
 mkdir -p "$RF/lib" "$RF/test/support"
 printf 'defmodule A do\n  def f, do: 1\nend\n' > "$RF/lib/a.ex"
 printf 'defmodule A.Stub do\nend\n' > "$RF/test/support/stub.ex"

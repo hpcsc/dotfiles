@@ -18,8 +18,12 @@ proposal closes it. `accept` records why no test is worth it for a row. Its key 
 of a mutant, <file>:<function> of a caller gap, the text of a group that no test runs, such
 as "package cmd/x has no test files", or the bug of a rejected proposal.
 
+A run with no proposals and no changed Go, Python or Elixir file outside the tests against
+<ref> runs nothing: after a commit, the work tree against HEAD holds no change of the task.
+
 Exit 0 nothing to report, 10 survivors, caller gaps or rejected proposals, 1 the tests fail
-with the real code, 124 the time limit, 2 a tool error.
+with the real code, 3 no source file changes against <ref>, 124 the time limit, 2 a tool
+error.
 With --id: 0 a test kills the mutant, 10 it lives or no test runs it, 1 no verdict, 2 an
 unknown id.
 
@@ -31,7 +35,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from clerk_lib import Parser, die, repo  # noqa: E402
+from clerk_lib import Parser, die, gitout, repo  # noqa: E402
+from clerk_ledger import Run  # noqa: E402
 from clerk_repo import task_record_for  # noqa: E402
 from clerk_tasks import next_task  # noqa: E402
 import clerk_mutants as mutants  # noqa: E402
@@ -77,6 +82,18 @@ def accept(argv):
     return 0
 
 
+def no_change(r, args):
+    start = Run(r.ledger_dir).meta.get("start_commit") if r.ledger_dir else None
+    reason = (f"no Go, Python or Elixir file outside the tests changes against {args.base}, so no mutant ran. "
+              f"To check work that is already in a commit, pass --base <the commit before it>"
+              + (f": this run started at {start[:10]}" if start else ""))
+    if args.json:
+        print(json.dumps(mutants.not_run(reason), indent=2))
+    else:
+        print(f"clerk: mutants: {reason}")
+    return mutants.NO_CHANGE
+
+
 def main(argv):
     if argv[:1] == ["accept"] and not any(a in ("-h", "--help") for a in argv):
         return accept(argv[1:])
@@ -109,6 +126,10 @@ def main(argv):
         if code == mutants.RERUN_KILLED:
             mutants.note_killed(r.ledger_dir, args.id)
         return code
+
+    if not args.proposals and gitout("rev-parse", "--verify", "--quiet", f"{args.base}^{{commit}}", cwd=root) \
+            and not mutants.changed_sources(root, args.base):
+        return no_change(r, args)
 
     proposals = str(Path(args.proposals).resolve()) if args.proposals else None
     code, result = mutants.run(root, args.base, proposals=proposals, anywhere=args.proposals_anywhere,

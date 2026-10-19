@@ -22,6 +22,7 @@ LIMIT_SECONDS = 600
 GRACE_SECONDS = 30
 TIMED_OUT = 124
 TESTS_FAIL = 1
+NO_CHANGE = 3
 TESTS_FAIL_TEXT = "fail with the real code"
 RERUN_KILLED = 0
 RERUN_SURVIVED = 10
@@ -214,6 +215,13 @@ def changed_sources(cwd, base):
     return sorted({p for p in (diff + untracked).splitlines() if p and source_file(p)})
 
 
+def sources_changed_since(cwd, commit):
+    """Unlike changed_sources, no merge base: a fold after the commit rewrites the history and keeps the content."""
+    diff = _git(cwd, "diff", "--name-only", "--no-renames", "--diff-filter=d", commit) or ""
+    untracked = _git(cwd, "ls-files", "--others", "--exclude-standard") or ""
+    return sorted({p for p in (diff + untracked).splitlines() if p and source_file(p)})
+
+
 def content_hashes(cwd, paths):
     paths = [p for p in paths if (Path(cwd) / p).is_file()]
     if not paths:
@@ -338,6 +346,11 @@ def finish_check(root, ldir, files):
                and _git(root, "diff", "--quiet", "HEAD", "--", p) is None]
     if not sources:
         return [], None, "not checked: the task changes no Go, Python or Elixir file outside the tests"
+    return check_sources(root, ldir, sources)
+
+
+def check_sources(root, ldir, sources):
+    """(findings, kind, state) as finish_check gives them, for source files named by the caller."""
     if not ldir:
         return [], None, "not checked: no run is open"
     saved = load(ldir)

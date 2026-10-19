@@ -198,6 +198,11 @@ def cmd_finish(n, files, tasks_override=None):
     import clerk_mutants
     mutants_findings, kind, mutants_state = clerk_mutants.finish_check(
         repo.work_tree or repo.repo_root, repo.ledger_dir, files)
+    if kind == "tests_fail":
+        emit({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
+              "next_step": "the tests fail with the real code, so the last clerk mutants got no verdict: "
+                           "make them pass and run clerk mutants again; then run clerk finish again; "
+                           "the paths stay staged"}, 1)
     if kind == "stale":
         emit({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
               "next_step": "run clerk mutants: these files changed after its last run, or no run read them; "

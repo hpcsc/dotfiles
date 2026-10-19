@@ -2441,7 +2441,8 @@ rm -rf "$RD"
 printf '\nmutants — the changed lines that no test catches\n'
 
 # A stub stands in for `mutants`. Files beside it give what it prints for `run --help`, the
-# report it writes, its stderr and its exit code, and it keeps the arguments it was given.
+# report it writes, its stdout, its stderr and its exit code, and it keeps the arguments it
+# was given.
 MS=$(cd "$(mktemp -d)" && pwd -P)
 cat > "$MS/mutants" <<'EOF'
 #!/usr/bin/env bash
@@ -2452,6 +2453,7 @@ printf '%s\n' "$@" > "$dir/argv"
 out=""; prev=""
 for a in "$@"; do [ "$prev" = --json ] && out=$a; prev=$a; done
 [ -n "$out" ] && [ -f "$dir/report" ] && cp "$dir/report" "$out"
+[ -f "$dir/stdout" ] && cat "$dir/stdout"
 [ -f "$dir/stderr" ] && cat "$dir/stderr" >&2
 exit "$(cat "$dir/exit")"
 EOF
@@ -2472,11 +2474,12 @@ cat > "$MS/survivors.json" <<'EOF'
  "proposals":{"accepted":2,"rejected":[{"file":"a.go","old":"q","new":"r","bug":"b","ref":"f3","reason":"old not found"}]}}
 EOF
 printf '{"base":"abc","mutants":[],"callerGaps":[]}\n' > "$MS/empty.json"
-stub() {  # <exit code> [report file] [stderr text]
+stub() {  # <exit code> [report file] [stderr text] [stdout text]
   printf '%s' "$1" > "$MS/exit"
-  rm -f "$MS/report" "$MS/stderr" "$MS/argv"
+  rm -f "$MS/report" "$MS/stdout" "$MS/stderr" "$MS/argv"
   [ -n "${2:-}" ] && cp "$2" "$MS/report"
   [ -n "${3:-}" ] && printf '%s\n' "$3" > "$MS/stderr"
+  [ -n "${4:-}" ] && printf '%s\n' "$4" > "$MS/stdout"
   return 0
 }
 RM=$(new_repo)
@@ -2522,8 +2525,16 @@ eq "--proposals-anywhere alone is a usage error" "2" "$(stub 0; mutrc --proposal
 eq "a run stopped at its limit exits 124 and keeps what got a verdict" "124|true|false" \
    "$(stub 124 "$MS/survivors.json"; printf '%s|' "$(mutrc)"; stub 124 "$MS/survivors.json"; mut --json | jq -r '[(.ran|tostring), (.complete|tostring)] | join("|")')"
 eq "a run stopped by a signal is a run that did not finish" "124" "$(stub 130 "$MS/survivors.json"; mutrc)"
-eq "a run that fails says why, from the last line mutants wrote" "2|false|the tests fail with the real code" \
-   "$(stub 2 "" "the tests fail with the real code"; printf '%s|' "$(mutrc)"; stub 2 "" "the tests fail with the real code"; mut --json | jq -r '[(.ran|tostring), .reason] | join("|")')"
+eq "a run that fails says why, from the last line mutants wrote" "2|false|false|go: cannot find main module" \
+   "$(stub 2 "" "go: cannot find main module"; printf '%s|' "$(mutrc)"; stub 2 "" "go: cannot find main module"; mut --json | jq -r '[(.ran|tostring), (.tests_fail|tostring), .reason] | join("|")')"
+RED=$(printf 'Running the tests one time with the real code\nthe tests of ./... fail with the real code, so no mutant can get a verdict:\nFAIL\tsvc\t0.1s')
+eq "tests that fail with the real code exit 1, and the reason is the line that says so, not the test output after it" \
+   "1|false|true|the tests of ./... fail with the real code, so no mutant can get a verdict" \
+   "$(stub 2 "" "$RED"; printf '%s|' "$(mutrc)"; stub 2 "" "$RED"; mut --json | jq -r '[(.ran|tostring), (.tests_fail|tostring), .reason] | join("|")')"
+OUT=$(stub 2 "" "$RED" "the rows"; mut 2>&1)
+eq "echoed, what mutants writes passes through, and the reason with what to do is the last line" \
+   "true|true|clerk: mutants: the tests of ./... fail with the real code, so no mutant can get a verdict: make the tests pass, then run clerk mutants again" \
+   "$(printf '%s' "$OUT" | grep -qF 'FAIL	svc' && echo true || echo false)|$(printf '%s' "$OUT" | grep -qx 'the rows' && echo true || echo false)|$(printf '%s' "$OUT" | tail -1)"
 eq "--id reruns one mutant and passes its verdict on" "10|true|true" \
    "$(stub 10; printf '%s|' "$(mutrc --id 'a.go:F:BRANCH_IF#1')"; printf '%s|%s' "$(argv_has rerun)" "$(argv_has 'a.go:F:BRANCH_IF#1')")"
 eq "a mutants whose rerun has no --base gets none" "false" "$(stub 0; mutrc --id 'a.go:F:BRANCH_IF#1' >/dev/null; argv_has --base)"
@@ -2624,9 +2635,14 @@ eq "when mutants is not installed, the task finishes and says so" "0|true" \
    "$FRC|$(printf '%s' "$F" | jq -r '.mutants | contains("mutants is not installed") | tostring')"
 git -C "$RF" commit -qm "Task 2"
 printf 'package c\n' > "$RF/c.go"
-stub 2 "" "the tests fail with the real code"; mutf >/dev/null 2>&1
+stub 2 "" "$RED"; mutf >/dev/null 2>&1
 F=$(finf 3 -- c.go); FRC=$?
-eq "when the last run did not run, the task finishes and says so" "0|true" \
+eq "when the tests of the last run fail with the real code, the task is refused, and says what to do" \
+   "1|TESTS FAIL|c.go|true" \
+   "$FRC|$(printf '%s' "$F" | jq -r '[.mutants_findings[0].status, .mutants_findings[0].file, (.next_step|contains("make them pass")|tostring)] | join("|")')"
+stub 2 "" "go: cannot find main module"; mutf >/dev/null 2>&1
+F=$(finf 3 -- c.go); FRC=$?
+eq "when the last run did not run for another reason, the task finishes and says so" "0|true" \
    "$FRC|$(printf '%s' "$F" | jq -r '.mutants | contains("the last clerk mutants did not run") | tostring')"
 git -C "$RF" commit -qm "Task 3"
 printf 'more\n' >> "$RF/README.md"

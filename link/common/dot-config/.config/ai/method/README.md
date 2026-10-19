@@ -189,7 +189,8 @@ The message is judgment, so it goes to the commit agent. For Go, Python and Elix
 mutants` finds a guard that no test can break: it changes each line the task changed, one
 change at a time, and lists each change that no test caught. The model writes the tests that catch
 them, or records with `clerk mutants accept` why no test is worth it, and `clerk finish`
-refuses a task while a row in its files is open or its code changed after the last run.
+refuses a task while a row in its files is open, its code changed after the last run, or the
+tests of the last run fail with the real code.
 The audit shows each accepted reason beside its row, for a lens to judge.
 The other prove-it checks — an absence assertion with a positive partner, a
 source-scanning test re-verified after a move, two values of one type that differ in a
@@ -345,7 +346,7 @@ with `--audit-accepted`. Without either, land refuses.
 | `learn add --type <t> --title <s> --learning <s> --apply-when <s>` · `learn list` · `index` · `show <title>` · `drop <title>` | Appends the block to the learnings file resolved from the **repo root**, not the worktree the run is standing in; refuses an exact title collision, leaving dedup on substance to the caller | 0 · **3** title exists |
 | `lint [--staged] [--rule <r>]... [<paths>]` | The conventions a regex settles: a comment naming code by its position in the breakdown, scenario-named sibling tests, a method apart from its type — and, over a breakdown's task record, a certainty assessed `high` or `medium` with no precedent behind it | 0 clean · **1** findings |
 | `verify` | Uncommitted work, unproven suites, scattered tasks, plus `not_checked` | 0 clean · **1** block |
-| `mutants [--base <ref>] [--json] [--operators <list>] [--proposals <file> [--proposals-anywhere]]` · `mutants --id <id>` | The changed lines that no test catches, from `mutants`: each change no test caught, the mutants that no test runs for one reason as one row, and the changed lines that no test of a changed caller runs. The work tree against HEAD unless `--base` is given. `--id` runs one mutant again | 0 · **10** survivors or caller gaps · **124** time limit · **2** mutants missing or failed |
+| `mutants [--base <ref>] [--json] [--operators <list>] [--proposals <file> [--proposals-anywhere]]` · `mutants --id <id>` | The changed lines that no test catches, from `mutants`: each change no test caught, the mutants that no test runs for one reason as one row, and the changed lines that no test of a changed caller runs. The work tree against HEAD unless `--base` is given. `--id` runs one mutant again | 0 · **10** survivors or caller gaps · **1** the tests fail with the real code · **124** time limit · **2** mutants missing or failed |
 | `land [--integrate\|--no-integrate]` | Archive on the branch; integrate when asked or when the repo says so | 0 · **1** · **3** after a live rebase |
 | `step` · `step start <slug> --request <text>` · `step done <step> …` · `step status` · `step rm <slug>` | The first step of the run that is not done, with the method text for it, computed from the repository and the run's ledger on every call; `start` opens a run and records the request verbatim; `done` records the steps whose completion is a judgment | 0 · **3** several open runs |
 | `audit run [--rounds <n>] …` · `audit round --report <json>` · `audit accept [--early <why>]` | The audit rounds, recorded against a fresh receipt and a clean tree, and the acceptance the audit step and land read | 0 · **3** refused |

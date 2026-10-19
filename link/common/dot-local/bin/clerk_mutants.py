@@ -3,7 +3,9 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
+import threading
 from pathlib import Path
 
 from clerk_audit_panel import MUTATED_FILE_RE, TEST_PATH_RE
@@ -19,6 +21,8 @@ ACCEPTED = "mutants-accepted.jsonl"
 LIMIT_SECONDS = 600
 GRACE_SECONDS = 30
 TIMED_OUT = 124
+TESTS_FAIL = 1
+TESTS_FAIL_TEXT = "fail with the real code"
 RERUN_KILLED = 0
 RERUN_SURVIVED = 10
 
@@ -49,10 +53,10 @@ def locate():
     return exe, None
 
 
-def not_run(reason):
-    return {"ran": False, "reason": reason, "complete": False, "base": None, "mutants": [],
-            "no_tests": [], "caller_gaps": [], "proposals": None, "rejected": [], "proposed": [],
-            "by_ref": {}, "killed": []}
+def not_run(reason, tests_fail=False):
+    return {"ran": False, "reason": reason, "tests_fail": tests_fail, "complete": False, "base": None,
+            "mutants": [], "no_tests": [], "caller_gaps": [], "proposals": None, "rejected": [],
+            "proposed": [], "by_ref": {}, "killed": []}
 
 
 def summarise(data, complete=True):
@@ -91,7 +95,7 @@ def summarise(data, complete=True):
         rejections.append({"key": rejected.get("bug") or "", "file": rejected.get("file"),
                            "reason": rejected.get("reason") or ""})
     proposed = [m.get("bug") or "" for m in data.get("mutants") or [] if m.get("operator") == PROPOSED]
-    return {"ran": True, "reason": None, "complete": complete, "base": data.get("base"),
+    return {"ran": True, "reason": None, "tests_fail": False, "complete": complete, "base": data.get("base"),
             "mutants": rows,
             "no_tests": [{"detail": d, "mutants": g["mutants"], "files": sorted(g["files"])}
                          for d, g in sorted(no_tests.items())],
@@ -102,25 +106,48 @@ def summarise(data, complete=True):
             "by_ref": by_ref, "killed": killed}
 
 
+def _read(stream, lines, echo):
+    for line in stream:
+        lines.append(line)
+        if echo:
+            sys.stderr.write(line)
+            sys.stderr.flush()
+
+
 def _limited(argv, cwd, echo):
-    proc = subprocess.Popen(argv, cwd=cwd, text=True,
-                            stdout=None if echo else subprocess.DEVNULL,
-                            stderr=None if echo else subprocess.PIPE)
+    proc = subprocess.Popen(argv, cwd=cwd, text=True, errors="replace",
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    out, err = [], []
+    readers = [threading.Thread(target=_read, args=(proc.stdout, out, False), daemon=True),
+               threading.Thread(target=_read, args=(proc.stderr, err, echo), daemon=True)]
+    for reader in readers:
+        reader.start()
     try:
-        _, err = proc.communicate(timeout=LIMIT_SECONDS + GRACE_SECONDS)
+        proc.wait(timeout=LIMIT_SECONDS + GRACE_SECONDS)
         stopped = False
     except subprocess.TimeoutExpired:
         # mutants stops its test processes on SIGTERM, and cannot on SIGKILL.
         proc.send_signal(signal.SIGTERM)
         try:
-            _, err = proc.communicate(timeout=GRACE_SECONDS)
+            proc.wait(timeout=GRACE_SECONDS)
         except subprocess.TimeoutExpired:
             proc.kill()
-            _, err = proc.communicate()
+            proc.wait()
         stopped = True
+    for reader in readers:
+        reader.join(timeout=GRACE_SECONDS)
     # mutants exits 130 when a signal stops it, which here means the run did not finish.
     code = TIMED_OUT if stopped or proc.returncode == 130 else proc.returncode
-    return code, err or ""
+    return code, "".join(out), "".join(err)
+
+
+def _failure(code, err):
+    """mutants writes the test output after the line that says the tests fail, so the last line is not the reason."""
+    lines = [line.strip() for line in err.splitlines() if line.strip()]
+    failing = next((line for line in lines if TESTS_FAIL_TEXT in line), None)
+    if failing:
+        return failing.rstrip(":"), True
+    return (lines[-1] if lines else f"mutants exited {code} with no report"), False
 
 
 def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gaps=True, echo=False):
@@ -139,14 +166,19 @@ def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gap
             argv += ["--proposals", str(proposals)]
         if anywhere:
             argv.append("--proposals-anywhere")
-        code, err = _limited(argv, cwd, echo)
+        code, out, err = _limited(argv, cwd, echo)
         try:
             data = json.loads(report.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             data = None
+    if echo:
+        sys.stdout.write(out)
+        sys.stdout.flush()
     if code not in (0, 10, TIMED_OUT) or not isinstance(data, dict):
-        last = next((line for line in reversed(err.splitlines()) if line.strip()), "")
-        return (TIMED_OUT if code == TIMED_OUT else 2), not_run(last or f"mutants exited {code} with no report")
+        reason, tests_fail = _failure(code, err)
+        if code == TIMED_OUT:
+            return TIMED_OUT, not_run(reason)
+        return (TESTS_FAIL if tests_fail else 2), not_run(reason, tests_fail)
     return code, summarise(data, complete=code != TIMED_OUT)
 
 
@@ -227,6 +259,7 @@ def save(ldir, cwd, base, result, every_operator):
     proposal_rows, rejections = open_proposals(kept, result) if result["ran"] else ([], [])
     if every_operator:
         record = {"at": now(), "base": base, "ran": result["ran"], "reason": result["reason"],
+                  "tests_fail": result["tests_fail"],
                   "complete": result["complete"], "rows": result["mutants"] + proposal_rows,
                   "rejected": result["rejected"] + rejections, "no_tests": result["no_tests"],
                   "caller_gaps": result["caller_gaps"], "killed": [],
@@ -292,7 +325,7 @@ def _one_line(text):
 
 
 def finish_check(root, ldir, files):
-    """(findings, kind, state): kind is "stale" or "rows" for a refusal, and None for a pass,
+    """(findings, kind, state): kind is "tests_fail", "stale" or "rows" for a refusal, and None for a pass,
     whose state says what was checked."""
     top = Path(root).resolve()
     named = []
@@ -308,6 +341,9 @@ def finish_check(root, ldir, files):
     if not ldir:
         return [], None, "not checked: no run is open"
     saved = load(ldir)
+    if saved and not saved.get("ran") and saved.get("tests_fail"):
+        return ([{"file": ", ".join(sources), "status": "TESTS FAIL", "row": saved.get("reason")}],
+                "tests_fail", None)
     if saved and not saved.get("ran"):
         return [], None, f"not checked: the last clerk mutants did not run: {saved.get('reason')}"
     hashes = content_hashes(root, sources)

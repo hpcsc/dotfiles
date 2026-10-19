@@ -10,16 +10,16 @@ It changes each line that the work tree changes against <ref> (HEAD unless given
 task), one change at a time, and runs the tests. For Go, it also reports the changed lines
 that the tests of their own package run, but that no test of a changed caller runs.
 
-The open run keeps the last run, and `clerk finish` reads it: it refuses a task while a Go
-or Python file of the task changed after that run, while a row in the task's files is
-neither killed by `--id` nor accepted, or while a proposal is rejected. A row of a proposal
-stays until a run with that proposal closes it. `accept` records why no test is worth it for
-a row. Its key is the id of a mutant, <file>:<function> of a caller gap, the text of a group
-that no test runs, such as "package cmd/x has no test files", or the bug of a rejected
-proposal.
+The open run keeps the last run, and `clerk finish` reads it: it refuses a task while the
+tests of that run fail with the real code, while a Go, Python or Elixir file of the task
+changed after that run, while a row in the task's files is neither killed by `--id` nor
+accepted, or while a proposal is rejected. A row of a proposal stays until a run with that
+proposal closes it. `accept` records why no test is worth it for a row. Its key is the id
+of a mutant, <file>:<function> of a caller gap, the text of a group that no test runs, such
+as "package cmd/x has no test files", or the bug of a rejected proposal.
 
-Exit 0 nothing to report, 10 survivors, caller gaps or rejected proposals, 124 the time
-limit, 2 a tool error.
+Exit 0 nothing to report, 10 survivors, caller gaps or rejected proposals, 1 the tests fail
+with the real code, 124 the time limit, 2 a tool error.
 With --id: 0 a test kills the mutant, 10 it lives or no test runs it, 1 no verdict, 2 an
 unknown id.
 
@@ -116,8 +116,10 @@ def main(argv):
     mutants.save(r.ledger_dir, root, args.base, result, every_operator=not args.operators)
     if args.json:
         print(json.dumps(result, indent=2))
+    elif result["tests_fail"]:
+        print(f"clerk: mutants: {result['reason']}: make the tests pass, then run clerk mutants again")
     elif not result["ran"]:
-        print(f"clerk: mutants: {result['reason']}", file=sys.stderr)
+        print(f"clerk: mutants: {result['reason']}")
     return code
 
 

@@ -92,6 +92,11 @@ eq "an empty worktree is started in place, not left sitting" \
 eq "opening it with the prompt that begins the work" \
    "workmux open empty --prompt /implement /t/e.md --in-place" "$(tail -1 <<<"$out")"
 
+NAMED=$(jq -c '. + {handle: "age-1-fresh", branch: "age-1-a-long-story-fresh"}' <<<"$FRESH")
+eq "a handle from clerk story names the window, and the plan's branch is the branch" \
+   "workmux add age-1-a-long-story-fresh --name age-1-fresh --base ddd4444444 --prompt /implement /t/d.md --in-place" \
+   "$(open_it s "$NAMED" | tail -1)"
+
 eq "a call without a deliverable is a usage error" "2" "$(open_it s >/dev/null; echo $?)"
 
 printf '\ndeliverable-open, started by a caller that starts several\n'

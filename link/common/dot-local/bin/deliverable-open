@@ -60,7 +60,10 @@ esac
 # Opening beats starting whenever a worktree already exists: `workmux add` would scaffold a
 # second one for a deliverable someone is already building, and the first one's commits would
 # be stranded on a branch nobody is looking at.
-handle="${story}-${id}"
+handle=$(field handle "$2")
+[ -n "${handle}" ] || handle="${story}-${id}"
+branch=$(field branch "$2")
+[ -n "${branch}" ] || branch="${handle}"
 
 # Find the window already showing this worktree, by the path its panes sit in. workmux
 # identifies a tmux target by NAME — with `window_prefix: ""` the worktree handle is the
@@ -118,5 +121,5 @@ fi
 echo "starting ${id} on ${base:0:10} — /implement ${tasks}"
 background_flag=()
 [ "$background" -eq 1 ] && background_flag=(--background)
-workmux add "${handle}" --name "${handle}" ${base:+--base "${base}"} ${mode[@]+"${mode[@]}"} \
+workmux add "${branch}" --name "${handle}" ${base:+--base "${base}"} ${mode[@]+"${mode[@]}"} \
   ${background_flag[@]+"${background_flag[@]}"} --prompt "/implement ${tasks} ${implement_flags}"

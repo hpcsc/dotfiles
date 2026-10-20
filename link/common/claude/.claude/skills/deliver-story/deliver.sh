@@ -127,11 +127,12 @@ set_status() {
 CLERK_STATE=""
 if command -v clerk >/dev/null 2>&1; then
   CLERK_STATE=$(clerk story "$PLAN" --no-fetch 2>/dev/null |
-    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // ""), (.evidence // "")] | join("|")' 2>/dev/null) || CLERK_STATE=""
+    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // ""), (.evidence // ""), .handle] | join("|")' 2>/dev/null) || CLERK_STATE=""
 fi
 clerk_field_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" -v f="$2" '$1 == i {print $f; exit}'; }
 clerk_state_of()  { clerk_field_of "$1" 2; }
 clerk_where_of()  { clerk_field_of "$1" 3; }
+clerk_handle_of() { clerk_field_of "$1" 5; }
 
 # Reconcile: advance running/in-review deliverables whose work is now in the default
 # branch to merged, so dependents unlock. `clerk story` answers first, because it also
@@ -301,7 +302,8 @@ while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
   [ -f "$tasks_abs" ] || die "deliverable $id: task file missing: $tasks_abs"
   bc=$(base_commit "$base") || die "deliverable $id: cannot resolve base '$base'"
 
-  handle="$STORY_SLUG-$id"
+  handle=$(clerk_handle_of "$id")
+  [ -n "$handle" ] || handle="$STORY_SLUG-$id"
   # --in-place because workmux already made the worktree and started this agent inside it;
   # without it the run would scaffold a second one for work it is already standing in.
   # No --review-plan: a wave fires many of these at once and nobody is reading the panes,

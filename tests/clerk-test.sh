@@ -1393,7 +1393,7 @@ eq "and without it, the story fetches the default branch first" "$(git -C "$OTHE
 rm -rf "$ORIGIN39" "$OTHER"
 
 # --------------------------------------------------------------------------------
-printf '\nstory — the PR and the window of each deliverable\n'
+printf '\nstory — the PR, the window and the handle of each deliverable\n'
 
 STORY_STUBS=$(mktemp -d)
 cat > "$STORY_STUBS/gh" <<'EOF'
@@ -1458,8 +1458,12 @@ eq "and --table marks the PR as unknown, not as missing" "?" \
 GH_CALLS="$STORY_STUBS/calls" stubbed "$R22" story >/dev/null
 eq "a repo with no GitHub origin never asks gh" "no" "$([ -s "$STORY_STUBS/calls" ] && echo yes || echo no)"
 
+eq "a deliverable with no worktree gets a handle after the ticket, not the long slug" "age-9-one" \
+   "$(one "$(GH_OUT=$NO_PR stubbed "$R38" story --no-fetch)" handle)"
 WT38="$R38/.worktrees/a-handle-made-elsewhere"
 git -C "$R38" worktree add -q "$WT38" sq-one >/dev/null 2>&1
+eq "one with a worktree keeps the name of that worktree" "a-handle-made-elsewhere" \
+   "$(one "$(GH_OUT=$NO_PR stubbed "$R38" story --no-fetch)" handle)"
 eq "the window is the one with a pane inside the worktree" "Work:4" \
    "$(one "$(PANES="Work:1\t$R38\nWork:4\t$WT38/lib\n" GH_OUT=$NO_PR stubbed "$R38" story --no-fetch)" window)"
 eq "and a pane in the main checkout is not a pane in a worktree under it" "null" \

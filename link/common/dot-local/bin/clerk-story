@@ -13,6 +13,7 @@ Dispatched to by `clerk` when invoked as `clerk story`, and runnable on its own.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -33,6 +34,21 @@ def git(*args):
 @lru_cache(maxsize=None)
 def commit_of(ref):
     return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}") or None
+
+
+def fetch(default_branch):
+    """False when origin did not answer. True when there is no origin to ask."""
+    if not git_ok("remote", "get-url", "origin"):
+        return True
+    try:
+        p = subprocess.run(
+            ["git", "fetch", "--quiet", "origin", default_branch],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    return p.returncode == 0
 
 
 def local_branches():
@@ -235,11 +251,12 @@ def main(argv):
         return stack_main(argv[1:])
     ap = Parser()
     ap.add_argument("--table", action="store_true", help="a table for a human instead of JSON")
+    ap.add_argument("--no-fetch", action="store_true", help="compare against origin as it was last fetched")
     ap.add_argument("plan", nargs="?", help="a plan.yaml; default: every live plan under tasks/")
     args = ap.parse_args(argv)
     if args.help:
         print(__doc__.strip())
-        print("\nUSAGE\n  clerk story [<plan.yaml>] [--table]"
+        print("\nUSAGE\n  clerk story [<plan.yaml>] [--table] [--no-fetch]"
               "\n  clerk story stack [<plan.yaml>] [--json]          print the stack"
               "\n  clerk story stack create [<plan.yaml>] [--json]   open and retarget the PRs")
         return 0
@@ -250,6 +267,10 @@ def main(argv):
     default_branch = r.default_branch
     if not default_branch:
         die("no default branch resolved, and every merged test is taken against one")
+
+    if not args.no_fetch and not fetch(default_branch):
+        print(f"clerk story: could not fetch origin {default_branch}; the states are as of the last fetch",
+              file=sys.stderr)
 
     # Compare against origin/<default> when it exists, not the local branch of that name.
     # A local default left unpulled is behind the remote, and every branch cut from the

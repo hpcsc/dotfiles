@@ -1375,6 +1375,24 @@ eq "a deliverable with two task files counts the tasks of both" "1/2|tasks/pair/
    "$(run "$R37" story | jq -r '.[0].deliverables[0] | "\(.done)/\(.total)|\(.tasks_file | sub(".*/tasks/pair/"; "tasks/pair/"))"')"
 
 # --------------------------------------------------------------------------------
+printf '\nstory — the fetch before it compares\n'
+
+R39=$(new_repo); ORIGIN39=$(mktemp -d); git init -q --bare "$ORIGIN39"
+mkdir -p "$R39/tasks/f"; printf 'story: F\nstory_slug: f\ndeliverables: []\n' > "$R39/tasks/f/plan.yaml"
+git -C "$R39" add -A && git -C "$R39" commit -qm "Plan"
+git -C "$R39" remote add origin "$ORIGIN39"; git -C "$R39" push -q origin main
+OTHER=$(mktemp -d); git clone -q "$ORIGIN39" "$OTHER/c"
+git -C "$OTHER/c" -c user.email=o@test -c user.name=O -c commit.gpgsign=false commit -q --allow-empty -m "Pushed elsewhere"
+git -C "$OTHER/c" push -q origin main
+BEFORE=$(git -C "$R39" rev-parse origin/main)
+run "$R39" story --no-fetch >/dev/null
+eq "--no-fetch leaves origin as it was last fetched" "$BEFORE" "$(git -C "$R39" rev-parse origin/main)"
+run "$R39" story >/dev/null
+eq "and without it, the story fetches the default branch first" "$(git -C "$OTHER/c" rev-parse HEAD)" \
+   "$(git -C "$R39" rev-parse origin/main)"
+rm -rf "$ORIGIN39" "$OTHER"
+
+# --------------------------------------------------------------------------------
 printf '\nstack — PR bases derived from the plan DAG\n'
 
 # The fixture has no origin, so no `gh` call is made and every openable deliverable

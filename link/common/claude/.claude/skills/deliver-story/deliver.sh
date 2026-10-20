@@ -203,7 +203,7 @@ launched_handles=""
 # state from the sidecar, the branch and the worktree list, so ask it before firing.
 CLERK_STATE=""
 if command -v clerk >/dev/null 2>&1; then
-  CLERK_STATE=$(clerk story "$PLAN" 2>/dev/null |
+  CLERK_STATE=$(clerk story "$PLAN" --no-fetch 2>/dev/null |
     jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // "")] | join("|")' 2>/dev/null) || CLERK_STATE=""
 fi
 clerk_state_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" '$1 == i {print $2; exit}'; }

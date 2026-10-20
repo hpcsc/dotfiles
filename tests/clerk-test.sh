@@ -1393,7 +1393,7 @@ eq "and without it, the story fetches the default branch first" "$(git -C "$OTHE
 rm -rf "$ORIGIN39" "$OTHER"
 
 # --------------------------------------------------------------------------------
-printf '\nstory — the PR of each deliverable\n'
+printf '\nstory — the PR and the window of each deliverable\n'
 
 STORY_STUBS=$(mktemp -d)
 cat > "$STORY_STUBS/gh" <<'EOF'
@@ -1402,7 +1402,11 @@ cat > "$STORY_STUBS/gh" <<'EOF'
 [ -z "${GH_ERR:-}" ] || { printf '%s\n' "$GH_ERR" >&2; exit 1; }
 printf '%s' "${GH_OUT:-}"
 EOF
-chmod +x "$STORY_STUBS/gh"
+cat > "$STORY_STUBS/tmux" <<'EOF'
+#!/usr/bin/env bash
+printf '%b' "${PANES:-}"
+EOF
+chmod +x "$STORY_STUBS/gh" "$STORY_STUBS/tmux"
 stubbed() { PATH="$STORY_STUBS:$PATH" run "$@"; }
 
 R38=$(new_repo); mkdir -p "$R38/tasks/sq/one"
@@ -1453,6 +1457,14 @@ eq "and --table marks the PR as unknown, not as missing" "?" \
    "$(GH_ERR="HTTP 502: Bad Gateway" stubbed "$R38" story --no-fetch --table | awk '/ one$/ {print $4}')"
 GH_CALLS="$STORY_STUBS/calls" stubbed "$R22" story >/dev/null
 eq "a repo with no GitHub origin never asks gh" "no" "$([ -s "$STORY_STUBS/calls" ] && echo yes || echo no)"
+
+WT38="$R38/.worktrees/a-handle-made-elsewhere"
+git -C "$R38" worktree add -q "$WT38" sq-one >/dev/null 2>&1
+eq "the window is the one with a pane inside the worktree" "Work:4" \
+   "$(one "$(PANES="Work:1\t$R38\nWork:4\t$WT38/lib\n" GH_OUT=$NO_PR stubbed "$R38" story --no-fetch)" window)"
+eq "and a pane in the main checkout is not a pane in a worktree under it" "null" \
+   "$(one "$(PANES="Work:1\t$R38\n" GH_OUT=$NO_PR stubbed "$R38" story --no-fetch)" window)"
+git -C "$R38" worktree remove --force "$WT38" 2>/dev/null
 
 rm -rf "$STORY_STUBS"
 

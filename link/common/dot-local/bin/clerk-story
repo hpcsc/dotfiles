@@ -154,6 +154,32 @@ def base_commit(base, described):
     return commit_of(f"origin/{base}") or commit_of(base)
 
 
+def tmux_panes():
+    """(window, path) for every tmux pane, as `session:index`. None outside tmux."""
+    try:
+        p = subprocess.run(
+            ["tmux", "list-panes", "-a", "-F", "#{session_name}:#{window_index}\t#{pane_current_path}"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return []
+    if p.returncode != 0:
+        return []
+    return [tuple(line.split("\t", 1)) for line in p.stdout.splitlines() if "\t" in line]
+
+
+def windows_by_worktree(worktrees, panes):
+    """{worktree path: the first window with a pane inside it}."""
+    # Deepest first: the main checkout holds every path under .worktrees/ as well.
+    paths = sorted((w["path"] for w in worktrees if w.get("path")), key=len, reverse=True)
+    found = {}
+    for window, cwd in panes:
+        owner = next((p for p in paths if cwd == p or cwd.startswith(p + "/")), None)
+        if owner:
+            found.setdefault(owner, window)
+    return found
+
+
 def pull_request(node):
     commits = (node.get("commits") or {}).get("nodes") or [{}]
     rollup = ((commits[-1].get("commit") or {}).get("statusCheckRollup") or {}).get("state")
@@ -252,6 +278,7 @@ def describe(deliverable, tasks_home, ref, worktrees, branches):
         "branch_exists": exists,
         "branch_alias": alias,
         "worktree": worktree,
+        "window": None,
         "pr": None,
         "ahead": ahead,
         "unmerged_commits": unmerged,
@@ -321,6 +348,7 @@ def pr_label(d, pr_error):
 
 def render_table(stories):
     pr_width = max([len(pr_label(d, s["pr_error"])) for s in stories for d in s["deliverables"]] + [1])
+    window_width = max([len(d["window"] or "-") for s in stories for d in s["deliverables"]] + [1])
     lines = []
     for s in stories:
         lines.append(f"{s['story_slug'] or s['plan']}   ({s['story']})")
@@ -330,7 +358,10 @@ def render_table(stories):
             # 15, not 14: `awaiting-merge` is exactly 14 characters and would touch the
             # column beside it.
             progress = f"{d['done']}/{d['total']}"
-            row = f"  {d['state']:<15}w{d['wave']}  {progress:<6}{pr_label(d, s['pr_error']):<{pr_width}}  {d['id']}"
+            row = (
+                f"  {d['state']:<15}w{d['wave']}  {progress:<6}{pr_label(d, s['pr_error']):<{pr_width}}  "
+                f"{d['window'] or '-':<{window_width}}  {d['id']}"
+            )
             if d["blocked_by"]:
                 row += "  blocked by " + ", ".join(d["blocked_by"])
             if d["branch_alias"]:
@@ -388,6 +419,7 @@ def main(argv):
             die(f"no plan.yaml under {tasks_home}/tasks outside completed/ — name one, or decompose a story first")
 
     branches = local_branches()
+    windows = windows_by_worktree(r.worktrees, tmux_panes())
     described_plans = []
     for path in plans:
         doc = load_plan(path)
@@ -395,6 +427,7 @@ def main(argv):
         described = [describe(d, tasks_home, ref, r.worktrees, branches) for d in siblings if d.get("id")]
         for d in described:
             d["base_commit"] = base_commit(d["base"], described)
+            d["window"] = windows.get(d["worktree"])
         described_plans.append((path, doc, described))
 
     unlanded = [d for _, _, described in described_plans for d in described if d["unmerged_commits"] > 0]

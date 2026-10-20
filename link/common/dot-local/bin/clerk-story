@@ -16,6 +16,7 @@ import json
 import re
 import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -27,6 +28,15 @@ def git(*args):
     """stdout, stripped. A failing git call answers with the empty string: every caller
     here is asking a question whose 'no' is an empty answer, not an error."""
     return gitout(*args) or ""
+
+
+@lru_cache(maxsize=None)
+def commit_of(ref):
+    return git("rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}") or None
+
+
+def local_branches():
+    return [ref.removeprefix("refs/heads/") for ref in git("for-each-ref", "--format=%(refname)", "refs/heads").splitlines()]
 
 
 def find_plans(tasks_home):
@@ -83,14 +93,14 @@ def task_record_progress(tasks_home, task_files):
     return total, done
 
 
-def branch_alias_for(deliverable_id):
+def branch_alias_for(deliverable_id, branches):
     """A branch not carrying the planned name is what makes a driver scaffold a second
     worktree for work already under way. Find the one that looks like it and answer for
     that, rather than reporting the deliverable as untouched."""
     # The id as a whole path segment or dash-separated word: `auth` is found in
     # `feat/auth` and `auth-v2`, and not inside `reauth-fix`.
     pat = re.compile(rf"(^|[/-]){re.escape(deliverable_id)}([/-]|$)")
-    for name in git("for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines():
+    for name in branches:
         if pat.search(name):
             return name
     return None
@@ -115,16 +125,11 @@ def base_commit(base, described):
         return None
     for sib in described:
         if sib.get("id") == base:
-            branch = sib.get("branch_alias") or sib.get("branch") or ""
-            return git("rev-parse", "--verify", "--quiet", f"{branch}^{{commit}}") or None
-    return (
-        git("rev-parse", "--verify", "--quiet", f"origin/{base}^{{commit}}")
-        or git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")
-        or None
-    )
+            return commit_of(sib.get("branch_alias") or sib.get("branch") or "")
+    return commit_of(f"origin/{base}") or commit_of(base)
 
 
-def describe(deliverable, tasks_home, ref, worktrees):
+def describe(deliverable, tasks_home, ref, worktrees, branches):
     d = deliverable
     did = d.get("id") or ""
     branch = d.get("branch") or ""
@@ -133,9 +138,9 @@ def describe(deliverable, tasks_home, ref, worktrees):
 
     alias = None
     effective = branch
-    exists = bool(branch) and git_ok("show-ref", "--verify", "--quiet", f"refs/heads/{branch}")
+    exists = bool(branch) and branch in branches
     if not exists:
-        alias = branch_alias_for(did)
+        alias = branch_alias_for(did, branches)
         if alias:
             effective, exists = alias, True
 
@@ -251,7 +256,7 @@ def main(argv):
     # remote then measures as that many commits "ahead" — work that is really the gap
     # between the two, which reads as a deliverable under way when nothing was built.
     ref = default_branch
-    if git("rev-parse", "--verify", "--quiet", f"origin/{default_branch}^{{commit}}"):
+    if commit_of(f"origin/{default_branch}"):
         ref = f"origin/{default_branch}"
 
     if plan_arg:
@@ -264,11 +269,12 @@ def main(argv):
         if not plans:
             die(f"no plan.yaml under {tasks_home}/tasks outside completed/ — name one, or decompose a story first")
 
+    branches = local_branches()
     stories = []
     for path in plans:
         doc = load_plan(path)
         siblings = doc.get("deliverables") or []
-        described = [describe(d, tasks_home, ref, r.worktrees) for d in siblings if d.get("id")]
+        described = [describe(d, tasks_home, ref, r.worktrees, branches) for d in siblings if d.get("id")]
         for d in described:
             d["base_commit"] = base_commit(d["base"], described)
         stories.append(

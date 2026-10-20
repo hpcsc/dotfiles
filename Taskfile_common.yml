@@ -55,6 +55,12 @@ tasks:
     cmds:
       - ./tests/tmux-custom-keys-test.sh
 
+  test:tmux-deliverables:
+    desc: Run the tests of the tmux-deliverables TUI
+    dir: ./tools/tmux-deliverables
+    cmds:
+      - go test ./...
+
   test:python:
     desc: Static checks over every Python file in the repo
     cmds:
@@ -67,6 +73,7 @@ tasks:
       - task: test:python
       - task: test:guidelines
       - task: test:tmux-custom-keys
+      - task: test:tmux-deliverables
       - task: gen:skills:check
       - task: gen:agent-models:check
 
@@ -97,6 +104,7 @@ tasks:
       - neovim
       - tmux
       - workmux-form
+      - tmux-deliverables
       - claude-code
 
   langtools:
@@ -226,3 +234,11 @@ tasks:
     cmds:
       - mkdir -p "$HOME/.local/bin"
       - go build -o "$HOME/.local/bin/workmux-new-form" .
+
+  tmux-deliverables:
+    desc: Build the tmux-deliverables TUI to ~/.local/bin - requires go (mise)
+    run: once
+    dir: ./tools/tmux-deliverables
+    cmds:
+      - mkdir -p "$HOME/.local/bin"
+      - go build -o "$HOME/.local/bin/tmux-deliverables" .

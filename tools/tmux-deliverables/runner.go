@@ -15,4 +15,14 @@ type runner interface {
 	openURL(url string) error
 	closeWindow(root, handle string) error
 	archive(root, planPath string, force bool) error
+
+	// features are the stories files of a repo: a Markdown file with **Ticket:** lines.
+	features(root string) []feature
+	// project is what `clerk project` says of the stories of one feature.
+	project(root, feature string) (project, error)
+	// claudeWindow opens a window named `name` in the session of the client, with Claude
+	// started on `prompt`, unless one with that name is open already. It returns the target.
+	claudeWindow(client, root, name, prompt string) (string, error)
+	// start starts a deliverable in a background window, and says what it did.
+	start(d *deliverable, gears bool) (string, error)
 }

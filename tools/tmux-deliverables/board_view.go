@@ -281,24 +281,29 @@ func (m boardView) enter() (tea.Model, tea.Cmd) {
 		m.rebuild()
 		return m, nil
 	case r.kind == windowRow:
-		return m, m.switchTo(r.w.target)
-	case r.kind == deliverableRow && r.d.window != nil:
-		return m, m.switchTo(r.d.window.target)
+		return m, switchTo(m.run, m.client, r.w.target)
 	case r.kind == deliverableRow:
-		run, client, d := m.run, m.client, r.d
-		return m, func() tea.Msg {
-			text, err := run.open(client, d)
-			if err != nil {
-				return doneMsg{text: err.Error()}
-			}
-			return doneMsg{text: text, quit: true}
-		}
+		return m, goTo(m.run, m.client, r.d)
 	}
 	return m, nil
 }
 
-func (m boardView) switchTo(target string) tea.Cmd {
-	run, client := m.run, m.client
+// goTo goes to the window of the deliverable, or opens or starts it through
+// deliverable-open when it has none. Both close the popup.
+func goTo(run runner, client string, d *deliverable) tea.Cmd {
+	if d.window != nil {
+		return switchTo(run, client, d.window.target)
+	}
+	return func() tea.Msg {
+		text, err := run.open(client, d)
+		if err != nil {
+			return doneMsg{text: err.Error()}
+		}
+		return doneMsg{text: text, quit: true}
+	}
+}
+
+func switchTo(run runner, client, target string) tea.Cmd {
 	return func() tea.Msg {
 		if err := run.switchTo(client, target); err != nil {
 			return doneMsg{text: "could not go to " + target + ": " + err.Error()}
@@ -477,24 +482,27 @@ func (m boardView) readPreview() tea.Cmd {
 		return nil
 	}
 	key, run, lines := r.key(), m.run, m.previewHeight()
-	paneID := ""
-	switch {
-	case r.kind == windowRow:
-		paneID = r.w.pane
-	case r.kind == deliverableRow && r.d.window != nil:
-		paneID = r.d.window.pane
-	}
-	if paneID != "" {
-		return func() tea.Msg { return previewMsg{key, run.capture(paneID, lines)} }
-	}
-	if r.kind == deliverableRow {
-		d := r
-		return func() tea.Msg {
-			return previewMsg{key, deliverablePreview(d.d) + "\n" + run.readFile(d.d.TasksFile, lines)}
-		}
+	switch r.kind {
+	case windowRow:
+		pane := r.w.pane
+		return func() tea.Msg { return previewMsg{key, run.capture(pane, lines)} }
+	case deliverableRow:
+		return previewOf(run, key, r.d, lines)
 	}
 	text := storyPreview(r)
 	return func() tea.Msg { return previewMsg{key, text} }
+}
+
+// previewOf is the end of the agent's pane when the deliverable has a window, else what
+// clerk knows of it and the start of its task file.
+func previewOf(run runner, key string, d *deliverable, lines int) tea.Cmd {
+	if d.window != nil {
+		pane := d.window.pane
+		return func() tea.Msg { return previewMsg{key, run.capture(pane, lines)} }
+	}
+	return func() tea.Msg {
+		return previewMsg{key, deliverablePreview(d) + "\n" + run.readFile(d.TasksFile, lines)}
+	}
 }
 
 func deliverablePreview(d *deliverable) string {
@@ -543,20 +551,26 @@ func storyPreview(r row) string {
 // fixedLines are the header, the line over the preview, and the footer.
 const fixedLines = 3
 
-func (m boardView) previewHeight() int { return max(3, (m.height-fixedLines)*2/5) }
+func previewHeightOf(height int) int { return max(3, (height-fixedLines)*2/5) }
 
-func (m boardView) listHeight() int { return max(1, m.height-fixedLines-m.previewHeight()) }
+func listHeightOf(height int) int { return max(1, height-fixedLines-previewHeightOf(height)) }
 
-func (m *boardView) scroll() {
-	h := m.listHeight()
-	if m.cursor < m.offset {
-		m.offset = m.cursor
+// scrolled is the first row to show so that the cursor stays in view.
+func scrolled(cursor, offset, rows, height int) int {
+	if cursor < offset {
+		offset = cursor
 	}
-	if m.cursor >= m.offset+h {
-		m.offset = m.cursor - h + 1
+	if cursor >= offset+height {
+		offset = cursor - height + 1
 	}
-	m.offset = max(0, min(m.offset, max(0, len(m.rows)-h)))
+	return max(0, min(offset, max(0, rows-height)))
 }
+
+func (m boardView) previewHeight() int { return previewHeightOf(m.height) }
+
+func (m boardView) listHeight() int { return listHeightOf(m.height) }
+
+func (m *boardView) scroll() { m.offset = scrolled(m.cursor, m.offset, len(m.rows), m.listHeight()) }
 
 var (
 	bold      = lipgloss.NewStyle().Bold(true)
@@ -646,7 +660,7 @@ func (m boardView) View() string {
 		b.WriteString(m.filter.View())
 	default:
 		b.WriteString(dimmed.Render(ansi.Truncate(
-			"enter go or start · o open the PR · x close a merged window · a archive the story · ←/→ fold · / filter · r reload · q quit",
+			"enter go or start · o open the PR · x close a merged window · a archive the story · ←/→ fold · / filter · tab features · r reload · q quit",
 			m.width, "…")))
 	}
 	return b.String()
@@ -666,7 +680,7 @@ func (m boardView) renderRow(r row, current bool) string {
 			text += dimmed.Render("  · " + foldedSummary(st))
 		}
 	case deliverableRow:
-		text = m.deliverableText(r)
+		text = deliverableLine(r.d, len(r.story.repos) > 1)
 	case mergedRow:
 		ids := make([]string, len(r.merged))
 		for i, d := range r.merged {
@@ -684,8 +698,7 @@ func (m boardView) renderRow(r row, current bool) string {
 	return ansi.Truncate(gutter+text, m.width, "…")
 }
 
-func (m boardView) deliverableText(r row) string {
-	d := r.d
+func deliverableLine(d *deliverable, withRepo bool) string {
 	pr := ""
 	switch {
 	case d.PR != nil:
@@ -701,7 +714,7 @@ func (m boardView) deliverableText(r row) string {
 	}
 	text := "  " + mark(d.State) + " " + cell(d.State, 15) + cell(d.ID, 30) + cell(fmt.Sprintf("%d/%d", d.Done, d.Total), 6) +
 		cell(pr, 7) + cell(target, 9) + icon(agent) + "  " + paint(d.need, d.need.text)
-	if len(r.story.repos) > 1 {
+	if withRepo {
 		text += "  " + dimmed.Render(filepath.Base(d.plan.root))
 	}
 	return text

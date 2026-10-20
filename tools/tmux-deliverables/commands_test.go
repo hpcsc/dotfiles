@@ -15,6 +15,8 @@ const stubTmux = `#!/usr/bin/env bash
 case "$1" in
   list-panes)   printf '%b' "${PANES:-}" ;;
   capture-pane) printf 'line one\n\nthe question\n\n\n' ;;
+  display-message) echo Work ;;
+  list-windows) printf '%b' "${WINDOWS:-}" ;;
   *)            echo "tmux $*" >> "$LOG" ;;
 esac
 `
@@ -22,6 +24,7 @@ esac
 const stubClerk = `#!/usr/bin/env bash
 echo "clerk $* in $PWD" >> "$LOG"
 [ "$2" = archive ] && exit 0
+[ "$1" = project ] && { cat "$PWD/project.json"; exit; }
 cat "$PWD/story.json" 2>/dev/null || exit 2
 `
 
@@ -150,6 +153,33 @@ func TestCommands(t *testing.T) {
 			require.Equal(t, []agent{{Pane: "%1", Status: "waiting"}, {Pane: "%2", Status: "working", Title: "✳ Other"}}, agents)
 		})
 
+		t.Run("the features are the stories files with ticket lines, titled by their first heading", func(t *testing.T) {
+			root := gitRepo(t)
+			writeFile(t, filepath.Join(root, ".scratches/write-user-story/sign-in/sign-in.md"), "intro\n# Sign in\n\n### US-001: Ask\n\n**Ticket:** AGE-1\n")
+			writeFile(t, filepath.Join(root, "user-stories/pay.md"), "# Pay\n**Ticket:** AGE-2\n")
+			writeFile(t, filepath.Join(root, "user-stories/notes.md"), "# Notes\nno tickets here\n")
+
+			found := newCommands(nil).features(root)
+
+			require.Equal(t, []feature{
+				{path: ".scratches/write-user-story/sign-in/sign-in.md", title: "Sign in"},
+				{path: "user-stories/pay.md", title: "Pay"},
+			}, found)
+		})
+
+		t.Run("a project is what clerk project prints for the feature, in its repo", func(t *testing.T) {
+			log := withStubs(t)
+			root := gitRepo(t)
+			writeFile(t, filepath.Join(root, "project.json"), `{"running": ["s/a"], "stories": [{"id": "US-001", "ticket": "AGE-1", "state": "ready"}]}`)
+
+			p, err := newCommands(nil).project(root, "user-stories/pay.md")
+
+			require.NoError(t, err)
+			require.Equal(t, []string{"s/a"}, p.Running)
+			require.Equal(t, "US-001 AGE-1 ready", p.Stories[0].ID+" "+p.Stories[0].Ticket+" "+p.Stories[0].State)
+			require.Equal(t, []string{"clerk project user-stories/pay.md in " + root}, logOf(t, log, "clerk"))
+		})
+
 		t.Run("a capture keeps the end of the pane, without the blank lines under it", func(t *testing.T) {
 			withStubs(t)
 
@@ -204,6 +234,51 @@ func TestCommands(t *testing.T) {
 			require.NoError(t, newCommands(nil).closeWindow(repo, "age-8-gone"))
 
 			require.Equal(t, []string{"workmux close age-8-gone in " + repo}, logOf(t, log, "workmux"))
+		})
+
+		t.Run("a Claude window opens in the session of the client, with the prompt quoted", func(t *testing.T) {
+			log := withStubs(t)
+			root := gitRepo(t)
+
+			target, err := newCommands(nil).claudeWindow("/dev/ttys004", root, "age-1-plan", "/deliver-story AGE-1: the story's section")
+
+			require.NoError(t, err)
+			require.Equal(t, "Work:age-1-plan", target)
+			require.Equal(t, []string{
+				"tmux new-window -d -t Work: -n age-1-plan -c " + root,
+				`tmux send-keys -t Work:age-1-plan -l claude '/deliver-story AGE-1: the story'\''s section'`,
+				"tmux send-keys -t Work:age-1-plan Enter",
+			}, logOf(t, log, "tmux"))
+		})
+
+		t.Run("a Claude window that is open already is used again", func(t *testing.T) {
+			log := withStubs(t)
+			t.Setenv("WINDOWS", "zsh\nage-1-plan\n")
+
+			target, err := newCommands(nil).claudeWindow("", gitRepo(t), "age-1-plan", "/deliver-story AGE-1")
+
+			require.NoError(t, err)
+			require.Equal(t, "Work:age-1-plan", target)
+			require.Empty(t, logOf(t, log, "tmux"))
+		})
+
+		t.Run("a start runs deliverable-open in a background window, with gears when asked", func(t *testing.T) {
+			log := withStubs(t)
+			repo := gitRepo(t)
+			d := &deliverable{ID: "next", raw: []byte(`{"id":"next"}`), plan: &plan{Slug: "age-3-story", root: repo}}
+
+			text, err := newCommands(nil).start(d, true)
+
+			require.NoError(t, err)
+			require.Equal(t, "starting fresh", text)
+			require.Equal(t, []string{
+				"deliverable-open arg: --window",
+				"deliverable-open arg: --background",
+				"deliverable-open arg: --gears",
+				"deliverable-open arg: age-3-story",
+				`deliverable-open arg: {"id":"next"}`,
+				"deliverable-open in " + repo,
+			}, logOf(t, log, "deliverable-open"))
 		})
 
 		t.Run("an archive passes --force only when asked", func(t *testing.T) {

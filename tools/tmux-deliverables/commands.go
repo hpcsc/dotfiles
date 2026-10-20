@@ -244,6 +244,97 @@ func (c *commands) archive(root, planPath string, force bool) error {
 	return err
 }
 
+func (c *commands) features(root string) []feature {
+	var found []feature
+	for _, dir := range []string{".scratches/write-user-story", "user-stories"} {
+		_ = filepath.WalkDir(filepath.Join(root, dir), func(path string, e os.DirEntry, err error) error {
+			if err != nil || e.IsDir() || filepath.Ext(path) != ".md" {
+				return nil
+			}
+			if f, ok := featureIn(root, path); ok {
+				found = append(found, f)
+			}
+			return nil
+		})
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].path < found[j].path })
+	return found
+}
+
+// featureIn reads a stories file, which has a **Ticket:** line, and takes its title from
+// its first heading.
+func featureIn(root, path string) (feature, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return feature{}, false
+	}
+	rel, _ := filepath.Rel(root, path)
+	f := feature{path: rel, title: rel}
+	tickets := false
+	titled := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "**Ticket:**") {
+			tickets = true
+		}
+		if !titled && strings.HasPrefix(line, "# ") {
+			f.title, titled = strings.TrimPrefix(line, "# "), true
+		}
+	}
+	return f, tickets
+}
+
+func (c *commands) project(root, feature string) (project, error) {
+	out, err := run(root, "clerk", "project", feature)
+	if err != nil {
+		return project{}, err
+	}
+	var p project
+	if err := json.Unmarshal(out, &p); err != nil {
+		return project{}, errors.New("clerk project did not print JSON")
+	}
+	return p, nil
+}
+
+func (c *commands) claudeWindow(client, root, name, prompt string) (string, error) {
+	args := []string{"display-message", "-p", "#{session_name}"}
+	if client != "" {
+		args = []string{"display-message", "-c", client, "-p", "#{session_name}"}
+	}
+	out, err := run("", "tmux", args...)
+	if err != nil {
+		return "", err
+	}
+	session := strings.TrimSpace(string(out))
+	target := session + ":" + name
+	names, _ := run("", "tmux", "list-windows", "-t", session, "-F", "#{window_name}")
+	for _, n := range strings.Split(string(names), "\n") {
+		if n == name {
+			return target, nil
+		}
+	}
+	quoted := "'" + strings.ReplaceAll(prompt, "'", `'\''`) + "'"
+	for _, step := range [][]string{
+		{"new-window", "-d", "-t", session + ":", "-n", name, "-c", root},
+		{"send-keys", "-t", target, "-l", "claude " + quoted},
+		{"send-keys", "-t", target, "Enter"},
+	} {
+		if _, err := run("", "tmux", step...); err != nil {
+			return "", err
+		}
+	}
+	return target, nil
+}
+
+func (c *commands) start(d *deliverable, gears bool) (string, error) {
+	args := []string{"--window", "--background"}
+	if gears {
+		args = append(args, "--gears")
+	}
+	args = append(args, d.plan.Slug, string(d.raw))
+	out, err := run(d.plan.root, "deliverable-open", args...)
+	return lastLine(string(out)), err
+}
+
 // run returns stdout. On a failure the error carries the last line the program wrote to
 // stderr, which is where clerk, workmux and deliverable-open say why.
 func run(dir, name string, args ...string) ([]byte, error) {

@@ -73,6 +73,8 @@ type deliverable struct {
 	BlockedBy []string     `json:"blocked_by"`
 	Evidence  string       `json:"evidence"`
 	PR        *pullRequest `json:"pr"`
+	PlanPath  string       `json:"plan"`
+	StorySlug string       `json:"story_slug"`
 
 	raw    json.RawMessage // what deliverable-open reads
 	plan   *plan

@@ -36,7 +36,7 @@
 # commits of its own).
 # A ready deliverable is launched and its status set to running. Before launching,
 # running/in-review deliverables that `clerk story` reports as merged are advanced to
-# merged, so the next wave unlocks.
+# merged, so the next wave unlocks, and the window of each merged deliverable is closed.
 #
 # Each deliverable gets a single agent pane. The shared workmux config asks for an
 # agent pane plus a shell pane below it; the extra pane is collapsed here rather
@@ -127,7 +127,7 @@ set_status() {
 CLERK_STATE=""
 if command -v clerk >/dev/null 2>&1; then
   CLERK_STATE=$(clerk story "$PLAN" --no-fetch 2>/dev/null |
-    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // ""), (.evidence // ""), .handle] | join("|")' 2>/dev/null) || CLERK_STATE=""
+    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // ""), (.evidence // ""), .handle, (.window // "")] | join("|")' 2>/dev/null) || CLERK_STATE=""
 fi
 clerk_field_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" -v f="$2" '$1 == i {print $f; exit}'; }
 clerk_state_of()  { clerk_field_of "$1" 2; }
@@ -160,6 +160,23 @@ while IFS='|' read -r id branch status; do
     set_status "$id" merged
   fi
 done < <(yq -r '.deliverables[] | [.id, .branch, .status] | join("|")' "$PLAN")
+
+# `workmux close` keeps the worktree and the branch; only the window goes.
+while IFS='|' read -r id state _ _ handle window; do
+  [ "$state" = merged ] && [ -n "$window" ] || continue
+  busy=$(workmux status --json "$handle" </dev/null 2>/dev/null |
+    jq -r '[.[] | select(.status == "working" or .status == "waiting")] | length' 2>/dev/null)
+  if [ "$busy" != 0 ]; then
+    say "keep: $id is merged, but an agent in $window is busy, or workmux could not say"
+  elif [ "$DRY" -eq 1 ]; then
+    say "would close $window: $id is merged"
+    printf '  workmux close %q\n' "$handle"
+  elif workmux close "$handle" </dev/null >/dev/null 2>&1; then
+    say "close: $window, because $id is merged"
+  else
+    say "close: $id is merged, but workmux could not close $window"
+  fi
+done <<<"$CLERK_STATE"
 
 # A deliverable's base commit: a sibling deliverable id -> that branch's tip (stacked);
 # otherwise the default/remote branch tip.

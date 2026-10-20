@@ -165,6 +165,8 @@ Keep the timeout finite so a wedged run wakes you too, and on every wake read th
 
 **Verify a finished deliverable yourself** — re-run its scoped tests, `go vet`, and `git status --porcelain` in the worktree rather than trusting the run's own receipts. Expect `go build ./...` to fail there on packages whose generated files (swagger docs and the like) exist only in the main checkout; confirm the deliverable does not touch that package before dismissing it.
 
+For the person, **Prefix + N** opens `tmux-deliverables` (built by `task common:tmux-deliverables`) over the stories under way. It reads every repo with a tmux pane, and every repo under the project roots with a live plan. Each story is a heading over its deliverables, from every repo that holds a plan for its ticket. Each row shows the state, the tasks, the PR, the tmux window with the state of its agent, and what the deliverable needs: an answer for an agent that waits, a run that stopped, a PR to open, fix, mark ready or merge, a merged window to close, a deliverable to start, or the deliverable it waits on. The stories that need a person come first, and a story where nothing needs a look is folded. Enter goes to the window, or opens or starts the deliverable through `deliverable-open`. `o` opens the PR, `x` closes the window of a merged deliverable, and `a` archives the story through `clerk story archive`; both ask first.
+
 `workmux` is the cockpit for everything else — no separate manager needed:
 - `workmux status --json --git` — one-shot query: `working` / `waiting` / `done` per deliverable, elapsed time, pane title, and whether the branch carries staged, unstaged or unmerged work. This is what to read on wake.
 - `workmux dashboard` — live TUI across every deliverable.

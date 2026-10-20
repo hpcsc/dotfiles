@@ -194,6 +194,8 @@ func (v plannerView) key(msg tea.KeyMsg) (plannerView, tea.Cmd) {
 		case !ok:
 		case r.d != nil:
 			return v, goTo(v.run, v.client, r.d)
+		case r.story.orchestrator != nil:
+			return v, switchTo(v.run, v.client, r.story.orchestrator.target)
 		default:
 			v.folded[r.story.ID] = !v.isFolded(r.story)
 			v.rebuild()
@@ -275,7 +277,8 @@ func (v plannerView) fold(fold bool) (plannerView, tea.Cmd) {
 }
 
 // nextStep is what the state of a story calls for: a window that plans it, a window that
-// takes its plan through the gate, or a start of its ready deliverables.
+// takes its plan through the gate (its orchestrator, when it has one), or a start of its
+// ready deliverables.
 func (v plannerView) nextStep(st *projectStory) (plannerView, tea.Cmd) {
 	slug := strings.ToLower(st.Ticket)
 	switch st.State {
@@ -284,6 +287,9 @@ func (v plannerView) nextStep(st *projectStory) (plannerView, tea.Cmd) {
 			"/deliver-story %s: deliver story %s of %s. Read its section, from its ### heading to the next heading, as the story.",
 			st.Ticket, st.ID, filepath.Join(v.root, v.feature.path)))
 	case "planned":
+		if st.orchestrator != nil {
+			return v, switchTo(v.run, v.client, st.orchestrator.target)
+		}
 		if len(st.Plans) > 0 {
 			return v, v.claude(slug+"-gate", "/deliver-story "+st.Plans[0])
 		}
@@ -354,6 +360,11 @@ func (v *plannerView) rebuild() {
 	for i := range v.data.Stories {
 		st := &v.data.Stories[i]
 		st.deliverables = nil
+		var stPlans []*plan
+		for _, path := range st.Plans {
+			stPlans = append(stPlans, &plan{Path: path})
+		}
+		st.orchestrator = orchestratorOf(stPlans, windows)
 		for _, raw := range st.Deliverables {
 			d := &deliverable{Wave: 1}
 			if json.Unmarshal(raw, d) != nil {
@@ -529,7 +540,7 @@ func storyLine(st *projectStory) string {
 	if len(st.BlockedBy) > 0 {
 		text += "  " + dimmed.Render("[blocked by "+strings.Join(st.BlockedBy, ", ")+"]")
 	}
-	return text
+	return text + orchestratorNote(st.orchestrator)
 }
 
 func (v plannerView) View() string {
@@ -588,7 +599,7 @@ func (v plannerView) View() string {
 		b.WriteString("\n")
 	}
 
-	keys := "enter go or start · n next step · s start · g start with gears · t graph · b features · tab under way · r reload · q quit"
+	keys := "enter go, start, or go to the orchestrator · n next step · s start · g start with gears · t graph · b features · tab under way · r reload · q quit"
 	if v.screen == featureScreen {
 		keys = "enter open · p /deliver-project in a window · tab under way · r reload · q quit"
 	}

@@ -276,6 +276,8 @@ func (m boardView) enter() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch {
+	case r.kind == storyRow && r.story.orchestrator != nil:
+		return m, switchTo(m.run, m.client, r.story.orchestrator.target)
 	case r.kind == storyRow:
 		m.folded[r.story.key] = !m.isFolded(r.story)
 		m.rebuild()
@@ -482,11 +484,14 @@ func (m boardView) readPreview() tea.Cmd {
 		return nil
 	}
 	key, run, lines := r.key(), m.run, m.previewHeight()
-	switch r.kind {
-	case windowRow:
+	switch {
+	case r.kind == windowRow:
 		pane := r.w.pane
 		return func() tea.Msg { return previewMsg{key, run.capture(pane, lines)} }
-	case deliverableRow:
+	case r.kind == storyRow && r.story.orchestrator != nil:
+		pane := r.story.orchestrator.pane
+		return func() tea.Msg { return previewMsg{key, run.capture(pane, lines)} }
+	case r.kind == deliverableRow:
 		return previewOf(run, key, r.d, lines)
 	}
 	text := storyPreview(r)
@@ -660,7 +665,7 @@ func (m boardView) View() string {
 		b.WriteString(m.filter.View())
 	default:
 		b.WriteString(dimmed.Render(ansi.Truncate(
-			"enter go or start · o open the PR · x close a merged window · a archive the story · ←/→ fold · / filter · tab features · r reload · q quit",
+			"enter go, start, or go to the orchestrator · o open the PR · x close a merged window · a archive the story · ←/→ fold · / filter · tab features · r reload · q quit",
 			m.width, "…")))
 	}
 	return b.String()
@@ -676,6 +681,7 @@ func (m boardView) renderRow(r row, current bool) string {
 	case storyRow:
 		st := r.story
 		text = bold.Render(st.label) + "  " + cell(st.title, 70) + "  " + dimmed.Render(strings.Join(st.repos, ", "))
+		text += orchestratorNote(st.orchestrator)
 		if m.isFolded(st) && m.filter.Value() == "" {
 			text += dimmed.Render("  · " + foldedSummary(st))
 		}
@@ -692,7 +698,7 @@ func (m boardView) renderRow(r row, current bool) string {
 		text = bold.Render("Other windows")
 	case windowRow:
 		w := r.w
-		text = "  " + cell(w.target, 9) + icon(w.agent) + "  " + paint(w.need, cell(w.need.text, 18)) +
+		text = "  " + cell(w.target, 9) + icon(w.agent) + "  " + paint(w.need, cell(w.need.text, 24)) +
 			cell(w.title, 40) + "  " + dimmed.Render(filepath.Base(w.root))
 	}
 	return ansi.Truncate(gutter+text, m.width, "…")
@@ -718,6 +724,19 @@ func deliverableLine(d *deliverable, withRepo bool) string {
 		text += "  " + dimmed.Render(filepath.Base(d.plan.root))
 	}
 	return text
+}
+
+// orchestratorNote names the window of the orchestrator and the state of its agent, and
+// what it needs when it waits.
+func orchestratorNote(w *window) string {
+	if w == nil {
+		return ""
+	}
+	note := "  · " + w.target + " " + icon(w.agent)
+	if n := orchestratorNeed(w); n.rank <= rankAct {
+		note += " " + paint(n, n.text)
+	}
+	return note
 }
 
 func foldedSummary(st *story) string {

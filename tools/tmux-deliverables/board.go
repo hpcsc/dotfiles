@@ -26,6 +26,9 @@ type pane struct {
 	name   string // the name of the window
 	id     string
 	path   string
+	// orchestrates are the plans that the session in this pane drives, from the mark that
+	// the deliver-story driver puts on its pane.
+	orchestrates []string
 }
 
 type agent struct {
@@ -90,16 +93,18 @@ type story struct {
 	plans        []*plan
 	rank         int
 	deliverables []*deliverable
+	orchestrator *window
 }
 
 type window struct {
-	target  string
-	title   string
-	root    string
-	agent   string // waiting, working, done, or "" when no agent is in it
-	pane    string // the pane to preview
-	claimed bool
-	need    need
+	target       string
+	title        string
+	root         string
+	agent        string // waiting, working, done, or "" when no agent is in it
+	pane         string // the pane to preview
+	orchestrates []string
+	claimed      bool
+	need         need
 }
 
 type snapshot struct {
@@ -148,7 +153,12 @@ func newBoard(s snapshot) board {
 			continue
 		}
 		st.repos = reposOf(st.plans)
+		st.orchestrator = orchestratorOf(st.plans, windows)
 		st.rank = rankDone
+		if st.orchestrator != nil {
+			st.orchestrator.claimed = true
+			st.rank = orchestratorNeed(st.orchestrator).rank
+		}
 		for _, d := range st.deliverables {
 			st.rank = min(st.rank, d.need.rank)
 		}
@@ -191,6 +201,9 @@ func newBoard(s snapshot) board {
 func (b board) needsYou() int {
 	n := 0
 	for _, st := range b.stories {
+		if st.orchestrator != nil && orchestratorNeed(st.orchestrator).rank <= rankAct {
+			n++
+		}
 		for _, d := range st.deliverables {
 			if d.need.rank <= rankAct {
 				n++
@@ -237,6 +250,7 @@ func windowsOf(panes []pane, agents []agent, rootOf map[string]string) []*window
 			if w.root == "" {
 				w.root = rootOf[p.path]
 			}
+			w.orchestrates = append(w.orchestrates, p.orchestrates...)
 			if a, ok := agentOf[p.id]; ok {
 				found = append(found, a)
 			}
@@ -351,13 +365,39 @@ func prNeed(pr *pullRequest, prError string) need {
 }
 
 func windowNeed(w *window) need {
-	switch w.agent {
-	case "waiting":
+	switch {
+	case w.agent == "waiting":
 		return need{rankAnswer, "answer the agent"}
-	case "working":
+	case w.agent == "working":
 		return need{rankBusy, "working"}
+	case len(w.orchestrates) > 0:
+		return need{rankClose, "done: close the window"}
 	}
 	return need{rankIdle, "idle"}
+}
+
+func orchestratorNeed(w *window) need {
+	switch w.agent {
+	case "waiting":
+		return need{rankAnswer, "answer the orchestrator"}
+	case "working":
+		return need{rankBusy, "the orchestrator works"}
+	}
+	return need{rankIdle, "the orchestrator is idle"}
+}
+
+// orchestratorOf is the first window whose mark names one of the plans.
+func orchestratorOf(plans []*plan, windows []*window) *window {
+	for _, w := range windows {
+		for _, marked := range w.orchestrates {
+			for _, p := range plans {
+				if p.Path == marked {
+					return w
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func reposOf(plans []*plan) []string {

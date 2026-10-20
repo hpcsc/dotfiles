@@ -140,6 +140,16 @@ func TestCommands(t *testing.T) {
 			require.Equal(t, map[string]string{worktree + "/lib": repo}, rootOf)
 		})
 
+		t.Run("the orchestrator mark of a pane comes with it, one plan for each colon", func(t *testing.T) {
+			withStubs(t)
+			repo := gitRepo(t)
+			t.Setenv("PANES", "Work:4\tmain\t%4\t"+repo+"\t/p/one/plan.yaml:/p/two/plan.yaml\nWork:5\tsub\t%5\t"+repo+"\t\n")
+
+			panes, _, _ := newCommands(nil).windows()
+
+			require.Equal(t, [][]string{{"/p/one/plan.yaml", "/p/two/plan.yaml"}, nil}, [][]string{panes[0].orchestrates, panes[1].orchestrates})
+		})
+
 		t.Run("the agents come from workmux, in each repo with a pane", func(t *testing.T) {
 			withStubs(t)
 			one, two := gitRepo(t), gitRepo(t)

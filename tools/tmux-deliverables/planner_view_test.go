@@ -130,6 +130,34 @@ func TestPlannerView(t *testing.T) {
 		})
 	})
 
+	t.Run("orchestrators", func(t *testing.T) {
+		gate := pane{window: "W:4", name: "repo", id: "%4", path: "/repos/a", orchestrates: []string{"/repos/a/tasks/age-2-planned/plan.yaml"}}
+
+		t.Run("a story row names the window of its orchestrator", func(t *testing.T) {
+			s, _ := plannerOn(t, signIn(), []pane{gate}, agent{Pane: "%4", Status: "waiting"})
+
+			require.True(t, strings.HasSuffix(s.rows()[1], "Approve me  · W:4 💬 answer the orchestrator"), s.rows()[1])
+		})
+
+		t.Run("enter on a story with an orchestrator goes there", func(t *testing.T) {
+			s, f := plannerOn(t, signIn(), []pane{gate}, agent{Pane: "%4", Status: "waiting"})
+			s.to("US-002")
+
+			s.press("enter")
+
+			require.Equal(t, []string{"switch /dev/ttys004 to W:4"}, f.actions())
+		})
+
+		t.Run("n on a planned story goes to its orchestrator, and opens no window for the gate", func(t *testing.T) {
+			s, f := plannerOn(t, signIn(), []pane{gate}, agent{Pane: "%4", Status: "waiting"})
+			s.to("US-002")
+
+			s.press("n")
+
+			require.Equal(t, []string{"switch /dev/ttys004 to W:4"}, f.actions())
+		})
+	})
+
 	t.Run("previewing", func(t *testing.T) {
 		t.Run("a story shows what it waits on and what waits on it, with their states", func(t *testing.T) {
 			s, _ := plannerOn(t, signIn(), nil)

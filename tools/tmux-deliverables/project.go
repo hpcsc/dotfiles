@@ -31,4 +31,5 @@ type projectStory struct {
 	Deliverables []json.RawMessage `json:"deliverables"`
 
 	deliverables []*deliverable
+	orchestrator *window
 }

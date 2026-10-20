@@ -66,7 +66,7 @@ func (c *commands) snapshot() (snapshot, error) {
 
 func (c *commands) windows() ([]pane, map[string]string, []agent) {
 	out, err := run("", "tmux", "list-panes", "-a", "-F",
-		"#{session_name}:#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_current_path}")
+		"#{session_name}:#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{@orchestrates}")
 	if err != nil {
 		return nil, map[string]string{}, nil
 	}
@@ -75,10 +75,14 @@ func (c *commands) windows() ([]pane, map[string]string, []agent) {
 	looked := map[string]bool{}
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		f := strings.Split(line, "\t")
-		if len(f) != 4 {
+		if len(f) < 4 {
 			continue
 		}
-		panes = append(panes, pane{window: f[0], name: f[1], id: f[2], path: f[3]})
+		p := pane{window: f[0], name: f[1], id: f[2], path: f[3]}
+		if len(f) > 4 && f[4] != "" {
+			p.orchestrates = strings.Split(f[4], ":")
+		}
+		panes = append(panes, p)
 		if !looked[f[3]] {
 			looked[f[3]] = true
 			if root := mainRoot(f[3]); root != "" {

@@ -312,6 +312,83 @@ func TestBoardView(t *testing.T) {
 		})
 	})
 
+	t.Run("orchestrators", func(t *testing.T) {
+		orchestrator := func(window, id string, plans ...string) pane {
+			return pane{window: window, name: "repo", id: id, path: "/repos/a", orchestrates: plans}
+		}
+
+		t.Run("the heading names the window of the orchestrator and the state of its agent", func(t *testing.T) {
+			p := planIn("/repos/a", "AGE-1", "age-1-story", deliverableJSON("one", "awaiting-merge", 1, 1))
+			f := newFake([]*plan{p}, []pane{orchestrator("W:4", "%4", p.Path)}, agent{Pane: "%4", Status: "done"})
+
+			shown := open(t, f)
+
+			require.True(t, strings.HasSuffix(shown.rows()[0], "· W:4 ✅"), shown.rows()[0])
+		})
+
+		t.Run("an orchestrator that waits needs you, and its story comes first", func(t *testing.T) {
+			waiting := planIn("/repos/a", "AGE-1", "age-1-gate", deliverableJSON("later", "ready", 0, 2))
+			other := planIn("/repos/a", "AGE-2", "age-2-pr", deliverableJSON("no-pr", "awaiting-merge", 1, 1))
+			f := newFake([]*plan{waiting, other}, []pane{orchestrator("W:4", "%4", waiting.Path)}, agent{Pane: "%4", Status: "waiting"})
+
+			shown := open(t, f)
+
+			require.Equal(t, "AGE-1", names(shown.rows())[0])
+			require.True(t, strings.HasSuffix(shown.rows()[0], "· W:4 💬 answer the orchestrator"), shown.rows()[0])
+			require.True(t, strings.HasPrefix(shown.header(), "deliverables · 2 need you"), shown.header())
+		})
+
+		t.Run("the window of an orchestrator is not listed again under Other windows", func(t *testing.T) {
+			p := planIn("/repos/a", "AGE-1", "age-1-story", deliverableJSON("one", "awaiting-merge", 1, 1))
+
+			shown := open(t, newFake([]*plan{p}, []pane{orchestrator("W:4", "%4", p.Path)}, agent{Pane: "%4", Status: "done"}))
+
+			require.Equal(t, []string{"AGE-1", "one"}, names(shown.rows()))
+		})
+
+		t.Run("enter on the heading goes to the orchestrator", func(t *testing.T) {
+			p := planIn("/repos/a", "AGE-1", "age-1-story", deliverableJSON("one", "awaiting-merge", 1, 1))
+			f := newFake([]*plan{p}, []pane{orchestrator("W:4", "%4", p.Path)}, agent{Pane: "%4", Status: "waiting"})
+			shown := open(t, f)
+
+			shown.press("enter")
+
+			require.Equal(t, []string{"switch /dev/ttys004 to W:4"}, f.actions())
+			require.True(t, shown.quit)
+		})
+
+		t.Run("the preview of the heading is the end of the pane of the orchestrator", func(t *testing.T) {
+			p := planIn("/repos/a", "AGE-1", "age-1-story", deliverableJSON("one", "awaiting-merge", 1, 1))
+			f := newFake([]*plan{p}, []pane{orchestrator("W:4", "%4", p.Path)}, agent{Pane: "%4", Status: "waiting"})
+			f.captured["%4"] = "Do you approve the plan?"
+
+			shown := open(t, f)
+
+			require.Equal(t, "Do you approve the plan?", shown.preview())
+		})
+
+		t.Run("one pane can orchestrate several stories", func(t *testing.T) {
+			first := planIn("/repos/a", "AGE-1", "age-1-one", deliverableJSON("one", "awaiting-merge", 1, 1))
+			second := planIn("/repos/a", "AGE-2", "age-2-two", deliverableJSON("two", "awaiting-merge", 1, 1))
+			f := newFake([]*plan{first, second}, []pane{orchestrator("W:4", "%4", first.Path, second.Path)}, agent{Pane: "%4", Status: "done"})
+
+			shown := open(t, f)
+
+			require.True(t, strings.HasSuffix(shown.rows()[0], "· W:4 ✅"), shown.rows()[0])
+			require.True(t, strings.HasSuffix(shown.rows()[2], "· W:4 ✅"), shown.rows()[2])
+		})
+
+		t.Run("a window whose stories are all done shows as one to close", func(t *testing.T) {
+			done := planIn("/repos/a", "AGE-9", "age-9-done", deliverableJSON("old", "merged", 3, 3))
+			f := newFake([]*plan{done}, []pane{orchestrator("W:4", "%4", done.Path, "/repos/a/tasks/archived/plan.yaml")}, agent{Pane: "%4", Status: "done"})
+
+			shown := open(t, f)
+
+			require.Equal(t, []string{"Other", "W:4"}, names(shown.rows()))
+			require.Contains(t, shown.row("W:4"), "done: close the window")
+		})
+	})
+
 	t.Run("previewing", func(t *testing.T) {
 		t.Run("a row with a window shows the end of the agent's pane", func(t *testing.T) {
 			p := planIn("/repos/a", "AGE-1", "age-1-story", deliverableJSON("asks", "in-progress", 1, 2, "worktree", worktreeOf("/repos/a", "asks")))

@@ -39,6 +39,16 @@ Each deliverable comes back as `merged`, `awaiting-merge`, `in-progress`, `scaff
 
 Two derivations worth knowing, because both have already been wrong in practice: *merged* is decided by patch id (`git cherry`), not by ancestry, so a rebase-merged branch is recognised rather than reported as unmerged forever — and by the PR on GitHub, because a squash of several commits has a patch id of its own; and a deliverable whose worktree exists on a branch other than the one the plan names is flagged, because that is what makes a driver scaffold a second worktree for work already under way.
 
+### Mark this pane as the orchestrator
+
+As soon as the plan exists, mark the tmux pane of this session as its orchestrator: on adopt, and after the decompose step below, before the gate.
+
+```
+bash "$HOME/.claude/skills/deliver-story/deliver.sh" tasks/<slug>/plan.yaml --mark
+```
+
+The mark is the pane option `@orchestrates`, which holds the plan path. `tmux-deliverables` reads it to show this window on the story, and counts the window as one that needs a person while it waits, for example at the gate. Each run of the driver marks the pane too. Outside tmux the mark does nothing.
+
 ### Start one deliverable by hand
 
 To build a single `ready` deliverable yourself, in front of you, rather than firing a whole wave into background windows:
@@ -73,7 +83,7 @@ Spawn the `decompose-to-deliverables` agent, passing the story **as data**. It e
 
 ### Review the plan — GATE (the one human gate)
 
-Present the deliverables, their **waves** (what runs in parallel), the **base/stacking** choice per dependent deliverable, the branch names, and each deliverable's **certainty and blast radius**. The deliverable boundaries and merge order are expensive to get wrong once pull requests are in flight and cheap to fix now, so this is the single gate:
+Mark this pane first, with the `--mark` line above, so the window shows as the orchestrator while it waits for the approval. Then present the deliverables, their **waves** (what runs in parallel), the **base/stacking** choice per dependent deliverable, the branch names, and each deliverable's **certainty and blast radius**. The deliverable boundaries and merge order are expensive to get wrong once pull requests are in flight and cheap to fix now, so this is the single gate:
 
 - Check each deliverable against the sizing rules in `decompose-to-deliverables` Step 3 — one-sentence title, 3–7 tasks, one aggregate, and a judgment-weighted file count in band — and surface any that miss rather than presenting the cut as settled.
 - **Show each deliverable's planned design.** It is Markdown with a Mermaid diagram, which a terminal does not draw, so write it to a file outside the repository and give the path: `clerk design show --planned tasks/<story-slug>/<deliverable-slug>/design.yaml --out <file>`. Name its types in one line beside the path. This is the cheapest moment to correct a type or a name: one line in the file now, against a change in every task that uses it once the wave has built. A deliverable that needs no design shows its reason instead.

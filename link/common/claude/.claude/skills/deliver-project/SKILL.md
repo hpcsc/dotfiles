@@ -56,6 +56,12 @@ When the agents finish, run `clerk project` again. Each story that you planned m
 
 ## Step 3: One gate for all new plans
 
+First mark the tmux pane of this session as the orchestrator of each plan in `approve`, so `tmux-deliverables` shows this window on each story while it waits for the approval:
+
+```
+bash "$HOME/.claude/skills/deliver-story/deliver.sh" <plan.yaml> --mark
+```
+
 For each story in `approve`, present the plan as the `/deliver-story` gate does: the deliverables, their waves, the base of each, the branch names, the certainty and blast radius of each, and the path to its planned design. Then add what only this layer can see:
 
 - **`shared_files`**: name each pair and its files. Recommend an order for the pair. The user decides. To make one story wait, the user adds a `**Depends on:**` line to the stories file.

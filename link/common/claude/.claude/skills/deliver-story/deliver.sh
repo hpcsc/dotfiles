@@ -11,6 +11,7 @@
 # Usage:
 #   deliver.sh [PLAN] [--wave N] [--only id[,id...]] [--wave-size N] [--gears]
 #              [--mode session|window] [--dry-run]
+#   deliver.sh [PLAN] --mark
 #
 #   PLAN          path to plan.yaml (auto-discovered under tasks/ if a single one exists)
 #   --wave N      only fire deliverables in wave N (default: every ready deliverable)
@@ -25,6 +26,9 @@
 #   --mode        workmux target mode (default: window, falls back to session
 #                 when not running inside tmux)
 #   --dry-run     print the workmux commands and status changes without running them
+#   --mark        only mark this tmux pane as the orchestrator of the plan, and exit.
+#                 Every run that is not a dry run marks it too. tmux-deliverables reads
+#                 the mark to show the orchestrator of each story.
 #
 # The plan's certainty and blast_radius are reported on every launch line regardless of
 # --gears. The flag decides whether the driver acts on them, never whether they are
@@ -52,6 +56,7 @@ ONLY=""
 WAVE_SIZE=""
 GEARS=0
 DRY=0
+MARK=0
 PLAN=""
 
 while [ $# -gt 0 ]; do
@@ -63,7 +68,8 @@ while [ $# -gt 0 ]; do
     --no-gears)  GEARS=0; shift ;;
     --mode)      MODE="$2"; shift 2 ;;
     --dry-run)   DRY=1; shift ;;
-    -h|--help)   sed -n '2,34p' "$0"; exit 0 ;;
+    --mark)      MARK=1; shift ;;
+    -h|--help)   sed -n '2,38p' "$0"; exit 0 ;;
     --*)         die "unknown option: $1" ;;
     *)           PLAN="$1"; shift ;;
   esac
@@ -100,6 +106,22 @@ if [ -z "$PLAN" ]; then
   PLAN="$found"
 fi
 [ -f "$PLAN" ] || die "plan not found: $PLAN"
+
+# @orchestrates holds the absolute paths of the plans that this pane drives, separated by
+# colons. A list, because /deliver-project drives several stories from one session.
+mark_orchestrator() {
+  [ -n "${TMUX_PANE:-}" ] || return 0
+  local plan have
+  plan="$(cd "$(dirname "$PLAN")" && pwd -P)/$(basename "$PLAN")"
+  have=$(tmux show-options -pqv -t "$TMUX_PANE" @orchestrates 2>/dev/null || true)
+  case ":$have:" in *":$plan:"*) return 0 ;; esac
+  tmux set-option -p -t "$TMUX_PANE" @orchestrates "${have:+$have:}$plan" 2>/dev/null || true
+}
+if [ "$MARK" -eq 1 ]; then
+  mark_orchestrator
+  exit 0
+fi
+[ "$DRY" -eq 1 ] || mark_orchestrator
 
 MAIN_ROOT=$(git rev-parse --show-toplevel) || die "not in a git repo"
 STORY_SLUG=$(yq -r '.story_slug // ""' "$PLAN")

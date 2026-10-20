@@ -24,6 +24,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clerk_lib import Parser, die, git_ok, gitout, repo, worktree_for  # noqa: E402
 from clerk_repo import find_archived, resolve_tasks_arg  # noqa: E402
 
+GITHUB_REMOTE = re.compile(r"github\.com[:/](?P<owner>[^/]+)/(?P<name>[^/]+?)(?:\.git)?/?$")
+PR_FIELDS = (
+    "number state isDraft headRefOid reviewDecision url "
+    "commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }"
+)
+REVIEWS = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes-requested", "REVIEW_REQUIRED": "review-required"}
+CHECKS = {"SUCCESS": "pass", "FAILURE": "fail", "ERROR": "fail", "PENDING": "pending", "EXPECTED": "pending"}
+
 
 def git(*args):
     """stdout, stripped. A failing git call answers with the empty string: every caller
@@ -126,7 +134,8 @@ def unmerged_count(ref, branch):
     """`--is-ancestor` asks whether the branch TIP is in the default branch's history,
     which is false for every rebase- or squash-merged branch: the work is in, under new
     SHAs. `git cherry` compares patch ids and marks `+` only what has no counterpart
-    upstream, so no `+` lines means everything here already landed, however it got there."""
+    upstream, so no `+` lines means everything here already landed, however it got there.
+    A squash of more than one commit has a patch id of its own, so only its PR can say."""
     out = git("cherry", ref, branch)
     return sum(1 for line in out.splitlines() if line.startswith("+"))
 
@@ -143,6 +152,67 @@ def base_commit(base, described):
         if sib.get("id") == base:
             return commit_of(sib.get("branch_alias") or sib.get("branch") or "")
     return commit_of(f"origin/{base}") or commit_of(base)
+
+
+def pull_request(node):
+    commits = (node.get("commits") or {}).get("nodes") or [{}]
+    rollup = ((commits[-1].get("commit") or {}).get("statusCheckRollup") or {}).get("state")
+    return {
+        "number": node.get("number"),
+        "state": (node.get("state") or "").lower(),
+        "draft": bool(node.get("isDraft")),
+        "review": REVIEWS.get(node.get("reviewDecision")),
+        "checks": CHECKS.get(rollup),
+        "head": node.get("headRefOid"),
+        "url": node.get("url"),
+    }
+
+
+def pull_requests(branches):
+    """({branch: its PR}, the error when GitHub could not say). One query for every branch,
+    because a list of the repo's PRs takes longer than ten seconds on a large repo. An open
+    PR wins over a merged one, and a merged one over a closed one."""
+    m = GITHUB_REMOTE.search(git("remote", "get-url", "origin"))
+    if not branches or not m:
+        return {}, None
+    aliases = " ".join(
+        f"b{i}: pullRequests(headRefName: {json.dumps(b)}, first: 5, "
+        f"orderBy: {{field: CREATED_AT, direction: DESC}}) {{ nodes {{ {PR_FIELDS} }} }}"
+        for i, b in enumerate(branches)
+    )
+    query = f"query($owner: String!, $name: String!) {{ repository(owner: $owner, name: $name) {{ {aliases} }} }}"
+    try:
+        p = subprocess.run(
+            ["gh", "api", "graphql", "-f", f"query={query}", "-f", f"owner={m['owner']}", "-f", f"name={m['name']}"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except FileNotFoundError:
+        return {}, "gh is not installed"
+    except subprocess.TimeoutExpired:
+        return {}, "gh did not answer in 30 seconds"
+    if p.returncode != 0:
+        return {}, (p.stderr.strip().splitlines() or [f"gh exited {p.returncode}"])[-1]
+    try:
+        found = json.loads(p.stdout)["data"]["repository"] or {}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return {}, "gh did not return the PRs"
+    prs = {}
+    for i, branch in enumerate(branches):
+        nodes = (found.get(f"b{i}") or {}).get("nodes") or []
+        pick = next((n for s in ("OPEN", "MERGED", "CLOSED") for n in nodes if n.get("state") == s), None)
+        if pick:
+            prs[branch] = pull_request(pick)
+    return prs, None
+
+
+def landed_through(pr, branch):
+    if not pr or pr["state"] != "merged":
+        return False
+    # A head this clone never fetched, as the Update branch button on GitHub makes, holds no
+    # commit made here.
+    if not git_ok("cat-file", "-e", f"{pr['head']}^{{commit}}"):
+        return True
+    return git_ok("merge-base", "--is-ancestor", branch, pr["head"])
 
 
 def describe(deliverable, tasks_home, ref, worktrees, branches):
@@ -182,6 +252,7 @@ def describe(deliverable, tasks_home, ref, worktrees, branches):
         "branch_exists": exists,
         "branch_alias": alias,
         "worktree": worktree,
+        "pr": None,
         "ahead": ahead,
         "unmerged_commits": unmerged,
         "total": total,
@@ -189,14 +260,27 @@ def describe(deliverable, tasks_home, ref, worktrees, branches):
     }
 
 
+def merge_evidence(d):
+    """Why the deliverable counts as merged, or None when it does not. A branch deleted after
+    merging leaves nothing to compare, so its task record answers for it."""
+    landed_by_pr = d.pop("landed_by_pr", False)
+    finished = d["total"] > 0 and d["done"] >= d["total"]
+    if not d["branch_exists"]:
+        return f"branch {d['branch']} is gone and the task record reports {d['done']}/{d['total']}" if finished else None
+    if d["ahead"] == 0:
+        return "branch carries no commit the default branch lacks" if finished else None
+    if d["unmerged_commits"] == 0:
+        return "every commit on the branch is patch-present in the default branch"
+    if landed_by_pr:
+        return f"PR #{d['pr']['number']} is merged on GitHub"
+    return None
+
+
 def settle(deliverables):
-    """Merged first, because it decides what unblocks everything else. A branch deleted
-    after merging leaves nothing to compare, so its task record answers for it."""
+    """Merged first, because it decides what unblocks everything else."""
     for d in deliverables:
-        if d["branch_exists"]:
-            d["merged"] = (d["total"] > 0 and d["done"] >= d["total"]) if d["ahead"] == 0 else d["unmerged_commits"] == 0
-        else:
-            d["merged"] = d["total"] > 0 and d["done"] >= d["total"]
+        d["evidence"] = merge_evidence(d)
+        d["merged"] = d["evidence"] is not None
 
     landed = {d["id"] for d in deliverables if d["merged"]}
     for d in deliverables:
@@ -214,26 +298,39 @@ def settle(deliverables):
             d["state"] = "scaffolded"
         else:
             d["state"] = "ready"
-
-        if not d["merged"]:
-            d["evidence"] = None
-        elif not d["branch_exists"]:
-            d["evidence"] = f"branch {d['branch']} is gone and the task record reports {d['done']}/{d['total']}"
-        elif d["ahead"] == 0:
-            d["evidence"] = "branch carries no commit the default branch lacks"
-        else:
-            d["evidence"] = "every commit on the branch is patch-present in the default branch"
     return deliverables
 
 
+def pr_label(d, pr_error):
+    pr = d["pr"]
+    if not pr:
+        return "?" if pr_error and d["unmerged_commits"] > 0 else "-"
+    number = f"#{pr['number']}"
+    if pr["state"] != "open":
+        return f"{number} {pr['state']}"
+    if pr["checks"] == "fail":
+        return f"{number} failing"
+    if pr["review"] == "changes-requested":
+        return f"{number} changes-requested"
+    if pr["draft"]:
+        return f"{number} draft"
+    if pr["review"] == "approved":
+        return f"{number} approved"
+    return f"{number} open"
+
+
 def render_table(stories):
+    pr_width = max([len(pr_label(d, s["pr_error"])) for s in stories for d in s["deliverables"]] + [1])
     lines = []
     for s in stories:
         lines.append(f"{s['story_slug'] or s['plan']}   ({s['story']})")
+        if s["pr_error"]:
+            lines.append(f"  (gh could not list the PRs: {s['pr_error']})")
         for d in s["deliverables"]:
             # 15, not 14: `awaiting-merge` is exactly 14 characters and would touch the
             # column beside it.
-            row = f"  {d['state']:<15}w{d['wave']}  {d['done']}/{d['total']}  {d['id']}"
+            progress = f"{d['done']}/{d['total']}"
+            row = f"  {d['state']:<15}w{d['wave']}  {progress:<6}{pr_label(d, s['pr_error']):<{pr_width}}  {d['id']}"
             if d["blocked_by"]:
                 row += "  blocked by " + ", ".join(d["blocked_by"])
             if d["branch_alias"]:
@@ -291,24 +388,34 @@ def main(argv):
             die(f"no plan.yaml under {tasks_home}/tasks outside completed/ — name one, or decompose a story first")
 
     branches = local_branches()
-    stories = []
+    described_plans = []
     for path in plans:
         doc = load_plan(path)
         siblings = doc.get("deliverables") or []
         described = [describe(d, tasks_home, ref, r.worktrees, branches) for d in siblings if d.get("id")]
         for d in described:
             d["base_commit"] = base_commit(d["base"], described)
-        stories.append(
-            {
-                "plan": path,
-                "story": doc.get("story") or "",
-                "story_slug": doc.get("story_slug") or "",
-                "ticket": doc.get("ticket") or None,
-                "approved": doc.get("approved") or None,
-                "default_branch": default_branch,
-                "deliverables": settle(described),
-            }
-        )
+        described_plans.append((path, doc, described))
+
+    unlanded = [d for _, _, described in described_plans for d in described if d["unmerged_commits"] > 0]
+    prs, pr_error = pull_requests([d["branch_alias"] or d["branch"] for d in unlanded])
+    for d in unlanded:
+        d["pr"] = prs.get(d["branch_alias"] or d["branch"])
+        d["landed_by_pr"] = landed_through(d["pr"], d["branch_alias"] or d["branch"])
+
+    stories = [
+        {
+            "plan": path,
+            "story": doc.get("story") or "",
+            "story_slug": doc.get("story_slug") or "",
+            "ticket": doc.get("ticket") or None,
+            "approved": doc.get("approved") or None,
+            "default_branch": default_branch,
+            "pr_error": pr_error,
+            "deliverables": settle(described),
+        }
+        for path, doc, described in described_plans
+    ]
 
     if table:
         print(render_table(stories))

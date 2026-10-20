@@ -1393,6 +1393,70 @@ eq "and without it, the story fetches the default branch first" "$(git -C "$OTHE
 rm -rf "$ORIGIN39" "$OTHER"
 
 # --------------------------------------------------------------------------------
+printf '\nstory — the PR of each deliverable\n'
+
+STORY_STUBS=$(mktemp -d)
+cat > "$STORY_STUBS/gh" <<'EOF'
+#!/usr/bin/env bash
+[ -z "${GH_CALLS:-}" ] || printf '%s\n' "$*" >> "$GH_CALLS"
+[ -z "${GH_ERR:-}" ] || { printf '%s\n' "$GH_ERR" >&2; exit 1; }
+printf '%s' "${GH_OUT:-}"
+EOF
+chmod +x "$STORY_STUBS/gh"
+stubbed() { PATH="$STORY_STUBS:$PATH" run "$@"; }
+
+R38=$(new_repo); mkdir -p "$R38/tasks/sq/one"
+printf '# one\n' > "$R38/tasks/sq/one/tasks.md"
+printf '{"tasks":[{"n":1,"title":"a","depends_on":[],"done":true},{"n":2,"title":"b","depends_on":[],"done":true}]}\n' \
+  > "$R38/tasks/sq/one/tasks.json"
+printf 'story: Squash\nstory_slug: sq-a-long-title\nticket: "AGE-9"\ndeliverables:\n  - id: one\n    branch: sq-one\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/sq/one/tasks.md\n' \
+  > "$R38/tasks/sq/plan.yaml"
+git -C "$R38" add -A && git -C "$R38" commit -qm "Plan"
+git -C "$R38" checkout -q -b sq-one
+printf 'a\n' > "$R38/a.txt"; git -C "$R38" add -A; git -C "$R38" commit -qm "A"
+printf 'b\n' > "$R38/b.txt"; git -C "$R38" add -A; git -C "$R38" commit -qm "B"
+git -C "$R38" checkout -q main
+# What a squash merge leaves on main: both files in one commit, whose patch id matches neither.
+printf 'a\n' > "$R38/a.txt"; printf 'b\n' > "$R38/b.txt"
+git -C "$R38" add -A; git -C "$R38" commit -qm "Squash (#7)"
+git -C "$R38" remote add origin git@github.com:example/repo.git
+TIP=$(git -C "$R38" rev-parse sq-one)
+pr_json() {  # state draft head review checks
+  jq -cn --arg s "$1" --argjson d "$2" --arg h "$3" --arg r "$4" --arg c "$5" \
+    '{data: {repository: {b0: {nodes: [{number: 7, state: $s, isDraft: $d, headRefOid: $h,
+       reviewDecision: (if $r == "" then null else $r end), url: "https://github.com/example/repo/pull/7",
+       commits: {nodes: [{commit: {statusCheckRollup: (if $c == "" then null else {state: $c} end)}}]}}]}}}}'
+}
+NO_PR='{"data":{"repository":{"b0":{"nodes":[]}}}}'
+one() { printf '%s' "$1" | jq -r ".[0].deliverables[0].$2"; }
+
+eq "fixture: git cherry cannot see a squash of two commits" "2" "$(git -C "$R38" cherry main sq-one | grep -c '^+')"
+S=$(GH_OUT=$NO_PR stubbed "$R38" story --no-fetch)
+eq "with no PR on GitHub, a finished branch is awaiting-merge" "awaiting-merge" "$(one "$S" state)"
+eq "and has no PR" "null" "$(one "$S" pr)"
+S=$(GH_OUT=$(pr_json MERGED false "$TIP" APPROVED SUCCESS) stubbed "$R38" story --no-fetch)
+eq "a squash-merged PR at the tip of the branch makes it merged" "merged" "$(one "$S" state)"
+eq "and says so" "PR #7 is merged on GitHub" "$(one "$S" evidence)"
+S=$(GH_OUT=$(pr_json MERGED false "$(git -C "$R38" rev-parse sq-one~1)" APPROVED SUCCESS) stubbed "$R38" story --no-fetch)
+eq "a merged PR behind the tip of the branch leaves the later commit unmerged" "awaiting-merge" "$(one "$S" state)"
+S=$(GH_OUT=$(pr_json MERGED false 0123456789abcdef0123456789abcdef01234567 APPROVED SUCCESS) stubbed "$R38" story --no-fetch)
+eq "a merged PR whose head this clone never fetched makes it merged" "merged" "$(one "$S" state)"
+S=$(GH_OUT=$(pr_json OPEN true "$TIP" CHANGES_REQUESTED FAILURE) stubbed "$R38" story --no-fetch)
+eq "an open PR reports its number, state, review and checks" "7 open true changes-requested fail" \
+   "$(printf '%s' "$S" | jq -r '.[0].deliverables[0].pr | "\(.number) \(.state) \(.draft) \(.review) \(.checks)"')"
+eq "and --table names the most pressing of them" "#7 failing" \
+   "$(GH_OUT=$(pr_json OPEN true "$TIP" CHANGES_REQUESTED FAILURE) stubbed "$R38" story --no-fetch --table |
+      awk '/ one$/ {print $4, $5}')"
+S=$(GH_ERR="HTTP 502: Bad Gateway" stubbed "$R38" story --no-fetch)
+eq "when gh cannot answer, the story says why" "HTTP 502: Bad Gateway" "$(printf '%s' "$S" | jq -r '.[0].pr_error')"
+eq "and --table marks the PR as unknown, not as missing" "?" \
+   "$(GH_ERR="HTTP 502: Bad Gateway" stubbed "$R38" story --no-fetch --table | awk '/ one$/ {print $4}')"
+GH_CALLS="$STORY_STUBS/calls" stubbed "$R22" story >/dev/null
+eq "a repo with no GitHub origin never asks gh" "no" "$([ -s "$STORY_STUBS/calls" ] && echo yes || echo no)"
+
+rm -rf "$STORY_STUBS"
+
+# --------------------------------------------------------------------------------
 printf '\nstack — PR bases derived from the plan DAG\n'
 
 # The fixture has no origin, so no `gh` call is made and every openable deliverable

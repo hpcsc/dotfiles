@@ -1473,6 +1473,72 @@ git -C "$R38" worktree remove --force "$WT38" 2>/dev/null
 rm -rf "$STORY_STUBS"
 
 # --------------------------------------------------------------------------------
+printf '\nstory archive — the folder of a story, moved to tasks/completed/\n'
+
+# arc_repo <tasks tracked: yes|no>: a story whose one deliverable merged and left no branch,
+# and a second story beside it, so that the default plan is never the only one.
+arc_repo() {
+  local r
+  r=$(new_repo)
+  [ "$1" = yes ] || printf 'tasks/\n' >> "$r/.git/info/exclude"
+  mkdir -p "$r/tasks/done-story/one" "$r/tasks/other/two"
+  printf '# one\n' > "$r/tasks/done-story/one/tasks.md"
+  printf '{"tasks":[{"n":1,"title":"t","depends_on":[],"done":true}]}\n' > "$r/tasks/done-story/one/tasks.json"
+  printf 'story: Done\nstory_slug: done-story\ndeliverables:\n  - id: one\n    branch: done-story-one\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/done-story/one/tasks.md\n' \
+    > "$r/tasks/done-story/plan.yaml"
+  printf 'story: Other\nstory_slug: other\ndeliverables:\n  - id: two\n    branch: other-two\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/other/two/tasks.md\n' \
+    > "$r/tasks/other/plan.yaml"
+  if [ "$1" = yes ]; then git -C "$r" add tasks && git -C "$r" commit -qm "Plan two stories"; fi
+  printf '%s' "$r"
+}
+files_in() { (cd "$1" && find . -type f | sed 's|^\./||' | sort | paste -sd'|' -); }
+
+R40=$(arc_repo no)
+eq "with two live plans and none named, it asks which" "2" "$(run "$R40" story archive --no-fetch >/dev/null 2>&1; echo $?)"
+eq "a story with a deliverable not merged is refused" "2" \
+   "$(run "$R40" story archive tasks/other/plan.yaml --no-fetch >/dev/null 2>&1; echo $?)"
+eq "naming the deliverable and its state" "1" \
+   "$(run "$R40" story archive tasks/other/plan.yaml --no-fetch 2>&1 | grep -c 'two is ready')"
+J=$(run "$R40" story archive tasks/done-story/plan.yaml --no-fetch)
+eq "a merged story moves to the same path under tasks/completed/" "$R40/tasks/completed/done-story" \
+   "$(printf '%s' "$J" | jq -r '.archived')"
+eq "with its plan, its breakdowns and their task records" "one/tasks.json|one/tasks.md|plan.yaml" \
+   "$(files_in "$R40/tasks/completed/done-story")"
+eq "and its folder leaves tasks/" "gone" "$([ -e "$R40/tasks/done-story" ] && echo there || echo gone)"
+eq "so clerk story no longer lists it" "other" "$(run "$R40" story --no-fetch | jq -r '[.[].story_slug] | join(",")')"
+J=$(run "$R40" story archive tasks/other/plan.yaml --force --no-fetch)
+eq "--force archives a story with work not merged, and names that work" "two" \
+   "$(printf '%s' "$J" | jq -r '.not_merged | join(",")')"
+
+R41=$(arc_repo no)
+mkdir -p "$R41/tasks/completed/done-story/one"
+mv "$R41/tasks/done-story/one/tasks.md" "$R41/tasks/completed/done-story/one/tasks.md"
+run "$R41" story archive tasks/done-story/plan.yaml --no-fetch >/dev/null
+eq "a breakdown that clerk land archived already joins the same folder" "one/tasks.json|one/tasks.md|plan.yaml" \
+   "$(files_in "$R41/tasks/completed/done-story")"
+
+R42=$(arc_repo no)
+mkdir -p "$R42/tasks/completed/done-story"
+printf 'story: An older one\n' > "$R42/tasks/completed/done-story/plan.yaml"
+eq "a file already in the archive stops it" "2" \
+   "$(run "$R42" story archive tasks/done-story/plan.yaml --no-fetch >/dev/null 2>&1; echo $?)"
+eq "and nothing moves" "one/tasks.json|one/tasks.md|plan.yaml" "$(files_in "$R42/tasks/done-story")"
+
+R43=$(arc_repo yes)
+printf 'other work\n' > "$R43/staged.txt"; git -C "$R43" add staged.txt
+run "$R43" story archive tasks/done-story/plan.yaml --no-fetch >/dev/null
+eq "when git tracks tasks/, the move is one commit" "Archive story: done-story" "$(git -C "$R43" log -1 --format=%s)"
+eq "of the files of the story alone" \
+   "R tasks/completed/done-story/one/tasks.json|R tasks/completed/done-story/one/tasks.md|R tasks/completed/done-story/plan.yaml" \
+   "$(git -C "$R43" show -M --name-status --format= HEAD | awk '{print substr($1, 1, 1), $3}' | sort | paste -sd'|' -)"
+eq "and other staged work stays staged" "A  staged.txt" "$(git -C "$R43" status --porcelain -- staged.txt)"
+
+mkdir -p "$R40/tasks/completed/older"
+printf 'story: Old\nstory_slug: old\ndeliverables: []\n' > "$R40/tasks/completed/older/plan.yaml"
+eq "a plan in the archive is not archived again" "2" \
+   "$(run "$R40" story archive tasks/completed/older/plan.yaml --no-fetch >/dev/null 2>&1; echo $?)"
+
+# --------------------------------------------------------------------------------
 printf '\nstack — PR bases derived from the plan DAG\n'
 
 # The fixture has no origin, so no `gh` call is made and every openable deliverable

@@ -198,6 +198,8 @@ A deliverable that depends on another reads that one's design changes when its o
 
 Once a PR merges, **just run `/deliver-story` again** — it finds the existing plan, skips planning, reconciles the merge, and delivers the next ready wave. (Stacked deliverables don't wait for a merge; they fire as soon as their prerequisite's branch carries commits of its own, so an earlier wave may already have launched them.) Mark a deliverable `merged` in `plan.yaml` yourself only if the reconcile can't see it (e.g. it merged under a different branch name).
 
+When every deliverable is merged, `clerk story archive tasks/<slug>/plan.yaml` moves the folder of the story to the same path under `tasks/completed/`, so the story leaves `clerk story`. It refuses while a deliverable is not merged, and names each one with its state. `--force` archives a story that you stop before its end.
+
 ---
 
 ## Why it's wired this way

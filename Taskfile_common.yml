@@ -228,8 +228,6 @@ tasks:
   workmux-form:
     desc: Build the workmux-new-form TUI helper to ~/.local/bin - requires go (mise)
     run: once
-    deps:
-      - core
     dir: ./tools/workmux-new-form
     cmds:
       - mkdir -p "$HOME/.local/bin"

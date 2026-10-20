@@ -35,8 +35,8 @@
 # depends_on deliverable is merged) OR (base is a sibling deliverable whose branch carries
 # commits of its own).
 # A ready deliverable is launched and its status set to running. Before launching,
-# running/in-review deliverables whose branch has merged into the default branch are
-# advanced to merged (best-effort, no gh dependency), so the next wave unlocks.
+# running/in-review deliverables that `clerk story` reports as merged are advanced to
+# merged, so the next wave unlocks.
 #
 # Each deliverable gets a single agent pane. The shared workmux config asks for an
 # agent pane plus a shell pane below it; the extra pane is collapsed here rather
@@ -119,8 +119,23 @@ set_status() {
   yq -i "(.deliverables[] | select(.id==\"$1\").status) = \"$2\"" "$PLAN"
 }
 
+# The plan's `status` is a latch this script sets; it is not evidence. A run started by
+# hand, or one whose worktree took a different branch name than the plan chose, leaves
+# the latch on `pending` while the work is well under way — and launching then scaffolds
+# a second worktree for a deliverable someone is already building. `clerk story` derives
+# state from the sidecar, the branch, the worktree list and the PR, so ask it before firing.
+CLERK_STATE=""
+if command -v clerk >/dev/null 2>&1; then
+  CLERK_STATE=$(clerk story "$PLAN" --no-fetch 2>/dev/null |
+    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // ""), (.evidence // "")] | join("|")' 2>/dev/null) || CLERK_STATE=""
+fi
+clerk_field_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" -v f="$2" '$1 == i {print $f; exit}'; }
+clerk_state_of()  { clerk_field_of "$1" 2; }
+clerk_where_of()  { clerk_field_of "$1" 3; }
+
 # Reconcile: advance running/in-review deliverables whose work is now in the default
-# branch to merged, so dependents unlock.
+# branch to merged, so dependents unlock. `clerk story` answers first, because it also
+# reads the PR: a squash of several commits never matches by patch id.
 #
 # `--is-ancestor` asks whether the branch TIP is in the default branch's history, which
 # is false for every rebase- or squash-merged branch: the work landed under new SHAs and
@@ -130,6 +145,11 @@ set_status() {
 # however it got there.
 while IFS='|' read -r id branch status; do
   case "$status" in running|in-review) ;; *) continue ;; esac
+  if [ "$(clerk_state_of "$id")" = merged ]; then
+    say "reconcile: $id merged into $DEFAULT ($(clerk_field_of "$id" 4))"
+    set_status "$id" merged
+    continue
+  fi
   git rev-parse --verify --quiet "$branch" >/dev/null 2>&1 || continue
   # A branch that has committed nothing yet has no patches to be missing, so it would
   # reconcile to merged while the deliverable is still being worked on.
@@ -195,19 +215,6 @@ chosen=0
 deferred=0
 held=""
 launched_handles=""
-
-# The plan's `status` is a latch this script sets; it is not evidence. A run started by
-# hand, or one whose worktree took a different branch name than the plan chose, leaves
-# the latch on `pending` while the work is well under way — and launching then scaffolds
-# a second worktree for a deliverable someone is already building. `clerk story` derives
-# state from the sidecar, the branch and the worktree list, so ask it before firing.
-CLERK_STATE=""
-if command -v clerk >/dev/null 2>&1; then
-  CLERK_STATE=$(clerk story "$PLAN" --no-fetch 2>/dev/null |
-    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // "")] | join("|")' 2>/dev/null) || CLERK_STATE=""
-fi
-clerk_state_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" '$1 == i {print $2; exit}'; }
-clerk_where_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" '$1 == i {print $3; exit}'; }
 
 # Whether anything is still sitting in that worktree. clerk answers what the WORK looks
 # like — commits, ticked tasks, a branch — and cannot answer whether a process is alive,

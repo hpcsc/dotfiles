@@ -28,7 +28,8 @@
 #   --dry-run     print the workmux commands and status changes without running them
 #   --mark        only mark this tmux pane as the orchestrator of the plan, and exit.
 #                 Every run that is not a dry run marks it too. tmux-deliverables reads
-#                 the mark to show the orchestrator of each story.
+#                 the mark to show the orchestrator of each story. A window that
+#                 orchestrates one plan is named <ticket>-orchestrator.
 #
 # The plan's certainty and blast_radius are reported on every launch line regardless of
 # --gears. The flag decides whether the driver acts on them, never whether they are
@@ -117,11 +118,37 @@ mark_orchestrator() {
   case ":$have:" in *":$plan:"*) return 0 ;; esac
   tmux set-option -p -t "$TMUX_PANE" @orchestrates "${have:+$have:}$plan" 2>/dev/null || true
 }
+
+# A window that orchestrates one plan takes the name <ticket>-orchestrator, beside the
+# windows of its deliverables. workmux finds the window of a worktree by its name, so a
+# window in a worktree keeps its name.
+name_orchestrator_window() {
+  [ -n "${TMUX_PANE:-}" ] || return 0
+  [ "$(git rev-parse --absolute-git-dir 2>/dev/null)" = "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" ] || return 0
+  local plans prefix
+  plans=$(tmux show-options -pqv -t "$TMUX_PANE" @orchestrates 2>/dev/null || true)
+  case "$plans" in
+    "") ;;
+    *:*)
+      # Several stories now, so the name of one is wrong for the window.
+      case "$(tmux display-message -p -t "$TMUX_PANE" '#{window_name}' 2>/dev/null)" in
+        *-orchestrator) tmux set-option -w -t "$TMUX_PANE" automatic-rename on 2>/dev/null || true ;;
+      esac ;;
+    *)
+      prefix=$(yq -r '(.ticket // .story_slug // "") | downcase' "$plans" 2>/dev/null)
+      [ -z "$prefix" ] || tmux rename-window -t "$TMUX_PANE" "$prefix-orchestrator" 2>/dev/null || true ;;
+  esac
+}
+
 if [ "$MARK" -eq 1 ]; then
   mark_orchestrator
+  name_orchestrator_window
   exit 0
 fi
-[ "$DRY" -eq 1 ] || mark_orchestrator
+if [ "$DRY" -eq 0 ]; then
+  mark_orchestrator
+  name_orchestrator_window
+fi
 
 MAIN_ROOT=$(git rev-parse --show-toplevel) || die "not in a git repo"
 STORY_SLUG=$(yq -r '.story_slug // ""' "$PLAN")

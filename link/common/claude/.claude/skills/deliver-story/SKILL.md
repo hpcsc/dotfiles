@@ -47,7 +47,7 @@ As soon as the plan exists, mark the tmux pane of this session as its orchestrat
 bash "$HOME/.claude/skills/deliver-story/deliver.sh" tasks/<slug>/plan.yaml --mark
 ```
 
-The mark is the pane option `@orchestrates`, which holds the plan path. `tmux-deliverables` reads it to show this window on the story, and counts the window as one that needs a person while it waits, for example at the gate. Each run of the driver marks the pane too. Outside tmux the mark does nothing.
+The mark is the pane option `@orchestrates`, which holds the plan path. `tmux-deliverables` reads it to show this window on the story, and counts the window as one that needs a person while it waits, for example at the gate. Each run of the driver marks the pane too. While the pane orchestrates this one plan, its window takes the name `<ticket>-orchestrator` (the story slug when the plan has no ticket), beside the windows of the deliverables; when it orchestrates more than one, the window gets its automatic name back. A window in a worktree keeps its name, because workmux finds it by that name. Outside tmux the mark does nothing.
 
 ### Start one deliverable by hand
 

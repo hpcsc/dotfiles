@@ -16,8 +16,9 @@ cat > "$STUBS/tmux" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   show-options)    cat "$STUBS/option" 2>/dev/null ;;
-  set-option)      printf '%s' "${@: -1}" > "$STUBS/option" ;;
-  display-message) echo Work ;;
+  set-option)      if [ "$2" = -w ]; then echo "tmux $*" >> "$STUBS/log"; else printf '%s' "${@: -1}" > "$STUBS/option"; fi ;;
+  rename-window)   printf '%s' "${@: -1}" > "$STUBS/name" ;;
+  display-message) case "$*" in *window_name*) cat "$STUBS/name" 2>/dev/null ;; *) echo Work ;; esac ;;
 esac
 EOF
 printf '#!/usr/bin/env bash\necho "[]"\n' > "$STUBS/workmux"
@@ -60,6 +61,31 @@ TMUX_PANE=%7 drive "$R" tasks/age-1-one/plan.yaml --dry-run
 eq "a dry run marks nothing" "" "$(mark)"
 TMUX_PANE=%7 drive "$R" tasks/age-1-one/plan.yaml
 eq "a run marks the pane that runs it" "$R/tasks/age-1-one/plan.yaml" "$(mark)"
+
+printf '\ndeliver-story driver — the name of the orchestrator window\n'
+
+fresh() { rm -f "$STUBS/option" "$STUBS/log"; printf 'customer-portal' > "$STUBS/name"; }
+R2=$(repo age-5-five)
+printf 'story: S\nstory_slug: age-5-five\nticket: "AGE-5"\ndeliverables: []\n' > "$R2/tasks/age-5-five/plan.yaml"
+fresh
+TMUX_PANE=%7 drive "$R2" tasks/age-5-five/plan.yaml --mark
+eq "a pane that orchestrates one plan names its window after the ticket" "age-5-orchestrator" "$(cat "$STUBS/name")"
+fresh
+TMUX_PANE=%7 drive "$R" tasks/age-1-one/plan.yaml --mark
+eq "with no ticket, the window takes the story slug" "age-1-one-orchestrator" "$(cat "$STUBS/name")"
+TMUX_PANE=%7 drive "$R" tasks/age-2-two/plan.yaml --mark
+eq "a second plan gives the window back its automatic name" "tmux set-option -w -t %7 automatic-rename on" "$(cat "$STUBS/log")"
+fresh
+TMUX_PANE=%7 drive "$R2" tasks/age-5-five/plan.yaml --dry-run
+eq "a dry run renames nothing" "customer-portal" "$(cat "$STUBS/name")"
+
+fresh
+git -C "$R2" worktree add -q -b wt "$R2/.worktrees/wt" 2>/dev/null
+mkdir -p "$R2/.worktrees/wt/tasks/age-5-five"
+cp "$R2/tasks/age-5-five/plan.yaml" "$R2/.worktrees/wt/tasks/age-5-five/plan.yaml"
+TMUX_PANE=%7 drive "$R2/.worktrees/wt" tasks/age-5-five/plan.yaml --mark
+eq "a window in a worktree keeps its name" "customer-portal" "$(cat "$STUBS/name")"
+eq "and its pane still gets the mark" "$R2/.worktrees/wt/tasks/age-5-five/plan.yaml" "$(mark)"
 
 rm -rf "$STUBS"
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

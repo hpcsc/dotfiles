@@ -169,6 +169,22 @@ func TestPlannerView(t *testing.T) {
 			require.Contains(t, preview, "unblocks:      2 stories in all")
 		})
 
+		t.Run("a story lists its deliverables by wave, with what each depends on and stacks on", func(t *testing.T) {
+			p := signIn()
+			p.Stories[2].Deliverables = []json.RawMessage{
+				plannedJSON("age-3-under-way", "building", "in-progress", 1, 3, "base", "main"),
+				plannedJSON("age-3-under-way", "next", "ready", 0, 2, "wave", 2, "base", "building", "depends_on", []string{"building"}),
+			}
+			s, _ := plannerOn(t, p, nil)
+			s.to("US-003")
+
+			require.Contains(t, s.preview(), strings.Join([]string{
+				"deliverables:",
+				"  wave 1  ● building  in-progress",
+				"  wave 2  ○ next      ready           <- building  on building",
+			}, "\n"))
+		})
+
 		t.Run("t shows the feature by step, with the critical path, and t again shows the story", func(t *testing.T) {
 			s, _ := plannerOn(t, signIn(), nil)
 

@@ -78,11 +78,14 @@ type deliverable struct {
 	PR        *pullRequest `json:"pr"`
 	PlanPath  string       `json:"plan"`
 	StorySlug string       `json:"story_slug"`
+	DependsOn []string     `json:"depends_on"`
+	Base      string       `json:"base"`
 
-	raw    json.RawMessage // what deliverable-open reads
-	plan   *plan
-	window *window
-	need   need
+	raw      json.RawMessage // what deliverable-open reads
+	plan     *plan
+	window   *window
+	need     need
+	stacksOn string // the sibling whose branch this branch starts from, when the base names one
 }
 
 type story struct {
@@ -132,6 +135,7 @@ func newBoard(s snapshot) board {
 			stories = append(stories, st)
 		}
 		st.plans = append(st.plans, p)
+		first := len(st.deliverables)
 		for _, raw := range p.Deliverables {
 			d := &deliverable{Wave: 1}
 			if json.Unmarshal(raw, d) != nil {
@@ -145,6 +149,7 @@ func newBoard(s snapshot) board {
 			d.need = needOf(d)
 			st.deliverables = append(st.deliverables, d)
 		}
+		markStacks(st.deliverables[first:])
 	}
 
 	var b board
@@ -311,6 +316,18 @@ func windowOfWorktree(worktree string, panes []pane, windows []*window) *window 
 		}
 	}
 	return nil
+}
+
+// markStacks notes each deliverable whose base is a sibling: its branch starts from that
+// sibling's branch, and its PR targets it.
+func markStacks(siblings []*deliverable) {
+	for _, d := range siblings {
+		for _, s := range siblings {
+			if s != d && s.plan == d.plan && s.ID == d.Base {
+				d.stacksOn = s.ID
+			}
+		}
+	}
 }
 
 func needOf(d *deliverable) need {

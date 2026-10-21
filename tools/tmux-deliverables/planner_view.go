@@ -378,6 +378,7 @@ func (v *plannerView) rebuild() {
 			d.need = needOf(d)
 			st.deliverables = append(st.deliverables, d)
 		}
+		markStacks(st.deliverables)
 		v.stories = append(v.stories, st)
 	}
 	v.rows = nil
@@ -470,8 +471,8 @@ func (v plannerView) storyText(st *projectStory) string {
 	}
 	if len(st.deliverables) > 0 {
 		lines = append(lines, "", "deliverables:")
-		for _, d := range st.deliverables {
-			lines = append(lines, fmt.Sprintf("  %s %-15sw%d  %d/%d  %s", mark(d.State), d.State, d.Wave, d.Done, d.Total, d.ID))
+		for _, line := range dependencyGraph(st.deliverables, false) {
+			lines = append(lines, "  "+line)
 		}
 	}
 	if len(st.Plans) > 0 {

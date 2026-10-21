@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -88,9 +89,12 @@ type boardView struct {
 	board  board
 
 	folded map[string]bool // what the person folded or opened; other stories take a default
-	rows   []row
-	cursor int
-	offset int
+	// showPane makes the preview of a story heading the pane of its orchestrator, not the
+	// graph of its deliverables.
+	showPane bool
+	rows     []row
+	cursor   int
+	offset   int
 
 	width, height int
 	filter        textinput.Model
@@ -233,6 +237,12 @@ func (m boardView) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.askClose()
 	case "a":
 		return m.askArchive()
+	case "t":
+		m.showPane = !m.showPane
+		if r, ok := m.current(); ok && r.kind == storyRow && r.story.orchestrator == nil {
+			m.message = r.story.label + " has no orchestrator"
+		}
+		return m, m.readPreview()
 	case "r":
 		m.loading = true
 		return m, m.load()
@@ -488,7 +498,7 @@ func (m boardView) readPreview() tea.Cmd {
 	case r.kind == windowRow:
 		pane := r.w.pane
 		return func() tea.Msg { return previewMsg{key, run.capture(pane, lines)} }
-	case r.kind == storyRow && r.story.orchestrator != nil:
+	case r.kind == storyRow && r.story.orchestrator != nil && m.showPane:
 		pane := r.story.orchestrator.pane
 		return func() tea.Msg { return previewMsg{key, run.capture(pane, lines)} }
 	case r.kind == deliverableRow:
@@ -535,9 +545,7 @@ func storyPreview(r row) string {
 	switch r.kind {
 	case storyRow:
 		lines := []string{r.story.label + "  " + r.story.title, "repos: " + strings.Join(r.story.repos, ", "), ""}
-		for _, d := range r.story.deliverables {
-			lines = append(lines, fmt.Sprintf("%s %-15s%-30s%d/%d  %s", mark(d.State), d.State, d.ID, d.Done, d.Total, d.need.text))
-		}
+		lines = append(lines, dependencyGraph(r.story.deliverables, len(r.story.repos) > 1)...)
 		lines = append(lines, "")
 		for _, p := range r.story.plans {
 			lines = append(lines, "plan: "+p.Path)
@@ -665,7 +673,7 @@ func (m boardView) View() string {
 		b.WriteString(m.filter.View())
 	default:
 		b.WriteString(dimmed.Render(ansi.Truncate(
-			"enter go, start, or go to the orchestrator · o open the PR · x close a merged window · a archive the story · ←/→ fold · / filter · tab features · r reload · q quit",
+			"enter go, start, or go to the orchestrator · o open the PR · x close a merged window · a archive the story · t graph or orchestrator · ←/→ fold · / filter · tab features · r reload · q quit",
 			m.width, "…")))
 	}
 	return b.String()
@@ -720,10 +728,49 @@ func deliverableLine(d *deliverable, withRepo bool) string {
 	}
 	text := "  " + mark(d.State) + " " + cell(d.State, 15) + cell(d.ID, 30) + cell(fmt.Sprintf("%d/%d", d.Done, d.Total), 6) +
 		cell(pr, 7) + cell(target, 9) + icon(agent) + "  " + paint(d.need, d.need.text)
+	if d.stacksOn != "" {
+		text += dimmed.Render("  · on " + d.stacksOn)
+	}
 	if withRepo {
 		text += "  " + dimmed.Render(filepath.Base(d.plan.root))
 	}
 	return text
+}
+
+// dependencyGraph is the deliverables of a story by wave: what each one depends on, and the
+// sibling that its branch stacks on.
+func dependencyGraph(ds []*deliverable, withRepo bool) []string {
+	sorted := append([]*deliverable(nil), ds...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].Wave != sorted[j].Wave {
+			return sorted[i].Wave < sorted[j].Wave
+		}
+		return sorted[i].ID < sorted[j].ID
+	})
+	deps := make([]string, len(sorted))
+	idWidth, depsWidth := 0, 0
+	for i, d := range sorted {
+		if len(d.DependsOn) > 0 {
+			deps[i] = "<- " + strings.Join(d.DependsOn, ", ")
+		}
+		idWidth, depsWidth = max(idWidth, len(d.ID)), max(depsWidth, len(deps[i]))
+	}
+	lines := make([]string, len(sorted))
+	for i, d := range sorted {
+		label := ""
+		if i == 0 || sorted[i-1].Wave != d.Wave {
+			label = fmt.Sprintf("wave %d", d.Wave)
+		}
+		line := cell(label, 8) + mark(d.State) + " " + cell(d.ID, idWidth+2) + cell(d.State, 16) + cell(deps[i], depsWidth+2)
+		if d.stacksOn != "" {
+			line += "on " + d.stacksOn
+		}
+		if withRepo {
+			line += "  " + filepath.Base(d.plan.root)
+		}
+		lines[i] = strings.TrimRight(line, " ")
+	}
+	return lines
 }
 
 // orchestratorNote names the window of the orchestrator and the state of its agent, and

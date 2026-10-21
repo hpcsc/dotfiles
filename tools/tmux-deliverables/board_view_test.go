@@ -357,14 +357,18 @@ func TestBoardView(t *testing.T) {
 			require.True(t, shown.quit)
 		})
 
-		t.Run("the preview of the heading is the end of the pane of the orchestrator", func(t *testing.T) {
+		t.Run("t shows the pane of the orchestrator in the preview of the heading, and t again the graph", func(t *testing.T) {
 			p := planIn("/repos/a", "AGE-1", "age-1-story", deliverableJSON("one", "awaiting-merge", 1, 1))
 			f := newFake([]*plan{p}, []pane{orchestrator("W:4", "%4", p.Path)}, agent{Pane: "%4", Status: "waiting"})
 			f.captured["%4"] = "Do you approve the plan?"
-
 			shown := open(t, f)
 
-			require.Equal(t, "Do you approve the plan?", shown.preview())
+			shown.press("t")
+			pane := shown.preview()
+			shown.press("t")
+
+			require.Equal(t, "Do you approve the plan?", pane)
+			require.Contains(t, shown.preview(), "wave 1")
 		})
 
 		t.Run("one pane can orchestrate several stories", func(t *testing.T) {
@@ -386,6 +390,58 @@ func TestBoardView(t *testing.T) {
 
 			require.Equal(t, []string{"Other", "W:4"}, names(shown.rows()))
 			require.Contains(t, shown.row("W:4"), "done: close the window")
+		})
+	})
+
+	t.Run("dependencies", func(t *testing.T) {
+		// oneAddress is a story of four waves: each deliverable depends on the ones before it,
+		// two of them stack on a sibling, and the last one starts from the default branch.
+		oneAddress := func() *plan {
+			return planIn("/repos/a", "AGE-1055", "age-1055-one-address",
+				deliverableJSON("keep-the-country", "blocked", 0, 6, "wave", 4, "base", "main",
+					"depends_on", []string{"single-host", "link-by-region", "choose-the-country"}, "blocked_by", []string{"link-by-region", "choose-the-country"}),
+				deliverableJSON("single-host", "merged", 5, 5, "wave", 1, "base", "main"),
+				deliverableJSON("choose-the-country", "awaiting-merge", 6, 6, "wave", 3, "base", "link-by-region",
+					"depends_on", []string{"single-host", "link-by-region"}),
+				deliverableJSON("link-by-region", "awaiting-merge", 5, 5, "wave", 2, "base", "single-host",
+					"depends_on", []string{"single-host"}))
+		}
+
+		t.Run("the preview of a heading is its deliverables by wave, with what each depends on and stacks on", func(t *testing.T) {
+			shown := open(t, newFake([]*plan{oneAddress()}, nil))
+
+			require.Equal(t, strings.Join([]string{
+				"AGE-1055  The story age-1055-one-address",
+				"repos: a",
+				"",
+				"wave 1  ✓ single-host         merged",
+				"wave 2  ● link-by-region      awaiting-merge  <- single-host                                      on single-host",
+				"wave 3  ● choose-the-country  awaiting-merge  <- single-host, link-by-region                      on link-by-region",
+				"wave 4  ◌ keep-the-country    blocked         <- single-host, link-by-region, choose-the-country",
+				"",
+				"plan: /repos/a/tasks/age-1055-one-address/plan.yaml",
+			}, "\n"), shown.preview())
+		})
+
+		t.Run("a deliverable that stacks on a sibling says so on its row", func(t *testing.T) {
+			shown := open(t, newFake([]*plan{oneAddress()}, nil))
+
+			require.True(t, strings.HasSuffix(shown.row("choose-the-country"), "open a PR  · on link-by-region"), shown.row("choose-the-country"))
+		})
+
+		t.Run("a base on the default branch adds no note", func(t *testing.T) {
+			shown := open(t, newFake([]*plan{oneAddress()}, nil))
+
+			require.True(t, strings.HasSuffix(shown.row("keep-the-country"), "waits on link-by-region, choose-the-country"), shown.row("keep-the-country"))
+		})
+
+		t.Run("t on a heading with no orchestrator says so, and the graph stays", func(t *testing.T) {
+			shown := open(t, newFake([]*plan{oneAddress()}, nil))
+
+			shown.press("t")
+
+			require.True(t, strings.HasSuffix(shown.header(), "AGE-1055 has no orchestrator"), shown.header())
+			require.Contains(t, shown.preview(), "wave 1")
 		})
 	})
 

@@ -1377,7 +1377,7 @@ eq "a deliverable with two task files counts the tasks of both" "1/2|tasks/pair/
 # --------------------------------------------------------------------------------
 printf '\nstory — the fetch before it compares\n'
 
-R39=$(new_repo); ORIGIN39=$(mktemp -d); git init -q --bare "$ORIGIN39"
+R39=$(new_repo); ORIGIN39=$(mktemp -d); git init -q --bare -b main "$ORIGIN39"
 mkdir -p "$R39/tasks/f"; printf 'story: F\nstory_slug: f\ndeliverables: []\n' > "$R39/tasks/f/plan.yaml"
 git -C "$R39" add -A && git -C "$R39" commit -qm "Plan"
 git -C "$R39" remote add origin "$ORIGIN39"; git -C "$R39" push -q origin main

@@ -167,11 +167,10 @@ func newBoard(s snapshot) board {
 		for _, d := range st.deliverables {
 			st.rank = min(st.rank, d.need.rank)
 		}
+		// A story and a deliverable keep their place when their need changes, so that a person
+		// finds them where they were.
 		sort.SliceStable(st.deliverables, func(i, j int) bool {
 			a, c := st.deliverables[i], st.deliverables[j]
-			if a.need.rank != c.need.rank {
-				return a.need.rank < c.need.rank
-			}
 			if a.Wave != c.Wave {
 				return a.Wave < c.Wave
 			}
@@ -180,10 +179,7 @@ func newBoard(s snapshot) board {
 		b.stories = append(b.stories, st)
 	}
 	sort.SliceStable(b.stories, func(i, j int) bool {
-		if b.stories[i].rank != b.stories[j].rank {
-			return b.stories[i].rank < b.stories[j].rank
-		}
-		return b.stories[i].key < b.stories[j].key
+		return lessKey(b.stories[i].key, b.stories[j].key)
 	})
 
 	for _, w := range windows {
@@ -449,6 +445,19 @@ func lessTarget(a, b string) bool {
 	an, _ := strconv.Atoi(ai)
 	bn, _ := strconv.Atoi(bi)
 	return an < bn
+}
+
+// lessKey orders the tickets of one team by number, so that age-10 comes after age-9.
+func lessKey(a, b string) bool {
+	ai, bi := strings.LastIndex(a, "-"), strings.LastIndex(b, "-")
+	if ai >= 0 && bi >= 0 && a[:ai] == b[:bi] {
+		an, aerr := strconv.Atoi(a[ai+1:])
+		bn, berr := strconv.Atoi(b[bi+1:])
+		if aerr == nil && berr == nil && an != bn {
+			return an < bn
+		}
+	}
+	return a < b
 }
 
 func firstOf(values ...string) string {

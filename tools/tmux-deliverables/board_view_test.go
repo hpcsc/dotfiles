@@ -188,16 +188,38 @@ func TestBoardView(t *testing.T) {
 				[]string{lastField(shown.row("first"), "start it"), lastField(shown.row("second"), "waits on first, other")})
 		})
 
-		t.Run("each story is a heading over its deliverables, and the stories that need you come first", func(t *testing.T) {
+		t.Run("each story is a heading over its deliverables, and the stories keep the order of their tickets whatever they need", func(t *testing.T) {
 			plans := []*plan{
-				planIn("/repos/a", "AGE-2", "age-2-review", deliverableJSON("reviewed", "awaiting-merge", 3, 3, "pr", prJSON(4, "open", false, "review-required", ""))),
 				planIn("/repos/a", "AGE-3", "age-3-urgent",
 					deliverableJSON("ready-one", "ready", 0, 1), deliverableJSON("no-pr", "awaiting-merge", 3, 3)),
+				planIn("/repos/a", "AGE-2", "age-2-review", deliverableJSON("reviewed", "awaiting-merge", 3, 3, "pr", prJSON(4, "open", false, "review-required", ""))),
 			}
 
 			shown := open(t, newFake(plans, nil))
 
-			require.Equal(t, []string{"AGE-3", "no-pr", "ready-one", "AGE-2", "reviewed"}, names(shown.rows()))
+			require.Equal(t, []string{"AGE-2", "reviewed", "AGE-3", "no-pr", "ready-one"}, names(shown.rows()))
+		})
+
+		t.Run("the deliverables of a story come in order of wave, then of ID, whatever they need", func(t *testing.T) {
+			p := planIn("/repos/a", "AGE-1", "age-1-story",
+				deliverableJSON("cli", "awaiting-merge", 2, 2, "wave", 2),
+				deliverableJSON("web", "awaiting-merge", 3, 3, "pr", prJSON(4, "open", false, "review-required", "")),
+				deliverableJSON("api", "ready", 0, 1))
+
+			shown := open(t, newFake([]*plan{p}, nil))
+
+			require.Equal(t, []string{"AGE-1", "api", "web", "cli"}, names(shown.rows()))
+		})
+
+		t.Run("the stories of one team come in order of ticket number", func(t *testing.T) {
+			plans := []*plan{
+				planIn("/repos/a", "AGE-10", "age-10-later", deliverableJSON("ten", "awaiting-merge", 1, 1)),
+				planIn("/repos/a", "AGE-9", "age-9-earlier", deliverableJSON("nine", "awaiting-merge", 1, 1)),
+			}
+
+			shown := open(t, newFake(plans, nil))
+
+			require.Equal(t, []string{"AGE-9", "nine", "AGE-10", "ten"}, names(shown.rows()))
 		})
 
 		t.Run("one ticket in two repos is one story, and each row names its repo", func(t *testing.T) {
@@ -326,15 +348,14 @@ func TestBoardView(t *testing.T) {
 			require.True(t, strings.HasSuffix(shown.rows()[0], "· W:4 ✅"), shown.rows()[0])
 		})
 
-		t.Run("an orchestrator that waits needs you, and its story comes first", func(t *testing.T) {
+		t.Run("an orchestrator that waits needs you", func(t *testing.T) {
 			waiting := planIn("/repos/a", "AGE-1", "age-1-gate", deliverableJSON("later", "ready", 0, 2))
 			other := planIn("/repos/a", "AGE-2", "age-2-pr", deliverableJSON("no-pr", "awaiting-merge", 1, 1))
 			f := newFake([]*plan{waiting, other}, []pane{orchestrator("W:4", "%4", waiting.Path)}, agent{Pane: "%4", Status: "waiting"})
 
 			shown := open(t, f)
 
-			require.Equal(t, "AGE-1", names(shown.rows())[0])
-			require.True(t, strings.HasSuffix(shown.rows()[0], "· W:4 💬 answer the orchestrator"), shown.rows()[0])
+			require.True(t, strings.HasSuffix(shown.row("AGE-1"), "· W:4 💬 answer the orchestrator"), shown.row("AGE-1"))
 			require.True(t, strings.HasPrefix(shown.header(), "deliverables · 2 need you"), shown.header())
 		})
 
@@ -726,7 +747,7 @@ func TestBoardView(t *testing.T) {
 
 			shown.press("esc")
 
-			require.Equal(t, []string{"AGE-1083", "check-the-facts", "AGE-1055"}, names(shown.rows()))
+			require.Equal(t, []string{"AGE-1055", "AGE-1083", "check-the-facts"}, names(shown.rows()))
 		})
 	})
 

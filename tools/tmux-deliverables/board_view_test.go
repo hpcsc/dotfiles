@@ -682,7 +682,7 @@ func TestBoardView(t *testing.T) {
 
 			shown.press("a")
 
-			require.Equal(t, "Archive AGE-7? 2 deliverables are not merged: check (in-progress), send (blocked). Its folder moves to tasks/completed/ all the same. [y/N]",
+			require.Equal(t, "Archive AGE-7? 2 deliverables are not merged: check (in-progress), send (blocked). Its files move to tasks/completed/ all the same. [y/N]",
 				shown.footer())
 			require.Empty(t, f.actions())
 		})
@@ -710,7 +710,7 @@ func TestBoardView(t *testing.T) {
 			question := shown.footer()
 			shown.press("y")
 
-			require.Equal(t, "Archive AGE-8? Its folder moves to tasks/completed/. [y/N]", question)
+			require.Equal(t, "Archive AGE-8? Its files move to tasks/completed/. [y/N]", question)
 			require.Equal(t, []string{"archive /repos/a/tasks/age-8-landed/plan.yaml in /repos/a force=false"}, f.actions())
 		})
 

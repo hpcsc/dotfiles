@@ -1,10 +1,11 @@
 // tmux-deliverables shows the deliverables of the stories in flight, in two views.
 //
 // The board shows each story under way, in every repo with a tmux pane and every repo
-// under the project roots with a live plan. Each story is a heading over its
-// deliverables: the state from `clerk story`, the PR, the tmux window that holds the
-// worktree, the state of the agent in that window, and what the deliverable needs from a
-// person. Windows with an agent and no deliverable come last.
+// under the project roots with a live story: a plan, or a breakdown that no plan holds.
+// Each story is a heading over its deliverables, and a breakdown is the one deliverable of
+// its story. A row shows the state from `clerk story`, the PR, the tmux window that holds
+// the worktree, the state of the agent in that window, and what the deliverable needs from
+// a person. Windows with an agent and no deliverable come last.
 //
 // The planner shows the features of the repo of the pane: each stories file, the stories
 // in it with their state from `clerk project`, and the deliverables of each story. There

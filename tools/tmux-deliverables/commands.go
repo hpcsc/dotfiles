@@ -20,7 +20,7 @@ var _ runner = (*commands)(nil)
 // commands runs tmux, git, clerk, workmux and deliverable-open, the way a person does
 // from a shell.
 type commands struct {
-	// projectRoots hold one repo in each folder. A repo there with a live plan is read
+	// projectRoots hold one repo in each folder. A repo there with a live story is read
 	// even when no pane is in it, because a story is under way before its first window.
 	projectRoots []string
 }
@@ -33,7 +33,7 @@ func (c *commands) snapshot() (snapshot, error) {
 	panes, rootOf := c.panes()
 	roots := rootsOf(rootOf)
 	repos := slices.Clone(roots)
-	for _, root := range c.reposWithPlans() {
+	for _, root := range c.reposWithStories() {
 		if !slices.Contains(repos, root) {
 			repos = append(repos, root)
 		}
@@ -142,8 +142,9 @@ func agentsIn(roots []string) []agent {
 	return agents
 }
 
-// reposWithPlans are the repos under the project roots with a plan outside tasks/completed/.
-func (c *commands) reposWithPlans() []string {
+// reposWithStories are the repos under the project roots with a plan, or a breakdown with
+// its task record, outside tasks/completed/.
+func (c *commands) reposWithStories() []string {
 	var repos []string
 	for _, root := range c.projectRoots {
 		entries, err := os.ReadDir(root)
@@ -152,7 +153,7 @@ func (c *commands) reposWithPlans() []string {
 		}
 		for _, e := range entries {
 			dir := filepath.Join(root, e.Name())
-			if e.IsDir() && hasLivePlan(filepath.Join(dir, "tasks")) {
+			if e.IsDir() && hasLiveStory(filepath.Join(dir, "tasks")) {
 				if real, err := filepath.EvalSymlinks(dir); err == nil {
 					repos = append(repos, real)
 				}
@@ -162,7 +163,7 @@ func (c *commands) reposWithPlans() []string {
 	return repos
 }
 
-func hasLivePlan(tasks string) bool {
+func hasLiveStory(tasks string) bool {
 	found := errors.New("found")
 	err := filepath.WalkDir(tasks, func(path string, e os.DirEntry, err error) error {
 		switch {
@@ -172,16 +173,24 @@ func hasLivePlan(tasks string) bool {
 			return filepath.SkipDir
 		case !e.IsDir() && (e.Name() == "plan.yaml" || e.Name() == "plan.yml"):
 			return found
+		case !e.IsDir() && filepath.Ext(path) == ".md" && isFile(strings.TrimSuffix(path, ".md")+".json"):
+			return found
 		}
 		return nil
 	})
 	return errors.Is(err, found)
 }
 
-// storiesIn asks clerk for the stories of one repo. `--no-fetch` because a PR merged on
-// GitHub reaches clerk through gh, and a fetch on each read costs seconds.
+func isFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+// storiesIn asks clerk for the stories of one repo, with each breakdown that no plan holds
+// as a story of its own. `--no-fetch` because a PR merged on GitHub reaches clerk through
+// gh, and a fetch on each read costs seconds.
 func storiesIn(root string) []*plan {
-	out, err := run(root, "clerk", "story", "--no-fetch")
+	out, err := run(root, "clerk", "story", "--no-fetch", "--breakdowns")
 	if err != nil {
 		return nil
 	}

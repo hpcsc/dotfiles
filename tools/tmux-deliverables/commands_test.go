@@ -108,9 +108,23 @@ func TestCommands(t *testing.T) {
 			asked := logOf(t, log, "clerk")
 			sort.Strings(asked)
 			require.Equal(t, []string{
-				"clerk story --no-fetch in " + withPane,
-				"clerk story --no-fetch in " + filepath.Join(projects, "planned"),
+				"clerk story --no-fetch --breakdowns in " + withPane,
+				"clerk story --no-fetch --breakdowns in " + filepath.Join(projects, "planned"),
 			}, asked)
+		})
+
+		t.Run("a project repo with a breakdown and its task record is asked too, and one with a markdown file alone is not", func(t *testing.T) {
+			log := withStubs(t)
+			projects, err := filepath.EvalSymlinks(t.TempDir())
+			require.NoError(t, err)
+			writeFile(t, filepath.Join(projects, "decomposed", "tasks", "faster-search.md"), "# Faster search\n")
+			writeFile(t, filepath.Join(projects, "decomposed", "tasks", "faster-search.json"), `{"tasks": []}`)
+			writeFile(t, filepath.Join(projects, "notes", "tasks", "handoff.md"), "# Handoff\n")
+
+			_, err = newCommands([]string{projects}).snapshot()
+
+			require.NoError(t, err)
+			require.Equal(t, []string{"clerk story --no-fetch --breakdowns in " + filepath.Join(projects, "decomposed")}, logOf(t, log, "clerk"))
 		})
 
 		t.Run("each story carries the repo it came from", func(t *testing.T) {

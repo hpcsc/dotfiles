@@ -381,9 +381,9 @@ func (m boardView) askArchive() (tea.Model, tea.Cmd) {
 			open = append(open, d.ID+" ("+d.State+")")
 		}
 	}
-	text := fmt.Sprintf("Archive %s? Its folder moves to tasks/completed/.", st.label)
+	text := fmt.Sprintf("Archive %s? Its files move to tasks/completed/.", st.label)
 	if len(open) > 0 {
-		text = fmt.Sprintf("Archive %s? %s not merged: %s. Its folder moves to tasks/completed/ all the same.",
+		text = fmt.Sprintf("Archive %s? %s not merged: %s. Its files move to tasks/completed/ all the same.",
 			st.label, count(len(open), "deliverable is", "deliverables are"), strings.Join(open, ", "))
 	}
 	run, force, plans := m.run, len(open) > 0, st.plans

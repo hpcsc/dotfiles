@@ -1473,6 +1473,53 @@ git -C "$R38" worktree remove --force "$WT38" 2>/dev/null
 rm -rf "$STORY_STUBS"
 
 # --------------------------------------------------------------------------------
+printf '\nstory --breakdowns — a breakdown that no plan holds, as a story of one deliverable\n'
+
+# mk_breakdown <repo> <path under tasks/, without .md> <title> <total> <done>
+mk_breakdown() {
+  local r=$1 rel=$2 i body=
+  mkdir -p "$(dirname "$r/tasks/$rel")"
+  printf '# %s\n\n## Contents\n' "$3" > "$r/tasks/$rel.md"
+  i=1
+  while [ "$i" -le "$4" ]; do
+    body="$body{\"n\":$i,\"title\":\"t$i\",\"depends_on\":[],\"done\":$([ "$i" -le "$5" ] && echo true || echo false)},"
+    i=$((i + 1))
+  done
+  printf '{"tasks":[%s]}\n' "${body%,}" > "$r/tasks/$rel.json"
+}
+
+R44=$(new_repo)
+mk_breakdown "$R44" faster-search "Search answers in a second" 3 1
+eq "without --breakdowns, a repo with only a breakdown has no story" "2" \
+   "$(run "$R44" story --no-fetch >/dev/null 2>&1; echo $?)"
+S44=$(run "$R44" story --no-fetch --breakdowns)
+eq "with it, the breakdown is a story of one deliverable, named by its file" \
+   "faster-search|Search answers in a second|faster-search|1/3|in-progress" \
+   "$(printf '%s' "$S44" | jq -r '.[0] | "\(.story_slug)|\(.story)|\(.deliverables[0].id)|\(.deliverables[0].done)/\(.deliverables[0].total)|\(.deliverables[0].state)"')"
+eq "with no run, its branch and its handle are its slug" "faster-search|faster-search" \
+   "$(printf '%s' "$S44" | jq -r '.[0].deliverables[0] | "\(.branch)|\(.handle)"')"
+
+mk_breakdown "$R44" age-12-reply/tasks "Reply in the thread" 2 0
+RUNS44="$(git -C "$R44" rev-parse --path-format=absolute --git-common-dir)/clerk/runs"
+mkdir -p "$RUNS44/age-12-reply-in-thread"
+printf '{"slug":"age-12-reply-in-thread","breakdown":{"tasks_file":"%s"}}\n' "$R44/tasks/age-12-reply/tasks.md" \
+  > "$RUNS44/age-12-reply-in-thread/run.json"
+git -C "$R44" branch age-12-reply-in-thread
+S44=$(run "$R44" story --no-fetch --breakdowns)
+eq "a breakdown in a folder of its own is named by the folder" "age-12-reply,faster-search" \
+   "$(printf '%s' "$S44" | jq -r '[.[].story_slug] | sort | join(",")')"
+eq "and its branch is the one of the run that bound it" "age-12-reply-in-thread" \
+   "$(printf '%s' "$S44" | jq -r '.[] | select(.story_slug == "age-12-reply") | .deliverables[0].branch')"
+
+printf '# A note for the next session\n' > "$R44/tasks/handoff.md"
+eq "a markdown file with no task record beside it is not a breakdown" "age-12-reply,faster-search" \
+   "$(run "$R44" story --no-fetch --breakdowns | jq -r '[.[].story_slug] | sort | join(",")')"
+eq "naming a breakdown lists it alone" "faster-search" \
+   "$(run "$R44" story tasks/faster-search.md --no-fetch | jq -r '[.[].story_slug] | join(",")')"
+eq "the breakdowns of a plan stay deliverables of that plan" "story-a" \
+   "$(run "$R22" story --no-fetch --breakdowns | jq -r '[.[].story_slug] | join(",")')"
+
+# --------------------------------------------------------------------------------
 printf '\nstory archive — the folder of a story, moved to tasks/completed/\n'
 
 # arc_repo <tasks tracked: yes|no>: a story whose one deliverable merged and left no branch,

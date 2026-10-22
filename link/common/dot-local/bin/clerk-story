@@ -6,6 +6,9 @@ a file. Whether a deliverable has started, finished or landed is an observation,
 observation copied into the plan is a mirror that goes stale while still reading as
 authoritative. Nothing below reads `status:`.
 
+`--breakdowns` also lists each breakdown that no plan holds, as decompose-to-tasks writes
+it: a story with one deliverable, on the branch of the run that bound the breakdown.
+
 `clerk story stack create [<plan.yaml>]` opens the deliverables as stacked draft PRs,
 in dependency order; see clerk_stack.py.
 
@@ -26,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clerk_lib import Parser, die, emit, git_ok, gitout, repo, worktree_for  # noqa: E402
-from clerk_repo import archive_path, find_archived, resolve_tasks_arg  # noqa: E402
+from clerk_repo import archive_path, breakdown_paths, find_archived, resolve_tasks_arg, run_section  # noqa: E402
 
 GITHUB_REMOTE = re.compile(r"github\.com[:/](?P<owner>[^/]+)/(?P<name>[^/]+?)(?:\.git)?/?$")
 PR_FIELDS = (
@@ -79,6 +82,46 @@ def find_plans(tasks_home):
             continue
         found.append(str(path))
     return found
+
+
+def breakdowns_without_plan(tasks_home, plans):
+    """Each breakdown with its task record that no plan holds, as decompose-to-tasks writes
+    it. A plan holds every file in its folder."""
+    held = [Path(p).parent for p in plans]
+    return [b for b in breakdown_paths(tasks_home)
+            if Path(b).with_suffix(".json").is_file() and not any(h in Path(b).parents for h in held)]
+
+
+def runs_by_breakdown(checkout):
+    """{breakdown: the runs that bound it}. A run is named by its branch."""
+    found = {}
+    if checkout.runs_dir and checkout.runs_dir.is_dir():
+        for d in sorted(checkout.runs_dir.iterdir()):
+            bd = run_section(str(d), "breakdown")
+            if isinstance(bd, dict) and bd.get("tasks_file"):
+                found.setdefault(str(Path(bd["tasks_file"]).resolve()), []).append(d.name)
+    return found
+
+
+def breakdown_plan(path, tasks_home, runs, branches):
+    """A breakdown that no plan holds, as a plan with one deliverable. Its branch is the one
+    its run is named for, else its slug, the branch that deliverable-open starts it on."""
+    home = Path(tasks_home).resolve()
+    p = Path(path).resolve()
+    if home / "tasks" not in p.parents:
+        die(f"{path} is not under {home / 'tasks'}")
+    slug = p.stem if p.parent == home / "tasks" else p.parent.name
+    title = next((line[2:].strip() for line in p.read_text().splitlines() if line.startswith("# ")), slug)
+    bound = runs.get(str(p), [])
+    branch = next((b for b in bound if b in branches), bound[0] if bound else slug)
+    deliverable = {"id": slug, "title": title, "branch": branch, "handle": slug, "tasks": str(p.relative_to(home))}
+    return {"story": title, "story_slug": slug, "deliverables": [deliverable]}
+
+
+def load_story(path, tasks_home, runs, branches):
+    if path.endswith(".md"):
+        return breakdown_plan(path, tasks_home, runs, branches)
+    return load_plan(path)
 
 
 def load_plan(path):
@@ -283,7 +326,7 @@ def describe(deliverable, tasks_home, ref, checkout, branches, prefix):
         "branch_exists": exists,
         "branch_alias": alias,
         "worktree": worktree,
-        "handle": Path(linked).name if linked else f"{prefix}-{did}",
+        "handle": Path(linked).name if linked else (d.get("handle") or f"{prefix}-{did}"),
         "window": None,
         "pr": None,
         "ahead": ahead,
@@ -386,15 +429,18 @@ def checkout():
     return r, r.tasks_home or r.repo_root
 
 
-def plans_named(plan_arg, tasks_home):
+def plans_named(plan_arg, tasks_home, breakdowns=False):
     if plan_arg:
         plan = resolve_tasks_arg(plan_arg, tasks_home)
         if not Path(plan).is_file():
             die(f"plan not found: {plan}")
         return [plan]
     plans = find_plans(tasks_home)
+    if breakdowns:
+        plans += breakdowns_without_plan(tasks_home, plans)
     if not plans:
-        die(f"no plan.yaml under {tasks_home}/tasks outside completed/ — name one, or decompose a story first")
+        what = "plan.yaml or breakdown" if breakdowns else "plan.yaml"
+        die(f"no {what} under {tasks_home}/tasks outside completed/ — name one, or decompose a story first")
     return plans
 
 
@@ -412,8 +458,9 @@ def compare_ref(default_branch, no_fetch):
 def stories_of(plans, checkout, tasks_home, ref):
     branches = local_branches()
     windows = windows_by_worktree(checkout.worktrees, tmux_panes())
+    runs = runs_by_breakdown(checkout) if any(p.endswith(".md") for p in plans) else {}
     with ThreadPoolExecutor() as pool:
-        docs = list(pool.map(load_plan, plans))
+        docs = list(pool.map(lambda p: load_story(p, tasks_home, runs, branches), plans))
         started = []
         for doc in docs:
             prefix = (doc.get("ticket") or doc.get("story_slug") or "").lower()
@@ -520,18 +567,19 @@ def main(argv):
     ap = Parser()
     ap.add_argument("--table", action="store_true", help="a table for a human instead of JSON")
     ap.add_argument("--no-fetch", action="store_true", help="compare against origin as it was last fetched")
-    ap.add_argument("plan", nargs="?", help="a plan.yaml; default: every live plan under tasks/")
+    ap.add_argument("--breakdowns", action="store_true", help="also each breakdown that no plan holds")
+    ap.add_argument("plan", nargs="?", help="a plan.yaml or a breakdown; default: every live plan under tasks/")
     args = ap.parse_args(argv)
     if args.help:
         print(__doc__.strip())
-        print("\nUSAGE\n  clerk story [<plan.yaml>] [--table] [--no-fetch]"
+        print("\nUSAGE\n  clerk story [<plan.yaml> | <breakdown.md>] [--table] [--no-fetch] [--breakdowns]"
               "\n  clerk story stack [<plan.yaml>] [--json]          print the stack"
               "\n  clerk story stack create [<plan.yaml>] [--json]   open and retarget the PRs"
               "\n  clerk story archive [<plan.yaml>] [--force]       move the story to tasks/completed/")
         return 0
 
     r, tasks_home = checkout()
-    plans = plans_named(args.plan, tasks_home)
+    plans = plans_named(args.plan, tasks_home, args.breakdowns)
     stories = stories_of(plans, r, tasks_home, compare_ref(r.default_branch, args.no_fetch))
     if args.table:
         print(render_table(stories))

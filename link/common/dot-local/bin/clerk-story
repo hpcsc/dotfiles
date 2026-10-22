@@ -12,7 +12,9 @@ it: a story with one deliverable, on the branch of the run that bound the breakd
 `clerk story stack create [<plan.yaml>]` opens the deliverables as stacked draft PRs,
 in dependency order; see clerk_stack.py.
 
-`clerk story archive [<plan.yaml>]` moves the folder of a story to tasks/completed/.
+`clerk story archive [<plan.yaml>]` moves the folder of a story to tasks/completed/. Given a
+breakdown that no plan holds, it moves the folder of the breakdown, or, at the top of
+tasks/, the files that share its name.
 
 Dispatched to by `clerk` when invoked as `clerk story`, and runnable on its own.
 """
@@ -495,28 +497,47 @@ def stories_of(plans, checkout, tasks_home, ref):
     ]
 
 
-def move_to_archive(folder, name):
+def breakdown_files(breakdown, tasks_home, tasks_dir):
+    """(the files to archive, the folder to remove) for a breakdown that no plan holds: its
+    folder when it is in one, else the files beside it that share its name."""
+    lone = [Path(b).resolve() for b in breakdowns_without_plan(tasks_home, find_plans(tasks_home))]
+    if breakdown not in lone:
+        die(f"{breakdown} is not a breakdown that no plan holds")
+    folder = None if breakdown.parent == tasks_dir else breakdown.parent
+    if folder:
+        files = sorted(p for p in folder.rglob("*") if p.is_file())
+    else:
+        files = sorted(p for p in tasks_dir.iterdir() if p.is_file() and p.name.startswith(breakdown.stem + "."))
+    other = next((b for b in lone if b != breakdown and b in files), None)
+    if other:
+        die(f"not archived, because {other} is another breakdown, and it would move too")
+    return files, folder
+
+
+def move_to_archive(files, tasks_dir, name):
     """Each file to its path under tasks/completed/. A file that git tracks moves with
     `git mv`, and one commit takes those paths alone, so that other staged work stays out
     of it. An ignored file moves on disk."""
-    files = sorted(p for p in folder.rglob("*") if p.is_file())
     clash = next((archive_path(p) for p in files if archive_path(p).exists()), None)
     if clash:
         die(f"not archived, because {clash} is in the archive already")
-    listed = gitout("ls-files", "-z", "--", ".", cwd=str(folder)) or ""
-    tracked = {folder / f for f in listed.split("\0") if f}
+    listed = gitout("ls-files", "-z", "--", *map(str, files), cwd=str(tasks_dir)) or ""
+    tracked = {tasks_dir / f for f in listed.split("\0") if f}
     moved = []
     for f in files:
         target = archive_path(f)
         target.parent.mkdir(parents=True, exist_ok=True)
         if f in tracked:
-            if not git_ok("mv", str(f), str(target), cwd=str(folder)):
+            if not git_ok("mv", str(f), str(target), cwd=str(tasks_dir)):
                 die(f"could not archive {f}")
             moved += [str(f), str(target)]
         else:
             shutil.move(str(f), str(target))
-    if moved and not git_ok("commit", "-qm", f"Archive story: {name}", "--", *moved, cwd=str(folder.parent)):
+    if moved and not git_ok("commit", "-qm", f"Archive story: {name}", "--", *moved, cwd=str(tasks_dir)):
         die("the archive commit failed")
+
+
+def remove_folder(folder):
     for d in sorted((d for d in folder.rglob("*") if d.is_dir()), reverse=True) + [folder]:
         try:
             d.rmdir()
@@ -528,11 +549,12 @@ def archive(argv):
     ap = Parser()
     ap.add_argument("--force", action="store_true", help="archive the story while a deliverable is not merged")
     ap.add_argument("--no-fetch", action="store_true", help="compare against origin as it was last fetched")
-    ap.add_argument("plan", nargs="?", help="a plan.yaml; default: the one live plan under tasks/")
+    ap.add_argument("plan", nargs="?", help="a plan.yaml or a breakdown; default: the one live plan under tasks/")
     args = ap.parse_args(argv)
     if args.help:
-        print("clerk story archive — move the folder of a story to tasks/completed/"
-              "\n\nUSAGE\n  clerk story archive [<plan.yaml>] [--force] [--no-fetch]")
+        print("clerk story archive — move the folder of a story to tasks/completed/, or a breakdown"
+              "\nthat no plan holds with the files that share its name"
+              "\n\nUSAGE\n  clerk story archive [<plan.yaml> | <breakdown.md>] [--force] [--no-fetch]")
         return 0
 
     r, tasks_home = checkout()
@@ -541,18 +563,24 @@ def archive(argv):
         die(f"{len(plans)} live plans under {tasks_home}/tasks — name the one to archive")
     plan = Path(plans[0]).resolve()
     tasks_dir = (Path(tasks_home) / "tasks").resolve()
-    folder = plan.parent
-    if tasks_dir not in folder.parents or "completed" in folder.relative_to(tasks_dir).parts:
-        die(f"{plan} is not in the folder of a story under {tasks_dir}")
+    if plan.suffix == ".md":
+        files, folder = breakdown_files(plan, tasks_home, tasks_dir)
+    else:
+        folder = plan.parent
+        if tasks_dir not in folder.parents or "completed" in folder.relative_to(tasks_dir).parts:
+            die(f"{plan} is not in the folder of a story under {tasks_dir}")
+        files = sorted(p for p in folder.rglob("*") if p.is_file())
 
     story = stories_of([str(plan)], r, tasks_home, compare_ref(r.default_branch, args.no_fetch))[0]
     unmerged = [d for d in story["deliverables"] if not d["merged"]]
     if unmerged and not args.force:
         die("not archived, because " + ", ".join(f"{d['id']} is {d['state']}" for d in unmerged)
             + " — pass --force to archive it anyway")
-    move_to_archive(folder, story["story_slug"] or folder.name)
+    move_to_archive(files, tasks_dir, story["story_slug"] or plan.parent.name)
+    if folder:
+        remove_folder(folder)
     emit({
-        "archived": str(tasks_dir / "completed" / folder.relative_to(tasks_dir)),
+        "archived": str(tasks_dir / "completed" / (folder or plan).relative_to(tasks_dir)),
         "story_slug": story["story_slug"],
         "not_merged": [d["id"] for d in unmerged],
     })

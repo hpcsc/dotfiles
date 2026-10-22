@@ -1585,6 +1585,44 @@ printf 'story: Old\nstory_slug: old\ndeliverables: []\n' > "$R40/tasks/completed
 eq "a plan in the archive is not archived again" "2" \
    "$(run "$R40" story archive tasks/completed/older/plan.yaml --no-fetch >/dev/null 2>&1; echo $?)"
 
+R45=$(new_repo); printf 'tasks/\n' >> "$R45/.git/info/exclude"
+mk_breakdown "$R45" done-search "Search" 1 1
+printf 'design\n' > "$R45/tasks/done-search.design.yaml"
+mk_breakdown "$R45" done-search-more "More search" 1 0
+J=$(run "$R45" story archive tasks/done-search.md --no-fetch)
+eq "a breakdown at the top of tasks/ moves with the files that share its name" \
+   "done-search.design.yaml|done-search.json|done-search.md" "$(files_in "$R45/tasks/completed")"
+eq "and says where the breakdown went" "$R45/tasks/completed/done-search.md" "$(printf '%s' "$J" | jq -r '.archived')"
+eq "a breakdown whose name only starts the same stays" "done-search-more.json|done-search-more.md" \
+   "$(cd "$R45/tasks" && find . -maxdepth 1 -type f | sed 's|^\./||' | sort | paste -sd'|' -)"
+eq "a breakdown with work not merged is refused" "2" \
+   "$(run "$R45" story archive tasks/done-search-more.md --no-fetch >/dev/null 2>&1; echo $?)"
+
+mk_breakdown "$R45" age-7-sign-in/tasks "Sign in" 1 1
+printf 'notes\n' > "$R45/tasks/age-7-sign-in/notes.md"
+run "$R45" story archive tasks/age-7-sign-in/tasks.md --no-fetch >/dev/null
+eq "a breakdown in a folder of its own moves with its folder" "notes.md|tasks.json|tasks.md" \
+   "$(files_in "$R45/tasks/completed/age-7-sign-in")"
+eq "and the folder leaves tasks/" "gone" "$([ -e "$R45/tasks/age-7-sign-in" ] && echo there || echo gone)"
+
+mk_breakdown "$R45" pair/one "One" 1 1
+mk_breakdown "$R45" pair/two "Two" 1 1
+eq "a breakdown that shares its folder with another is refused" "2" \
+   "$(run "$R45" story archive tasks/pair/one.md --no-fetch >/dev/null 2>&1; echo $?)"
+eq "and nothing moves" "one.json|one.md|two.json|two.md" "$(files_in "$R45/tasks/pair")"
+
+R46=$(arc_repo no)
+mk_breakdown "$R46" done-story/one/tasks "one" 1 1
+eq "a breakdown that a plan holds is archived with its plan, not alone" "2" \
+   "$(run "$R46" story archive tasks/done-story/one/tasks.md --no-fetch >/dev/null 2>&1; echo $?)"
+
+R47=$(new_repo)
+mk_breakdown "$R47" shipped "Shipped" 1 1
+git -C "$R47" add tasks && git -C "$R47" commit -qm "Decompose"
+run "$R47" story archive tasks/shipped.md --no-fetch >/dev/null
+eq "when git tracks tasks/, the breakdown moves in one commit" "R tasks/completed/shipped.json|R tasks/completed/shipped.md" \
+   "$(git -C "$R47" show -M --name-status --format= HEAD | awk '{print substr($1, 1, 1), $3}' | sort | paste -sd'|' -)"
+
 # --------------------------------------------------------------------------------
 printf '\nstack — PR bases derived from the plan DAG\n'
 

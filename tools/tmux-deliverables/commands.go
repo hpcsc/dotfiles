@@ -76,8 +76,7 @@ func (c *commands) panes() ([]pane, map[string]string) {
 		return nil, map[string]string{}
 	}
 	var panes []pane
-	rootOf := map[string]string{}
-	looked := map[string]bool{}
+	var paths []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 		f := strings.Split(line, "\t")
 		if len(f) < 4 {
@@ -88,11 +87,25 @@ func (c *commands) panes() ([]pane, map[string]string) {
 			p.orchestrates = strings.Split(f[4], ":")
 		}
 		panes = append(panes, p)
-		if !looked[f[3]] {
-			looked[f[3]] = true
-			if root := mainRoot(f[3]); root != "" {
-				rootOf[f[3]] = root
-			}
+		if !slices.Contains(paths, p.path) {
+			paths = append(paths, p.path)
+		}
+	}
+
+	roots := make([]string, len(paths))
+	var wg sync.WaitGroup
+	for i, path := range paths {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			roots[i] = mainRoot(path)
+		}()
+	}
+	wg.Wait()
+	rootOf := map[string]string{}
+	for i, path := range paths {
+		if roots[i] != "" {
+			rootOf[path] = roots[i]
 		}
 	}
 	return panes, rootOf

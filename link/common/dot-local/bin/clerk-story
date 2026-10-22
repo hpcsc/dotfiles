@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 from pathlib import Path
 
@@ -411,16 +412,20 @@ def compare_ref(default_branch, no_fetch):
 def stories_of(plans, checkout, tasks_home, ref):
     branches = local_branches()
     windows = windows_by_worktree(checkout.worktrees, tmux_panes())
-    described_plans = []
-    for path in plans:
-        doc = load_plan(path)
-        prefix = (doc.get("ticket") or doc.get("story_slug") or "").lower()
-        siblings = doc.get("deliverables") or []
-        described = [describe(d, tasks_home, ref, checkout, branches, prefix) for d in siblings if d.get("id")]
-        for d in described:
-            d["base_commit"] = base_commit(d["base"], described)
-            d["window"] = windows.get(d["worktree"])
-        described_plans.append((path, doc, described))
+    with ThreadPoolExecutor() as pool:
+        docs = list(pool.map(load_plan, plans))
+        started = []
+        for doc in docs:
+            prefix = (doc.get("ticket") or doc.get("story_slug") or "").lower()
+            siblings = doc.get("deliverables") or []
+            started.append([pool.submit(describe, d, tasks_home, ref, checkout, branches, prefix)
+                            for d in siblings if d.get("id")])
+        described_plans = [(path, doc, [f.result() for f in futures]) for path, doc, futures in zip(plans, docs, started)]
+        bases = [[pool.submit(base_commit, d["base"], described) for d in described] for _, _, described in described_plans]
+        for (_, _, described), futures in zip(described_plans, bases):
+            for d, base in zip(described, futures):
+                d["base_commit"] = base.result()
+                d["window"] = windows.get(d["worktree"])
 
     unlanded = [d for _, _, described in described_plans for d in described if d["unmerged_commits"] > 0]
     prs, pr_error = pull_requests([d["branch_alias"] or d["branch"] for d in unlanded])

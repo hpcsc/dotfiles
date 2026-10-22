@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -29,25 +30,24 @@ func newCommands(projectRoots []string) *commands {
 }
 
 func (c *commands) snapshot() (snapshot, error) {
-	panes, rootOf, agents := c.windows()
-	seen := map[string]bool{}
-	var repos []string
-	for _, root := range rootOf {
-		if !seen[root] {
-			seen[root] = true
-			repos = append(repos, root)
-		}
-	}
+	panes, rootOf := c.panes()
+	roots := rootsOf(rootOf)
+	repos := slices.Clone(roots)
 	for _, root := range c.reposWithPlans() {
-		if !seen[root] {
-			seen[root] = true
+		if !slices.Contains(repos, root) {
 			repos = append(repos, root)
 		}
 	}
 	sort.Strings(repos)
 
+	var agents []agent
 	plansOf := make([][]*plan, len(repos))
 	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		agents = agentsIn(roots)
+	}()
 	for i, root := range repos {
 		wg.Add(1)
 		go func() {
@@ -65,10 +65,15 @@ func (c *commands) snapshot() (snapshot, error) {
 }
 
 func (c *commands) windows() ([]pane, map[string]string, []agent) {
+	panes, rootOf := c.panes()
+	return panes, rootOf, agentsIn(rootsOf(rootOf))
+}
+
+func (c *commands) panes() ([]pane, map[string]string) {
 	out, err := run("", "tmux", "list-panes", "-a", "-F",
 		"#{session_name}:#{window_index}\t#{window_name}\t#{pane_id}\t#{pane_current_path}\t#{@orchestrates}")
 	if err != nil {
-		return nil, map[string]string{}, nil
+		return nil, map[string]string{}
 	}
 	var panes []pane
 	rootOf := map[string]string{}
@@ -90,15 +95,20 @@ func (c *commands) windows() ([]pane, map[string]string, []agent) {
 			}
 		}
 	}
+	return panes, rootOf
+}
 
-	seen := map[string]bool{}
+func rootsOf(rootOf map[string]string) []string {
 	var roots []string
 	for _, root := range rootOf {
-		if !seen[root] {
-			seen[root] = true
+		if !slices.Contains(roots, root) {
 			roots = append(roots, root)
 		}
 	}
+	return roots
+}
+
+func agentsIn(roots []string) []agent {
 	agentsOf := make([][]agent, len(roots))
 	var wg sync.WaitGroup
 	for i, root := range roots {
@@ -116,7 +126,7 @@ func (c *commands) windows() ([]pane, map[string]string, []agent) {
 	for _, a := range agentsOf {
 		agents = append(agents, a...)
 	}
-	return panes, rootOf, agents
+	return agents
 }
 
 // reposWithPlans are the repos under the project roots with a plan outside tasks/completed/.

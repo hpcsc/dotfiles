@@ -163,6 +163,19 @@ func TestCommands(t *testing.T) {
 			require.Equal(t, []agent{{Pane: "%1", Status: "waiting"}, {Pane: "%2", Status: "working", Title: "✳ Other"}}, agents)
 		})
 
+		t.Run("a snapshot carries the agents from workmux with the stories", func(t *testing.T) {
+			withStubs(t)
+			repo := gitRepo(t)
+			writeFile(t, filepath.Join(repo, "agents.json"), `[{"pane_id": "%1", "status": "waiting"}]`)
+			writeFile(t, filepath.Join(repo, "story.json"), `[{"plan": "p.yaml", "story_slug": "s", "deliverables": []}]`)
+			t.Setenv("PANES", "Work:1\tmain\t%1\t"+repo+"\n")
+
+			s, err := newCommands(nil).snapshot()
+
+			require.NoError(t, err)
+			require.Equal(t, []agent{{Pane: "%1", Status: "waiting"}}, s.agents)
+		})
+
 		t.Run("the features are the stories files with ticket lines, titled by their first heading", func(t *testing.T) {
 			root := gitRepo(t)
 			writeFile(t, filepath.Join(root, ".scratches/write-user-story/sign-in/sign-in.md"), "intro\n# Sign in\n\n### US-001: Ask\n\n**Ticket:** AGE-1\n")

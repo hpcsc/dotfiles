@@ -1,12 +1,12 @@
 ---
 name: model-events
-description: "Perform event modeling from domain requirements or an existing codebase. Discovers business processes, identifies domain events in chronological timeline order, and iterates with user feedback at every stage."
+description: "Perform event modeling from domain requirements or an existing codebase. Discovers business processes, identifies domain events in chronological timeline order, iterates with user feedback at every stage, and writes the approved model in the emod DSL (.emod), with a Markdown document and a Draw.io diagram."
 user-invocable: true
 ---
 
 # Event Modeling — Discovery & Design
 
-You are an event modeling expert. Your job is to discover business processes, identify domain events in chronological order, and produce a complete event model — iterating with the user at every stage until they approve.
+You are an event modeling expert. Your job is to discover business processes, identify domain events in chronological order, and produce a complete event model — iterating with the user at every stage until they approve. The approved model is written in the [emod](https://github.com/hpcsc/emod) DSL.
 
 **Input**: Domain requirements (text description) OR an existing codebase to analyze. Provided via `$ARGUMENTS`.
 
@@ -17,12 +17,14 @@ You are an event modeling expert. Your job is to discover business processes, id
 Before producing any output, read and internalize ALL of the following guidelines:
 
 1. `~/.config/ai/guidelines/event-modeling/anti-patterns.md`
-2. `~/.config/ai/guidelines/event-modeling/diagram-templates.md`
-3. `~/.config/ai/guidelines/event-modeling/external-communications.md`
-4. `~/.config/ai/guidelines/event-modeling/one-or-many-events.md`
-5. `~/.config/ai/guidelines/event-modeling/multiple-producers.md`
-6. `~/.config/ai/guidelines/event-modeling/capabilities-vs-processes.md`
-7. `~/.config/ai/guidelines/event-modeling/message-processing-patterns.md`
+2. `~/.config/ai/guidelines/event-modeling/external-communications.md`
+3. `~/.config/ai/guidelines/event-modeling/one-or-many-events.md`
+4. `~/.config/ai/guidelines/event-modeling/multiple-producers.md`
+5. `~/.config/ai/guidelines/event-modeling/capabilities-vs-processes.md`
+6. `~/.config/ai/guidelines/event-modeling/message-processing-patterns.md`
+7. `emod.md` in this skill's directory — the emod DSL that the final model is written in, and the rules its checks enforce
+
+Read `~/.config/ai/guidelines/event-modeling/diagram-templates.md` only when `emod` cannot draw the diagram (Phase 8).
 
 ---
 
@@ -256,6 +258,18 @@ Mark each field's source:
 
 **Completeness check**: If a command needs data that doesn't appear on any storyboard screen or integration touchpoint, either the storyboard is incomplete or the command has unnecessary fields.
 
+For each command, also list the **business rules that can refuse it**. Give each rule a name and one sentence:
+
+```
+Command: PlaceOrder
+Refused when:
+  - OrderHasLines — "An order holds at least one line"
+```
+
+- A refusal appends no event. A failure the business acts on, such as a declined card, is an event (`PaymentFailed`), not a refusal.
+- A rule decides only from the events of the aggregate that owns the command.
+- Each rule becomes an emod invariant with a rejection spec (see `emod.md`).
+
 ### Step 3: Identify Automations
 
 Where events trigger downstream commands automatically:
@@ -268,14 +282,16 @@ Where events trigger downstream commands automatically:
 
 Users cannot efficiently digest raw event streams. Identify the **state summaries** (read models / projections) that actors need to make informed decisions. Cross-reference with storyboards — every screen that displays data needs a view backing it.
 
+Name each view with a `View` suffix, as emod requires (`OrderSummaryView`, not `OrderSummary`).
+
 | View Name | Purpose | Actor | Backs Screen |
 |-----------|---------|-------|-------------|
-| OrderSummary | Customer sees order status | Customer | Order Confirmation |
+| OrderSummaryView | Customer sees order status | Customer | Order Confirmation |
 
 For each view, document **data lineage** — which event provides which field:
 
 ```
-View: OrderSummary
+View: OrderSummaryView
 Fields:
   - OrderNumber ← OrderPlaced.OrderId
   - ItemCount ← OrderPlaced.OrderLines.length
@@ -288,7 +304,7 @@ Fields:
 
 ### Present the Process Model
 
-Show the complete model for the current process using the timeline format above, combining events, commands, views, and automations.
+Show the complete model for the current process using the timeline format above, combining events, commands, the rules that refuse them, views, and automations.
 
 **GATE — per-process approval loop**:
 - Ask the user to review this process's event model.
@@ -377,7 +393,7 @@ Process: Order Fulfillment
 
 1. Checkout Screen → PlaceOrder                    (UI Trigger)
 2. PlaceOrder → [Order Aggregate] → OrderPlaced    (Aggregate)
-3. OrderPlaced → OrderSummary                      (Projection)
+3. OrderPlaced → OrderSummaryView                  (Projection)
 4. OrderPlaced → [PaymentReactor] → ProcessPayment (Reactor)
 5. ProcessPayment → [Payment Aggregate] → PaymentSucceeded (Aggregate)
 6. PaymentSucceeded → [FulfillmentProcess] → ShipOrder     (Process Manager)
@@ -391,7 +407,7 @@ Process: Order Fulfillment
 | # | From | To | Pattern | Component Name |
 |---|------|----|---------|----------------|
 | 1 | OrderPlaced | ProcessPayment | Reactor | PaymentReactor |
-| 2 | OrderPlaced, PaymentSucceeded | OrderSummary | Projection | OrderSummaryProjection |
+| 2 | OrderPlaced, PaymentSucceeded | OrderSummaryView | Projection | OrderSummaryProjection |
 | 3 | PaymentFailed (3x) | SuspendAccount | Policy | OverduePaymentPolicy |
 | ... | ... | ... | ... | ... |
 
@@ -403,7 +419,15 @@ Process: Order Fulfillment
 
 ## Phase 8: Complete Event Model
 
-Compile the approved process models into a single, complete event model document.
+Compile the approved process models into three files:
+
+| File | Holds |
+|------|-------|
+| `docs/event-model-[feature-name].emod` | The model in the emod DSL: contexts, aggregates, slices, triggers, commands, events, rules, views, automations, translations and specs |
+| `docs/event-model-[feature-name].md` | The document: capabilities, storyboards, processes, field sources, view data lineage, patterns, components and implementation slices |
+| `docs/event-model-[feature-name].drawio` | The diagram, drawn from the `.emod` file |
+
+Use the same names in all three files.
 
 ### Output Structure
 
@@ -412,6 +436,8 @@ Compile the approved process models into a single, complete event model document
 
 ## Overview
 [Brief description of the system and what it does]
+
+Model: `event-model-[feature-name].emod`. Diagram: `event-model-[feature-name].drawio`.
 
 ## Actors
 | Actor | Type | Description |
@@ -434,9 +460,9 @@ Compile the approved process models into a single, complete event model document
 | [EventName] | [What happened] | [Important fields] |
 
 #### Commands (The Intentions)
-| Command | Actor | Produces Event | Required Data |
-|---------|-------|----------------|---------------|
-| [CommandName] | [Who triggers it] | [Resulting event] | [Field list with sources] |
+| Command | Actor | Produces Event | Refused When | Required Data |
+|---------|-------|----------------|--------------|---------------|
+| [CommandName] | [Who triggers it] | [Resulting event] | [Rule names] | [Field list with sources] |
 
 #### Views (Read Models)
 | View | Purpose | Backs Screen | Data Lineage |
@@ -474,16 +500,35 @@ Compile the approved process models into a single, complete event model document
 | 1 | [Name] | [Component] | [Events in this slice] | [Commands] | [Views] |
 ```
 
+### Write the emod Model
+
+Follow `emod.md` in this skill's directory: map each element, place the slices, and write the specs.
+
+Save to: `docs/event-model-[feature-name].emod`
+
+Then run the commands in "Check the Model" of `emod.md`:
+- `emod slices arrange` and `emod fmt` rewrite the file. Keep what they write.
+- `emod validate` and `emod lint` must exit 0. Fix each finding in the model.
+- If a fix needs a new rule, element or name, ask the user, as in Phase 5. If the user keeps the element, report the finding and the reason in the Final Presentation.
+
 ### Generate Draw.io Diagram
 
-Read `~/.config/ai/guidelines/event-modeling/diagram-templates.md` for the exact XML templates and styles.
+Draw the diagram from the model:
 
-Generate a Draw.io diagram following the layout guidelines:
-- Swimlanes: UI/Triggers (top), Commands/Views (middle), Events (bottom)
-- Timeline flows left-to-right chronologically
-- Use correct element styles (orange events, blue commands, green views, white triggers)
-- Reactors shown as gear icons with purple curved arrows from events
-- External systems shown as gray dashed boxes
+```bash
+emod diagram docs/event-model-[feature-name].emod --format drawio --specs \
+  -o docs/event-model-[feature-name].drawio
+```
+
+If `emod` is not on the PATH, or is older than the HCL grammar (see `emod.md`), do these steps:
+1. Tell the user that the `.emod` file is not checked.
+2. Read `~/.config/ai/guidelines/event-modeling/diagram-templates.md` for the exact XML templates and styles.
+3. Draw the diagram by hand, following the layout guidelines:
+   - Swimlanes: UI/Triggers (top), Commands/Views (middle), Events (bottom)
+   - Timeline flows left-to-right chronologically
+   - Use correct element styles (orange events, blue commands, green views, white triggers)
+   - Reactors shown as gear icons with purple curved arrows from events
+   - External systems shown as gray dashed boxes
 
 Save to: `docs/event-model-[feature-name].drawio`
 
@@ -495,7 +540,8 @@ Save to: `docs/event-model-[feature-name].md`
 
 Present the complete model to the user with a summary:
 - Total business processes modeled
-- Total events, commands, views, automations identified
+- Total events, commands, rules, views, automations identified
+- The result of `emod validate` and `emod lint`, and each finding the user chose to keep
 - Autonomous components and their boundaries
 - Message processing patterns used
 - Suggested implementation order (slices)
@@ -528,3 +574,6 @@ Present the complete model to the user with a summary:
 | User wants to model only a subset of processes | Respect the scope; model only approved processes |
 | Anti-pattern found in user's explicitly approved events | Flag it with reasoning but accept if user overrides with rationale |
 | Ambiguous business process boundaries | Present options and let the user decide |
+| `emod` is not on the PATH | Write the `.emod` file, tell the user it is not checked, and draw the diagram by hand |
+| `emod validate` reports `invalid version header` on line 1 | The `emod` build is older than the HCL grammar; ask the user to run `emod update --prerelease`, then check again |
+| `emod lint` reports a finding on an element the user approved | Ask the user, as in Phase 5; report each finding the user keeps |

@@ -37,7 +37,7 @@ erlang = "29.1"
 node = "26.10.0"
 "npm:@mermaid-js/mermaid-cli" = "12.0.0"
 
-"pipx:git-machete" = "3.46.0"
+"pipx:tmuxp" = "1.74.0"
 "github:hpcsc/mutants" = { version = "0.8.0", prerelease = true }
 
 [settings]

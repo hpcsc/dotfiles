@@ -1,0 +1,4 @@
+# deliver.sh --unattended adds this to the global workmux config for each launch. It is not in
+# the global config, because every other workmux launch has a person to answer a prompt.
+agents:
+  claude: "claude --permission-mode auto"

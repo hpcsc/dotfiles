@@ -1,6 +1,6 @@
 ---
 name: deliver-story
-description: Deliver a large user story as several independently-reviewable deliverables, in parallel. On first run it decomposes the story into review-sized deliverables with a dependency DAG (decompose-to-deliverables) and, after you review the plan, scaffolds a git worktree per deliverable and launches implement in each via workmux. Re-run it to deliver later waves — it adopts the existing plan instead of re-planning. Use when a story is too big to review in one go.
+description: Deliver a large user story as several independently-reviewable deliverables, in parallel. On first run it decomposes the story into review-sized deliverables with a dependency DAG (decompose-to-deliverables) and, after you review the plan, scaffolds a git worktree per deliverable and launches implement in each via workmux. Re-run it to deliver later waves — it adopts the existing plan instead of re-planning. With --unattended it delivers every wave after the gate with nobody watching: it starts each dependent when its prerequisite finishes, answers the asks of the deliverables, and records each decision for review. Use when a story is too big to review in one go.
 ---
 
 Deliver a story that is too large for one PR as several reviewable pull requests, some in parallel: $ARGUMENTS
@@ -19,7 +19,7 @@ The plan lives at `tasks/<story-slug>/plan.yaml`. Planning happens **exactly onc
 
 ### Check for an existing plan
 
-Resolve the plan the run will deliver, in this order:
+Take `--unattended` out of `$ARGUMENTS` before you resolve the plan. It turns on *Unattended mode* (below). Then resolve the plan the run will deliver, in this order:
 
 1. **`$ARGUMENTS` names an existing `plan.yaml`** (or a `tasks/<slug>/` directory that contains one) → **adopt it.**
 2. **`$ARGUMENTS` is a story description and a plan for it already exists** → **adopt it.** Don't rely on re-deriving the slug the agent chose; scan `tasks/**/plan.yaml` and match on the `story`/`story_slug` field. Do NOT silently re-plan and clobber a plan you may already be mid-delivery on. If the user clearly wants a fresh cut, confirm first, then re-plan.
@@ -235,6 +235,58 @@ A deliverable that depends on another reads that one's design changes when its o
 Once a PR merges, **just run `/deliver-story` again** — it finds the existing plan, skips planning, reconciles the merge, and delivers the next ready wave. (Stacked deliverables don't wait for a merge; they fire as soon as their prerequisite's run finishes, so an earlier pass may already have launched them.) Mark a deliverable `merged` in `plan.yaml` yourself only if the reconcile can't see it (e.g. it merged under a different branch name).
 
 When every deliverable is merged, `clerk story archive tasks/<slug>/plan.yaml` moves the folder of the story to the same path under `tasks/completed/`, so the story leaves `clerk story`. It refuses while a deliverable is not merged, and names each one with its state. `--force` archives a story that you stop before its end.
+
+---
+
+## Unattended mode
+
+`/deliver-story --unattended <plan or story>` delivers the whole story while nobody watches. It starts each deliverable when the deliverable that it builds on finishes, answers the asks of the deliverables, and records each decision for the user to read at the end. The gate stays: the user approves the plan and the stack before leaving.
+
+The heartbeat (below) runs this same command again every 30 minutes. When `CronList` already shows the heartbeat job for this plan, the run is a heartbeat: go to *During the run*.
+
+### Before the user leaves
+
+1. **The gate.** Run it as Phase 1 says, when the plan has no `approved:` line.
+2. **Stack each dependent on its prerequisite.** A dependent with `base: <default branch>` waits for a merge, and only the user merges. So set the base of each such dependent to its prerequisite:
+
+   ```
+   yq -i '(.deliverables[] | select(.id == "<id>").base) = "<prerequisite id>"' tasks/<slug>/plan.yaml
+   ```
+
+   This works when the dependent has one prerequisite, or when its other prerequisites are already under that one in the stack. A dependent that needs two branches that do not stack keeps its base and waits for the merges: name each one. Show the stack with `clerk story stack tasks/<slug>/plan.yaml`. The base is part of the cut, so get the user's approval for the new stack, and write `approved:` again with the date of the day.
+3. **Auto mode.** This session must run in auto mode, as the deliverables do. A message from a session in another permission mode waits for a person to approve it. If this session is not in auto mode, ask the user to change it before they leave.
+4. **The heartbeat.** Create a recurring job with `CronCreate`, about every 30 minutes and not on the hour or the half hour, for example `17,47 * * * *`. Its prompt is `/deliver-story --unattended <absolute plan path>`. A recurring job fires again without a new call, so a turn that the usage limit stops does not end the run. The job expires after 7 days.
+5. **The first launch.** Run the driver:
+
+   ```
+   bash "$HOME/.claude/skills/deliver-story/deliver.sh" tasks/<slug>/plan.yaml --unattended --orchestrator <your name>
+   ```
+
+With `--unattended`, the driver launches every ready deliverable, also one with `blast_radius: high`, and `--gears` has no effect. It adds `--no-gears --no-review-breakdown` to each launch prompt, because a pause waits for a reader. It starts each agent with `unattended.yaml`, beside the driver, which starts Claude Code in auto mode.
+
+### During the run
+
+Two things wake this session:
+
+- **A message from a deliverable.** Act on it as *Messages from the deliverables* says. Record the check after a finish as a `finish` entry in `decisions.md`. When the check passes, run the driver again with `--unattended --orchestrator <your name>`. It launches each dependent whose prerequisite is now finished.
+- **The heartbeat.** It finds a deliverable that stopped without a message: a crash, the usage limit, or a turn that ended early. From the repo of the plan, read `clerk story tasks/<slug>/plan.yaml --table` and `workmux status --json`. Then, for each deliverable:
+  - `in-progress`, and its agent is `working`: do nothing.
+  - `in-progress`, and its agent is `waiting`: it is at a prompt that auto mode did not allow. Read the prompt with `workmux capture <handle>`, hold the deliverable, and record the prompt. Do not approve it.
+  - `in-progress`, its agent is `done`, and `decisions.md` has no open ask from it: send it `Continue the run: call clerk step.` with `SendMessage`. The run continues from its ledger.
+  - Its task record is archived, and `decisions.md` has no `finish` entry for it: its finish message did not arrive. Check it as for a finish.
+
+  After that, run the driver with `--unattended --orchestrator <your name>`. It starts again each deliverable whose agent is gone, and it launches the deliverables that are ready.
+
+An ask whose next step cannot be undone holds only its own deliverable. Record it with `Review: yes`, and continue with the other deliverables. Do not push, open a pull request, merge, or approve a permission prompt.
+
+### The end
+
+The run ends when each deliverable is finished, held, or waits for a merge. Then:
+
+1. Delete the heartbeat with `CronDelete`.
+2. Write a summary at the top of `decisions.md`, in this order: the held deliverables with their asks or prompts, the decisions with `Review: yes`, each finished deliverable with the result of its check, and the deliverables that wait for a merge.
+3. Show the stack with `clerk story stack tasks/<slug>/plan.yaml`, without `--create`.
+4. Send one `PushNotification`: how many deliverables are finished, and how many wait for the user.
 
 ---
 

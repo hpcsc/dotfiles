@@ -9,7 +9,7 @@
 # (base: <deliverable-id>). Watch progress with `workmux dashboard`.
 #
 # Usage:
-#   deliver.sh [PLAN] [--wave N] [--only id[,id...]] [--wave-size N] [--gears]
+#   deliver.sh [PLAN] [--wave N] [--only id[,id...]] [--wave-size N] [--gears] [--unattended]
 #              [--mode session|window] [--orchestrator NAME] [--dry-run]
 #   deliver.sh [PLAN] --mark
 #
@@ -23,6 +23,10 @@
 #   --gears       hold back deliverables the plan marked blast_radius: high rather than
 #                 firing them into a pane nobody is watching. Off by default: every
 #                 deliverable launches as it always has, with its assessment printed.
+#   --unattended  for a run that no person watches: launch every deliverable whatever its
+#                 blast_radius (--gears has no effect), turn off each pause of implement,
+#                 and start each agent with unattended.yaml, in auto mode, so that no
+#                 permission prompt stops it.
 #   --mode        workmux target mode (default: window, falls back to session
 #                 when not running inside tmux)
 #   --orchestrator NAME
@@ -62,6 +66,7 @@ GEARS=0
 DRY=0
 MARK=0
 ORCHESTRATOR=""
+UNATTENDED=0
 PLAN=""
 
 while [ $# -gt 0 ]; do
@@ -71,15 +76,23 @@ while [ $# -gt 0 ]; do
     --wave-size) WAVE_SIZE="$2"; shift 2 ;;
     --gears)     GEARS=1; shift ;;
     --no-gears)  GEARS=0; shift ;;
+    --unattended) UNATTENDED=1; shift ;;
     --mode)      MODE="$2"; shift 2 ;;
     --orchestrator) ORCHESTRATOR="$2"; shift 2 ;;
     --dry-run)   DRY=1; shift ;;
     --mark)      MARK=1; shift ;;
-    -h|--help)   sed -n '2,41p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '2,45p' "$0"; exit 0 ;;
     --*)         die "unknown option: $1" ;;
     *)           PLAN="$1"; shift ;;
   esac
 done
+
+UNATTENDED_CONFIG="$(cd "$(dirname "$0")" && pwd)/unattended.yaml"
+if [ "$UNATTENDED" -eq 1 ]; then
+  # A held deliverable waits for a person to run it, and an unattended run has none.
+  GEARS=0
+  [ -f "$UNATTENDED_CONFIG" ] || die "--unattended needs $UNATTENDED_CONFIG"
+fi
 
 case "$WAVE_SIZE" in
   ''|*[!0-9]*) [ -z "$WAVE_SIZE" ] || die "--wave-size takes a number, got '$WAVE_SIZE'" ;;
@@ -379,7 +392,13 @@ while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
   # The orchestrator's name because a session is named after its folder, and the main
   # checkout often holds several sessions: a deliverable that searched for it could pick
   # the wrong one.
-  prompt="/implement $tasks_abs --in-place --no-integrate (adopt this task file; leave the branch for review${ORCHESTRATOR:+; orchestrator: $ORCHESTRATOR})"
+  flags="--in-place --no-integrate"
+  # Unattended, both pauses off as flags: a repo setting can turn either on, and a pause
+  # waits for a reader that an unattended run does not have.
+  if [ "$UNATTENDED" -eq 1 ]; then
+    flags="$flags --no-gears --no-review-breakdown"
+  fi
+  prompt="/implement $tasks_abs $flags (adopt this task file; leave the branch for review${ORCHESTRATOR:+; orchestrator: $ORCHESTRATOR})"
 
   # The agent pane workmux focuses; killing every other pane in that window
   # leaves the deliverable with a single pane. In window mode the deliverable is a window of
@@ -398,6 +417,9 @@ while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
     set -- open "$(basename -- "$resume")" --prompt "$prompt"
   else
     set -- add "$branch" --name "$handle" --base "$bc" --mode "$MODE" --background --prompt "$prompt"
+  fi
+  if [ "$UNATTENDED" -eq 1 ]; then
+    set -- "$@" --config "$UNATTENDED_CONFIG"
   fi
 
   if [ "$DRY" -eq 1 ]; then

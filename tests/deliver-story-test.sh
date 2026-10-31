@@ -114,7 +114,7 @@ eq "with no name given, the launch prompt ends after its own note" 1 "$(launch |
 printf '\ndeliver-story driver — a stacked deliverable waits for a finished prerequisite\n'
 
 R4=$(repo age-8-eight)
-for d in first stacked; do
+for d in first stacked risky; do
   mkdir -p "$R4/tasks/age-8-eight/$d"
   printf '# %s\n' "$d" > "$R4/tasks/age-8-eight/$d/tasks.md"
 done
@@ -136,6 +136,14 @@ deliverables:
     depends_on: [first]
     tasks: tasks/age-8-eight/stacked/tasks.md
     status: pending
+  - id: risky
+    branch: age-8-risky
+    base: main
+    wave: 1
+    depends_on: []
+    tasks: tasks/age-8-eight/risky/tasks.md
+    status: pending
+    blast_radius: high
 EOF
 git -C "$R4" checkout -q -b age-8-first
 git -C "$R4" -c user.email=t@t -c user.name=T -c commit.gpgsign=false commit -q --allow-empty -m "task 1"
@@ -153,6 +161,18 @@ first_is awaiting-merge true
 eq "a prerequisite whose run archived its task record lets its dependent launch" 1 "$(pass | grep -c '^deliver-story: launch: stacked')"
 first_is merged false
 eq "and so does a merged prerequisite" 1 "$(pass | grep -c '^deliver-story: launch: stacked')"
+
+printf '\ndeliver-story driver — an unattended run\n'
+
+first_is in-progress false
+eq "--gears holds a deliverable with a high blast radius" 1 "$(pass --gears | grep -c '^deliver-story: hold: risky')"
+eq "--unattended launches it, with or without --gears" "1 1" \
+   "$(pass --unattended | grep -c '^deliver-story: launch: risky') $(pass --unattended --gears | grep -c '^deliver-story: launch: risky')"
+eq "--unattended turns off both pauses of implement in the launch prompt" 1 \
+   "$(pass --unattended | grep -e 'add age-8-risky' | grep -c -F -- '--no-integrate\ --no-gears\ --no-review-breakdown\ ')"
+eq "and starts the agent with the unattended workmux config" 1 \
+   "$(pass --unattended | grep -e 'add age-8-risky' | grep -c -e '--config [^ ]*/deliver-story/unattended.yaml$')"
+eq "without --unattended, the launch ends with the prompt" 1 "$(pass | grep -e 'add age-8-risky' | grep -c -F 'for\ review\)')"
 
 rm -rf "$STUBS"
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

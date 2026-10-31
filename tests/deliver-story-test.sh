@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for the mark that the deliver-story driver puts on the tmux pane that orchestrates a
-# plan. tmux and workmux are stubs on PATH; the tmux stub keeps the pane option in a file, so
-# no tmux server is needed. Run with: tests/deliver-story-test.sh
+# plan, and for the prompt that it launches a deliverable with. tmux and workmux are stubs on
+# PATH; the tmux stub keeps the pane option in a file, so no tmux server is needed. Run with:
+# tests/deliver-story-test.sh
 set -uo pipefail
 
 DRIVER="$(cd "$(dirname "$0")/.." && pwd)/link/common/claude/.claude/skills/deliver-story/deliver.sh"
@@ -86,6 +87,27 @@ cp "$R2/tasks/age-5-five/plan.yaml" "$R2/.worktrees/wt/tasks/age-5-five/plan.yam
 TMUX_PANE=%7 drive "$R2/.worktrees/wt" tasks/age-5-five/plan.yaml --mark
 eq "a window in a worktree keeps its name" "customer-portal" "$(cat "$STUBS/name")"
 eq "and its pane still gets the mark" "$R2/.worktrees/wt/tasks/age-5-five/plan.yaml" "$(mark)"
+
+printf '\ndeliver-story driver — the launch prompt\n'
+
+R3=$(repo age-9-nine)
+mkdir -p "$R3/tasks/age-9-nine/one"
+printf '# One\n' > "$R3/tasks/age-9-nine/one/tasks.md"
+cat > "$R3/tasks/age-9-nine/plan.yaml" <<'EOF'
+story: S
+story_slug: age-9-nine
+deliverables:
+  - id: one
+    branch: age-9-one
+    base: main
+    wave: 1
+    depends_on: []
+    tasks: tasks/age-9-nine/one/tasks.md
+    status: pending
+EOF
+launch() { (cd "$R3" && PATH="$STUBS:$PATH" bash "$DRIVER" tasks/age-9-nine/plan.yaml --dry-run "$@" 2>/dev/null) | grep -e '--prompt'; }
+eq "the launch prompt names the orchestrator" 1 "$(launch --orchestrator customer-portal-cd | grep -c -F 'orchestrator:\ customer-portal-cd')"
+eq "with no name given, the launch prompt ends after its own note" 1 "$(launch | grep -c -F 'for\ review\)')"
 
 rm -rf "$STUBS"
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

@@ -102,8 +102,10 @@ Resolve the driver's path from `$HOME` (never hardcode a home dir) and run it in
 ```
 echo "$HOME/.claude/skills/deliver-story/deliver.sh"     # -> use this absolute path
 bash "<resolved path>" tasks/<story-slug>/plan.yaml --dry-run   # preview the workmux commands first
-bash "<resolved path>" tasks/<story-slug>/plan.yaml            # fire every ready deliverable
+bash "<resolved path>" tasks/<story-slug>/plan.yaml --orchestrator <your name>   # fire every ready deliverable
 ```
+
+Pass `--orchestrator` with the name of this session on every run. The first line of `ListAgents` gives it: "This session is `<name>`". The driver puts the name in each launch prompt, so each deliverable knows where to send its messages (Phase 3).
 
 Two flags shape *how much* fires, and both default to today's behaviour — every ready deliverable, all at once:
 
@@ -181,10 +183,32 @@ For the person, **Prefix + N** opens `tmux-deliverables` (built by `task common:
 - `workmux status --json --git` — one-shot query: `working` / `waiting` / `done` per deliverable, elapsed time, pane title, and whether the branch carries staged, unstaged or unmerged work. This is what to read on wake.
 - `workmux dashboard` — live TUI across every deliverable.
 - `workmux sidebar` — the same status pinned in tmux.
-- `workmux send <handle> "<text>"` — push a follow-up prompt into any running deliverable. The handle is the `handle` that `clerk story` reports.
+- `workmux send <handle> "<text>"` — push a follow-up prompt into any running deliverable. The handle is the `handle` that `clerk story` reports. A long text can arrive cut, so send a message to a deliverable with `SendMessage` (below), and keep `workmux send` for a short line.
 - With `status_format: true` in the workmux config, each deliverable's status icon (🤖 working / 💬 waiting / ✅ done) renders in its tmux window name, so a wave's state is readable straight from the status bar.
 
 A deliverable sitting at `waiting` is usually blocked on a permission prompt, not thinking — `workmux capture <handle>` shows the pane, and the run makes no progress until it is answered.
+
+### Messages from the deliverables
+
+Each deliverable sends this session a message when its work affects another deliverable, when it needs a decision, and when it finishes. The build step of `implement` lists the cases, in *When the run is one deliverable of a story*. A message arrives as a turn that starts with `<cross-session-message from="…">`. To answer, send `SendMessage` to its `from` attribute.
+
+What you do with each kind of message:
+
+- **A tell** (a change that another deliverable names, work that moves between deliverables, a shared file, or a rewritten branch): search `tasks/<story-slug>/*/tasks.md` and `design.yaml` for what changed. Send the change to each affected deliverable whose session is open, finished ones too. A finished deliverable makes the change, and its `clerk step` then asks for the suite and the audit again. A deliverable that has not started needs no message, because its decompose step reads `decisions.md`.
+- **A finish:** check the deliverable as *Verify a finished deliverable yourself* above says. The message only tells you to look. If the check fails, send the failure to the deliverable.
+- **An ask:** decide when the plan, the story, the code or an earlier decision gives the answer, and send the answer with its reason. Show the user only an ask whose next step cannot be undone, with your proposed answer. That deliverable holds until the user answers.
+
+Record each tell, each ask and each decision of your own in `tasks/<story-slug>/decisions.md`, beside the plan. Only this session writes the file. The user reads it at the end, and a deliverable that starts later reads it before it binds its breakdown. Number the entries:
+
+```markdown
+## 4. ask · check-a-code · 2026-10-31 15:05
+Message: <the question, or what changed, in one or two lines>
+Decision: <the answer, or the deliverables that you sent the change to>
+Why: <the reason>
+Review: yes
+```
+
+Write `Review: yes` for a decision that you made without the user, and `Review: no` for one that the user made.
 
 ### When a wave finishes: review it, then refresh the stack
 

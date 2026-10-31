@@ -81,16 +81,18 @@ Run `clerk project next` again, because the approvals change `start`. For each e
 
 ```
 bash "$HOME/.claude/skills/deliver-story/deliver.sh" <plan> --only <deliverable ids, comma-separated> --dry-run
-bash "$HOME/.claude/skills/deliver-story/deliver.sh" <plan> --only <deliverable ids, comma-separated> [--gears]
+bash "$HOME/.claude/skills/deliver-story/deliver.sh" <plan> --only <deliverable ids, comma-separated> --orchestrator <your name> [--gears]
 ```
 
-Do the dry run once in a session, to see the commands. Do not pass `--wave-size`, because `start` is already within the budget. The driver checks again that each deliverable is ready, and it reports one that is not as `waiting`. That is correct: the driver has the last word on a single plan.
+`--orchestrator` takes the name of this session, from the first line of `ListAgents`. Each deliverable sends its messages to that name. Do the dry run once in a session, to see the commands. Do not pass `--wave-size`, because `start` is already within the budget. The driver checks again that each deliverable is ready, and it reports one that is not as `waiting`. That is correct: the driver has the last word on a single plan.
 
 `clerk story` reports a stacked deliverable (its base is another deliverable) as blocked until the other one merges, so `start` gives it only after that merge. To start it before the merge, run `/deliver-story` on its plan.
 
 ## Step 5: Watch, then continue
 
 Watch all started deliverables with one persistent Monitor, with the loop of `/deliver-story` Phase 3 for each worktree in one script. A separate background loop for each deliverable is stopped after about 25 minutes. Read completion and liveness as Phase 3 says: `DONE` needs the task record and the commit count to agree.
+
+Answer the messages of the deliverables, and record them in the `decisions.md` of their story, as `/deliver-story` Phase 3 says in *Messages from the deliverables*.
 
 When a deliverable is done:
 

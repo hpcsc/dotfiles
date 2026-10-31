@@ -23,6 +23,7 @@ lives in `clerk`, a shell tool both harnesses call.
     │       ├── commit.md
     │       ├── audit.md
     │       ├── verify.md
+    │       ├── message.md      how a deliverable sends to its orchestrator
     │       └── harness-notes.md
     └── agents/
         ├── decompose-to-tasks/{body.md,variants/*/frontmatter.md}

@@ -10,7 +10,7 @@
 #
 # Usage:
 #   deliver.sh [PLAN] [--wave N] [--only id[,id...]] [--wave-size N] [--gears]
-#              [--mode session|window] [--dry-run]
+#              [--mode session|window] [--orchestrator NAME] [--dry-run]
 #   deliver.sh [PLAN] --mark
 #
 #   PLAN          path to plan.yaml (auto-discovered under tasks/ if a single one exists)
@@ -25,6 +25,9 @@
 #                 deliverable launches as it always has, with its assessment printed.
 #   --mode        workmux target mode (default: window, falls back to session
 #                 when not running inside tmux)
+#   --orchestrator NAME
+#                 the name that other sessions use to message this session. Each launch
+#                 prompt carries it, so a deliverable can report to the orchestrator.
 #   --dry-run     print the workmux commands and status changes without running them
 #   --mark        only mark this tmux pane as the orchestrator of the plan, and exit.
 #                 Every run that is not a dry run marks it too. tmux-deliverables reads
@@ -58,6 +61,7 @@ WAVE_SIZE=""
 GEARS=0
 DRY=0
 MARK=0
+ORCHESTRATOR=""
 PLAN=""
 
 while [ $# -gt 0 ]; do
@@ -68,9 +72,10 @@ while [ $# -gt 0 ]; do
     --gears)     GEARS=1; shift ;;
     --no-gears)  GEARS=0; shift ;;
     --mode)      MODE="$2"; shift 2 ;;
+    --orchestrator) ORCHESTRATOR="$2"; shift 2 ;;
     --dry-run)   DRY=1; shift ;;
     --mark)      MARK=1; shift ;;
-    -h|--help)   sed -n '2,38p' "$0"; exit 0 ;;
+    -h|--help)   sed -n '2,41p' "$0"; exit 0 ;;
     --*)         die "unknown option: $1" ;;
     *)           PLAN="$1"; shift ;;
   esac
@@ -377,7 +382,10 @@ while IFS='|' read -r id branch base wave deps tasks status certainty blast; do
   # --no-integrate as a flag rather than only as prose: a repo may set integrate=true, and
   # `clerk land` honours that in code, which would merge each deliverable into the default
   # branch — dismantling the stack these runs exist to produce before anyone reviews it.
-  prompt="/implement $tasks_abs --in-place --no-integrate (adopt this task file; leave the branch for review)"
+  # The orchestrator's name because a session is named after its folder, and the main
+  # checkout often holds several sessions: a deliverable that searched for it could pick
+  # the wrong one.
+  prompt="/implement $tasks_abs --in-place --no-integrate (adopt this task file; leave the branch for review${ORCHESTRATOR:+; orchestrator: $ORCHESTRATOR})"
 
   # The agent pane workmux focuses; killing every other pane in that window
   # leaves the deliverable with a single pane. In window mode the deliverable is a window of

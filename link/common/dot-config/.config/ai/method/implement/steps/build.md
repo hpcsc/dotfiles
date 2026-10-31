@@ -139,3 +139,38 @@ The upshift is not a courtesy. A run that only ever slows down finishes every st
 
 Stop and ask only when something genuinely needs a decision, and when you do, **state the decision and stop** rather than asking and waiting. Leave the branch where it is and say what you would need to continue. Either way, do not guess your way past a decision to keep the run moving.
 
+### When the run is one deliverable of a story
+
+A breakdown at `tasks/<story>/<deliverable>/tasks.md` is one deliverable of a larger story. Other deliverables of the story are built at the same time as this one or after it, and an orchestrator session coordinates them. Send the orchestrator a message in the cases below. After a tell, continue. After an ask, end your turn: the answer arrives as your next prompt.
+
+{{variant:message}}
+
+A change affects another deliverable when the `tasks.md` or the `design.yaml` of another deliverable names the thing that changed. Before you decide, search the other folders under `tasks/<story>/` for the name.
+
+Send a tell, then continue, when you:
+
+- change a name, a type, a function signature, a schema, a route, an event or a config key that another deliverable names
+- build work that the plan gives to another deliverable
+- leave out work that another deliverable expects from this one
+- change a file that the tasks of another deliverable also change
+- rewrite the history of the branch, with `clerk fixup` or a rebase, after another deliverable started on it. `tasks/<story>/plan.yaml` gives that deliverable this one as its `base`.
+- finish the run. The orchestrator checks the task record and the commits itself, so this message only tells it to look.
+
+Send an ask, then end your turn, when:
+
+- the scope is wrong, as the start of this step describes
+- you must change code that another deliverable owns
+- the next step cannot be undone: a change to rows that already exist, an external send, a change to permissions, or a change to a public contract
+- you need something from another deliverable that is not built yet
+- you cannot continue: `clerk step` returns `blocked: true`, or the tests stay red after more than one real attempt
+
+Give each message one subject. Start it with the deliverable and the kind, for example `check-a-code: tell`. Then say what changed or what you ask, why, and which deliverables it affects. An ask also gives the options and your recommendation.
+
+Do not send a message for:
+
+- a design change that no other deliverable names. `clerk design note` records it.
+- progress. The task record shows it.
+- a question that the code, the guidelines, the plan or `tasks/<story>/decisions.md` answers. The orchestrator records its decisions in that file.
+
+A message from the orchestrator can arrive while you work: an answer, a change from another deliverable, or a change to your plan. Act on it before your next task, not in the middle of the current one. A message that tells you to hold stops the run at once.
+

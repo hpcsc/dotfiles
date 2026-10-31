@@ -32,6 +32,8 @@ Pass the index rather than the whole file, because the file only ever grows and 
 
 A deliverable of a larger story (`tasks/<story>/<deliverable>/tasks.md`) can start after a prerequisite deliverable is built. That run can have changed the design its tasks assumed. Read the design changes of each prerequisite before you bind: `clerk design corrections --run <the prerequisite's branch>` returns its planned design and the design changes it recorded, with their reasons. Where one changes a type or a name that this deliverable's tasks or planned design use, edit them to match before you bind, and say what you changed when you present the breakdown.
 
+Read `tasks/<story>/decisions.md` too, when it exists. The orchestrator records there the changes that the other deliverables reported and the answers that it gave. Apply each entry that names this deliverable, or a type, a name or a file that its tasks use, in the same way.
+
 ### Bind the breakdown to the run
 
 ```

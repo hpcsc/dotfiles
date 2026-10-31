@@ -2672,6 +2672,8 @@ for d in alpha beta; do
   printf '# %s\n\n## Story Reference\n\nThe %s part.\n\n## Tasks\n\n### Task 1: One\n- [x] a\n' "$d" "$d" > "$RD/tasks/pair/$d/tasks.md"
   printf '{"story":"%s","tasks":[{"n":1,"title":"One","depends_on":[],"done":true}]}\n' "$d" > "$RD/tasks/pair/$d/tasks.json"
 done
+eq "before the land, the story reads no deliverable as archived" "false,false" \
+   "$(run "$RD" story tasks/pair/plan.yaml | jq -r '[.[0].deliverables[].archived | tostring] | join(",")')"
 for d in alpha beta; do
   git -C "$RD" checkout -q -b "$d" main
   printf '%s\n' "$d" > "$RD/$d.txt"; git -C "$RD" add "$d.txt"; git -C "$RD" commit -qm "$d"
@@ -2682,6 +2684,8 @@ eq "two deliverables of one story land side by side, each with its own task reco
    "$(head -1 "$RD/tasks/completed/pair/alpha/tasks.md")|$(head -1 "$RD/tasks/completed/pair/beta/tasks.md")|$(jq -r .story "$RD/tasks/completed/pair/alpha/tasks.json")|$(jq -r .story "$RD/tasks/completed/pair/beta/tasks.json")"
 eq "and the story still reads the progress of each from its archive" "awaiting-merge:1/1,awaiting-merge:1/1" \
    "$(run "$RD" story tasks/pair/plan.yaml | jq -r '[.[0].deliverables[] | "\(.state):\(.done)/\(.total)"] | join(",")')"
+eq "and reads each as archived" "true,true" \
+   "$(run "$RD" story tasks/pair/plan.yaml | jq -r '[.[0].deliverables[].archived | tostring] | join(",")')"
 eq "and the pull request text of each from its own breakdown" "The alpha part." \
    "$(cd "$(dirname "$CLERK")" && python3 -c 'import sys, clerk_stack; print(clerk_stack.pr_body(sys.argv[1]))' "$RD/tasks/pair/alpha/tasks.md" | tail -1)"
 rm -rf "$RD"

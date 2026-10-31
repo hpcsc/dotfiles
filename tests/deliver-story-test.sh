@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for the mark that the deliver-story driver puts on the tmux pane that orchestrates a
-# plan, and for the prompt that it launches a deliverable with. tmux and workmux are stubs on
-# PATH; the tmux stub keeps the pane option in a file, so no tmux server is needed. Run with:
+# plan, for the prompt that it launches a deliverable with, and for when a stacked deliverable
+# is ready. tmux, workmux and clerk are stubs on PATH; the tmux stub keeps the pane option in a
+# file, so no tmux server is needed, and the clerk stub prints the story from a file. Run with:
 # tests/deliver-story-test.sh
 set -uo pipefail
 
@@ -23,7 +24,8 @@ case "$1" in
 esac
 EOF
 printf '#!/usr/bin/env bash\necho "[]"\n' > "$STUBS/workmux"
-chmod +x "$STUBS/tmux" "$STUBS/workmux"
+printf '#!/usr/bin/env bash\ncat "$STUBS/story.json" 2>/dev/null || echo "[]"\n' > "$STUBS/clerk"
+chmod +x "$STUBS/tmux" "$STUBS/workmux" "$STUBS/clerk"
 export STUBS
 
 repo() {
@@ -108,6 +110,49 @@ EOF
 launch() { (cd "$R3" && PATH="$STUBS:$PATH" bash "$DRIVER" tasks/age-9-nine/plan.yaml --dry-run "$@" 2>/dev/null) | grep -e '--prompt'; }
 eq "the launch prompt names the orchestrator" 1 "$(launch --orchestrator customer-portal-cd | grep -c -F 'orchestrator:\ customer-portal-cd')"
 eq "with no name given, the launch prompt ends after its own note" 1 "$(launch | grep -c -F 'for\ review\)')"
+
+printf '\ndeliver-story driver — a stacked deliverable waits for a finished prerequisite\n'
+
+R4=$(repo age-8-eight)
+for d in first stacked; do
+  mkdir -p "$R4/tasks/age-8-eight/$d"
+  printf '# %s\n' "$d" > "$R4/tasks/age-8-eight/$d/tasks.md"
+done
+cat > "$R4/tasks/age-8-eight/plan.yaml" <<'EOF'
+story: S
+story_slug: age-8-eight
+deliverables:
+  - id: first
+    branch: age-8-first
+    base: main
+    wave: 1
+    depends_on: []
+    tasks: tasks/age-8-eight/first/tasks.md
+    status: running
+  - id: stacked
+    branch: age-8-stacked
+    base: first
+    wave: 2
+    depends_on: [first]
+    tasks: tasks/age-8-eight/stacked/tasks.md
+    status: pending
+EOF
+git -C "$R4" checkout -q -b age-8-first
+git -C "$R4" -c user.email=t@t -c user.name=T -c commit.gpgsign=false commit -q --allow-empty -m "task 1"
+git -C "$R4" checkout -q main
+first_is() {  # state archived
+  printf '[{"deliverables":[{"id":"first","state":"%s","archived":%s,"handle":"age-8-first"}]}]' "$1" "$2" > "$STUBS/story.json"
+}
+pass() { (cd "$R4" && PATH="$STUBS:$PATH" bash "$DRIVER" tasks/age-8-eight/plan.yaml --dry-run "$@" 2>/dev/null); }
+
+first_is in-progress false
+eq "a prerequisite with a commit but an unfinished run holds its dependent" 1 "$(pass | grep -c '^deliver-story: waiting: stacked')"
+first_is awaiting-merge false
+eq "so does a prerequisite with every task done, while its audit can still rewrite it" 1 "$(pass | grep -c '^deliver-story: waiting: stacked')"
+first_is awaiting-merge true
+eq "a prerequisite whose run archived its task record lets its dependent launch" 1 "$(pass | grep -c '^deliver-story: launch: stacked')"
+first_is merged false
+eq "and so does a merged prerequisite" 1 "$(pass | grep -c '^deliver-story: launch: stacked')"
 
 rm -rf "$STUBS"
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"

@@ -40,8 +40,8 @@
 # is one where nobody will identify it.
 #
 # Ready = status pending AND either (base is the default branch and every
-# depends_on deliverable is merged) OR (base is a sibling deliverable whose branch carries
-# commits of its own).
+# depends_on deliverable is merged) OR (base is a sibling deliverable whose run finished:
+# `clerk story` reads its task record as archived, or reports it merged).
 # A ready deliverable is launched and its status set to running. Before launching,
 # running/in-review deliverables that `clerk story` reports as merged are advanced to
 # merged, so the next wave unlocks, and the window of each merged deliverable is closed.
@@ -181,12 +181,13 @@ set_status() {
 CLERK_STATE=""
 if command -v clerk >/dev/null 2>&1; then
   CLERK_STATE=$(clerk story "$PLAN" --no-fetch 2>/dev/null |
-    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // ""), (.evidence // ""), .handle, (.window // "")] | join("|")' 2>/dev/null) || CLERK_STATE=""
+    jq -r '.[0].deliverables[]? | [.id, .state, (.worktree // .branch_alias // ""), (.evidence // ""), .handle, (.window // ""), (.archived // false | tostring)] | join("|")' 2>/dev/null) || CLERK_STATE=""
 fi
 clerk_field_of() { printf '%s\n' "$CLERK_STATE" | awk -F'|' -v i="$1" -v f="$2" '$1 == i {print $f; exit}'; }
 clerk_state_of()  { clerk_field_of "$1" 2; }
 clerk_where_of()  { clerk_field_of "$1" 3; }
 clerk_handle_of() { clerk_field_of "$1" 5; }
+clerk_archived_of() { clerk_field_of "$1" 7; }
 
 # Reconcile: advance running/in-review deliverables whose work is now in the default
 # branch to merged, so dependents unlock. `clerk story` answers first, because it also
@@ -216,7 +217,7 @@ while IFS='|' read -r id branch status; do
 done < <(yq -r '.deliverables[] | [.id, .branch, .status] | join("|")' "$PLAN")
 
 # `workmux close` keeps the worktree and the branch; only the window goes.
-while IFS='|' read -r id state _ _ handle window; do
+while IFS='|' read -r id state _ _ handle window _; do
   [ "$state" = merged ] && [ -n "$window" ] || continue
   busy=$(workmux status --json "$handle" </dev/null 2>/dev/null |
     jq -r '[.[] | select(.status == "working" or .status == "waiting")] | length' 2>/dev/null)
@@ -248,19 +249,12 @@ base_commit() {
 ready() {
   local base="$1" deps="$2"
   if is_deliverable "$base"; then
-    # stacked: the prerequisite branch must exist AND carry work of its own. A branch created
-    # earlier in this same pass still points at the default branch, so stacking on it would
-    # branch off the default branch and the prerequisite's code would be absent.
-    local bb ref
-    bb=$(branch_of "$base")
-    git rev-parse --verify --quiet "$bb" >/dev/null 2>&1 || return 1
-    # Compare against the same ref base_commit() branches from — origin/DEFAULT when it exists.
-    # Local and origin DEFAULT can diverge, and comparing against the wrong one reports work
-    # that is really just the gap between them.
-    ref=$(git rev-parse --verify --quiet "origin/$DEFAULT^{commit}" 2>/dev/null) \
-      || ref=$(git rev-parse --verify --quiet "$DEFAULT^{commit}" 2>/dev/null) \
-      || return 1
-    [ -n "$(git rev-list -n1 "$ref..$bb" 2>/dev/null)" ]
+    # stacked: the prerequisite's run must have finished. Its first commit is not enough: a
+    # branch taken from it leaves out the tasks that it has not built yet, and the audit can
+    # still rewrite its commits under the dependent. `clerk land` archives the task record
+    # after the audit, at the end of the run, so an archived record is a finished run.
+    git rev-parse --verify --quiet "$(branch_of "$base")" >/dev/null 2>&1 || return 1
+    [ "$(clerk_archived_of "$base")" = true ] || [ "$(clerk_state_of "$base")" = merged ]
     return
   fi
   # off the default branch: ready once every dependency has merged

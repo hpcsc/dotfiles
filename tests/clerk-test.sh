@@ -1251,7 +1251,7 @@ eq "an absolute one keeps working" "1" \
 eq "and no --tasks-file at all works too" "1" "$(run "$WT3" status | jq -r '.next.task.n')"
 
 # --------------------------------------------------------------------------------
-printf '\nstory — deliverable state derived, never read from the plan\n'
+printf '\nstory — deliverable state derived, never read from the plan, except a deferral\n'
 
 R22=$(new_repo)
 mk_deliverable() {  # repo id total done
@@ -1318,7 +1318,7 @@ eq "blocked names only the dependency that is not landed" "building" \
    "$(printf '%s' "$S" | jq -r '.[0].deliverables[] | select(.id=="waiting") | .blocked_by | join(",")')"
 eq "merged says how it was established" "every commit on the branch is patch-present in the default branch" \
    "$(printf '%s' "$S" | jq -r '.[0].deliverables[] | select(.id=="rebased") | .evidence')"
-eq "the plan's own status field is never read" "0" \
+eq "the plan's own status field is not copied into the output" "0" \
    "$(printf '%s' "$S" | jq -r '[.[0].deliverables[] | select(has("status"))] | length')"
 
 # A deliverable with no depends_on used to lose its base: tab is IFS whitespace, so a
@@ -1363,6 +1363,36 @@ eq "and an approved plan carries the date of the approval" "2026-10-08" \
    "$(run "$R22" story | jq -r '.[0].approved')"
 eq "--table renders a row per deliverable" "7" \
    "$(run "$R22" story --table | grep -cE '^  (merged|ready|blocked|scaffolded|in-progress|awaiting-merge)')"
+
+printf '\nstory — a deferral is a decision, so the plan states it\n'
+
+RDF=$(new_repo)
+mkdir -p "$RDF/tasks/story-a"
+{ printf 'story: "A story"\nstory_slug: story-a\ndeliverables:\n'
+  plan_row paused        1 ''       deferred
+  plan_row paused-later  2 'paused' deferred
+  plan_row paused-landed 1 ''       deferred
+  plan_row after-paused  2 'paused' pending
+} > "$RDF/tasks/story-a/plan.yaml"
+mk_deliverable "$RDF" paused        2 2
+mk_deliverable "$RDF" paused-later  2 0
+mk_deliverable "$RDF" paused-landed 2 2
+mk_deliverable "$RDF" after-paused  2 0
+git -C "$RDF" add -A && git -C "$RDF" commit -qm "Plan the story"
+git -C "$RDF" checkout -q -b br-paused
+printf 'paused\n' > "$RDF/p.txt"; git -C "$RDF" add -A; git -C "$RDF" commit -qm "All of paused"
+git -C "$RDF" checkout -q main
+# paused-landed: branch never created, task record says 2/2, which reads as merged
+
+SD=$(run "$RDF" story)
+sd() { printf '%s' "$SD" | jq -r --arg i "$1" '.[0].deliverables[] | select(.id == $i) | .state'; }
+eq "a deferred deliverable whose work waits unmerged is deferred, not awaiting-merge" "deferred" "$(sd paused)"
+eq "a deferred deliverable whose dependency is not merged is deferred, not blocked"  "deferred" "$(sd paused-later)"
+eq "and it still names the dependency that is not merged" "paused" \
+   "$(printf '%s' "$SD" | jq -r '.[0].deliverables[] | select(.id=="paused-later") | .blocked_by | join(",")')"
+eq "a deferred deliverable whose work landed is merged"   "merged"  "$(sd paused-landed)"
+eq "a deliverable that waits on a deferred one is blocked" "blocked" "$(sd after-paused)"
+eq "--table shows each deferred row as deferred" "2" "$(run "$RDF" story --table | grep -cE '^  deferred ')"
 
 R37=$(new_repo); mkdir -p "$R37/tasks/pair/one" "$R37/tasks/pair/two"
 printf '{"tasks":[{"n":1,"title":"a","depends_on":[],"done":true}]}\n' > "$R37/tasks/pair/one/tasks.json"

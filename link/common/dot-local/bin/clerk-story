@@ -4,7 +4,9 @@
 A plan records the cut and the dependency order. Those are decisions, and they belong in
 a file. Whether a deliverable has started, finished or landed is an observation, and an
 observation copied into the plan is a mirror that goes stale while still reading as
-authoritative. Nothing below reads `status:`.
+authoritative. Nothing below reads `status:`, except `status: deferred`: deferring a
+deliverable is a decision too, and no branch or task record can show it. A deferred
+deliverable reads as `deferred` until its work is merged.
 
 `--breakdowns` also lists each breakdown that no plan holds, as decompose-to-tasks writes
 it: a story with one deliverable, on the branch of the run that bound the breakdown.
@@ -344,6 +346,7 @@ def describe(deliverable, tasks_home, ref, checkout, branches, prefix):
         "total": total,
         "done": done,
         "archived": archived,
+        "deferred": d.get("status") == "deferred",
     }
 
 
@@ -373,8 +376,11 @@ def settle(deliverables):
     for d in deliverables:
         blocked = [dep for dep in d["depends_on"] if dep not in landed]
         d["blocked_by"] = blocked
+        deferred = d.pop("deferred")
         if d["merged"]:
             d["state"] = "merged"
+        elif deferred:
+            d["state"] = "deferred"
         elif d["total"] > 0 and d["done"] >= d["total"]:
             d["state"] = "awaiting-merge"
         elif d["done"] > 0 or d["ahead"] > 0:

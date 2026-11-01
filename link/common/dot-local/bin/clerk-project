@@ -217,14 +217,17 @@ def count_states(deliverables):
 
 
 def state_from_plans(plans, blocked_by):
-    deliverables = [d for p in plans for d in p["deliverables"]]
+    every = [d for p in plans for d in p["deliverables"]]
+    deliverables = [d for d in every if d["state"] != "deferred"]
+    deferred = len(every) - len(deliverables)
     states = {d["state"] for d in deliverables}
     if deliverables and states == {"merged"}:
-        return "merged", f"every deliverable is merged ({len(deliverables)})"
+        merged = f"every deliverable is merged ({len(deliverables)})"
+        return "merged", f"{merged}, except {deferred} deferred" if deferred else merged
     if deliverables and states <= {"merged", "awaiting-merge"}:
-        return "awaiting-merge", count_states(deliverables)
+        return "awaiting-merge", count_states(every)
     if states - {"ready", "blocked"}:
-        return "in-progress", count_states(deliverables)
+        return "in-progress", count_states(every)
     if blocked_by:
         return "blocked", f"{', '.join(blocked_by)} not merged"
     unapproved = [p["plan"] for p in plans if not p.get("approved")]

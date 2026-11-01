@@ -63,6 +63,12 @@ plan() {
   } > "$r/tasks/$slug/plan.yaml"
 }
 
+# defer <repo> <slug> <id>: the plan defers that deliverable
+defer() {
+  local f="$1/tasks/$2/plan.yaml"
+  awk -v t="    tasks: tasks/$2/$3/tasks.md" '{ print } $0 == t { print "    status: deferred" }' "$f" > "$f.new" && mv -f "$f.new" "$f"
+}
+
 commit_on() {  # repo branch file message
   git -C "$1" checkout -q -B "$2"
   printf '%s\n' "$2" > "$1/$3"
@@ -193,6 +199,25 @@ eq "a story whose dependency comes later in the file reads that dependency's sta
    "$(run "$O" project stories.md | jq -r '[.stories[] | select(.id == "US-001", .id == "US-002") | .state] | reverse | join("|")')"
 eq "--table gives one row for each story" "12" "$(run "$P" project stories.md --table | grep -cE '^US-')"
 
+D=$(new_repo)
+{ story US-001 T-1 ""       "Merged but for a deferred deliverable"
+  story US-002 T-2 ""       "Built but for a deferred deliverable"
+  story US-003 T-3 "US-001" "Waits on a story whose rest is deferred"
+} > "$D/stories.md"
+plan "$D" s1 T-1 2026-10-01 m p; deliverable "$D" s1 m 1 1; deliverable "$D" s1 p 1 1; defer "$D" s1 p
+plan "$D" s2 T-2 2026-10-01 f p; deliverable "$D" s2 f 1 1; deliverable "$D" s2 p 1 0; defer "$D" s2 p
+git -C "$D" add -A && git -C "$D" commit -qm "Plan the stories"
+commit_on "$D" br-s1-p p.txt "All of p, never merged"
+commit_on "$D" br-s2-f f.txt "All of f"
+
+SD=$(run "$D" project stories.md)
+sd() { printf '%s' "$SD" | jq -r --arg i "$1" '.stories[] | select(.id == $i) | .state'; }
+eq "a plan whose deliverables merged but for a deferred one is merged" "merged" "$(sd US-001)"
+has "and the evidence counts the deferred one" "except 1 deferred" \
+    "$(printf '%s' "$SD" | jq -r '.stories[] | select(.id == "US-001") | .evidence')"
+eq "a plan whose deliverables are built but for a deferred one is awaiting-merge" "awaiting-merge" "$(sd US-002)"
+eq "and the story that waits on the merged one is ready" "ready" "$(sd US-003)"
+
 # --------------------------------------------------------------------------------
 printf '\nnext\n'
 
@@ -243,6 +268,6 @@ eq "next names the files that two stories in flight both plan to change, and lea
    "$(run "$F" project next stories.md | jq -c '.shared_files')"
 
 # --------------------------------------------------------------------------------
-rm -rf "$V" "$P" "$O" "$Q" "$F" 2>/dev/null
+rm -rf "$V" "$P" "$O" "$Q" "$F" "$D" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

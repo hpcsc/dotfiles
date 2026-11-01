@@ -158,6 +158,7 @@ func TestBoardView(t *testing.T) {
 				{"a merged PR with commits after it needs another one", deliverableJSON("one", "awaiting-merge", 3, 3, "pr", prJSON(13, "merged", false, "", "")), "", "", "PR #13 merged, commits after it"},
 				{"a merged deliverable with a window open leaves a window to close", withWorktree("merged", 4, 4), "done", "", "merged: close the window"},
 				{"a merged deliverable with no window is done", deliverableJSON("one", "merged", 4, 4), "", "", "done"},
+				{"a deferred deliverable asks nothing, though its work waits unmerged", deliverableJSON("one", "deferred", 3, 3), "", "", "deferred"},
 			}
 			for _, c := range cases {
 				t.Run(c.name, func(t *testing.T) {
@@ -274,6 +275,17 @@ func TestBoardView(t *testing.T) {
 			require.Equal(t, []string{"AGE-1", "live"}, names(shown.rows()))
 		})
 
+		t.Run("a story with only merged and deferred deliverables and no window open is not shown", func(t *testing.T) {
+			plans := []*plan{
+				planIn("/repos/a", "AGE-9", "age-9-paused", deliverableJSON("old", "merged", 3, 3), deliverableJSON("later", "deferred", 2, 2)),
+				planIn("/repos/a", "AGE-1", "age-1-open", deliverableJSON("live", "awaiting-merge", 1, 1)),
+			}
+
+			shown := open(t, newFake(plans, nil))
+
+			require.Equal(t, []string{"AGE-1", "live"}, names(shown.rows()))
+		})
+
 		t.Run("a story with every deliverable merged stays while a window is open", func(t *testing.T) {
 			p := planIn("/repos/a", "AGE-8", "age-8-landed", deliverableJSON("gone", "merged", 4, 4, "worktree", worktreeOf("/repos/a", "gone")))
 
@@ -331,6 +343,14 @@ func TestBoardView(t *testing.T) {
 			shown := open(t, newFake([]*plan{p}, panes, agent{Pane: "%1", Status: "waiting"}, agent{Pane: "%2", Status: "waiting"}))
 
 			require.True(t, strings.HasPrefix(shown.header(), "deliverables · 3 need you"), shown.header())
+		})
+
+		t.Run("the header does not count a deferred deliverable whose work waits unmerged", func(t *testing.T) {
+			p := planIn("/repos/a", "AGE-1", "age-1-story", deliverableJSON("paused", "deferred", 3, 3), deliverableJSON("later", "ready", 0, 2))
+
+			shown := open(t, newFake([]*plan{p}, nil))
+
+			require.True(t, strings.HasPrefix(shown.header(), "deliverables · 0 need you"), shown.header())
 		})
 	})
 

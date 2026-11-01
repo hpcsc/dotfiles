@@ -603,6 +603,7 @@ var (
 		"scaffolded":     lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render("●"),
 		"ready":          "○",
 		"blocked":        dimmed.Render("◌"),
+		"deferred":       dimmed.Render("·"),
 	}
 	iconOf = map[string]string{"waiting": "💬", "working": "🤖", "done": "✅"}
 )

@@ -219,10 +219,11 @@ func (b board) needsYou() int {
 	return n
 }
 
-// A story stays on the board while a deliverable is not merged, or a window is still open.
+// A story stays on the board while a deliverable is neither merged nor deferred, or a window
+// is still open.
 func underWay(st *story) bool {
 	for _, d := range st.deliverables {
-		if d.State != "merged" || d.window != nil {
+		if (d.State != "merged" && d.State != "deferred") || d.window != nil {
 			return true
 		}
 	}

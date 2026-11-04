@@ -76,7 +76,7 @@ The nature clause is the whole of it. `medium` on its own is the modal severity 
 
 Two failures sit either side of that rule, and neither is defensible: stopping because the last round felt quiet, and continuing because the budget allowed it. Name the last round as the last one and say what decided it — the severity rule, or a judgment you are making against it — so the user is reading a decision rather than a coincidence, and say what the next round would most likely have looked at.
 
-If the fixes were trivial and confined — a typo, a single call site — skip the re-audit; the post-fix receipt is the evidence that matters, and `clerk audit accept --early "<why>"` records that decision.
+When the last round earned no further round, its fixes need no re-audit: after the post-fix receipt, a plain `clerk audit accept` ends the step. When it earned one and the fixes were trivial and confined — a typo, a single call site — you can still skip the re-audit; the post-fix receipt is the evidence that matters, and `clerk audit accept --early "<why>"` records that decision.
 
 **No round reads a fix made after the last one, so `clerk mutants` must.** `clerk audit accept` refuses while a Go, Python or Elixir file that changed after the last round has an open row of `clerk mutants`, or no run read the file since. Run `clerk mutants --base <the base of the run> --since-last-run` after the last fix: it makes mutants only in the files that changed after the last `clerk mutants`, and keeps the rows of the other files. Close each row as the build step says. Against `HEAD`, a fix that is already folded is no change, and `clerk mutants` exits 3.
 

@@ -226,8 +226,12 @@ def audit_accept(ctx, aud, o):
     at_head = [r for r in rounds if r.get("code_tree") == ctx.head_ct]
     if not rounds:
         emit({"accepted": False, "reason": "no audit round is recorded — record one first"}, 3)
-    if not at_head and not o["--early"]:
-        emit({"accepted": False, "reason": "no round describes this code tree — run a round, or pass --early \"<why the fixes need no re-audit>\""}, 3)
+    earned = earns_another(rounds[-1].get("findings_list"))
+    if not at_head and earned and not o["--early"]:
+        ids = ", ".join(str(f.get("id")) for f in earned)
+        emit({"accepted": False, "reason": f"round {rounds[-1].get('n')} found {ids}, which earn another round, "
+                                           "and no round describes this code tree — run it, or pass --early "
+                                           "\"<why the fixes need no re-audit>\""}, 3)
     if planned is not None and len(rounds) < planned and not o["--early"]:
         emit({"accepted": False, "reason": f"{planned} rounds planned, {len(rounds)} recorded — run the rest, or pass --early \"<why>\""}, 3)
     held = mutants_after_last_round(ctx, rounds[-1])

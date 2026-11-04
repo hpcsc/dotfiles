@@ -354,6 +354,12 @@ eq "code changed after acceptance reopens the audit" "audit|true" \
    "$(run "$WT" step | jq -r '[.step, (.why_not_done | contains("earlier code tree") | tostring)] | join("|")')"
 eq "accept with no round at this tree needs --early and a reason" "3" "$(rc "$WT" audit accept)"
 eq "given one, it is recorded" "trivial fix" "$(run "$WT" audit accept --early "trivial fix" | field .early)"
+/bin/cp -f "$AJR" "$AJR.keep"
+jq '.rounds[-1].findings_list |= map(.severity = "low")' "$AJR" > "$AJR.new" && /bin/mv -f "$AJR.new" "$AJR"
+A=$(run "$WT" audit accept)
+eq "after a last round that earns no other round, accept takes the fixes of that round with no --early" "true|null" \
+   "$(printf '%s' "$A" | jq -r '[(.accepted|tostring), (.early|tostring)] | join("|")')"
+/bin/mv -f "$AJR.keep" "$AJR"
 
 # No round reads a fix made after the last one, so accept reads the last clerk mutants instead.
 MK=$(cd "$(mktemp -d)" && pwd -P)

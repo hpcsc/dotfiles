@@ -871,7 +871,7 @@ MA=$(cd "$(mktemp -d)" && pwd -P)
 cat > "$MA/mutants" <<'EOF'
 #!/usr/bin/env bash
 dir=$(dirname "$0")
-if [ "$2" = --help ]; then printf -- '--caller-gaps --proposals --proposals-anywhere\n'; exit 0; fi
+if [ "$2" = --help ]; then printf -- '--caller-gaps --proposals --proposals-anywhere --only\n'; exit 0; fi
 printf '%s\n' "$@" > "$dir/argv"
 if [ "$1" = rerun ]; then cat "$dir/rerun_out"; exit "$(cat "$dir/rerun_exit")"; fi
 prev=""; for a in "$@"; do [ "$prev" = --json ] && cp "$dir/report" "$a"; prev=$a; done
@@ -1411,6 +1411,40 @@ eq "a claim the reader refuted is gone from the report" "0" \
 eq "a claim it returned no verdict for is kept, as not executed" "plausible|true" \
    "$(printf '%s' "$RB" | jq -r '[.report.findings[] | select(.id=="q3")][0] | [.confidence, (.evidence|startswith("NOT EXECUTED")|tostring)] | join("|")')"
 rm -rf "$FAKE3"
+
+# A round after another runs mutants only on the source files that changed after that round,
+# and keeps the rows of the other files from it.
+AJ="$RA/.git/clerk/runs/story/audit.json"
+/bin/cp -f "$AJ" "$RA/audit-before-round-2.json"
+python3 - "$AJ" "$(git -C "$RA" rev-parse HEAD)" <<'PY'
+import json, sys
+path, sha = sys.argv[1], sys.argv[2]
+aud = json.load(open(path))
+def row(f):
+    return {"id": f"{f}:F:BRANCH_IF#1", "file": f, "line": 3, "status": "LIVED", "type": "BRANCH_IF",
+            "original": "{ f() }", "replacement": "{}", "bug": None}
+aud.update(live=None, rounds=[{"n": 1, "sha": sha}], last_scope={
+    "base": "abc", "mutants_ran": True, "mutants_complete": True, "mutants": [row("a.go"), row("b.go")],
+    "mutants_kills": [], "mutants_no_tests": [], "caller_gaps": []})
+json.dump(aud, open(path, "w"))
+PY
+printf 'package a\n' > "$RA/a.go"
+printf '{"base":"abc","mutants":[{"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"KILLED","operator":"BRANCH_IF","original":"{ f() }","replacement":"{}"}],"callerGaps":[]}\n' > "$MA/round2.json"
+mstub 0 "$MA/round2.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+TL=$(run "$RA" audit record --phase scope --results "$RA/scope.json" | jq -r '[.next.spawn[] | select(.id == "review:tests:Go")][0].prompt')
+eq "a round after another runs mutants only on the files that changed after it, and keeps the rows of the other files from it" \
+   "true|true|false|true|false|true|true" \
+   "$(grep -qxF -- --only "$MA/argv" && echo true || echo false)|$(grep -qxF a.go "$MA/argv" && echo true || echo false)|$(grep -qxF b.go "$MA/argv" && echo true || echo false)|$(printf '%s' "$TL" | jq -Rsr 'contains("[b.go:F:BRANCH_IF#1] LIVED b.go:3") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("[a.go:F:BRANCH_IF#1]") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("KILLED:\n  a.go:3 BRANCH_IF") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("the rows of the other files are those of round 1") | tostring')"
+/bin/rm -f "$RA/a.go"
+mstub 0 "$MA/round2.json"
+run "$RA" audit begin --base main --restart >/dev/null 2>&1
+TL=$(run "$RA" audit record --phase scope --results "$RA/scope.json" | jq -r '[.next.spawn[] | select(.id == "review:tests:Go")][0].prompt')
+eq "with no source file changed after the round before, it runs no mutants and keeps the rows and kills of that round" \
+   "false|true|true|true" \
+   "$([ -f "$MA/argv" ] && echo true || echo false)|$(printf '%s' "$TL" | jq -Rsr 'contains("[b.go:F:BRANCH_IF#1] LIVED b.go:3") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("KILLED:\n  a.go:3 BRANCH_IF") | tostring')|$(printf '%s' "$TL" | jq -Rsr 'contains("no source file changed after round 1") | tostring')"
+/bin/mv -f "$RA/audit-before-round-2.json" "$AJ"
+mstub 0 "$MA/empty.json"
 
 # --------------------------------------------------------------------------------
 printf '\naudit precedents — the lenses that judge behaviour get the code the work follows\n'

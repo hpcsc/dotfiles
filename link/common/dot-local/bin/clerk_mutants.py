@@ -78,9 +78,8 @@ def summarise(data, complete=True):
         # mutants gives one detail to each mutant of a group that no test runs, such as a
         # package with no test files.
         if m.get("status") == "NOT COVERED" and m.get("detail"):
-            group = no_tests.setdefault(m["detail"], {"mutants": 0, "files": set()})
-            group["mutants"] += 1
-            group["files"].add(m.get("file"))
+            by_file = no_tests.setdefault(m["detail"], {})
+            by_file[m.get("file")] = by_file.get(m.get("file"), 0) + 1
             continue
         if m.get("status") == "NOT COVERED" and m.get("inside"):
             inside[m["inside"]] = inside.get(m["inside"], 0) + 1
@@ -103,13 +102,16 @@ def summarise(data, complete=True):
     proposed = [m.get("bug") or "" for m in data.get("mutants") or [] if m.get("operator") == PROPOSED]
     return {"ran": True, "reason": None, "tests_fail": False, "complete": complete, "base": data.get("base"),
             "mutants": rows,
-            "no_tests": [{"detail": d, "mutants": g["mutants"], "files": sorted(g["files"])}
-                         for d, g in sorted(no_tests.items())],
+            "no_tests": [no_tests_group(d, by_file) for d, by_file in sorted(no_tests.items())],
             "caller_gaps": [{"file": g.get("file"), "function": g.get("function"),
                              "lines": list(g.get("lines") or []), "callers": list(g.get("callers") or [])}
                             for g in data.get("callerGaps") or []],
             "proposals": proposals, "rejected": rejections, "proposed": proposed,
             "by_ref": by_ref, "killed": killed, "kills": kills}
+
+
+def no_tests_group(detail, by_file):
+    return {"detail": detail, "mutants": sum(by_file.values()), "files": sorted(by_file), "by_file": by_file}
 
 
 def kills_by_line(kills):
@@ -176,7 +178,9 @@ def _failure(code, err):
     return (lines[-1] if lines else f"mutants exited {code} with no report"), False
 
 
-def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gaps=True, echo=False):
+def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gaps=True, only=None, echo=False):
+    """result["only"] names the files that the run read, or is None when it read every changed file, as a
+    mutants with no --only does."""
     exe, reason = locate()
     if not exe:
         return 2, not_run(reason)
@@ -192,6 +196,10 @@ def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gap
             argv += ["--proposals", str(proposals)]
         if anywhere:
             argv.append("--proposals-anywhere")
+        if only and takes_only(exe):
+            argv += [a for path in only for a in ("--only", path)]
+        else:
+            only = None
         code, out, err = _limited(argv, cwd, echo)
         try:
             data = json.loads(report.read_text(encoding="utf-8"))
@@ -204,8 +212,14 @@ def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gap
             return TIMED_OUT, not_run(reason)
         return (TESTS_FAIL if tests_fail else 2), not_run(reason, tests_fail)
     result = summarise(data, complete=code != TIMED_OUT)
+    result["only"] = only
     _echo(_with_kills(out, result["kills"]), echo)
     return code, result
+
+
+def takes_only(exe):
+    r = subprocess.run([exe, "run", "--help"], capture_output=True, text=True)
+    return "--only" in r.stdout + r.stderr
 
 
 def _echo(out, echo):
@@ -253,6 +267,49 @@ def sources_changed_since(cwd, commit):
     return sorted({p for p in (diff + untracked).splitlines() if p and source_file(p)})
 
 
+def changed_since_last_run(ldir, cwd, base):
+    """(files, None): the changed source files whose content differs from what the kept run of every
+    operator read, and the files it read that no longer change. (None, why) when no kept run can stand in."""
+    saved = load(ldir)
+    if not saved or not saved.get("ran") or not saved.get("files"):
+        return None, "no run of every operator is kept"
+    if saved.get("base") != base:
+        return None, f"the kept run compared with {saved.get('base')}, not with {base}"
+    if any("by_file" not in g for g in saved.get("no_tests") or []):
+        return None, "the kept run does not count the mutants of each file that no test runs"
+    current = changed_sources(cwd, base)
+    hashes = content_hashes(cwd, current)
+    read = saved["files"]
+    return sorted({p for p in current if read.get(p) != hashes.get(p)} | (set(read) - set(current))), None
+
+
+def outside(items, files):
+    return [i for i in items or [] if i.get("file") not in files]
+
+
+def merge_no_tests(kept, fresh, files):
+    by_detail = {}
+    for g in kept or []:
+        left = {f: n for f, n in (g.get("by_file") or {}).items() if f not in files}
+        if left:
+            by_detail[g["detail"]] = left
+    for g in fresh:
+        by_detail[g["detail"]] = {**by_detail.get(g["detail"], {}), **g["by_file"]}
+    return [no_tests_group(d, by_file) for d, by_file in sorted(by_detail.items())]
+
+
+def merge(earlier, result, files):
+    """A run with proposals runs each of them again, so the earlier proposed rows go."""
+    files = set(files)
+    proposed = result.get("proposals") is not None
+    mutants = [m for m in outside(earlier.get("mutants"), files) if not (proposed and m.get("type") == PROPOSED)]
+    return dict(result, mutants=mutants + result["mutants"],
+                kills=outside(earlier.get("kills"), files) + result["kills"],
+                no_tests=merge_no_tests(earlier.get("no_tests"), result["no_tests"], files),
+                caller_gaps=outside(earlier.get("caller_gaps"), files) + result["caller_gaps"],
+                complete=bool(earlier.get("complete")) and result["complete"])
+
+
 def content_hashes(cwd, paths):
     paths = [p for p in paths if (Path(cwd) / p).is_file()]
     if not paths:
@@ -296,7 +353,20 @@ def save(ldir, cwd, base, result, every_operator):
     saved = load(ldir)
     kept = saved if saved and saved.get("ran") else {}
     proposal_rows, rejections = open_proposals(kept, result) if result["ran"] else ([], [])
-    if every_operator:
+    only = result.get("only")
+    if every_operator and result["ran"] and only is not None and kept:
+        files = set(only)
+        read = {p: h for p, h in (kept.get("files") or {}).items() if p not in files}
+        read.update(content_hashes(cwd, [p for p in changed_sources(cwd, base) if p in files]))
+        rows = [r for r in outside(kept.get("rows"), files) if r.get("type") != PROPOSED]
+        record = dict(kept, at=now(), reason=result["reason"], tests_fail=result["tests_fail"],
+                      complete=bool(kept.get("complete")) and result["complete"],
+                      rows=rows + proposal_rows + result["mutants"], rejected=result["rejected"] + rejections,
+                      no_tests=merge_no_tests(kept.get("no_tests"), result["no_tests"], files),
+                      caller_gaps=outside(kept.get("caller_gaps"), files) + result["caller_gaps"],
+                      killed=[k for k in kept.get("killed") or [] if k.split(":", 1)[0] not in files],
+                      files=read)
+    elif every_operator:
         record = {"at": now(), "base": base, "ran": result["ran"], "reason": result["reason"],
                   "tests_fail": result["tests_fail"],
                   "complete": result["complete"], "rows": result["mutants"] + proposal_rows,

@@ -260,9 +260,9 @@ def mutants_after_last_round(ctx, last):
     start = (ctx.run.meta.get("start_commit") or "")[:10] or "<the base of the run>"
     reason = {
         "tests_fail": "the tests of the last clerk mutants fail with the real code: make them pass, "
-                      f"run clerk mutants --base {start} again, then accept again",
+                      f"run clerk mutants --base {start} --since-last-run again, then accept again",
         "stale": f"a fix after round {last.get('n')} changed these files, and no clerk mutants run read them "
-                 f"since: run clerk mutants --base {start}, close each row, then accept again",
+                 f"since: run clerk mutants --base {start} --since-last-run, close each row, then accept again",
         "rows": "a row of the last clerk mutants is open in a file that a fix after the last round changed: "
                 "when a caller sees what the mutant changes, kill it with a test through the public API and "
                 "clerk mutants --id <key>; when no caller sees it, remove the code, or record why no test is "
@@ -474,7 +474,7 @@ def add_design_signal(scope, cwd):
 
 
 
-def add_mutants(scope, cwd, ldir, proposals=None):
+def add_mutants(scope, cwd, ldir, proposals=None, prior=None, last_round=None):
     """One run of `mutants` for each round. It takes minutes, so clerk runs it and no agent waits."""
     if "mutants_ran" in scope:
         return
@@ -483,11 +483,24 @@ def add_mutants(scope, cwd, ldir, proposals=None):
         return
     import clerk_mutants
     base = scope.get("base") or "HEAD"
+    earlier = earlier_mutants(prior, base, last_round, cwd)
+    only = clerk_mutants.sources_changed_since(cwd, last_round["sha"]) if earlier else None
     started = time.monotonic()
-    _, result = clerk_mutants.run(cwd, base, proposals=proposals)
+    if only == []:
+        result = earlier
+    else:
+        _, result = clerk_mutants.run(cwd, base, proposals=proposals, only=only)
+        if result.get("only") is not None:
+            result = clerk_mutants.merge(earlier, result, result["only"])
     scope["mutants_seconds"] = round(time.monotonic() - started)
     scope["mutants_complete"] = result["complete"]
     reasons = [result["reason"]] if result["reason"] else []
+    if result is earlier:
+        reasons.append(f"no source file changed after round {last_round.get('n')}, so the rows are those of "
+                       f"round {last_round.get('n')}")
+    elif result.get("only") is not None:
+        reasons.append(f"mutants ran only on the {len(only)} source files that changed after round "
+                       f"{last_round.get('n')}, and the rows of the other files are those of round {last_round.get('n')}")
     if result["ran"] and not result["complete"]:
         reasons.append("mutants stopped at its time limit, so the rows hold only the mutants that got a verdict")
     if result["ran"] and base == "HEAD":
@@ -508,8 +521,23 @@ def add_mutants(scope, cwd, ldir, proposals=None):
     scope["mutants_kills"] = result["kills"]
     scope["mutants_no_tests"] = result["no_tests"]
     scope["caller_gaps"] = result["caller_gaps"]
-    if proposals:
+    if proposals and result is earlier:
+        scope["proposals"] = prior.get("proposals")
+    elif proposals:
         scope["proposals"] = _proposal_summary(result)
+
+
+def earlier_mutants(prior, base, last_round, cwd):
+    """None when the round before cannot stand in for the files that did not change after it. A round from an
+    older clerk has no count of each file that no test runs, so it cannot."""
+    sha = (last_round or {}).get("sha")
+    if not prior or not prior.get("mutants_ran") or prior.get("base") != base or not sha \
+            or any("by_file" not in g for g in prior.get("mutants_no_tests") or []) \
+            or not git_ok("cat-file", "-e", f"{sha}^{{commit}}", cwd=cwd):
+        return None
+    return {"ran": True, "reason": None, "complete": bool(prior.get("mutants_complete")),
+            "mutants": prior.get("mutants") or [], "kills": prior.get("mutants_kills") or [],
+            "no_tests": prior.get("mutants_no_tests") or [], "caller_gaps": prior.get("caller_gaps") or []}
 
 
 def _proposal_summary(result):
@@ -653,7 +681,8 @@ def audit_next(ctx, aud, o):
                 "record_with": "clerk audit record --phase scope --results <file>"}
 
     if phase == "propose":
-        add_mutants(lv["scope"], ctx.cwd, ctx.run.dir)
+        add_mutants(lv["scope"], ctx.cwd, ctx.run.dir, prior=lv.get("prior_scope"),
+                    last_round=(aud.get("rounds") or [None])[-1])
         if not lv["scope"].get("mutants_ran"):
             lv["phase"] = "review"
             ctx.run.write("audit.json", aud)
@@ -666,7 +695,8 @@ def audit_next(ctx, aud, o):
 
     if phase == "review":
         add_design_signal(lv["scope"], ctx.cwd)
-        add_mutants(lv["scope"], ctx.cwd, ctx.run.dir, proposals=stored_proposals(aud))
+        add_mutants(lv["scope"], ctx.cwd, ctx.run.dir, proposals=stored_proposals(aud),
+                    prior=lv.get("prior_scope"), last_round=(aud.get("rounds") or [None])[-1])
         precedents, held_back = precedents_at_base(a.get("precedents") or [], lv["scope"], ctx.cwd)
         lenses, not_run = panel.build_panel(
             lv["scope"], prompts, fixed_files=a["fixed_files"], lenses_override=a["lenses"],

@@ -2856,6 +2856,48 @@ eq "a mutants whose rerun has --base gets the base of the run, HEAD unless given
    "$(stub 0; mutrc --id 'a.go:F:BRANCH_IF#1' >/dev/null; printf '%s|%s|' "$(argv_has --base)" "$(argv_has HEAD)"; stub 0; mutrc --base main --id 'a.go:F:BRANCH_IF#1' >/dev/null; argv_has main)"
 rm -f "$MS/rerun-help"
 
+# --since-last-run makes mutants only in the files whose content changed after the last run
+# of every operator, and keeps the rows of the other files.
+RS=$(new_repo)
+mkdir -p "$RS/tasks"
+printf '### Task 1: One\n' > "$RS/tasks/story.md"
+printf '{"story":"story","tasks_file":"tasks/story.md","tasks":[{"n":1,"title":"One","language":"Go","depends_on":[],"affected_files":["s1.go"]}]}\n' > "$RS/tasks/story.json"
+git -C "$RS" add -A && git -C "$RS" commit -qm "Plan"
+run "$RS" step start story --request "a story" >/dev/null 2>&1
+LS="$RS/.git/clerk/runs/story"
+muts() { (cd "$RS" && CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
+printf 'package s\n\nfunc S1() {}\n' > "$RS/s1.go"
+printf 'package s\n\nfunc S2() {}\n' > "$RS/s2.go"
+cat > "$MS/since-full.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"s1.go:S1:BRANCH_IF#1","file":"s1.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ a() }","replacement":"{}"},
+ {"id":"s2.go:S2:BRANCH_IF#1","file":"s2.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ b() }","replacement":"{}"},
+ {"id":"s1.go:S1:STATEMENT_REMOVE#1","file":"s1.go","line":4,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"a()","replacement":"","detail":"package s has no test files"},
+ {"id":"s2.go:S2:STATEMENT_REMOVE#1","file":"s2.go","line":4,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"b()","replacement":"","detail":"package s has no test files"},
+ {"id":"s2.go:S2:STATEMENT_REMOVE#2","file":"s2.go","line":5,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"c()","replacement":"","detail":"package s has no test files"}],
+ "callerGaps":[{"file":"s1.go","function":"S1","lines":[6],"callers":["app"]},{"file":"s2.go","function":"S2","lines":[6],"callers":["app"]}]}
+EOF
+printf '{"base":"abc","mutants":[{"id":"s1.go:S1:BRANCH_IF#1","file":"s1.go","line":3,"status":"KILLED","operator":"BRANCH_IF","original":"{ a() }","replacement":"{}"}],"callerGaps":[]}\n' > "$MS/since-s1.json"
+eq "--since-last-run with no kept run reads every changed file, and says why" "true|false" \
+   "$(stub 10 "$MS/since-full.json"; printf '%s' "$(muts --since-last-run 2>&1 >/dev/null)" | grep -qF 'no run of every operator is kept, so this run reads every changed file' && echo true || echo false)|$(argv_has --only)"
+printf '  --caller-gaps\n  --proposals string\n  --proposals-anywhere\n  --only strings\n' > "$MS/help"
+printf '// later\n' >> "$RS/s1.go"
+stub 10 "$MS/since-s1.json"; muts --since-last-run >/dev/null 2>&1
+eq "after a run, it makes mutants only in the file that changed, and keeps the rows, the count with no tests and the caller gaps of the other file" \
+   "true|true|false|s2.go:S2:BRANCH_IF#1|2 s2.go|s2.go|true" \
+   "$(argv_has --only)|$(argv_has s1.go)|$(argv_has s2.go)|$(jq -r --arg hash "$(git -C "$RS" hash-object s1.go)" '[([.rows[].id] | join(",")), (.no_tests | map("\(.mutants) \(.files | join(","))") | join(",")), ([.caller_gaps[].file] | join(",")), (.files["s1.go"] == $hash | tostring)] | join("|")' "$LS/mutants.json")"
+eq "with no file changed after the last run, it makes no mutant, exits 3, and says that the rows stand" "3|false|true" \
+   "$(stub 0 "$MS/empty.json"; muts --since-last-run >/dev/null 2>&1; printf '%s|' $?; [ -f "$MS/argv" ] && printf 'true|' || printf 'false|'; printf '%s' "$(muts --since-last-run)" | grep -qF 'changed after the last clerk mutants run, so its rows stand' && echo true || echo false)"
+eq "it runs every operator, so it takes no --operators" "2" "$(stub 0; muts --since-last-run --operators none >/dev/null 2>&1; printf '%s' $?)"
+printf '  --caller-gaps\n  --proposals string\n  --proposals-anywhere\n' > "$MS/help"
+printf '// later\n' >> "$RS/s2.go"
+stub 10 "$MS/since-full.json"; muts --since-last-run >/dev/null 2>&1
+eq "a mutants with no --only reads every changed file, and that run replaces the kept one" "false|s1.go:S1:BRANCH_IF#1,s2.go:S2:BRANCH_IF#1" \
+   "$(argv_has --only)|$(jq -r '[.rows[].id] | join(",")' "$LS/mutants.json")"
+eq "a kept run against another base cannot stand in, so it reads every changed file" "true|false" \
+   "$(stub 0 "$MS/empty.json"; printf '%s' "$(muts --since-last-run --base main 2>&1 >/dev/null)" | grep -qF 'the kept run compared with HEAD, not with main' && echo true || echo false)|$(argv_has --only)"
+rm -rf "$RS"
+
 # The open run keeps the last run, and `clerk finish` reads it.
 RF=$(new_repo)
 mkdir -p "$RF/tasks"

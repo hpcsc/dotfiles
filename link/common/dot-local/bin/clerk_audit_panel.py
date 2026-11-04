@@ -672,6 +672,7 @@ class _PromptCtx:
                 + (k["bug"] if k.get("bug") else
                    f"{k.get('type')}: {_one_line(k.get('original'))} -> {_one_line(k.get('replacement'))}")
                 + (f" — {_one_line(k.get('test'), 160)}" if k.get("test") else "")
+                + (f" (internal test: {k.get('test_file')})" if k.get("internal_test") else "")
                 for k in self.scope.get("mutants_kills") or []]
         if not rows:
             return ""

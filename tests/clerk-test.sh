@@ -2745,7 +2745,7 @@ printf '  --caller-gaps\n  --proposals string\n  --proposals-anywhere\n' > "$MS/
 cat > "$MS/survivors.json" <<'EOF'
 {"base":"abc","mutants":[
  {"id":"a.go:F:BRANCH_IF#1","file":"a.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}"},
- {"id":"a.go:F:RETURN_EMPTY#1","file":"a.go","line":4,"status":"KILLED","operator":"RETURN_EMPTY","original":"1","replacement":"0","detail":"--- FAIL: TestF (0.00s)"},
+ {"id":"a.go:F:RETURN_EMPTY#1","file":"a.go","line":4,"status":"KILLED","operator":"RETURN_EMPTY","original":"1","replacement":"0","detail":"--- FAIL: TestF (0.00s)","testFile":"a_test.go","internalTest":true},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#1","file":"cmd/x/main.go","line":5,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"package cmd/x has no test files"},
  {"id":"cmd/x/main.go:main:STATEMENT_REMOVE#2","file":"cmd/x/main.go","line":6,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"stop()","replacement":"","detail":"package cmd/x has no test files"},
  {"id":"svc/a.py:f:STATEMENT_REMOVE#1","file":"svc/a.py","line":2,"status":"NOT COVERED","operator":"STATEMENT_REMOVE","original":"run()","replacement":"","detail":"the Python project in svc has no tests"},
@@ -2803,9 +2803,9 @@ eq "each ref gets the verdict of its mutant, and a rejected proposal says so" "K
    "$(printf '%s' "$J" | jq -r '[.by_ref.f1.status, .by_ref.f2.status, .by_ref.f3.status, .by_ref.f3.detail] | join("|")')"
 eq "a rejected proposal is a row whose key is its bug, and each proposal that ran is named by its bug" "b|a.go|old not found|a bug" \
    "$(printf '%s' "$J" | jq -r '[.rejected[0].key, .rejected[0].file, .rejected[0].reason, (.proposed|join(","))] | join("|")')"
-eq "each killed mutant is kept with the test that killed it, a proposed one too" \
-   "a.go:4 RETURN_EMPTY=--- FAIL: TestF (0.00s),a.go:7 PROPOSED=" \
-   "$(printf '%s' "$J" | jq -r '.kills | map("\(.file):\(.line) \(.type)=\(.test)") | join(",")')"
+eq "each killed mutant is kept with the test that killed it and whether that test is internal, a proposed one too" \
+   "a.go:4 RETURN_EMPTY=--- FAIL: TestF (0.00s) a_test.go true,a.go:7 PROPOSED= null false" \
+   "$(printf '%s' "$J" | jq -r '.kills | map("\(.file):\(.line) \(.type)=\(.test) \(.test_file) \(.internal_test)") | join(",")')"
 OUT=$(stub 10 "$MS/survivors.json" "" "$(printf 'LIVED:\n  a.go:3 BRANCH_IF\nmutants: 9, killed: 2, lived: 1 (base abc)')"; mut 2>/dev/null)
 eq "echoed, the lines where a test killed a mutant come before the counts, which stay last" \
    "LIVED:|  a.go:3 BRANCH_IF|KILLED:|  a.go:4 RETURN_EMPTY|  a.go:7 PROPOSED|mutants: 9, killed: 2, lived: 1 (base abc)" \

@@ -71,7 +71,8 @@ def summarise(data, complete=True):
             kills.append({"id": m.get("id"), "file": m.get("file"), "line": m.get("line"),
                           "type": m.get("operator"), "original": m.get("original") or "",
                           "replacement": m.get("replacement") or "", "bug": m.get("bug") or None,
-                          "test": m.get("detail") or ""})
+                          "test": m.get("detail") or "", "test_file": m.get("testFile") or None,
+                          "internal_test": bool(m.get("internalTest"))})
         if m.get("status") not in REPORTED:
             continue
         # mutants gives one detail to each mutant of a group that no test runs, such as a

@@ -203,6 +203,7 @@
                 "comment-usage",
                 "redundant-test",
                 "broken-test",
+                "coupled-test",
                 "naming",
                 "structure",
                 "other",

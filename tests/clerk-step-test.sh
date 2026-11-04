@@ -342,7 +342,22 @@ eq "a round says whether it earns another: not when all it upheld were counts" "
 eq "and yes when it upheld a high finding, naming it, in the summary too" "true|f1|true" \
    "$(printf '%s' "$RD2" | jq -r '[(.another_round.earned|tostring), (.another_round.by|join(",")), (.summary | contains("another round: earned by f1") | tostring)] | join("|")')"
 eq "status shows both rounds" "2|2" "$(run "$WT" audit status | jq -r '[(.rounds_planned|tostring), (.rounds|length|tostring)] | join("|")')"
+# The plan is a first design: a finding that conflicts with it wins, and the run records
+# the decision for the person to review after the run.
+eq "decide refuses a finding that no recorded round has" "3" \
+   "$(rc "$WT" audit decide --finding nope --plan "a field on the event" --chosen "no field")"
+eq "decide needs both what the plan chose and what the code does now" "2" \
+   "$(rc "$WT" audit decide --finding f1 --plan "a field on the event")"
+D=$(run "$WT" audit decide --finding f1 --plan "a VerificationID field on the drafted event" --chosen "a field")
+eq "decide records the decision against the plan, with the round and the file of the finding" "true|2|a.go" \
+   "$(printf '%s' "$D" | jq -r '[(.decided|tostring), (.decision.round|tostring), .decision.file] | join("|")')"
+run "$WT" audit decide --finding f1 --plan "a VerificationID field on the drafted event" \
+  --chosen "the drafted event stores the reply identity" >/dev/null
+eq "a later decision on the same finding replaces the earlier one" "1|the drafted event stores the reply identity" \
+   "$(run "$WT" audit status | jq -r '[(.plan_decisions | length | tostring), .plan_decisions[0].chosen] | join("|")')"
 A=$(run "$WT" audit accept)
+eq "accept lists each decision against the plan in its summary, for the person to review" "true" \
+   "$(printf '%s' "$A" | jq -r '.summary | contains("decided against the plan: 1") and contains("f1 (round 2) — plan: a VerificationID field on the drafted event · now: the drafted event stores the reply identity")')"
 eq "accept records the acceptance" "true|2" "$(printf '%s' "$A" | jq -r '[(.accepted|tostring), (.rounds|tostring)] | join("|")')"
 eq "and sums the audit up for the reader: rounds, findings per round, incidents" "true" \
    "$(printf '%s' "$A" | jq -r '.summary | startswith("audit accepted · 2 round(s)") and contains("findings 2 / 2") and contains("0 incident(s)")')"

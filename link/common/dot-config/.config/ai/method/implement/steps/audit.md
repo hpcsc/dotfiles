@@ -34,7 +34,15 @@ It fans the applicable lenses over the diff in parallel, reproduces every runtim
 
 Fix findings **directly**. Do not delegate them — you have the context and they are usually small.
 
-**Where you disagree with one, say which and why.** The audit refutes when uncertain, so a survivor is usually real — but you have context the lenses do not.
+**Where you disagree with one, say which and why.** The audit refutes when uncertain, so a survivor is usually real — but you have context the lenses do not. The reason must be about the code: what it does, or what the finding misread.
+
+**The plan is not a reason to decline.** The breakdown and its planned design are the first design, made before any code existed. A finding that conflicts with them — a field the plan added, a name it chose, a rule it set, a choice the plan gate approved — is newer evidence, so the finding wins. Fix the code as the finding says, and record the decision:
+
+```
+clerk audit decide --finding <id> --plan "<what the plan chose>" --chosen "<what the code does now>"
+```
+
+Do not stop to ask. The person reviews the decisions after the run: `clerk audit accept` lists each one in its summary, which you paste into your reply, and `clerk audit status` keeps them. Over 36 runs, 15 of 43 declines named the plan as the reason, and the person later reversed six designs that the audit had flagged, each after the pull request was open.
 
 **Fold each fix into the commit that introduced the defect.** A finding is almost always a defect in one task's work, and the honest place for the correction is that task's commit. Collecting every fix into one trailing "address audit findings" commit leaves the branch reading as though each task was right when it landed and something unnamed happened afterwards, which is the opposite of what occurred.
 

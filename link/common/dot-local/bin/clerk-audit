@@ -112,9 +112,15 @@ def audit_summary(aud, accepted_at=None):
     wall = _between(first, accepted_at)
     incidents = sum(len(r.get("incidents") or []) for r in rounds)
     counts = " / ".join(str(r.get("findings") if r.get("findings") is not None else "?") for r in rounds)
-    return " · ".join(["audit accepted", f"{len(rounds)} round(s)", span(wall),
+    line = " · ".join(["audit accepted", f"{len(rounds)} round(s)", span(wall),
                        f"${cost:.2f}" if priced else "$-", f"findings {counts or 'none'}",
                        f"{incidents} incident(s)"])
+    decisions = aud.get("plan_decisions") or []
+    if decisions:
+        line += f"\ndecided against the plan: {len(decisions)}"
+        for d in decisions:
+            line += f"\n  {d.get('finding')} (round {d.get('round')}) — plan: {d.get('plan')} · now: {d.get('chosen')}"
+    return line
 
 
 GAP_NOISE = {
@@ -156,6 +162,22 @@ def progress_path(ctx):
     """Where a round writes what it is doing. Predictable, so it can be tailed without
     first finding the temp file a background launch happened to pick."""
     return str(ctx.run.dir / "progress.log")
+
+
+def audit_decide(ctx, aud, o):
+    fid, plan, chosen = o["--finding"], (o["--plan"] or "").strip(), (o["--chosen"] or "").strip()
+    if not fid or not plan or not chosen:
+        die('decide needs --finding <id> --plan "<what the plan chose>" --chosen "<what the code does now>"')
+    found = next(((r.get("n"), f) for r in reversed(aud.get("rounds") or [])
+                  for f in r.get("findings_list") or [] if str(f.get("id")) == fid), None)
+    if not found:
+        emit({"decided": False, "reason": f"no recorded round has a finding '{fid}': record the round first"}, 3)
+    n, finding = found
+    entry = {"finding": fid, "round": n, "file": finding.get("file"), "plan": plan, "chosen": chosen,
+             "at": now(), "code_tree": ctx.head_ct}
+    aud["plan_decisions"] = [d for d in aud.get("plan_decisions") or [] if d.get("finding") != fid] + [entry]
+    ctx.run.write("audit.json", aud)
+    return {"decided": True, "decision": entry, "plan_decisions": len(aud["plan_decisions"])}
 
 
 def audit_status(ctx, aud, o):
@@ -1453,7 +1475,7 @@ def adhoc_ledger(ctx):
     return Run(Path(ctx.common) / "clerk" / "audits" / name)
 
 
-AUDIT = {"round": audit_round, "accept": audit_accept,
+AUDIT = {"round": audit_round, "accept": audit_accept, "decide": audit_decide,
          "status": audit_status, "begin": audit_begin, "next": audit_next,
          "record": audit_record, "run": audit_run, "wait": audit_wait, "stop": audit_stop}
 
@@ -1461,7 +1483,7 @@ AUDIT = {"round": audit_round, "accept": audit_accept,
 def main_audit(argv):
     """As main_step: every branch ends in emit()."""
     if not argv or any(a in ("-h", "--help") for a in argv):
-        print("USAGE\n  clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n      [--fixed-file <p>]... [--precedent <path[:start-end]>]...\n      [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n      [--model <m>] [--dry-run] [--quiet | --raw] [--no-detach]\n  clerk audit wait      wait for the round a runner is driving; end on its summary\n  clerk audit stop      end that round; `run` resumes it\n  clerk audit round --report <json|-> [--replan <n>]\n  clerk audit accept [--early <why>] | status\n\n`run` drives the round in a process of its own and relays it, so stopping the command\nstops the wait, not the round. --no-detach drives it in this process instead.")
+        print("USAGE\n  clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n      [--fixed-file <p>]... [--precedent <path[:start-end]>]...\n      [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n      [--model <m>] [--dry-run] [--quiet | --raw] [--no-detach]\n  clerk audit wait      wait for the round a runner is driving; end on its summary\n  clerk audit stop      end that round; `run` resumes it\n  clerk audit round --report <json|-> [--replan <n>]\n  clerk audit accept [--early <why>] | status\n  clerk audit decide --finding <id> --plan <what the plan chose> --chosen <what the code does now>\n\n`run` drives the round in a process of its own and relays it, so stopping the command\nstops the wait, not the round. --no-detach drives it in this process instead.")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
     handler = AUDIT.get(verb)
@@ -1475,7 +1497,7 @@ def main_audit(argv):
                     "--fixed-file": "list", "--precedent": "list", "--lens": "list", "--restart": "bool",
                     "--dry-run": "bool", "--model": "value",
                     "--quiet": "bool", "--raw": "bool", "--no-detach": "bool",
-                    "--harness-cmd": "value"})
+                    "--harness-cmd": "value", "--finding": "value", "--plan": "value", "--chosen": "value"})
     if rest:
         die(f"unknown argument '{rest[0]}' — `clerk audit {verb}` takes only flags; "
             f"`clerk audit -h` lists them")

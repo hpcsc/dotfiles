@@ -209,7 +209,8 @@ def cmd_finish(n, files, tasks_override=None):
                            "the paths stay staged"}, 1)
     if kind == "stale":
         refuse({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
-              "next_step": "run clerk mutants: these files changed after its last run, or no run read them; "
+              "next_step": "run clerk mutants --since-last-run: these files changed after its last run, or no "
+                           "run read them, and it tests only those files; "
                            "then run clerk finish again; the paths stay staged"}, 1)
     if kind == "rows":
         refuse({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),

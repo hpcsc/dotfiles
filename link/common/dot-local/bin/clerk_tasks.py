@@ -209,12 +209,16 @@ def cmd_finish(n, files, tasks_override=None):
                            "then run clerk finish again; the paths stay staged"}, 1)
     if kind == "rows":
         emit({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
-              "next_step": "for each row, add or change a test and run clerk mutants --id <key> until it exits 0 "
-                           "(for a caller gap or a group with no tests, add the test and run clerk mutants "
-                           "again; for a REJECTED proposal, correct it and run clerk mutants --proposals "
-                           "again, with --proposals-anywhere for a line that the task did not change), or "
-                           "record why no test is worth it with clerk mutants accept <key> \"<reason>\"; "
-                           "then run clerk finish again; the paths stay staged"}, 1)
+              "next_step": "for each row, first name what a caller sees differently with the mutant. When a "
+                           "caller sees a difference, add or change a test that calls the code through its "
+                           "public API, and run clerk mutants --id <key> until it exits 0 (for a caller gap or "
+                           "a group with no tests, add the test and run clerk mutants again; for a REJECTED "
+                           "proposal, correct it and run clerk mutants --proposals again, with "
+                           "--proposals-anywhere for a line that the task did not change). Do not kill a row "
+                           "with a test that reads private state, a symbol exported only for the test, the "
+                           "order of calls to a fake, or the text of a log line. When no caller sees a "
+                           "difference, remove the code, or record why no test is worth it with clerk mutants "
+                           "accept <key> \"<reason>\"; then run clerk finish again; the paths stay staged"}, 1)
 
     for t in data["tasks"]:
         if t.get("n") == n:

@@ -264,8 +264,9 @@ def mutants_after_last_round(ctx, last):
         "stale": f"a fix after round {last.get('n')} changed these files, and no clerk mutants run read them "
                  f"since: run clerk mutants --base {start}, close each row, then accept again",
         "rows": "a row of the last clerk mutants is open in a file that a fix after the last round changed: "
-                "kill it with clerk mutants --id <key>, or record why no test is worth it with clerk mutants "
-                "accept <key> \"<reason>\", then accept again",
+                "when a caller sees what the mutant changes, kill it with a test through the public API and "
+                "clerk mutants --id <key>; when no caller sees it, remove the code, or record why no test is "
+                "worth it with clerk mutants accept <key> \"<reason>\"; then accept again",
     }[kind]
     return {"reason": reason, "mutants_findings": findings}
 

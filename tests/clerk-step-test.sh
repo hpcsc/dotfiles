@@ -1319,6 +1319,13 @@ eq "a diff with one earns one security lens, on the security reviewer, with its 
    "$(printf '%s' "$NS" | jq -r '[.next.spawn[] | select(.id == "review:security")] | [.[0].agent, (.[0].prompt | contains("FRAGMENT lens-security") | tostring), (length | tostring)] | join("|")')"
 eq "with no harness on PATH a real run refuses rather than hanging" "3" \
    "$(CLERK_HARNESS_CMD= PATH=/usr/bin:/bin rc "$RA" audit run)"
+for flag in -h --help; do
+  HO=$(CLERK_HARNESS_CMD= PATH=/usr/bin:/bin run "$RA" audit run "$flag" 2>&1); HC=$?
+  eq "audit run $flag prints the usage and starts no round" "0|1" \
+     "$HC|$(printf '%s' "$HO" | grep -c '^USAGE')"
+done
+eq "a word after the verb that no verb takes is refused, not run as a round" "2" \
+   "$(CLERK_HARNESS_CMD= PATH=/usr/bin:/bin rc "$RA" audit run 3)"
 
 # A whole round driven end to end. The harness is a stub that answers from the prompt it
 # is handed, so the loop, the retry and every phase hand-off are exercised for nothing.

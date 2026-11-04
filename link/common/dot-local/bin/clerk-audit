@@ -1456,14 +1456,14 @@ AUDIT = {"round": audit_round, "accept": audit_accept,
 
 def main_audit(argv):
     """As main_step: every branch ends in emit()."""
-    if not argv or argv[0] in ("-h", "--help"):
+    if not argv or any(a in ("-h", "--help") for a in argv):
         print("USAGE\n  clerk audit run [--rounds <n>] [--base <ref>] [--brief <s>] [--request <s>]\n      [--fixed-file <p>]... [--precedent <path[:start-end]>]...\n      [--recheck <json>] [--lens <l>]... [--restart] [--another <why>]\n      [--model <m>] [--dry-run] [--quiet | --raw] [--no-detach]\n  clerk audit wait      wait for the round a runner is driving; end on its summary\n  clerk audit stop      end that round; `run` resumes it\n  clerk audit round --report <json|-> [--replan <n>]\n  clerk audit accept [--early <why>] | status\n\n`run` drives the round in a process of its own and relays it, so stopping the command\nstops the wait, not the round. --no-detach drives it in this process instead.")
         sys.exit(0)
     verb, args = argv[0], argv[1:]
     handler = AUDIT.get(verb)
     if handler is None:
         die(f"unknown verb '{verb}' — {', '.join(AUDIT)}")
-    o, _ = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value",
+    o, rest = parse(args, {"--rounds": "value", "--report": "value", "--replan": "value",
                     "--early": "value", "--run": "value", "--phase": "value",
                     "--results": "value", "--target": "value", "--base": "value",
                     "--brief": "value", "--request": "value", "--depth": "value",
@@ -1472,6 +1472,9 @@ def main_audit(argv):
                     "--dry-run": "bool", "--model": "value",
                     "--quiet": "bool", "--raw": "bool", "--no-detach": "bool",
                     "--harness-cmd": "value"})
+    if rest:
+        die(f"unknown argument '{rest[0]}' — `clerk audit {verb}` takes only flags; "
+            f"`clerk audit -h` lists them")
     ctx = build_ctx(o["--run"])
     if ctx.run is None:
         if verb not in ADHOC_VERBS:

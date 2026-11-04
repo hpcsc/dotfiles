@@ -2917,14 +2917,16 @@ rm -rf "$RS"
 # The open run keeps the last run, and `clerk finish` reads it.
 RF=$(new_repo)
 mkdir -p "$RF/tasks"
-printf '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n### Task 4: Four\n### Task 5: Five\n' > "$RF/tasks/story.md"
+printf '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n### Task 4: Four\n### Task 5: Five\n### Task 6: Six\n### Task 7: Seven\n' > "$RF/tasks/story.md"
 cat > "$RF/tasks/story.json" <<'EOF'
 {"story":"story","tasks_file":"tasks/story.md","tasks":[
  {"n":1,"title":"One","language":"Go","depends_on":[],"affected_files":["a.go"]},
  {"n":2,"title":"Two","language":"Go","depends_on":[1],"affected_files":["b.go"]},
  {"n":3,"title":"Three","language":"Go","depends_on":[2],"affected_files":["c.go"]},
  {"n":4,"title":"Four","language":"Generic","depends_on":[3],"affected_files":["README.md"]},
- {"n":5,"title":"Five","language":"Elixir","depends_on":[4],"affected_files":["lib/a.ex"]}]}
+ {"n":5,"title":"Five","language":"Elixir","depends_on":[4],"affected_files":["lib/a.ex"]},
+ {"n":6,"title":"Six","language":"Go","depends_on":[5],"affected_files":["e.go"]},
+ {"n":7,"title":"Seven","language":"Go","depends_on":[6],"affected_files":["g.go"]}]}
 EOF
 git -C "$RF" add -A && git -C "$RF" commit -qm "Plan"
 run "$RF" step start story --request "a story" >/dev/null 2>&1
@@ -3035,6 +3037,46 @@ stub 0 "$MS/empty.json"; mutf >/dev/null 2>&1
 F=$(finf 5 -- lib/a.ex test/support/stub.ex); FRC=$?
 eq "after a run reads it, the task finishes" "0|true|clean" \
    "$FRC|$(printf '%s' "$F" | jq -r '[(.done|tostring), .mutants] | join("|")')"
+git -C "$RF" commit -qm "Task 5"
+
+printf 'package e\n\nfunc E() int { return 1 }\n' > "$RF/e.go"
+cat > "$MS/noverdict.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"e.go:E:RETURN_EMPTY#1","file":"e.go","line":3,"status":"UNSTABLE","operator":"RETURN_EMPTY","original":"1","replacement":"0","detail":"--- FAIL: TestE"},
+ {"id":"e.go:E:BRANCH_IF#1","file":"e.go","line":3,"status":"INFRA ERROR","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}","detail":"signal: killed"},
+ {"id":"e.go:E:STATEMENT_REMOVE#1","file":"e.go","line":3,"status":"TIMED OUT","operator":"STATEMENT_REMOVE","original":"return 1","replacement":""},
+ {"id":"e.go:E:CONDITIONALS_NEGATION#1","file":"e.go","line":3,"status":"KILLED","operator":"CONDITIONALS_NEGATION","original":"a == b","replacement":"a != b"}],
+ "callerGaps":[]}
+EOF
+stub 1 "$MS/noverdict.json" "2 mutants have no verdict: run each one again with mutants rerun"
+MRC=$(mutf >/dev/null 2>&1; printf '%s' $?)
+F=$(finf 6 -- e.go); FRC=$?
+eq "a mutants exit 1 with a report gives rows to close, and the task is refused by each mutant with no verdict" \
+   "10|1|e.go:E:RETURN_EMPTY#1,e.go:E:BRANCH_IF#1,e.go:E:STATEMENT_REMOVE#1|UNSTABLE,INFRA ERROR,TIMED OUT" \
+   "$MRC|$FRC|$(printf '%s' "$F" | jq -r '[([.mutants_findings[].key] | join(",")), ([.mutants_findings[].status] | join(","))] | join("|")')"
+stub 0; mutf --id 'e.go:E:RETURN_EMPTY#1' >/dev/null 2>&1
+mutf accept 'e.go:E:BRANCH_IF#1' 'the rerun killed it with TestE; the first run ran out of memory' >/dev/null
+mutf accept 'e.go:E:STATEMENT_REMOVE#1' 'without the return the loop never ends, so the test runs past its limit' >/dev/null
+F=$(finf 6 -- e.go); FRC=$?
+eq "an --id kill or an accept closes a row with no verdict, as it closes a survivor" "0|true" \
+   "$FRC|$(printf '%s' "$F" | jq -r '.done | tostring')"
+git -C "$RF" commit -qm "Task 6"
+
+printf 'package g\n\nfunc G() int { return 1 }\n' > "$RF/g.go"
+stub 124 "$MS/empty.json"; mutf >/dev/null 2>&1
+F=$(finf 7 -- g.go); FRC=$?
+INCOMPLETE=$(printf '%s' "$F" | jq -r '.mutants_findings[0].key')
+eq "a run that stopped at its time limit refuses the task by one key, because its rows miss the mutants with no verdict" \
+   "1|INCOMPLETE|true|1" \
+   "$FRC|$(printf '%s' "$F" | jq -r '[.mutants_findings[0].status, (.mutants_findings[0].key | startswith("incomplete run ") | tostring), (.mutants_findings | length | tostring)] | join("|")')"
+mutf accept "$INCOMPLETE" 'the machine is at load 200' >/dev/null
+sleep 1; stub 124 "$MS/empty.json"; mutf >/dev/null 2>&1
+F=$(finf 7 -- g.go); FRC=$?
+LATER=$(printf '%s' "$F" | jq -r '.mutants_findings[0].key')
+eq "a later run that stops at its limit gets a key of its own, so the earlier accept does not cover it" "1|true" \
+   "$FRC|$([ "$LATER" != "$INCOMPLETE" ] && echo true || echo false)"
+mutf accept "$LATER" 'the rerun of g.go alone killed every mutant' >/dev/null
+eq "an accept of that key with a reason lets the task finish" "0" "$(finf 7 -- g.go >/dev/null 2>&1; printf '%s' $?)"
 rm -rf "$MS" "$RM" "$RF"
 
 # --------------------------------------------------------------------------------

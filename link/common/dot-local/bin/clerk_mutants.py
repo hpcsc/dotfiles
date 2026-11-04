@@ -13,8 +13,9 @@ from clerk_repo import now
 
 INSTALL = "mise install github:hpcsc/mutants"
 NEEDED_FLAGS = ("--caller-gaps", "--proposals", "--proposals-anywhere")
-REPORTED = ("LIVED", "NOT COVERED", "TIMED OUT", "INFRA ERROR")
+REPORTED = ("LIVED", "NOT COVERED", "TIMED OUT", "INFRA ERROR", "UNSTABLE")
 SURVIVED = ("LIVED", "NOT COVERED")
+NO_VERDICT = ("TIMED OUT", "INFRA ERROR", "UNSTABLE")
 PROPOSED = "PROPOSED"
 SAVED = "mutants.json"
 ACCEPTED = "mutants-accepted.jsonl"
@@ -24,6 +25,8 @@ TIMED_OUT = 124
 TESTS_FAIL = 1
 NO_CHANGE = 3
 TESTS_FAIL_TEXT = "fail with the real code"
+ROWS_TO_CLOSE = 10
+MUTANTS_NO_VERDICT = 1
 RERUN_KILLED = 0
 RERUN_SURVIVED = 10
 
@@ -205,7 +208,9 @@ def run(cwd, base, *, proposals=None, anywhere=False, operators=None, caller_gap
             data = json.loads(report.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             data = None
-    if code not in (0, 10, TIMED_OUT) or not isinstance(data, dict):
+    if code == MUTANTS_NO_VERDICT and isinstance(data, dict) and TESTS_FAIL_TEXT not in err:
+        code = ROWS_TO_CLOSE
+    if code not in (0, ROWS_TO_CLOSE, TIMED_OUT) or not isinstance(data, dict):
         _echo(out, echo)
         reason, tests_fail = _failure(code, err)
         if code == TIMED_OUT:
@@ -401,12 +406,19 @@ def gap_key(gap):
     return f"{gap.get('file')}:{gap.get('function')}"
 
 
+def incomplete_key(saved):
+    if not saved or not saved.get("ran") or saved.get("complete", True):
+        return None
+    return f"incomplete run {saved.get('at')}"
+
+
 def keys(saved):
     saved = saved or {}
     return ({r.get("id") for r in saved.get("rows") or []}
             | {gap_key(g) for g in saved.get("caller_gaps") or []}
             | {g.get("detail") for g in saved.get("no_tests") or []}
-            | {r.get("key") for r in saved.get("rejected") or []})
+            | {r.get("key") for r in saved.get("rejected") or []}
+            | ({incomplete_key(saved)} - {None}))
 
 
 def accept(ldir, key, reason, task=None):
@@ -474,7 +486,7 @@ def check_sources(root, ldir, sources):
     closed = set(saved.get("killed") or []) | set(taken)
     findings = []
     for r in saved.get("rows") or []:
-        if r.get("status") in SURVIVED and r.get("file") in mine and r.get("id") not in closed:
+        if r.get("status") in SURVIVED + NO_VERDICT and r.get("file") in mine and r.get("id") not in closed:
             text = r["bug"] if r.get("bug") else (f"{r.get('type')}: {_one_line(r.get('original'))} -> "
                                                   f"{_one_line(r.get('replacement')) or '(nothing)'}")
             findings.append({"key": r.get("id"), "file": r.get("file"), "line": r.get("line"),
@@ -492,6 +504,12 @@ def check_sources(root, ldir, sources):
         if r.get("key") not in taken:
             findings.append({"key": r.get("key"), "file": r.get("file"), "status": "REJECTED",
                              "row": r.get("reason")})
+    incomplete = incomplete_key(saved)
+    if incomplete and incomplete not in taken:
+        findings.append({"key": incomplete, "file": ", ".join(sorted(mine)), "status": "INCOMPLETE",
+                         "row": "the run stopped at its time limit, so its rows leave out each mutant "
+                                "that got no verdict: run clerk mutants again, or accept this key "
+                                "with the reason"})
     if findings:
         return findings, "rows", None
     state = "clean"

@@ -29,9 +29,9 @@ as "package cmd/x has no test files", or the bug of a rejected proposal.
 A run with no proposals and no changed Go, Python or Elixir file outside the tests against
 <ref> runs nothing: after a commit, the work tree against HEAD holds no change of the task.
 
-Exit 0 nothing to report, 10 survivors, caller gaps or rejected proposals, 1 the tests fail
-with the real code, 3 no source file changes against <ref>, 124 the time limit, 2 a tool
-error.
+Exit 0 nothing to report, 10 survivors, caller gaps, rejected proposals or mutants with no
+verdict, 1 the tests fail with the real code, 3 no source file changes against <ref>, 124 the
+time limit, 2 a tool error.
 With --id: 0 a test kills the mutant, 10 it lives or no test runs it, 1 no verdict, 2 an
 unknown id.
 

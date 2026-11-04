@@ -2142,6 +2142,22 @@ eq "and it folds like any other" "1" \
 eq "leaving the fix in the commit it belonged to" "one fixed" \
    "$(git -C "$RH" show HEAD:a.txt)"
 
+RUNS=$(mktemp)
+cat > "$RH/.git/hooks/pre-commit" <<EOF
+#!/bin/sh
+echo run >> "$RUNS"
+exit 0
+EOF
+chmod +x "$RH/.git/hooks/pre-commit"
+printf 'one fixed again\n' > "$RH/a.txt"
+H=$(run "$RH" fixup mark --base "$HB" -- a.txt)
+eq "a later mark in that repo runs the pre-commit hook once, not twice" "1" \
+   "$(wc -l < "$RUNS" | tr -d ' ')"
+eq "and still steps around the commit-msg hook" "true|1" \
+   "$(printf '%s' "$H" | jq -r '.commit_msg_hook_bypassed')|$(git -C "$RH" log --format=%s -1 | grep -c '^fixup! Add a')"
+run "$RH" fixup replay --base "$HB" >/dev/null
+rm "$RH/.git/hooks/pre-commit" "$RUNS"
+
 # Only the message check is stepped around. A pre-commit hook objecting to the content
 # is a real objection, and the fix must not go in behind it.
 cat > "$RH/.git/hooks/pre-commit" <<'EOF'

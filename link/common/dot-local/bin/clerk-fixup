@@ -36,6 +36,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clerk_lib import take_verb, Parser, die, emit, gitout, repo  # noqa: E402
 from clerk_lib import git as git_raw  # noqa: E402
 
+FIXUP_SUBJECT_REJECTED = "clerk.fixupSubjectRejected"
+
 
 def git(*args, check=True):
     r = git_raw(*args)
@@ -90,20 +92,26 @@ def mark_fixup(target, subject):
     about the fix still stops it. Only the amend that installs the marker is --no-verify,
     and it changes the message alone.
     """
-    r = git("commit", f"--fixup={target}", check=False)
-    if r.returncode == 0:
-        confirm_marker(subject)
-        return False
+    known_rejected = git("config", "--bool", "--get", FIXUP_SUBJECT_REJECTED,
+                         check=False).stdout.strip() == "true"
+    first = None
+    if not known_rejected:
+        first = git("commit", f"--fixup={target}", check=False)
+        if first.returncode == 0:
+            confirm_marker(subject)
+            return False
 
     reuse = git("commit", f"--reuse-message={target}", check=False)
     if reuse.returncode != 0:
-        die(f"git commit --fixup failed (files are staged): {git_err(r)}")
+        die(f"git commit --fixup failed (files are staged): {git_err(first or reuse)}")
 
     amend = git("commit", "--amend", "--no-verify", "-m", f"fixup! {subject}", check=False)
     if amend.returncode != 0:
         git("reset", "--soft", "HEAD~1", check=False)
-        die(f"git commit --fixup failed (files are staged): {git_err(r)}")
+        die(f"git commit --fixup failed (files are staged): {git_err(first or amend)}")
 
+    if not known_rejected:
+        git("config", "--bool", FIXUP_SUBJECT_REJECTED, "true", check=False)
     confirm_marker(subject)
     return True
 

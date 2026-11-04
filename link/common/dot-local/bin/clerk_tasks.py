@@ -164,6 +164,7 @@ def cmd_finish(n, files, tasks_override=None):
     # The staged set is linted BEFORE the task is marked done, and a finding refuses the
     # whole step with the paths left staged. A lint that cannot run is reported and does
     # not block: hiding a finished task behind a tooling error would be the worse lie.
+    refused, steps = {}, []
     lint_state = "clean"
     lint = plugin_bin("lint")
     if lint:
@@ -173,8 +174,8 @@ def cmd_finish(n, files, tasks_override=None):
         except json.JSONDecodeError:
             findings = []
         if r.returncode == 1:
-            emit({"task": n, "done": False, "lint_findings": findings, "staged": list(files),
-                  "next_step": "fix each finding — a defect, not an opinion — then run clerk finish again; the paths stay staged"}, 1)
+            refused["lint_findings"] = findings
+            steps.append("lint: fix each finding — a defect, not an opinion.")
         elif r.returncode != 0:
             lint_state = f"could not run (exit {r.returncode})"
     else:
@@ -191,24 +192,27 @@ def cmd_finish(n, files, tasks_override=None):
     except Exception as e:  # noqa: BLE001
         design_findings, design_state = [], f"could not run: {type(e).__name__}: {e}"
     if design_findings:
-        emit({"task": n, "done": False, "design_findings": design_findings, "staged": list(files),
-              "next_step": "change the code, or record why with clerk design note <name> \"<reason>\"; "
-                           "then run clerk finish again; the paths stay staged"}, 1)
+        refused["design_findings"] = design_findings
+        steps.append("design: change the code, or record why with clerk design note <name> \"<reason>\".")
+
+    def refuse(reply, code):
+        step = reply["next_step"] if not steps else " ".join(steps + [f"mutants: {reply['next_step']}"])
+        emit({**refused, **reply, "next_step": step}, code)
 
     import clerk_mutants
     mutants_findings, kind, mutants_state = clerk_mutants.finish_check(
         repo.work_tree or repo.repo_root, repo.ledger_dir, files)
     if kind == "tests_fail":
-        emit({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
+        refuse({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
               "next_step": "the tests fail with the real code, so the last clerk mutants got no verdict: "
                            "make them pass and run clerk mutants again; then run clerk finish again; "
                            "the paths stay staged"}, 1)
     if kind == "stale":
-        emit({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
+        refuse({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
               "next_step": "run clerk mutants: these files changed after its last run, or no run read them; "
                            "then run clerk finish again; the paths stay staged"}, 1)
     if kind == "rows":
-        emit({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
+        refuse({"task": n, "done": False, "mutants_findings": mutants_findings, "staged": list(files),
               "next_step": "for each row, first name what a caller sees differently with the mutant. When a "
                            "caller sees a difference, add or change a test that calls the code through its "
                            "public API, and run clerk mutants --id <key> until it exits 0 (for a caller gap or "
@@ -219,6 +223,9 @@ def cmd_finish(n, files, tasks_override=None):
                            "order of calls to a fake, or the text of a log line. When no caller sees a "
                            "difference, remove the code, or record why no test is worth it with clerk mutants "
                            "accept <key> \"<reason>\"; then run clerk finish again; the paths stay staged"}, 1)
+    if refused:
+        emit({"task": n, "done": False, **refused, "staged": list(files),
+              "next_step": " ".join(steps) + " Then run clerk finish again; the paths stay staged."}, 1)
 
     for t in data["tasks"]:
         if t.get("n") == n:

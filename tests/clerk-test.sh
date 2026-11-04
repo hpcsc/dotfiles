@@ -2917,7 +2917,7 @@ rm -rf "$RS"
 # The open run keeps the last run, and `clerk finish` reads it.
 RF=$(new_repo)
 mkdir -p "$RF/tasks"
-printf '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n### Task 4: Four\n### Task 5: Five\n### Task 6: Six\n### Task 7: Seven\n' > "$RF/tasks/story.md"
+printf '### Task 1: One\n### Task 2: Two\n### Task 3: Three\n### Task 4: Four\n### Task 5: Five\n### Task 6: Six\n### Task 7: Seven\n### Task 8: Eight\n' > "$RF/tasks/story.md"
 cat > "$RF/tasks/story.json" <<'EOF'
 {"story":"story","tasks_file":"tasks/story.md","tasks":[
  {"n":1,"title":"One","language":"Go","depends_on":[],"affected_files":["a.go"]},
@@ -2926,7 +2926,8 @@ cat > "$RF/tasks/story.json" <<'EOF'
  {"n":4,"title":"Four","language":"Generic","depends_on":[3],"affected_files":["README.md"]},
  {"n":5,"title":"Five","language":"Elixir","depends_on":[4],"affected_files":["lib/a.ex"]},
  {"n":6,"title":"Six","language":"Go","depends_on":[5],"affected_files":["e.go"]},
- {"n":7,"title":"Seven","language":"Go","depends_on":[6],"affected_files":["g.go"]}]}
+ {"n":7,"title":"Seven","language":"Go","depends_on":[6],"affected_files":["g.go"]},
+ {"n":8,"title":"Eight","language":"Go","depends_on":[7],"affected_files":["h.go"]}]}
 EOF
 git -C "$RF" add -A && git -C "$RF" commit -qm "Plan"
 run "$RF" step start story --request "a story" >/dev/null 2>&1
@@ -3077,6 +3078,14 @@ eq "a later run that stops at its limit gets a key of its own, so the earlier ac
    "$FRC|$([ "$LATER" != "$INCOMPLETE" ] && echo true || echo false)"
 mutf accept "$LATER" 'the rerun of g.go alone killed every mutant' >/dev/null
 eq "an accept of that key with a reason lets the task finish" "0" "$(finf 7 -- g.go >/dev/null 2>&1; printf '%s' $?)"
+git -C "$RF" commit -qm "Task 7"
+
+printf 'package h\n\n// see APP-1234\nfunc H() int { return 1 }\n' > "$RF/h.go"
+printf '{"base":"abc","mutants":[{"id":"h.go:H:RETURN_EMPTY#1","file":"h.go","line":4,"status":"LIVED","operator":"RETURN_EMPTY","original":"1","replacement":"0"}],"callerGaps":[]}\n' > "$MS/h.json"
+stub 10 "$MS/h.json"; mutf >/dev/null 2>&1
+F=$(finf 8 -- h.go); FRC=$?
+eq "a finish that two gates refuse reports both in one reply, with the next step of each" "1|1|h.go:H:RETURN_EMPTY#1|true|true" \
+   "$FRC|$(printf '%s' "$F" | jq -r '[(.lint_findings | length | tostring), .mutants_findings[0].key, (.next_step | contains("fix each finding") | tostring), (.next_step | contains("clerk mutants --id") | tostring)] | join("|")')"
 rm -rf "$MS" "$RM" "$RF"
 
 # --------------------------------------------------------------------------------

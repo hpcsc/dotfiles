@@ -235,7 +235,7 @@ After writing the manifest and all deliverable files, return a structured summar
 
 1. The manifest path (`tasks/<story-slug>/plan.yaml`).
 2. The deliverable count and the wave grouping (which deliverables are parallel).
-3. Per deliverable: id, one-line intent, base, certainty, blast radius, its `tasks.md` path, and the types its planned design names, or the reason it needs none.
+3. Per deliverable: id, one-line intent, base, certainty, blast radius, its `tasks.md` path, the types its planned design names (or the reason it needs none), and its estimated files changed: the raw count and the judgment-weighted count, with the weighted count split into Full and Low (for example `~22 files, ~11 weighted: 6 Full, 5 Low`). Return these counts as a table with one row per deliverable, so the caller can show them at the plan gate as they are.
 4. Key codebase findings that drove the cut.
 5. The merge pass: for each adjacent pair, the one-sentence reason they are not one deliverable — so the caller can overrule a cut you kept.
 6. The deliverables you assessed `high` blast radius or `low` certainty, each with its reason, named as the ones least suited to running unattended in a parallel wave.

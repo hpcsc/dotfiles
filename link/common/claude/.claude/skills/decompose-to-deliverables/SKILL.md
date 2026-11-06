@@ -28,7 +28,7 @@ Everything about how to cut — slicing rules, sizing, waves, stacking, branch n
 
 ## Present what it returns
 
-The manifest path; the deliverable count and wave grouping (what could run in parallel); one row per deliverable (`id`, `title`, `base`, `wave`); and the codebase findings that drove the cut.
+The manifest path; the deliverable count and wave grouping (what could run in parallel); one row per deliverable (`id`, `title`, `base`, `wave`, and the estimated files changed, raw and judgment-weighted); and the codebase findings that drove the cut.
 
 Surface anything the agent flagged rather than burying it: a deliverable outside the sizing band, a deliverable whose raw file count runs far above its judgment-weighted count, and any of the story's acceptance criteria it deferred.
 

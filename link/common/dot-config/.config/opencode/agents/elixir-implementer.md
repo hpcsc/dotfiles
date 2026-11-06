@@ -1,7 +1,7 @@
 ---
 description: Elixir implementation agent that writes tests first, then production code. Follows project Elixir guidelines for naming, architecture, testing, and workflow.
 mode: all
-model: opencode-go/kimi-k3
+model: opencode-go/deepseek-v4-pro
 ---
 
 # Elixir Implementer

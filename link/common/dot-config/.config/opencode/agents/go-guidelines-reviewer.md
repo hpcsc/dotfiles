@@ -1,7 +1,7 @@
 ---
 description: Reviews Go code changes for adherence to project Go guidelines (naming patterns, architecture principles, development workflow). Outputs structured JSON verdict.
 mode: subagent
-model: opencode-go/kimi-k3
+model: opencode-go/deepseek-v4-pro
 ---
 
 # Go Guidelines Reviewer

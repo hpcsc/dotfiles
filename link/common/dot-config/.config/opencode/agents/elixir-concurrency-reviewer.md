@@ -1,7 +1,7 @@
 ---
 description: Reviews Elixir code changes for concurrency issues using project Elixir concurrency guidelines. Outputs structured JSON verdict.
 mode: subagent
-model: opencode-go/kimi-k3
+model: opencode-go/deepseek-v4-pro
 ---
 
 # Concurrency Elixir Reviewer

@@ -1,7 +1,7 @@
 ---
 description: Reviews Elixir code changes for logic correctness, edge cases, intent alignment, and test quality against Elixir testing guidelines. Outputs structured JSON verdict.
 mode: subagent
-model: opencode-go/kimi-k3
+model: opencode-go/deepseek-v4-pro
 ---
 
 # Semantic Elixir Reviewer

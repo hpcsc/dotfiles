@@ -21,7 +21,7 @@
   ],
   "defaults": {
     "claude": "opus",
-    "opencode": "opencode-go/kimi-k3"
+    "opencode": "opencode-go/deepseek-v4-pro"
   },
   "agents": {
     "commit": {

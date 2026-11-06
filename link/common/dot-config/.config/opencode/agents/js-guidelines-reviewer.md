@@ -1,7 +1,7 @@
 ---
 description: Reviews JavaScript code changes for adherence to project JS guidelines (naming patterns, architecture principles, development workflow, DOM patterns, state management). Outputs structured JSON verdict.
 mode: subagent
-model: opencode-go/kimi-k3
+model: opencode-go/deepseek-v4-pro
 ---
 
 # JS Guidelines Reviewer

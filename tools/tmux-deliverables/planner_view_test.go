@@ -118,6 +118,49 @@ func TestPlannerView(t *testing.T) {
 			require.True(t, s.quit)
 		})
 
+		t.Run("p on a proposed feature starts /write-user-story on its proposal, because it has no stories yet", func(t *testing.T) {
+			f := newFake(nil, nil)
+			f.featureList = append([]feature{{Path: "docs/proposals/new.md", Title: "New", State: "proposed", GoalsTotal: 2}}, twoFeatures()...)
+			s := startApp(t, f, "/repos/a", plannerID)
+
+			s.press("p")
+
+			require.Equal(t, []string{
+				"claude window stories-new in /repos/a: /write-user-story /repos/a/docs/proposals/new.md",
+				"switch /dev/ttys004 to Work:stories-new",
+			}, f.actions())
+		})
+
+		t.Run("the key help names the skill that p starts for the feature under the cursor", func(t *testing.T) {
+			f := newFake(nil, nil)
+			f.featureList = append([]feature{{Path: "docs/proposals/new.md", Title: "New", State: "proposed"}}, twoFeatures()...)
+			s := startApp(t, f, "/repos/a", plannerID)
+
+			first := s.lines()[len(s.lines())-1]
+			s.press("down")
+
+			require.Contains(t, first, "p /write-user-story in a window")
+			require.Contains(t, s.lines()[len(s.lines())-1], "p /deliver-feature in a window")
+		})
+
+		t.Run("a proposed feature opens on a screen that says how to write its stories", func(t *testing.T) {
+			s, _ := plannerOn(t, feature{Path: "docs/proposals/new.md", Title: "New", State: "proposed"}, nil)
+
+			require.Equal(t, []string{"no stories yet · p starts /write-user-story in a window"}, s.rows())
+			require.Empty(t, s.selected(), "the hint is not a row, so the cursor does not mark it")
+		})
+
+		t.Run("p on the stories of a feature starts what p starts on the list", func(t *testing.T) {
+			s, f := plannerOn(t, signIn(), nil)
+
+			s.press("p")
+
+			require.Equal(t, []string{
+				"claude window deliver-sign-in in /repos/a: /deliver-feature /repos/a/docs/proposals/sign-in.md",
+				"switch /dev/ttys004 to Work:deliver-sign-in",
+			}, f.actions())
+		})
+
 		t.Run("b on the stories goes back to the list", func(t *testing.T) {
 			f := newFake(nil, nil)
 			f.featureList = twoFeatures()

@@ -222,6 +222,8 @@ func (v plannerView) key(msg tea.KeyMsg) (plannerView, tea.Cmd) {
 	case "t":
 		v.graph = !v.graph
 		return v, v.readPreview()
+	case "p":
+		return v, v.takeForward(v.feature)
 	case "b", "backspace":
 		if len(v.features) > 1 {
 			v.screen = featureScreen
@@ -251,9 +253,7 @@ func (v plannerView) featureKey(msg tea.KeyMsg) (plannerView, tea.Cmd) {
 		}
 	case "p":
 		if v.featureCursor < len(v.features) {
-			f := v.features[v.featureCursor]
-			name := "deliver-" + strings.TrimSuffix(filepath.Base(f.Path), ".md")
-			return v, v.claude(name, "/deliver-feature "+filepath.Join(v.root, f.Path))
+			return v, v.takeForward(v.features[v.featureCursor])
 		}
 	case "r":
 		return v, listFeatures(v.run, v.root)
@@ -350,6 +350,21 @@ func (v plannerView) start(gears bool) (plannerView, tea.Cmd) {
 		}
 		return doneMsg{text: text, reload: true}
 	}
+}
+
+// forward is the skill that takes a feature to its next stage, and the name of its window:
+// the stories of a proposal first, then their delivery.
+func forward(f feature) (name, skill string) {
+	stem := strings.TrimSuffix(filepath.Base(f.Path), ".md")
+	if f.State == "proposed" {
+		return "stories-" + stem, "/write-user-story"
+	}
+	return "deliver-" + stem, "/deliver-feature"
+}
+
+func (v plannerView) takeForward(f feature) tea.Cmd {
+	name, skill := forward(f)
+	return v.claude(name, skill+" "+filepath.Join(v.root, f.Path))
 }
 
 // claude opens a window with Claude on a prompt, goes to it, and closes the popup.
@@ -635,11 +650,15 @@ func (v plannerView) View() string {
 				lines = append(lines, v.storyLine(r.story))
 			}
 		}
+		if len(v.rows) == 0 && !v.loading && v.message == "" {
+			_, skill := forward(v.feature)
+			lines = append(lines, dimmed.Render("no stories yet · p starts "+skill+" in a window"))
+		}
 	}
 	for i := offset; i < offset+h; i++ {
 		if i < len(lines) {
 			gutter := "  "
-			if i == cursor {
+			if i == cursor && (v.screen == featureScreen || i < len(v.rows)) {
 				gutter = selected.Render("▌ ")
 			}
 			b.WriteString(ansi.Truncate(gutter+lines[i], v.width, "…"))
@@ -660,9 +679,15 @@ func (v plannerView) View() string {
 		b.WriteString("\n")
 	}
 
-	keys := "enter go, start, or go to the orchestrator · n next step · s start · g start with gears · t graph · b features · tab under way · r reload · q quit"
+	_, skill := forward(v.feature)
+	keys := "enter go, start, or go to the orchestrator · n next step · s start · g start with gears · t graph · p " + skill +
+		" · b features · tab under way · r reload · q quit"
 	if v.screen == featureScreen {
-		keys = "enter open · p /deliver-feature in a window · tab under way · r reload · q quit"
+		skill = "/deliver-feature"
+		if v.featureCursor < len(v.features) {
+			_, skill = forward(v.features[v.featureCursor])
+		}
+		keys = "enter open · p " + skill + " in a window · tab under way · r reload · q quit"
 	}
 	b.WriteString(dimmed.Render(ansi.Truncate(keys, v.width, "…")))
 	return b.String()

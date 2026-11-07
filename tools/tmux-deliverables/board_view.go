@@ -678,7 +678,7 @@ func (m boardView) View() string {
 		b.WriteString(m.filter.View())
 	default:
 		b.WriteString(dimmed.Render(ansi.Truncate(
-			"enter go, start, or go to the orchestrator · o open the PR · x close a merged window · a archive the story · t graph or orchestrator · ←/→ fold · / filter · f its feature · tab features · r reload · q quit",
+			"enter go, start, or go to the orchestrator · o open the PR · x close a merged window · a archive the story · t graph or orchestrator · ←/→ fold · / filter · f its feature · r reload · q quit",
 			m.width, "…")))
 	}
 	return b.String()

@@ -698,13 +698,13 @@ func (v plannerView) View() string {
 
 	_, skill := forward(v.feature)
 	keys := "enter go, start, or go to the orchestrator · n next step · s start · g start with gears · t graph · p " + skill +
-		" · u under way · b features · tab under way · r reload · q quit"
+		" · u under way · b features · r reload · q quit"
 	if v.screen == featureScreen {
 		skill = "/deliver-feature"
 		if v.featureCursor < len(v.features) {
 			_, skill = forward(v.features[v.featureCursor])
 		}
-		keys = "enter open · p " + skill + " in a window · tab under way · r reload · q quit"
+		keys = "enter open · p " + skill + " in a window · r reload · q quit"
 	}
 	b.WriteString(dimmed.Render(ansi.Truncate(keys, v.width, "…")))
 	return b.String()

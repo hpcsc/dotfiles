@@ -143,6 +143,86 @@ func TestApp(t *testing.T) {
 		})
 	})
 
+	t.Run("jumping between the views", func(t *testing.T) {
+		underWay := func(root, ticket, slug string) *plan {
+			return planIn(root, ticket, slug, deliverableJSON("building", "in-progress", 1, 3))
+		}
+
+		t.Run("f on a story under way opens its feature in the planner, with the cursor on the story", func(t *testing.T) {
+			f := newFake([]*plan{underWay("/repos/a", "AGE-3", "age-3-under-way")}, nil)
+			f.featureList = []feature{twoFeatures()[0], signInSummary()}
+			f.opened = signIn()
+			s := startApp(t, f, "/repos/a", boardID)
+			s.to("AGE-3")
+
+			s.press("f")
+
+			require.Equal(t, []string{"feature docs/proposals/sign-in.md in /repos/a"}, featureCalls(f))
+			require.True(t, strings.HasPrefix(s.header(), "deliver · Sign in"), s.header())
+			require.Contains(t, s.selected(), "US-003")
+		})
+
+		t.Run("f finds a story with no ticket by its key, in the repo of the story", func(t *testing.T) {
+			p := underWay("/repos/b", "", "sign-in-us-001")
+			p.StoryID = "sign-in/US-001"
+			f := newFake([]*plan{p}, nil)
+			f.featureList = []feature{signInSummary()}
+			f.opened = signIn()
+			f.opened.Stories[0].Ticket = ""
+			s := startApp(t, f, "/repos/a", boardID)
+			s.to("sign-in-us-001")
+
+			s.press("f")
+
+			require.Equal(t, []string{"feature docs/proposals/sign-in.md in /repos/b"}, featureCalls(f))
+			require.Contains(t, s.selected(), "US-001")
+		})
+
+		t.Run("f on a story that no feature holds says so, and shows the features", func(t *testing.T) {
+			f := newFake([]*plan{underWay("/repos/a", "AGE-9", "age-9-lost")}, nil)
+			f.featureList = twoFeatures()
+			s := startApp(t, f, "/repos/a", boardID)
+			s.to("AGE-9")
+
+			s.press("f")
+
+			require.True(t, strings.HasSuffix(s.header(), "no feature here holds AGE-9"), s.header())
+			require.Len(t, s.rows(), 2)
+		})
+
+		t.Run("f with no story under the cursor says what it needs", func(t *testing.T) {
+			s := startApp(t, newFake(nil, nil), "/repos/a", boardID)
+
+			s.press("f")
+
+			require.True(t, strings.HasSuffix(s.header(), "f opens the feature of a story: put the cursor on a story or a deliverable"), s.header())
+		})
+
+		t.Run("u on a story in the planner puts the cursor of the board on it", func(t *testing.T) {
+			f := newFake([]*plan{underWay("/repos/a", "AGE-0", "age-0-first"), underWay("/repos/a", "AGE-3", "age-3-under-way")}, nil)
+			f.featureList = []feature{signInSummary()}
+			f.opened = signIn()
+			s := startApp(t, f, "/repos/a", plannerID)
+			s.to("US-003")
+
+			s.press("u")
+
+			require.True(t, strings.HasPrefix(s.header(), "deliverables"), s.header())
+			require.Contains(t, s.selected(), "AGE-3")
+		})
+
+		t.Run("u on a story that is not under way says so on the board", func(t *testing.T) {
+			f := newFake([]*plan{underWay("/repos/a", "AGE-3", "age-3-under-way")}, nil)
+			f.featureList = []feature{signInSummary()}
+			f.opened = signIn()
+			s := startApp(t, f, "/repos/a", plannerID)
+
+			s.press("u")
+
+			require.True(t, strings.HasSuffix(s.header(), "US-001 is not under way"), s.header())
+		})
+	})
+
 	t.Run("switching", func(t *testing.T) {
 		t.Run("tab shows the planner, and reads the features of the repo", func(t *testing.T) {
 			f := newFake(nil, nil)
@@ -197,4 +277,17 @@ func TestApp(t *testing.T) {
 			require.Equal(t, []string{"AGE-2", "late"}, names(s.rows()))
 		})
 	})
+}
+
+// signInSummary is signIn as `feature list` prints it.
+func signInSummary() feature {
+	full := signIn()
+	f := feature{Path: full.Path, Title: full.Title, State: full.State}
+	for _, st := range full.Stories {
+		f.StoryKeys = append(f.StoryKeys, st.Key)
+		if st.Ticket != "" {
+			f.StoryTickets = append(f.StoryTickets, st.Ticket)
+		}
+	}
+	return f
 }

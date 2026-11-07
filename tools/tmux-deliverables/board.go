@@ -52,6 +52,7 @@ type plan struct {
 	Story        string            `json:"story"`
 	Slug         string            `json:"story_slug"`
 	Ticket       string            `json:"ticket"`
+	StoryID      string            `json:"story_id"`
 	PRError      string            `json:"pr_error"`
 	Deliverables []json.RawMessage `json:"deliverables"`
 	root         string

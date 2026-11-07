@@ -14,6 +14,8 @@ type feature struct {
 	StoriesMerged int            `json:"stories_merged"`
 	GoalsTotal    int            `json:"goals_total"`
 	GoalsDone     int            `json:"goals_done"`
+	StoryKeys     []string       `json:"story_keys"`
+	StoryTickets  []string       `json:"story_tickets"`
 	Stories       []featureStory `json:"stories"`
 	Running       []string       `json:"running"`
 }

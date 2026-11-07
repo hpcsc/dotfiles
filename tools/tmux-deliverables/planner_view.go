@@ -75,6 +75,7 @@ type plannerView struct {
 	loading       bool
 	loadedAt      time.Time
 	preview       previewMsg
+	want          *storyRef // the story to open, from the board
 }
 
 func newPlannerView(run runner, client, root string, limit int) plannerView {
@@ -125,6 +126,18 @@ func (v plannerView) Update(msg tea.Msg) (plannerView, tea.Cmd) {
 		v.width, v.height = msg.Width, msg.Height
 	case featuresMsg:
 		v.features = msg.features
+		if v.want != nil && msg.err == nil {
+			if f, ok := v.featureOf(*v.want); ok {
+				return v.open(f)
+			}
+			v.message = "no feature here holds " + v.want.label
+		}
+		if v.want != nil {
+			v.want = nil
+			if msg.err == nil {
+				return v, v.readPreview()
+			}
+		}
 		switch {
 		case msg.err != nil:
 			v.message = "feature list: " + msg.err.Error()
@@ -138,10 +151,14 @@ func (v plannerView) Update(msg tea.Msg) (plannerView, tea.Cmd) {
 		v.loading, v.loadedAt = false, v.now()
 		if msg.err != nil {
 			v.message = "feature: " + msg.err.Error()
+			v.want = nil
 			return v, nil
 		}
 		v.data = msg.f
 		v.rebuild()
+		if v.want != nil {
+			v.selectWant()
+		}
 		return v, v.readPreview()
 	case windowsMsg:
 		v.panes, v.rootOf, v.agents = msg.panes, msg.rootOf, msg.agents
@@ -681,7 +698,7 @@ func (v plannerView) View() string {
 
 	_, skill := forward(v.feature)
 	keys := "enter go, start, or go to the orchestrator · n next step · s start · g start with gears · t graph · p " + skill +
-		" · b features · tab under way · r reload · q quit"
+		" · u under way · b features · tab under way · r reload · q quit"
 	if v.screen == featureScreen {
 		skill = "/deliver-feature"
 		if v.featureCursor < len(v.features) {

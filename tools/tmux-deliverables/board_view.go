@@ -104,6 +104,7 @@ type boardView struct {
 	loading       bool
 	loadedAt      time.Time
 	preview       previewMsg
+	want          *storyRef // the story to put the cursor on once the stories are read
 }
 
 func newBoardView(run runner, client string) boardView {
@@ -152,6 +153,9 @@ func (m boardView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.plans, m.panes, m.rootOf, m.agents = msg.s.plans, msg.s.panes, msg.s.rootOf, msg.s.agents
 		m.loading, m.loadedAt = false, m.now()
 		m.rebuild()
+		if m.want != nil {
+			m.applyWant()
+		}
 		return m, m.readPreview()
 	case windowsMsg:
 		m.panes, m.rootOf, m.agents = msg.panes, msg.rootOf, msg.agents
@@ -674,7 +678,7 @@ func (m boardView) View() string {
 		b.WriteString(m.filter.View())
 	default:
 		b.WriteString(dimmed.Render(ansi.Truncate(
-			"enter go, start, or go to the orchestrator · o open the PR · x close a merged window · a archive the story · t graph or orchestrator · ←/→ fold · / filter · tab features · r reload · q quit",
+			"enter go, start, or go to the orchestrator · o open the PR · x close a merged window · a archive the story · t graph or orchestrator · ←/→ fold · / filter · f its feature · tab features · r reload · q quit",
 			m.width, "…")))
 	}
 	return b.String()

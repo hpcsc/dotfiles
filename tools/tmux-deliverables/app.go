@@ -56,11 +56,51 @@ func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case routed:
 		return a.to(msg.to, msg.msg)
 	case tea.KeyMsg:
-		if msg.String() == "tab" && !a.board.filtering && a.board.ask == nil {
+		boardTakesKeys := !a.board.filtering && a.board.ask == nil
+		switch {
+		case msg.String() == "tab" && boardTakesKeys:
 			return a.switchView()
+		case msg.String() == "f" && a.active == boardID && boardTakesKeys:
+			return a.toFeature()
+		case msg.String() == "u" && a.active == plannerID && a.planner.screen == storyScreen:
+			return a.toBoard()
 		}
 	}
 	return a.to(a.active, msg)
+}
+
+// toFeature opens, in the planner, the feature of the story under the cursor on the board.
+func (a app) toFeature() (tea.Model, tea.Cmd) {
+	ref, ok := a.board.storyRef()
+	if !ok {
+		a.board.message = "f opens the feature of a story: put the cursor on a story or a deliverable"
+		return a, nil
+	}
+	var cmd tea.Cmd
+	a.planner, cmd = a.planner.find(ref)
+	a.hasPlanner, a.active = true, plannerID
+	if !a.bothStarted {
+		a.bothStarted = true
+		cmd = tea.Batch(cmd, a.planner.tick())
+	}
+	return a, route(plannerID, cmd)
+}
+
+// toBoard puts the cursor of the board on the story under the cursor in the planner.
+func (a app) toBoard() (tea.Model, tea.Cmd) {
+	ref, ok := a.planner.storyRef()
+	if !ok {
+		a.planner.message = "u goes to a story under way: put the cursor on a story"
+		return a, nil
+	}
+	a.active = boardID
+	var cmd tea.Cmd
+	if !a.bothStarted {
+		a.bothStarted = true
+		cmd = a.board.Init()
+	}
+	a.board = a.board.find(ref)
+	return a, route(boardID, tea.Batch(cmd, a.board.readPreview()))
 }
 
 func (a app) to(id viewID, msg tea.Msg) (tea.Model, tea.Cmd) {

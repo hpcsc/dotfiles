@@ -551,6 +551,8 @@ def summary(feature):
         "stories_merged": sum(1 for s in feature["stories"] if s["state"] == "merged"),
         "goals_total": len(feature["goals"]),
         "goals_done": sum(1 for g in feature["goals"] if g["state"] in CLOSED),
+        "story_keys": [s["key"] for s in feature["stories"]],
+        "story_tickets": [s["ticket"] for s in feature["stories"] if s["ticket"]],
     }
 
 
@@ -558,7 +560,8 @@ def refused_summary(f, message):
     return {"feature": f["feature"], "proposal": f["proposal"], "title": f["feature"], "state": "refused",
             "evidence": message, "archived": in_completed(f["feature"]),
             "stories_files": [d["path"] for d in f["stories_files"]],
-            "stories_total": 0, "stories_merged": 0, "goals_total": 0, "goals_done": 0}
+            "stories_total": 0, "stories_merged": 0, "goals_total": 0, "goals_done": 0,
+            "story_keys": [], "story_tickets": []}
 
 
 def next_actions(feature, limit):

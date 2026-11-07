@@ -394,6 +394,8 @@ eq "list names each feature: each proposal, and each stories file that names no 
    "docs/proposals/gone.md,docs/proposals/phases.md" "$(printf '%s' "$L" | jq -r '[.[].feature] | join(",")')"
 eq "a feature that a check refuses is listed as refused, with the reason" "refused" \
    "$(printf '%s' "$L" | jq -r '.[] | select(.feature == "docs/proposals/gone.md") | .state')"
+eq "each entry names the keys of its stories, so that a caller can find the feature of a story" "one/US-001,two/US-001" \
+   "$(printf '%s' "$L" | jq -r '.[] | select(.feature == "docs/proposals/phases.md") | .story_keys | join(",")')"
 eq "each entry counts the stories and the goals" "phases.md|0/2|0/2" \
    "$(printf '%s' "$L" | jq -r '.[] | select(.feature == "docs/proposals/phases.md") | "phases.md|\(.stories_merged)/\(.stories_total)|\(.goals_done)/\(.goals_total)"')"
 rm "$T/user-stories/lost.md"

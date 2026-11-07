@@ -1,0 +1,756 @@
+#!/usr/bin/env python3
+"""feature — a feature's goals and stories, in dependency order, with their state derived.
+
+A feature is the work that one proposal defines. The proposal holds the goals, each on a
+`**G1:** <text>` line, and a goal can end with `(deferred)` or `(moved to <path>)`. Each
+stories file names its proposal on a `**Proposal:** <path>` line, and each story names
+the goals it serves on a `**Goals:** G1, G3` line. A stories file that names no proposal
+is a feature of its own, with no goals.
+
+Those are decisions, and they belong in the files. Whether a story is planned, under way
+or merged is an observation. It comes from `clerk story`, which reads the plans and the
+task records, and from the history of the default branch.
+
+    feature list [--archived] [--table] [--no-fetch]
+    feature <proposal.md | stories.md> [--table | --graph] [--no-fetch]
+    feature next <proposal.md | stories.md> [--limit <n>] [--no-fetch]
+    feature archive <proposal.md | stories.md> [--no-fetch]
+"""
+
+import argparse
+import json
+import re
+import shutil
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from clerk_lib import clerk, git_ok, gitout, repo, usage_if_asked  # noqa: E402
+
+PROPOSAL_DIRS = ("docs/proposals", ".scratches/propose-feature")
+STORIES_DIRS = ("user-stories", ".scratches/write-user-story")
+TITLE = re.compile(r"^#\s+(.+?)\s*$")
+STORY_HEADING = re.compile(r"^###\s+([A-Z][A-Z0-9]*-\d+):\s*(.+?)\s*$")
+SECTION_END = re.compile(r"^#{1,3}\s")
+FIELD = re.compile(r"^\*\*(Ticket|Depends on|Goals|Proposal):\*\*\s*(.*?)\s*$")
+PROPOSAL_LINE = re.compile(r"^\*\*Proposal:\*\*.*$", re.M)
+TICKET = re.compile(r"[A-Z][A-Z0-9]*-\d+")
+STORY_REF = re.compile(r"(?:(?<![\w./-])([a-z0-9][a-z0-9._-]*)/)?(?<![\w-])([A-Z][A-Z0-9]*-\d+)")
+GOAL_REF = re.compile(r"\bG\d+\b")
+GOAL_LINE = re.compile(r"^\s*(?:[-*+]\s+)?\*\*(G\d+):\*\*\s*(.*)$")
+LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+\.)\s")
+GOAL_DECISION = re.compile(r"\s*\((deferred|moved to\s+`?([^`()\s]+)`?)\)\s*$")
+LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+STARTED = {"in-progress", "scaffolded"}
+IN_FLIGHT = {"planned", "approved", "in-progress", "awaiting-merge"}
+ADVANCE = ["blocked", "ready", "planned", "approved", "in-progress", "awaiting-merge", "merged"]
+CLOSED = {"merged", "moved", "deferred"}
+DEFAULT_LIMIT = 2
+
+
+class Refused(Exception):
+    pass
+
+
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        die(message)
+
+
+def die(msg, code=2):
+    print(f"feature: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def emit(obj):
+    print(json.dumps(obj, indent=2))
+    sys.exit(0)
+
+
+def rel(path, root):
+    p = Path(path).resolve()
+    try:
+        return str(p.relative_to(Path(root).resolve()))
+    except ValueError:
+        return str(p)
+
+
+def in_completed(path):
+    return "completed" in Path(path).parts[:-1]
+
+
+def read(path):
+    try:
+        return Path(path).read_text()
+    except OSError as e:
+        raise Refused(f"cannot read {path}: {e.strerror}")
+
+
+def lines_outside_fences(text):
+    fenced = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if not fenced:
+            yield line
+
+
+def title_of(text):
+    return next((m[1] for m in map(TITLE.match, lines_outside_fences(text)) if m), None)
+
+
+def has_goals(path):
+    return any(GOAL_LINE.match(line) for line in lines_outside_fences(read(path)))
+
+
+def has_stories(path):
+    return any(STORY_HEADING.match(line) for line in lines_outside_fences(read(path)))
+
+
+def read_goals(path, root):
+    """The `**G<n>:**` lines of a proposal. A goal goes on over the indented lines under it,
+    as a Markdown list item does, and its decision is the bracket at its end."""
+    goals, current = [], None
+    for line in lines_outside_fences(read(path)):
+        m = GOAL_LINE.match(line)
+        if m:
+            current = {"id": m[1], "text": m[2].strip()}
+            goals.append(current)
+        elif current and line.strip() and line[:1].isspace() and not LIST_ITEM.match(line):
+            current["text"] += " " + line.strip()
+        else:
+            current = None
+    for g in goals:
+        d = GOAL_DECISION.search(g["text"])
+        g["decision"] = None if not d else "deferred" if d[1] == "deferred" else "moved"
+        g["moved_to"] = d[2] if d else None
+        if d:
+            g["text"] = g["text"][:d.start()].rstrip()
+    ids = [g["id"] for g in goals]
+    repeated = sorted({i for i in ids if ids.count(i) > 1}, key=lambda i: int(i[1:]))
+    if repeated:
+        raise Refused(f"{rel(path, root)} names {', '.join(repeated)} more than once")
+    return goals
+
+
+def proposal_path(value, stories_path, root):
+    """The path that a **Proposal:** line names: from the repo root, else from the folder of
+    the stories file, the way a Markdown link reads."""
+    link = LINK.search(value)
+    target = (link[1] if link else value).strip().strip("`").split("#", 1)[0].strip()
+    if not target:
+        return None
+    for base in (Path(root), Path(stories_path).parent):
+        if (base / target).is_file():
+            return rel(base / target, root)
+    return rel(Path(root) / target, root)
+
+
+def read_stories_file(path, root):
+    """A stories file as it is written: its title, the proposal it names and its stories.
+    The key of a story is the name of its file and its ID, so that two files of one feature
+    can each hold a US-001."""
+    stem = Path(path).stem
+    doc = {"path": rel(path, root), "title": None, "proposal": None, "stories": []}
+    current = None
+    for line in lines_outside_fences(read(path)):
+        title = TITLE.match(line)
+        if title and doc["title"] is None:
+            doc["title"] = title[1]
+            continue
+        heading = STORY_HEADING.match(line)
+        if heading:
+            current = {"id": heading[1], "key": f"{stem}/{heading[1]}", "title": heading[2], "ticket": None,
+                       "depends_on": [], "goals": [], "stories_file": doc["path"]}
+            doc["stories"].append(current)
+            continue
+        if SECTION_END.match(line):
+            current = None
+            continue
+        field = FIELD.match(line)
+        if not field:
+            continue
+        name, value = field[1], field[2]
+        if name == "Proposal":
+            if current is None and doc["proposal"] is None:
+                doc["proposal"] = proposal_path(value, path, root)
+        elif current is None:
+            continue
+        elif name == "Ticket":
+            ids = TICKET.findall(value)
+            current["ticket"] = ids[0] if ids else None
+        elif name == "Depends on":
+            current["depends_on"] = [f"{m[1] or stem}/{m[2]}" for m in STORY_REF.finditer(value)]
+        else:
+            current["goals"] = GOAL_REF.findall(value)
+    return doc
+
+
+def markdown_under(root, dirs):
+    for d in dirs:
+        base = Path(root) / d
+        if base.is_dir():
+            yield from sorted(p for p in base.rglob("*.md") if p.is_file())
+
+
+def catalog(root, extra=()):
+    """{feature: its proposal and its stories files} for each feature that the files of the
+    repo define. A feature is named by its proposal, or by its stories file when that file
+    names no proposal."""
+    features, seen = {}, set()
+    for p in [*markdown_under(root, STORIES_DIRS), *extra]:
+        key = rel(p, root)
+        if key in seen or not has_stories(p):
+            continue
+        seen.add(key)
+        doc = read_stories_file(p, root)
+        name = doc["proposal"] or doc["path"]
+        features.setdefault(name, {"feature": name, "proposal": doc["proposal"], "stories_files": []})
+        features[name]["stories_files"].append(doc)
+    for p in [*markdown_under(root, PROPOSAL_DIRS), *extra]:
+        key = rel(p, root)
+        if key not in features and key not in seen and has_goals(p):
+            features[key] = {"feature": key, "proposal": key, "stories_files": []}
+    return features
+
+
+def feature_named(arg, root):
+    path = Path(arg).resolve()
+    if not path.is_file():
+        die(f"{arg} not found")
+    try:
+        features = catalog(root, [path])
+    except Refused as e:
+        die(str(e))
+    key = rel(path, root)
+    if key in features:
+        return features[key]
+    for f in features.values():
+        if any(d["path"] == key for d in f["stories_files"]):
+            return f
+    die(f"{arg} is neither a proposal with **G1:** goal lines nor a stories file with '### US-001: Title' headings")
+
+
+def find_cycle(stories):
+    deps = {s["key"]: s["depends_on"] for s in stories}
+    state = {}
+
+    def visit(node, trail):
+        state[node] = "open"
+        for dep in deps[node]:
+            if state.get(dep) == "open":
+                return trail[trail.index(dep):] + [dep]
+            if dep not in state:
+                found = visit(dep, trail + [dep])
+                if found:
+                    return found
+        state[node] = "closed"
+        return None
+
+    for node in deps:
+        if node not in state:
+            found = visit(node, [node])
+            if found:
+                return found
+    return None
+
+
+def check(f, stories, goals):
+    name = f["feature"]
+    keys = [s["key"] for s in stories]
+    repeated = sorted({k for k in keys if keys.count(k) > 1})
+    if repeated:
+        raise Refused(f"{name} names {', '.join(repeated)} more than once")
+    tickets = [s["ticket"] for s in stories if s["ticket"]]
+    shared = sorted({t for t in tickets if tickets.count(t) > 1})
+    if shared:
+        raise Refused(f"{name} gives {', '.join(shared)} to more than one story")
+    unknown = [f"{s['key']} -> {d}" for s in stories for d in s["depends_on"] if d not in keys]
+    if unknown:
+        raise Refused(f"{name} has stories that depend on stories it does not hold: {', '.join(unknown)}")
+    cycle = find_cycle(stories)
+    if cycle:
+        raise Refused(f"{name} has a dependency cycle: {' -> '.join(cycle)}")
+    ids = {g["id"] for g in goals}
+    for s in stories:
+        missing = [g for g in s["goals"] if g not in ids]
+        if missing and not f["proposal"]:
+            raise Refused(f"{s['key']} names {', '.join(missing)}, and {s['stories_file']} names no proposal")
+        if missing:
+            raise Refused(f"{s['key']} names {', '.join(missing)}, and {f['proposal']} has no such goal")
+
+
+def direct_dependents(stories):
+    waiting = {s["key"]: [] for s in stories}
+    for s in stories:
+        for dep in s["depends_on"]:
+            waiting[dep].append(s["key"])
+    return waiting
+
+
+def dependents_count(stories):
+    """For each story, how many stories wait on it, directly or through another story."""
+    waiting = direct_dependents(stories)
+
+    def reach(node, seen):
+        for nxt in waiting[node]:
+            if nxt not in seen:
+                seen.add(nxt)
+                reach(nxt, seen)
+        return seen
+
+    return {node: len(reach(node, set())) for node in waiting}
+
+
+def dependencies_first(stories):
+    by_key = {s["key"]: s for s in stories}
+    done, order = set(), []
+
+    def visit(story):
+        if story["key"] in done:
+            return
+        done.add(story["key"])
+        for dep in story["depends_on"]:
+            visit(by_key[dep])
+        order.append(story)
+
+    for s in stories:
+        visit(s)
+    return order
+
+
+def delivery_steps(stories):
+    """{key: (step, critical)}. A story's step is one more than the step of its deepest
+    dependency, and a story is critical when it is on a longest chain."""
+    order = dependencies_first(stories)
+    waiting = direct_dependents(stories)
+    step, height = {}, {}
+    for s in order:
+        step[s["key"]] = 1 + max((step[d] for d in s["depends_on"]), default=0)
+    for s in reversed(order):
+        height[s["key"]] = 1 + max((height[w] for w in waiting[s["key"]]), default=0)
+    longest = max(step.values(), default=0)
+    return {k: (step[k], step[k] + height[k] - 1 == longest) for k in step}
+
+
+def ticket_pattern(tickets):
+    return rf"(^|[^A-Z0-9-])({'|'.join(re.escape(t) for t in tickets)})([^0-9]|$)"
+
+
+def tickets_in_history(ref, tickets):
+    """{ticket: number of commits on ref whose message names it}."""
+    if not tickets:
+        return {}
+    log = gitout("log", ref, "-E", f"--grep={ticket_pattern(tickets)}", "--format=%B%x1e") or ""
+    found = {t: 0 for t in tickets}
+    for message in log.split("\x1e"):
+        for t in {m[2] for m in re.finditer(ticket_pattern(tickets), message, re.M)}:
+            found[t] += 1
+    return found
+
+
+def ticket_branch(ref, ticket):
+    """(branch, unmerged commits) for a local branch named after the ticket, the way a
+    tracker names one: `age-967` or `age-967-<title>`."""
+    prefix = ticket.lower()
+    for name in (gitout("for-each-ref", "--format=%(refname:short)", "refs/heads") or "").splitlines():
+        if name != prefix and not name.startswith(prefix + "-"):
+            continue
+        cherry = gitout("cherry", ref, name) or ""
+        unmerged = sum(1 for line in cherry.splitlines() if line.startswith("+"))
+        if unmerged:
+            return name, unmerged
+    return None, 0
+
+
+def files_of_unmerged_deliverables(plans):
+    return sorted({f for p in plans for d in p["deliverables"] if d["state"] != "merged"
+                   for f in d.get("affected_files") or []})
+
+
+def shared_files(stories):
+    active = [s for s in stories if s["state"] in IN_FLIGHT and s["files"]]
+    overlaps = []
+    for i, a in enumerate(active):
+        for b in active[i + 1:]:
+            shared = sorted(set(a["files"]) & set(b["files"]))
+            if shared:
+                overlaps.append({"stories": [a["key"], b["key"]], "files": shared})
+    return overlaps
+
+
+def count_states(deliverables):
+    counts = {}
+    for d in deliverables:
+        counts[d["state"]] = counts.get(d["state"], 0) + 1
+    return ", ".join(f"{n} {state}" for state, n in sorted(counts.items()))
+
+
+def state_from_plans(plans, blocked_by):
+    every = [d for p in plans for d in p["deliverables"]]
+    deliverables = [d for d in every if d["state"] != "deferred"]
+    deferred = len(every) - len(deliverables)
+    states = {d["state"] for d in deliverables}
+    if deliverables and states == {"merged"}:
+        merged = f"every deliverable is merged ({len(deliverables)})"
+        return "merged", f"{merged}, except {deferred} deferred" if deferred else merged
+    if deliverables and states <= {"merged", "awaiting-merge"}:
+        return "awaiting-merge", count_states(every)
+    if states - {"ready", "blocked"}:
+        return "in-progress", count_states(every)
+    if blocked_by:
+        return "blocked", f"{', '.join(blocked_by)} not merged"
+    unapproved = [p["plan"] for p in plans if not p.get("approved")]
+    if unapproved:
+        return "planned", f"no approved: line in {', '.join(unapproved)}"
+    return "approved", f"approved on {', '.join(sorted({str(p['approved']) for p in plans}))}"
+
+
+def state_without_plan(story, blocked_by, ref, history):
+    ticket = story["ticket"]
+    if ticket:
+        branch, unmerged = ticket_branch(ref, ticket)
+        if branch:
+            return "in-progress", f"branch {branch} has {unmerged} commits that are not on {ref}, and no plan names {ticket}"
+        if history.get(ticket):
+            return "merged", f"commits on {ref} that name {ticket}: {history[ticket]}, and no plan names it"
+    if blocked_by:
+        return "blocked", f"{', '.join(blocked_by)} not merged"
+    return "ready", f"no plan names {ticket or story['key']}"
+
+
+def plans_index(plans):
+    by_ticket, by_story = {}, {}
+    for p in plans:
+        if p.get("ticket"):
+            by_ticket.setdefault(p["ticket"], []).append(p)
+        if p.get("story_id"):
+            by_story.setdefault(p["story_id"], []).append(p)
+    return by_ticket, by_story
+
+
+def plans_of(story, index):
+    by_ticket, by_story = index
+    found = (by_ticket.get(story["ticket"], []) if story["ticket"] else []) + by_story.get(story["key"], [])
+    unique = {}
+    for p in found:
+        unique.setdefault(p["plan"], p)
+    return list(unique.values())
+
+
+def derive_stories(stories, plans, ref):
+    index = plans_index(plans)
+    history = tickets_in_history(ref, [s["ticket"] for s in stories if s["ticket"] and not plans_of(s, index)])
+    unblocks = dependents_count(stories)
+    steps = delivery_steps(stories)
+    waiting = direct_dependents(stories)
+    by_key = {}
+    for s in dependencies_first(stories):
+        blocked_by = [d for d in s["depends_on"] if by_key[d]["state"] != "merged"]
+        mine = plans_of(s, index)
+        if mine:
+            state, evidence = state_from_plans(mine, blocked_by)
+        else:
+            state, evidence = state_without_plan(s, blocked_by, ref, history)
+        by_key[s["key"]] = {
+            **s,
+            "blocked_by": blocked_by,
+            "unblocks": unblocks[s["key"]],
+            "dependents": waiting[s["key"]],
+            "step": steps[s["key"]][0],
+            "critical": steps[s["key"]][1],
+            "state": state,
+            "evidence": evidence,
+            "plans": [p["plan"] for p in mine],
+            "deliverables": [{"plan": p["plan"], "story_slug": p["story_slug"], **d} for p in mine for d in p["deliverables"]],
+            "files": files_of_unmerged_deliverables(mine),
+        }
+    return [by_key[s["key"]] for s in stories]
+
+
+def derive_goals(goals, stories):
+    state_of = {s["key"]: s["state"] for s in stories}
+    derived = []
+    for g in goals:
+        serving = [s["key"] for s in stories if g["id"] in s["goals"]]
+        if g["decision"]:
+            state = g["decision"]
+        elif not serving:
+            state = "no-story"
+        else:
+            state = min((state_of[k] for k in serving), key=ADVANCE.index)
+        derived.append({"id": g["id"], "text": g["text"], "state": state, "stories": serving, "moved_to": g["moved_to"]})
+    return derived
+
+
+def plural(names, one, many):
+    return f"{', '.join(names)} {one if len(names) == 1 else many}"
+
+
+def feature_state(f, stories, goals, outside):
+    merged = sum(1 for s in stories if s["state"] == "merged")
+    no_story = [g["id"] for g in goals if g["state"] == "no-story"]
+    parts = [f"{merged}/{len(stories)} stories merged"] if stories else [f"no stories file names {f['proposal']}"]
+    if goals:
+        parts.append(f"{sum(1 for g in goals if g['state'] in CLOSED)}/{len(goals)} goals done")
+    if no_story and stories:
+        parts.append(plural(no_story, "has no story", "have no story"))
+    if outside:
+        parts.append(plural(outside, "serves no goal", "serve no goal"))
+    evidence = "; ".join(parts)
+    if not stories:
+        return "proposed", evidence
+    if merged == len(stories) and all(g["state"] in CLOSED for g in goals):
+        return "merged", evidence
+    if all(s["state"] in ("ready", "blocked") for s in stories):
+        return "ready", evidence
+    return "in-progress", evidence
+
+
+def derive(f, root, plans, ref):
+    proposal = f["proposal"]
+    goals = []
+    if proposal and not (Path(root) / proposal).is_file():
+        named_by = ", ".join(d["path"] for d in f["stories_files"])
+        raise Refused(f"{named_by} names {proposal}, and that file does not exist")
+    if proposal:
+        goals = read_goals(Path(root) / proposal, root)
+    stories = [s for d in f["stories_files"] for s in d["stories"]]
+    check(f, stories, goals)
+    stories = derive_stories(stories, plans, ref)
+    goals = derive_goals(goals, stories)
+    outside = [s["key"] for s in stories if goals and not s["goals"]]
+    state, evidence = feature_state(f, stories, goals, outside)
+    title = title_of(read(Path(root) / proposal)) if proposal else None
+    return {
+        "feature": f["feature"],
+        "proposal": proposal,
+        "title": title or next((d["title"] for d in f["stories_files"] if d["title"]), f["feature"]),
+        "state": state,
+        "evidence": evidence,
+        "archived": in_completed(f["feature"]),
+        "stories_files": [d["path"] for d in f["stories_files"]],
+        "default_branch": ref,
+        "goals": goals,
+        "outside": outside,
+        "stories": stories,
+        "running": [f"{p['story_slug'] or p['plan']}/{d['id']}" for p in plans for d in p["deliverables"] if d["state"] in STARTED],
+    }
+
+
+def summary(feature):
+    return {
+        **{k: feature[k] for k in ("feature", "proposal", "title", "state", "evidence", "archived", "stories_files")},
+        "stories_total": len(feature["stories"]),
+        "stories_merged": sum(1 for s in feature["stories"] if s["state"] == "merged"),
+        "goals_total": len(feature["goals"]),
+        "goals_done": sum(1 for g in feature["goals"] if g["state"] in CLOSED),
+    }
+
+
+def refused_summary(f, message):
+    return {"feature": f["feature"], "proposal": f["proposal"], "title": f["feature"], "state": "refused",
+            "evidence": message, "archived": in_completed(f["feature"]),
+            "stories_files": [d["path"] for d in f["stories_files"]],
+            "stories_total": 0, "stories_merged": 0, "goals_total": 0, "goals_done": 0}
+
+
+def next_actions(feature, limit):
+    stories = feature["stories"]
+    position = {s["key"]: i for i, s in enumerate(stories)}
+    by_priority = sorted(stories, key=lambda s: (-s["unblocks"], position[s["key"]]))
+    budget = max(0, limit - len(feature["running"]))
+
+    def brief(s):
+        return {"id": s["id"], "key": s["key"], "ticket": s["ticket"], "title": s["title"],
+                "stories_file": s["stories_file"], "unblocks": s["unblocks"]}
+
+    start, left = [], budget
+    for s in by_priority:
+        if s["blocked_by"] or s["state"] not in ("approved", "in-progress") or not left:
+            continue
+        for plan in s["plans"]:
+            ready = [d["id"] for d in s["deliverables"] if d["plan"] == plan and d["state"] == "ready"][:left]
+            if ready:
+                start.append({**brief(s), "plan": plan, "deliverables": ready})
+                left -= len(ready)
+    return {
+        "limit": limit,
+        "running": feature["running"],
+        "budget": budget,
+        "plan": [brief(s) for s in by_priority if s["state"] == "ready"],
+        "approve": [{**brief(s), "plans": s["plans"]} for s in by_priority if s["state"] == "planned"],
+        "start": start,
+        "shared_files": shared_files(stories),
+    }
+
+
+def render_table(feature):
+    lines = [f"{feature['title']} · {feature['state']} · {feature['evidence']}"]
+    if feature["goals"]:
+        lines.append("\ngoals")
+        for g in feature["goals"]:
+            text = g["text"] if len(g["text"]) <= 60 else g["text"][:59] + "…"
+            serving = f"  <- {', '.join(g['stories'])}" if g["stories"] else ""
+            moved = f"  -> {g['moved_to']}" if g["moved_to"] else ""
+            lines.append(f"  {g['id']:<5}{g['state']:<15}{text}{serving}{moved}")
+    if feature["stories"]:
+        width = max(len(s["key"]) for s in feature["stories"]) + 2
+        lines.append("\nstories")
+        for s in feature["stories"]:
+            row = f"  {s['key']:<{width}}{s['ticket'] or '-':<10}{s['state']:<15}unblocks {s['unblocks']:<3} {s['title']}"
+            if s["blocked_by"]:
+                row += f"  [blocked by {', '.join(s['blocked_by'])}]"
+            lines.append(row)
+    if feature["running"]:
+        lines.append(f"\nrunning: {', '.join(feature['running'])}")
+    return "\n".join(lines)
+
+
+def render_graph(feature):
+    stories = feature["stories"]
+    if not stories:
+        return f"{feature['feature']} has no stories"
+    width = max(len(s["key"]) for s in stories) + 2
+    lines, last = [], None
+    for s in sorted(stories, key=lambda s: s["step"]):
+        label = f"step {s['step']}" if s["step"] != last else ""
+        last = s["step"]
+        row = f"{label:<8}{'*' if s['critical'] else ' '} {s['key']:<{width}}{s['ticket'] or '-':<10}{s['state']:<15}"
+        if s["depends_on"]:
+            row += "<- " + ", ".join(s["depends_on"])
+        lines.append(row.rstrip())
+    lines.append(f"\n* critical path: {max(s['step'] for s in stories)} steps")
+    return "\n".join(lines)
+
+
+def render_list(summaries):
+    lines = []
+    for s in summaries:
+        stories = f"stories {s['stories_merged']}/{s['stories_total']}"
+        goals = f"goals {s['goals_done']}/{s['goals_total']}" if s["goals_total"] else "no goals"
+        lines.append(f"{s['state']:<15}{stories:<15}{goals:<12}{s['feature']}  {s['title']}")
+    return "\n".join(lines)
+
+
+def compare_ref(r):
+    if not r.default_branch:
+        die("no default branch resolved, and every merged test is taken against one")
+    ref = r.default_branch
+    if gitout("rev-parse", "--verify", "--quiet", f"origin/{ref}^{{commit}}"):
+        ref = f"origin/{ref}"
+    return ref
+
+
+def every_plan(no_fetch):
+    """Every plan and every breakdown that no plan holds, live and archived, from `clerk
+    story`: an archived one is how a story with no ticket reads as merged."""
+    rc, data, err = clerk("story", "--breakdowns", "--archived", *(["--no-fetch"] if no_fetch else []))
+    if rc != 0 or data is None:
+        die(f"clerk story failed: {err or 'no output'}")
+    return data
+
+
+def archive_target(path):
+    p = Path(path)
+    return p.parent / "completed" / p.name
+
+
+def archive(f, root, feature):
+    if feature["state"] != "merged":
+        die(f"not archived, because the feature is {feature['state']}: {feature['evidence']}")
+    named = ([f["proposal"]] if f["proposal"] else []) + [d["path"] for d in f["stories_files"]]
+    moves = [(Path(root) / p, archive_target(Path(root) / p)) for p in named if not in_completed(p)]
+    if not moves:
+        die(f"{f['feature']} and its stories files are archived already")
+    clash = next((dst for _, dst in moves if dst.exists()), None)
+    if clash:
+        die(f"not archived, because {rel(clash, root)} exists already")
+    listed = gitout("ls-files", "-z", "--", *(str(src) for src, _ in moves), cwd=root) or ""
+    tracked = {(Path(root) / name).resolve() for name in listed.split("\0") if name}
+    committed = []
+    for src, dst in moves:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.resolve() in tracked:
+            if not git_ok("mv", str(src), str(dst), cwd=root):
+                die(f"could not move {rel(src, root)}")
+            committed += [str(src), str(dst)]
+        else:
+            shutil.move(str(src), str(dst))
+    moved = {rel(src, root): rel(dst, root) for src, dst in moves}
+    proposal = moved.get(f["proposal"], f["proposal"])
+    stories_files = [moved.get(d["path"], d["path"]) for d in f["stories_files"]]
+    if proposal:
+        for path in stories_files:
+            text = (Path(root) / path).read_text()
+            (Path(root) / path).write_text(PROPOSAL_LINE.sub(f"**Proposal:** `{proposal}`", text, count=1))
+    if committed and not git_ok("commit", "-qm", f"Archive feature: {feature['title']}", "--", *committed, cwd=root):
+        die("the archive commit failed")
+    emit({"feature": proposal or stories_files[0], "archived": sorted(moved.values())})
+
+
+def main(argv):
+    usage_if_asked(argv, __doc__)
+    ap = Parser(prog="feature", add_help=False)
+    ap.add_argument("words", nargs="*")
+    for flag in ("--table", "--graph", "--archived", "--no-fetch"):
+        ap.add_argument(flag, action="store_true")
+    ap.add_argument("--limit")
+    args = ap.parse_args(argv)
+    verb = args.words[0] if args.words and args.words[0] in ("list", "next", "archive") else None
+    words = args.words[1:] if verb else args.words
+
+    r = repo()
+    root = r.work_tree
+    if not root:
+        die("not inside a git repository")
+    ref = compare_ref(r)
+
+    if verb == "list":
+        if words:
+            die("list takes no path")
+        try:
+            features = catalog(root)
+        except Refused as e:
+            die(str(e))
+        plans = every_plan(args.no_fetch)
+        summaries = []
+        for name in sorted(features):
+            f = features[name]
+            if in_completed(name) and not args.archived:
+                continue
+            try:
+                summaries.append(summary(derive(f, root, plans, ref)))
+            except Refused as e:
+                summaries.append(refused_summary(f, str(e)))
+        if args.table:
+            print(render_list(summaries))
+            return 0
+        emit(summaries)
+
+    if len(words) != 1:
+        die("name one proposal or stories file: feature [next | archive] <path>")
+    f = feature_named(words[0], root)
+    try:
+        feature = derive(f, root, every_plan(args.no_fetch), ref)
+    except Refused as e:
+        die(str(e))
+    if verb == "archive":
+        archive(f, root, feature)
+    if verb == "next":
+        limit = args.limit or str(DEFAULT_LIMIT)
+        if not limit.isdigit() or int(limit) < 1:
+            die(f"--limit takes a number of 1 or more, got '{limit}'")
+        emit(next_actions(feature, int(limit)))
+    if args.table:
+        print(render_table(feature))
+        return 0
+    if args.graph:
+        print(render_graph(feature))
+        return 0
+    emit(feature)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

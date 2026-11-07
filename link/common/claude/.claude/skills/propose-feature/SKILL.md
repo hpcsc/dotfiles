@@ -73,10 +73,25 @@ Operating principles:
 | Deliverable | Audience | Rules |
 |---|---|---|
 | One-page brief | Business stakeholders | Problem, flow, value, explicit asks. No code, no file paths, no jargon. Write via `/write` (STE). Hard one-page discipline. |
-| Flow proposal | Product + engineering | Detailed flow with diagrams, edge-case sections, decision summary, rollout, measures, definition of done. Prose and diagrams only — no code paths. |
+| Flow proposal | Product + engineering | The goals (see *Goals* below), detailed flow with diagrams, edge-case sections, decision summary, rollout, measures, definition of done. The definition of done names the goal IDs. Prose and diagrams only — no code paths. |
 | Implementation notes | Engineers | Current-code constraints, the D-ledger with code/SQL/type snippets, schema and routes, changes by layer, test plan, technical acceptance criteria. |
 | Event model | Engineers (event-sourced systems) | `emod` model, when the CLI is available; `validate` and `lint` must exit 0. Declare each view slice immediately before the slice that reads it. |
 | Interactive demo | Everyone (only when asked) | Match the real product: read its theme, components, and navigation first and reproduce them. Fictitious data only. Label demo-only affordances explicitly (e.g. render two deployments as browser tabs, not an in-app switcher). Smoke-test headlessly (e.g. jsdom). |
+
+### Goals
+
+The flow proposal holds the one list of goals for the feature. `write-user-story` names
+them in each story, and `feature` reads them to show how much of the proposal is delivered.
+
+- Write each goal as a list item in a `## Goals` section, and start it with its ID:
+  `- **G1:** An agent checks a draft before it writes the file`.
+- A goal states an outcome for a person. It does not name a task or a component.
+- Do not renumber a goal after a story names it. A new goal takes the next free number.
+- A goal that the user drops ends with `(deferred)`. A goal that another feature delivers
+  ends with `(moved to <path>)`, with the path of that proposal from the repo root. Only
+  the user decides either one.
+- The brief and the implementation notes name the goal IDs. They do not hold a second
+  list of goals.
 
 Craft rules learned the hard way:
 

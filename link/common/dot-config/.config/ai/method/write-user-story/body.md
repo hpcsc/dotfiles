@@ -8,13 +8,14 @@ Create detailed, actionable user stories suitable for implementation by a develo
 
 ## The Job
 
-1. Receive a feature description from the user
+1. Receive a feature description from the user, or the proposal of the feature
 2. Ask clarifying questions if the description is ambiguous (with lettered options)
 3. Generate structured user stories based on answers, and merge the stories that must ship together
 4. Draw the dependency diagram from the stories' **Depends on** fields
 5. Save to `user-stories/[feature-name].md`
-6. If the feature adds to or changes an event model, build the story map (Step 4), check it, and open it in the browser
-7. Ask if any stories need splitting, merging, reprioritizing, or if new stories are needed
+6. When the feature has a proposal, check that the stories cover its goals (see *Check the Goals*)
+7. If the feature adds to or changes an event model, build the story map (Step 4), check it, and open it in the browser
+8. Ask if any stories need splitting, merging, reprioritizing, or if new stories are needed
 
 **Important:** Do NOT start implementing. Just create the user stories.
 
@@ -112,13 +113,23 @@ List stories in recommended implementation order. When a story depends on anothe
 
 ## Step 3: Document Structure
 
-Generate the document with these sections:
+Generate the document with these sections.
+
+When the feature has a proposal, put a **Proposal:** line under the title. It names the proposal by its path from the repo root. `feature` reads this line to join the stories to the goals of the proposal:
+
+```markdown
+# [Feature name]
+
+**Proposal:** `docs/proposals/[feature-name].md`
+```
 
 ### 1. Overview
 Brief description of the feature and the problem it solves.
 
 ### 2. Goals
-Specific, measurable objectives (bullet list).
+When the feature has a proposal, write one line that names the proposal as the source of the goals. Do not copy the goals: the proposal holds the one list, and a copy goes out of date. A goal that the stories need and the proposal does not have goes into the proposal, after the user agrees.
+
+With no proposal, write specific, measurable objectives (bullet list).
 
 ### 3. Delivery Order
 
@@ -161,7 +172,8 @@ Rules:
 
 Each story needs:
 - **Title:** Short descriptive name
-- **Ticket** *(once the tickets exist)*: The ID of the story's ticket in the tracker. `clerk project` finds the plan of a story by this ID, because the plan that `/deliver-story` writes carries the same ID in its `ticket:` field
+- **Ticket** *(when the tracker has one)*: The ID of the story's ticket in the tracker. `feature` finds the plan of a story by this ID, because the plan that `/deliver-story` writes carries the same ID in its `ticket:` field. A story with no ticket is found by its key: the name of the stories file and the story ID, for example `rate-limiting/US-002`
+- **Goals** *(when the feature has a proposal)*: The IDs of the goals of the proposal that the story serves, for example `G1, G3`. Each story serves at least one goal. A story that serves no goal is outside the proposal
 - **Description:** "As a [user], I want [feature] so that [benefit]"
 - **Acceptance Criteria:** Verifiable checklist of what "done" means — how we verify this story works
 - **Context** *(optional)*: Background information helpful for the implementer — domain knowledge, related behavior elsewhere in the system, or why this story exists. Do not prescribe solutions.
@@ -171,6 +183,8 @@ Each story needs:
 ```markdown
 ### US-001: [Title]
 **Ticket:** [Once the ticket exists, e.g., AGE-969]
+
+**Goals:** [When the feature has a proposal, e.g., G1, G3]
 
 **Description:** As a [user], I want [feature] so that [benefit].
 
@@ -275,6 +289,20 @@ xdg-open user-stories/[feature-name]-story-map.html  # Linux
 
 ---
 
+## Check the Goals
+
+When the feature has a proposal, run this after you save the file:
+
+```bash
+feature <proposal path> --table --no-fetch
+```
+
+- Report each goal that reads `no-story`. It is a gap: the proposal promises it, and no story delivers it. Write a story for it, or ask the user to mark the goal `(deferred)` or `(moved to <path>)` in the proposal. Never mark a goal yourself, because the scope is the user's decision.
+- Report each story that the output says serves no goal. Ask the user whether the proposal needs a new goal, or whether the story leaves the feature.
+- If `feature` refuses the file, correct the cause that it names: a goal that the proposal does not have, a dependency on a story that the feature does not hold, or a cycle.
+
+---
+
 ## Iteration
 
 After generating the initial set of stories, ask the user:
@@ -285,7 +313,9 @@ After generating the initial set of stories, ask the user:
 
 Update the file in place based on feedback. Any change to the story set — splitting, merging, adding, reordering, or a new **Depends on** — means redrawing the diagram and rechecking the critical path in the same edit. A stale diagram misdirects the reader who trusts it over the stories. When a story map exists, update its `STORIES`, its `data-stories` and its chips in the same edit, run its check again, and open it again.
 
-When the tickets are created, write the ID of each one into the **Ticket:** line of its story in the same pass. `clerk project` refuses a stories file with a story that has no ticket, because it cannot find that story's plan.
+When the tickets are created, write the ID of each one into the **Ticket:** line of its story in the same pass.
+
+The key of a story is the name of the stories file and the story ID. A plan of a story with no ticket names that key. After a plan exists, do not rename the file and do not renumber the story: the plan then names a story that is not there.
 
 ---
 
@@ -294,16 +324,15 @@ When the tickets are created, write the ID of each one into the **Ticket:** line
 ````markdown
 # API Rate Limiting
 
+**Proposal:** `docs/proposals/api-rate-limiting.md`
+
 ## Overview
 
 Add rate limiting to the public API to prevent abuse and ensure fair usage across tenants. Requests exceeding the configured threshold are rejected with a standard error response, and usage is tracked for observability.
 
 ## Goals
 
-- Protect the API from excessive traffic by a single tenant
-- Return clear, standards-compliant responses when limits are hit
-- Make rate limits configurable per tenant without redeployment
-- Provide visibility into rate limit events via monitoring
+The goals are G1 to G4 in [the proposal](../docs/proposals/api-rate-limiting.md): protection from one tenant, clear responses at the limit, limits for each tenant without a redeploy, and visibility of the limit events.
 
 ## Delivery Order
 
@@ -331,6 +360,8 @@ The shaded chain — count, reject, then monitor the rejections — is the criti
 ## User Stories
 
 ### US-001: Enforce per-tenant request limits
+**Goals:** G1
+
 **Description:** As an API operator, I want incoming requests counted against a per-tenant limit so that no single tenant can monopolize capacity.
 
 **Acceptance Criteria:**
@@ -339,6 +370,8 @@ The shaded chain — count, reject, then monitor the rejections — is the criti
 - [ ] Requests within the limit proceed with no noticeable delay
 
 ### US-002: Reject over-limit requests with clear feedback
+**Goals:** G2
+
 **Description:** As an API consumer, I want a clear error response when I exceed my rate limit so that I know to back off and when to retry.
 
 **Acceptance Criteria:**
@@ -350,6 +383,8 @@ The shaded chain — count, reject, then monitor the rejections — is the criti
 **Depends on:** US-001
 
 ### US-003: Allow per-tenant limit overrides
+**Goals:** G3
+
 **Description:** As an API operator, I want to set custom rate limits for specific tenants so that premium tenants get higher throughput without affecting others.
 
 **Acceptance Criteria:**
@@ -363,6 +398,8 @@ The shaded chain — count, reject, then monitor the rejections — is the criti
 **Depends on:** US-001
 
 ### US-004: Monitor rate limit events
+**Goals:** G4
+
 **Description:** As an API operator, I want to see when tenants hit their rate limits so that I can identify abuse patterns and adjust limits proactively.
 
 **Acceptance Criteria:**
@@ -373,6 +410,8 @@ The shaded chain — count, reject, then monitor the rejections — is the criti
 **Depends on:** US-002
 
 ### US-005: Handle burst traffic gracefully
+**Goals:** G1
+
 **Description:** As an API consumer, I want short bursts above my limit to be tolerated so that legitimate traffic spikes don't immediately trigger errors.
 
 **Acceptance Criteria:**
@@ -412,6 +451,7 @@ Before saving:
 - [ ] Stories are listed in recommended implementation order with dependencies noted
 - [ ] Dependency diagram's edges match the **Depends on** fields exactly, with the critical path shaded and read out in prose
 - [ ] Once the tickets exist, each story has a **Ticket:** line with its ID
+- [ ] When the feature has a proposal, the file has a **Proposal:** line, each story has a **Goals:** line, and the user knows of each goal with no story
 - [ ] Saved to `user-stories/[feature-name].md`
 - [ ] For a feature that changes an event model: story map written, each story has a chip, `check-story-map.mjs` passes, and the page is open in the browser
 - [ ] Asked user if stories need splitting, merging, or reprioritizing

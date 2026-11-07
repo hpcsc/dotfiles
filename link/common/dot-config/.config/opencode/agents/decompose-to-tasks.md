@@ -209,6 +209,7 @@ prose. Both must describe the same tasks — if you revise one, revise the other
 ```json
 {
   "story": "<one-line feature name>",
+  "story_id": "<stories file name>/<story ID>",
   "tasks_file": "tasks/[story-name].md",
   "tasks": [
     {
@@ -234,6 +235,10 @@ markdown's Contents section is numbered rather than ticked.
 `depends_on` is an array of
 task numbers (`[]` when a task has none); it is the dependency edge the markdown states
 as **Depends on:**, so the two must agree.
+`story_id` is the key of the story: the name of its stories file without `.md`, a slash,
+and the ID of the story heading, for example `mcp-server/US-011`. `feature` finds the
+breakdown of a story with no ticket by this key. Leave the field out when no stories file
+holds the story.
 
 `certainty` and `blast_radius` are the two assessments, as bare values — the reason
 beside each in the markdown stays there. They are duplicated into the task record for the

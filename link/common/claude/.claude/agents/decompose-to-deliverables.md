@@ -52,6 +52,8 @@ If they carry a ticket prefix, find this story's id before concluding it has non
 
 A ticket id is identity rather than scheduling, which is why it belongs in the slug at all while a wave number does not. It still stays out of deliverable titles, task text and commit messages — those describe behaviour.
 
+**Record the key of the story as `story_id:` in the manifest, with a ticket or without one.** The key is the name of the stories file without `.md`, a slash, and the ID of the story heading: `mcp-server/US-011` for `### US-011` in `user-stories/mcp-server.md`. A key in the request (`story_id: mcp-server/US-011`) settles it. `feature` finds the plan of a story by its ticket, and by this key when the story has no ticket. Leave the line out only when the story does not come from a stories file.
+
 ---
 
 ## Step 2: Explore the Codebase
@@ -214,6 +216,7 @@ Write `tasks/<story-slug>/plan.yaml`:
 story: "<Story Title>"
 story_slug: <story-slug>
 ticket: "<tracker id, e.g. AGE-713>"     # omit the line entirely when the story has none
+story_id: "<stories file name>/<story ID>"  # e.g. mcp-server/US-011; omit it when no stories file holds the story
 source: "<path to the story file, or 'inline'>"
 deliverables:
   - id: <deliverable-slug>                        # stable id; used in paths and the tmux/worktree handle
@@ -266,5 +269,6 @@ Before returning, verify:
 - [ ] Every deliverable has a `design.yaml` that `clerk design show --planned` reads, named as `design_file` in its task record.
 - [ ] Branch names are `<story-slug>-<deliverable-slug>` with no author prefix.
 - [ ] The `story-slug` uses the ticket the caller gave, or — none given — is named the way its siblings under `tasks/` are, with the id looked for in the story's header and URLs rather than only its title.
+- [ ] The manifest has a `story_id:` line when a stories file holds the story.
 - [ ] All of the story's acceptance criteria are covered across the deliverables; any deferred ones are named.
 - [ ] `plan.yaml` matches the schema above exactly (the driver parses it with `yq`).

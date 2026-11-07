@@ -19,6 +19,8 @@ Spawn the `decompose-to-deliverables` agent, passing the story **as data**. Carr
 
 **A tracker id in `$ARGUMENTS` is passed through verbatim.** `/decompose-to-deliverables AGE-713 docs/proposals/thing.md` — or `ticket: AGE-713`, or the id on its own line. The agent treats one you gave it as settled: it becomes the `story-slug` prefix and the manifest's `ticket:` field, rather than being weighed against how sibling stories under `tasks/` happen to be named. Leave it out and the agent infers the convention from those siblings and from the story's own header, which is usually right and is still a guess.
 
+**A story key in `$ARGUMENTS` is passed through in the same way.** `story_id: mcp-server/US-011` becomes the manifest's `story_id:` field. Without it, the agent takes the key from the stories file that holds the story: the name of the file and the ID of the story heading.
+
 The agent explores the codebase, cuts the story into deliverables with a dependency DAG, and writes:
 
 - `tasks/<story-slug>/plan.yaml` — the delivery manifest.

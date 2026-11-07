@@ -70,7 +70,7 @@ func TestPlannerView(t *testing.T) {
 			require.True(t, strings.HasPrefix(s.header(), "deliver · Second"), s.header())
 		})
 
-		t.Run("p starts /deliver-project on the feature in a window of its own, and goes there", func(t *testing.T) {
+		t.Run("p starts /deliver-feature on the feature in a window of its own, and goes there", func(t *testing.T) {
 			f := newFake(nil, nil)
 			f.featureList = []feature{{path: "user-stories/a.md", title: "First"}, {path: "user-stories/b.md", title: "Second"}}
 			s := startApp(t, f, "/repos/a", plannerID)
@@ -78,7 +78,7 @@ func TestPlannerView(t *testing.T) {
 			s.press("p")
 
 			require.Equal(t, []string{
-				"claude window deliver-a in /repos/a: /deliver-project /repos/a/user-stories/a.md",
+				"claude window deliver-a in /repos/a: /deliver-feature /repos/a/user-stories/a.md",
 				"switch /dev/ttys004 to Work:deliver-a",
 			}, f.actions())
 			require.True(t, s.quit)

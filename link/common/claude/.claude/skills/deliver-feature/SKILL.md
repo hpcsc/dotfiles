@@ -1,5 +1,5 @@
 ---
-name: deliver-project
+name: deliver-feature
 description: Deliver every story of a feature in dependency order, with independent stories in parallel. Reads a stories file from write-user-story (each story with a **Ticket:** and a **Depends on:** line), lets `clerk project` derive the state of each story, plans the ready stories with decompose-to-deliverables, runs one plan gate for all new plans, and starts deliverables with the deliver-story driver within a limit on runs at the same time. Re-run it after a merge to move on to the stories that waited on it. Use when a feature, epic or project has several stories with dependencies between them.
 ---
 
@@ -9,7 +9,7 @@ Deliver the stories of a feature in dependency order: $ARGUMENTS
 | --- | --- | --- |
 | `/implement` | one deliverable: one branch, one pull request | the tasks in `tasks.md` |
 | `/deliver-story` | one story: many deliverables | `depends_on` in `plan.yaml` |
-| `/deliver-project` | one feature: many stories | `**Depends on:**` in the stories file |
+| `/deliver-feature` | one feature: many stories | `**Depends on:**` in the stories file |
 
 This skill does the work that needs judgment: the plans, the gate with the user, the check of finished work. `clerk project` makes every mechanical decision: the state of each story, what is ready, the order, and how many runs can start. Do not do its work by hand. If it refuses or fails, report that and stop.
 
@@ -100,7 +100,7 @@ When a deliverable is done:
 2. Show the stack with `clerk story stack <plan>`. To open the pull requests is the user's decision.
 3. A run is now free. Run `clerk project next` again, and start what `start` gives (Step 4). An approved plan needs no new approval.
 
-When a pull request merges, run `/deliver-project <stories.md>` again. The merged story makes its dependents `ready`, and Step 2 plans them.
+When a pull request merges, run `/deliver-feature <stories.md>` again. The merged story makes its dependents `ready`, and Step 2 plans them.
 
 ## Rules
 

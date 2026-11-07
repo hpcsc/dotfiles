@@ -127,7 +127,7 @@ fi
 [ -f "$PLAN" ] || die "plan not found: $PLAN"
 
 # @orchestrates holds the absolute paths of the plans that this pane drives, separated by
-# colons. A list, because /deliver-project drives several stories from one session.
+# colons. A list, because /deliver-feature drives several stories from one session.
 mark_orchestrator() {
   [ -n "${TMUX_PANE:-}" ] || return 0
   local plan have

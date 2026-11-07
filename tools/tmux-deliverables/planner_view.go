@@ -241,7 +241,7 @@ func (v plannerView) featureKey(msg tea.KeyMsg) (plannerView, tea.Cmd) {
 		if v.featureCursor < len(v.features) {
 			f := v.features[v.featureCursor]
 			name := "deliver-" + strings.TrimSuffix(filepath.Base(f.path), ".md")
-			return v, v.claude(name, "/deliver-project "+filepath.Join(v.root, f.path))
+			return v, v.claude(name, "/deliver-feature "+filepath.Join(v.root, f.path))
 		}
 	case "r":
 		run, root := v.run, v.root
@@ -602,7 +602,7 @@ func (v plannerView) View() string {
 
 	keys := "enter go, start, or go to the orchestrator · n next step · s start · g start with gears · t graph · b features · tab under way · r reload · q quit"
 	if v.screen == featureScreen {
-		keys = "enter open · p /deliver-project in a window · tab under way · r reload · q quit"
+		keys = "enter open · p /deliver-feature in a window · tab under way · r reload · q quit"
 	}
 	b.WriteString(dimmed.Render(ansi.Truncate(keys, v.width, "…")))
 	return b.String()

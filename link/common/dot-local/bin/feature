@@ -11,6 +11,9 @@ Those are decisions, and they belong in the files. Whether a story is planned, u
 or merged is an observation. It comes from `clerk story`, which reads the plans and the
 task records, and from the history of the default branch.
 
+A move of a stories file into a completed/ folder is a decision too: its stories are
+done. So a story there that no plan and no ticket accounts for reads as merged.
+
     feature list [--archived] [--table] [--no-fetch]
     feature <proposal.md | stories.md> [--table | --graph] [--no-fetch]
     feature next <proposal.md | stories.md> [--limit <n>] [--no-fetch]
@@ -415,6 +418,8 @@ def state_without_plan(story, blocked_by, ref, history):
             return "in-progress", f"branch {branch} has {unmerged} commits that are not on {ref}, and no plan names {ticket}"
         if history.get(ticket):
             return "merged", f"commits on {ref} that name {ticket}: {history[ticket]}, and no plan names it"
+    if in_completed(story["stories_file"]):
+        return "merged", f"{story['stories_file']} is archived, and no plan names {ticket or story['key']}"
     if blocked_by:
         return "blocked", f"{', '.join(blocked_by)} not merged"
     return "ready", f"no plan names {ticket or story['key']}"

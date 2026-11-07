@@ -251,6 +251,23 @@ eq "a plan that names the story_id of a story is the plan of that story" "approv
 eq "an archived breakdown that names the story_id makes its story merged" "merged" "$(sk US-002)"
 eq "a story with a ticket also takes a plan that names its key" "planned" "$(sk US-003)"
 
+R=$(new_repo)
+mkdir -p "$R/user-stories/completed"
+{ story US-001 "" "" "Done long ago"; story US-002 "" "" "Planned and not built"; story US-003 T-41 "US-001" "Started by hand"; } \
+  > "$R/user-stories/completed/old.md"
+{ story US-001 "" "" "Live"; } > "$R/user-stories/live.md"
+STORY_ID=old/US-002 plan "$R" s2 "" 2026-10-08 a; deliverable "$R" s2 a 1 0
+git -C "$R" add -A && git -C "$R" commit -qm "Archive the old stories"
+commit_on "$R" t-41-by-hand h.txt "Started without a plan"
+SR=$(run "$R" user-stories/completed/old.md --no-fetch)
+sr() { printf '%s' "$SR" | jq -r --arg i "$1" '.stories[] | select(.id == $i) | "\(.state)|\(.evidence)"'; }
+eq "a story with no plan in an archived stories file is merged, because the move says it is done" \
+   "merged|user-stories/completed/old.md is archived, and no plan names old/US-001" "$(sr US-001)"
+eq "a plan of a story in an archived stories file still decides its state" "approved" "$(sr US-002 | cut -d'|' -f1)"
+eq "and so does a branch named after its ticket" "in-progress" "$(sr US-003 | cut -d'|' -f1)"
+eq "a story with no plan in a live stories file stays ready" "ready" \
+   "$(run "$R" user-stories/live.md --no-fetch | jq -r '.stories[0].state')"
+
 # --------------------------------------------------------------------------------
 printf '\ngoals\n'
 
@@ -469,6 +486,6 @@ eq "next names the files that two stories in flight both plan to change, and lea
    "$(run "$H" next stories.md | jq -c '.shared_files')"
 
 # --------------------------------------------------------------------------------
-rm -rf "$V" "$P" "$O" "$D" "$K" "$Q" "$F" "$T" "$A" "$E" "$H" 2>/dev/null
+rm -rf "$V" "$P" "$O" "$D" "$K" "$R" "$Q" "$F" "$T" "$A" "$E" "$H" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

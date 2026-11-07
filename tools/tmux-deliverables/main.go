@@ -7,9 +7,11 @@
 // the worktree, the state of the agent in that window, and what the deliverable needs from
 // a person. Windows with an agent and no deliverable come last.
 //
-// The planner shows the features of the repo of the pane: each stories file, the stories
-// in it with their state from `clerk project`, and the deliverables of each story. There
-// a story is planned, taken through its gate, and started. Tab switches the view.
+// The planner shows the features of the repo of the pane from `feature list`: each
+// proposal, and each stories file that names no proposal, with the counts of its stories
+// and its goals. A feature opens as its stories, with their state from `feature`, and the
+// deliverables of each story. There a story is planned, taken through its gate, and
+// started. Tab switches the view.
 //
 //	tmux-deliverables popup <client> [<pane path>] [--features]
 //	    open it in a tmux popup on that client; --features opens the planner first

@@ -125,12 +125,13 @@ func TestApp(t *testing.T) {
 	t.Run("switching", func(t *testing.T) {
 		t.Run("tab shows the planner, and reads the features of the repo", func(t *testing.T) {
 			f := newFake(nil, nil)
-			f.featureList = []feature{{path: "user-stories/sign-in.md", title: "Sign in"}, {path: "user-stories/pay.md", title: "Pay"}}
+			f.featureList = twoFeatures()
 			s := startApp(t, f, "/repos/a", boardID)
 
 			s.press("tab")
 
-			require.Equal(t, []string{"Sign in  user-stories/sign-in.md", "Pay  user-stories/pay.md"}, s.rows())
+			require.Len(t, s.rows(), 2)
+			require.True(t, strings.HasSuffix(s.rows()[1], "Second  user-stories/b.md"), s.rows()[1])
 		})
 
 		t.Run("tab again shows the board, as it was", func(t *testing.T) {

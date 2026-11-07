@@ -24,8 +24,13 @@ esac
 const stubClerk = `#!/usr/bin/env bash
 echo "clerk $* in $PWD" >> "$LOG"
 [ "$2" = archive ] && exit 0
-[ "$1" = project ] && { cat "$PWD/project.json"; exit; }
 cat "$PWD/story.json" 2>/dev/null || exit 2
+`
+
+const stubFeature = `#!/usr/bin/env bash
+echo "feature $* in $PWD" >> "$LOG"
+[ "$1" = list ] && { cat "$PWD/features.json"; exit; }
+cat "$PWD/feature.json"
 `
 
 const stubWorkmux = `#!/usr/bin/env bash
@@ -42,13 +47,13 @@ if [ -n "${OPEN_REFUSES:-}" ]; then echo "fresh is blocked by asks" >&2; exit 1;
 echo "starting fresh"
 `
 
-// withStubs puts tmux, clerk, workmux and deliverable-open stubs first on PATH. Each
-// writes what it gets to the log file it returns.
+// withStubs puts tmux, clerk, feature, workmux and deliverable-open stubs first on PATH.
+// Each writes what it gets to the log file it returns.
 func withStubs(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	for name, script := range map[string]string{
-		"tmux": stubTmux, "clerk": stubClerk, "workmux": stubWorkmux, "deliverable-open": stubDeliverableOpen,
+		"tmux": stubTmux, "clerk": stubClerk, "feature": stubFeature, "workmux": stubWorkmux, "deliverable-open": stubDeliverableOpen,
 	} {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755))
 	}
@@ -190,31 +195,32 @@ func TestCommands(t *testing.T) {
 			require.Equal(t, []agent{{Pane: "%1", Status: "waiting"}}, s.agents)
 		})
 
-		t.Run("the features are the stories files with ticket lines, titled by their first heading", func(t *testing.T) {
-			root := gitRepo(t)
-			writeFile(t, filepath.Join(root, ".scratches/write-user-story/sign-in/sign-in.md"), "intro\n# Sign in\n\n### US-001: Ask\n\n**Ticket:** AGE-1\n")
-			writeFile(t, filepath.Join(root, "user-stories/pay.md"), "# Pay\n**Ticket:** AGE-2\n")
-			writeFile(t, filepath.Join(root, "user-stories/notes.md"), "# Notes\nno tickets here\n")
-
-			found := newCommands(nil).features(root)
-
-			require.Equal(t, []feature{
-				{path: ".scratches/write-user-story/sign-in/sign-in.md", title: "Sign in"},
-				{path: "user-stories/pay.md", title: "Pay"},
-			}, found)
-		})
-
-		t.Run("a project is what clerk project prints for the feature, in its repo", func(t *testing.T) {
+		t.Run("the features are what feature list prints for the repo, without a fetch", func(t *testing.T) {
 			log := withStubs(t)
 			root := gitRepo(t)
-			writeFile(t, filepath.Join(root, "project.json"), `{"running": ["s/a"], "stories": [{"id": "US-001", "ticket": "AGE-1", "state": "ready"}]}`)
+			writeFile(t, filepath.Join(root, "features.json"), `[{"feature": "docs/proposals/pay.md", "title": "Pay", "state": "ready",
+				"stories_total": 3, "stories_merged": 1, "goals_total": 2, "goals_done": 0}]`)
 
-			p, err := newCommands(nil).project(root, "user-stories/pay.md")
+			found, err := newCommands(nil).features(root)
 
 			require.NoError(t, err)
-			require.Equal(t, []string{"s/a"}, p.Running)
-			require.Equal(t, "US-001 AGE-1 ready", p.Stories[0].ID+" "+p.Stories[0].Ticket+" "+p.Stories[0].State)
-			require.Equal(t, []string{"clerk project user-stories/pay.md in " + root}, logOf(t, log, "clerk"))
+			require.Equal(t, []feature{{Path: "docs/proposals/pay.md", Title: "Pay", State: "ready",
+				StoriesTotal: 3, StoriesMerged: 1, GoalsTotal: 2}}, found)
+			require.Equal(t, []string{"feature list --no-fetch in " + root}, logOf(t, log, "feature"))
+		})
+
+		t.Run("an open feature is what feature prints for it, in its repo", func(t *testing.T) {
+			log := withStubs(t)
+			root := gitRepo(t)
+			writeFile(t, filepath.Join(root, "feature.json"), `{"running": ["s/a"], "stories_files": ["user-stories/pay.md"],
+				"stories": [{"id": "US-001", "key": "pay/US-001", "ticket": null, "state": "ready", "goals": ["G1"]}]}`)
+
+			f, err := newCommands(nil).feature(root, "docs/proposals/pay.md")
+
+			require.NoError(t, err)
+			require.Equal(t, []string{"s/a"}, f.Running)
+			require.Equal(t, "pay/US-001||ready|G1", f.Stories[0].Key+"|"+f.Stories[0].Ticket+"|"+f.Stories[0].State+"|"+f.Stories[0].Goals[0])
+			require.Equal(t, []string{"feature docs/proposals/pay.md in " + root}, logOf(t, log, "feature"))
 		})
 
 		t.Run("a capture keeps the end of the pane, without the blank lines under it", func(t *testing.T) {

@@ -16,10 +16,11 @@ type runner interface {
 	closeWindow(root, handle string) error
 	archive(root, planPath string, force bool) error
 
-	// features are the stories files of a repo: a Markdown file with **Ticket:** lines.
-	features(root string) []feature
-	// project is what `clerk project` says of the stories of one feature.
-	project(root, feature string) (project, error)
+	// features are what `feature list` prints for a repo: each proposal, and each stories
+	// file that names no proposal.
+	features(root string) ([]feature, error)
+	// feature is what `feature <path>` prints for one feature.
+	feature(root, path string) (feature, error)
 	// claudeWindow opens a window named `name` in the session of the client, with Claude
 	// started on `prompt`, unless one with that name is open already. It returns the target.
 	claudeWindow(client, root, name, prompt string) (string, error)

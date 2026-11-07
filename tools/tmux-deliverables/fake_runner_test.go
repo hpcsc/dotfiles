@@ -17,7 +17,7 @@ type fakeRunner struct {
 	calls    []string
 
 	featureList []feature
-	planned     project
+	opened      feature
 }
 
 func (f *fakeRunner) snapshot() (snapshot, error) {
@@ -53,11 +53,11 @@ func (f *fakeRunner) archive(root, planPath string, force bool) error {
 	return f.fails
 }
 
-func (f *fakeRunner) features(string) []feature { return f.featureList }
+func (f *fakeRunner) features(string) ([]feature, error) { return f.featureList, nil }
 
-func (f *fakeRunner) project(root, feature string) (project, error) {
-	f.calls = append(f.calls, "project "+feature+" in "+root)
-	return f.planned, nil
+func (f *fakeRunner) feature(root, path string) (feature, error) {
+	f.calls = append(f.calls, "feature "+path+" in "+root)
+	return f.opened, nil
 }
 
 func (f *fakeRunner) claudeWindow(client, root, name, prompt string) (string, error) {
@@ -74,7 +74,7 @@ func (f *fakeRunner) start(d *deliverable, gears bool) (string, error) {
 func (f *fakeRunner) actions() []string {
 	var acts []string
 	for _, c := range f.calls {
-		if c != "snapshot" && c != "windows" && !strings.HasPrefix(c, "project ") {
+		if c != "snapshot" && c != "windows" && !strings.HasPrefix(c, "feature ") {
 			acts = append(acts, c)
 		}
 	}

@@ -280,55 +280,29 @@ func (c *commands) archive(root, planPath string, force bool) error {
 	return err
 }
 
-func (c *commands) features(root string) []feature {
+// No fetch: the list only counts, and a fetch makes the planner wait for origin.
+func (c *commands) features(root string) ([]feature, error) {
+	out, err := run(root, "feature", "list", "--no-fetch")
+	if err != nil {
+		return nil, err
+	}
 	var found []feature
-	for _, dir := range []string{".scratches/write-user-story", "user-stories"} {
-		_ = filepath.WalkDir(filepath.Join(root, dir), func(path string, e os.DirEntry, err error) error {
-			if err != nil || e.IsDir() || filepath.Ext(path) != ".md" {
-				return nil
-			}
-			if f, ok := featureIn(root, path); ok {
-				found = append(found, f)
-			}
-			return nil
-		})
+	if err := json.Unmarshal(out, &found); err != nil {
+		return nil, errors.New("feature list did not print JSON")
 	}
-	sort.Slice(found, func(i, j int) bool { return found[i].path < found[j].path })
-	return found
+	return found, nil
 }
 
-// featureIn reads a stories file, which has a **Ticket:** line, and takes its title from
-// its first heading.
-func featureIn(root, path string) (feature, bool) {
-	data, err := os.ReadFile(path)
+func (c *commands) feature(root, path string) (feature, error) {
+	out, err := run(root, "feature", path)
 	if err != nil {
-		return feature{}, false
+		return feature{}, err
 	}
-	rel, _ := filepath.Rel(root, path)
-	f := feature{path: rel, title: rel}
-	tickets := false
-	titled := false
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "**Ticket:**") {
-			tickets = true
-		}
-		if !titled && strings.HasPrefix(line, "# ") {
-			f.title, titled = strings.TrimPrefix(line, "# "), true
-		}
+	var f feature
+	if err := json.Unmarshal(out, &f); err != nil {
+		return feature{}, errors.New("feature did not print JSON")
 	}
-	return f, tickets
-}
-
-func (c *commands) project(root, feature string) (project, error) {
-	out, err := run(root, "clerk", "project", feature)
-	if err != nil {
-		return project{}, err
-	}
-	var p project
-	if err := json.Unmarshal(out, &p); err != nil {
-		return project{}, errors.New("clerk project did not print JSON")
-	}
-	return p, nil
+	return f, nil
 }
 
 func (c *commands) claudeWindow(client, root, name, prompt string) (string, error) {

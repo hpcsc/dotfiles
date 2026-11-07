@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// plannedJSON is one deliverable as `clerk project` prints it: what `clerk story` says of
-// it, with its plan and story slug.
+// plannedJSON is one deliverable as `feature` prints it: what `clerk story` says of it,
+// with its plan and story slug.
 func plannedJSON(slug, id, state string, done, total int, more ...any) json.RawMessage {
 	d := deliverableJSON(id, state, done, total, append([]any{"plan", "/repos/a/tasks/" + slug + "/plan.yaml", "story_slug", slug}, more...)...)
 	raw, err := json.Marshal(d)
@@ -21,64 +21,98 @@ func plannedJSON(slug, id, state string, done, total int, more ...any) json.RawM
 
 // signIn is a feature of four stories, one in each state that has a next step, and one
 // that is blocked.
-func signIn() project {
-	return project{
+func signIn() feature {
+	const file = "user-stories/sign-in.md"
+	return feature{
+		Path: "docs/proposals/sign-in.md", Title: "Sign in", State: "in-progress", StoriesFiles: []string{file},
 		Running: []string{"age-3-under-way/building"},
-		Stories: []projectStory{
-			{ID: "US-001", Title: "Plan me", Ticket: "AGE-1", State: "ready", Step: 1, Critical: true, Unblocks: 2,
-				Dependents: []string{"US-004"}, Evidence: "no plan names AGE-1"},
-			{ID: "US-002", Title: "Approve me", Ticket: "AGE-2", State: "planned", Step: 1,
+		Stories: []featureStory{
+			{ID: "US-001", Key: "sign-in/US-001", StoriesFile: file, Title: "Plan me", Ticket: "AGE-1", State: "ready",
+				Step: 1, Critical: true, Unblocks: 2, Goals: []string{"G1"},
+				Dependents: []string{"sign-in/US-004"}, Evidence: "no plan names AGE-1"},
+			{ID: "US-002", Key: "sign-in/US-002", StoriesFile: file, Title: "Approve me", Ticket: "AGE-2", State: "planned", Step: 1,
 				Plans: []string{"/repos/a/tasks/age-2-planned/plan.yaml"}, Evidence: "no approved: line"},
-			{ID: "US-003", Title: "Under way", Ticket: "AGE-3", State: "in-progress", Step: 1,
+			{ID: "US-003", Key: "sign-in/US-003", StoriesFile: file, Title: "Under way", Ticket: "AGE-3", State: "in-progress", Step: 1,
 				Plans: []string{"/repos/a/tasks/age-3-under-way/plan.yaml"}, Evidence: "1 in-progress, 1 ready",
 				Deliverables: []json.RawMessage{
 					plannedJSON("age-3-under-way", "building", "in-progress", 1, 3, "worktree", "/repos/a/.worktrees/building"),
 					plannedJSON("age-3-under-way", "next", "ready", 0, 2),
 				}},
-			{ID: "US-004", Title: "Wait for me", Ticket: "AGE-4", State: "blocked", Step: 2, Critical: true,
-				DependsOn: []string{"US-001"}, BlockedBy: []string{"US-001"}, Evidence: "US-001 not merged"},
+			{ID: "US-004", Key: "sign-in/US-004", StoriesFile: file, Title: "Wait for me", Ticket: "AGE-4", State: "blocked",
+				Step: 2, Critical: true, DependsOn: []string{"sign-in/US-001"}, BlockedBy: []string{"sign-in/US-001"},
+				Evidence: "sign-in/US-001 not merged"},
 		},
 	}
 }
 
-func plannerOn(t *testing.T, p project, panes []pane, agents ...agent) (*screen, *fakeRunner) {
+func plannerOn(t *testing.T, p feature, panes []pane, agents ...agent) (*screen, *fakeRunner) {
 	t.Helper()
 	f := newFake(nil, panes, agents...)
-	f.featureList = []feature{{path: "user-stories/sign-in.md", title: "Sign in"}}
-	f.planned = p
+	f.featureList = []feature{{Path: p.Path, Title: p.Title, State: p.State}}
+	f.opened = p
 	return startApp(t, f, "/repos/a", plannerID), f
+}
+
+// twoFeatures are a proposal with goals and a stories file that names no proposal.
+func twoFeatures() []feature {
+	return []feature{
+		{Path: "docs/proposals/a.md", Title: "First", State: "ready", StoriesTotal: 2, GoalsTotal: 3, GoalsDone: 1,
+			Evidence: "0/2 stories merged; 1/3 goals done; G3 has no story"},
+		{Path: "user-stories/b.md", Title: "Second", State: "merged", StoriesTotal: 1, StoriesMerged: 1,
+			Evidence: "1/1 stories merged"},
+	}
 }
 
 func TestPlannerView(t *testing.T) {
 	t.Run("features", func(t *testing.T) {
-		t.Run("with one stories file, its stories open at once", func(t *testing.T) {
+		t.Run("with one feature, its stories open at once", func(t *testing.T) {
 			s, f := plannerOn(t, signIn(), nil)
 
 			require.True(t, strings.HasPrefix(s.header(), "deliver · Sign in"), s.header())
-			require.Contains(t, f.calls, "project user-stories/sign-in.md in /repos/a")
+			require.Contains(t, f.calls, "feature docs/proposals/sign-in.md in /repos/a")
 		})
 
 		t.Run("with two, the planner lists them, and enter opens the one under the cursor", func(t *testing.T) {
 			f := newFake(nil, nil)
-			f.featureList = []feature{{path: "user-stories/a.md", title: "First"}, {path: "user-stories/b.md", title: "Second"}}
-			f.planned = signIn()
+			f.featureList = twoFeatures()
+			f.opened = signIn()
 			s := startApp(t, f, "/repos/a", plannerID)
 
 			s.press("down", "enter")
 
-			require.Equal(t, []string{"project user-stories/b.md in /repos/a"}, projectCalls(f))
+			require.Equal(t, []string{"feature user-stories/b.md in /repos/a"}, featureCalls(f))
 			require.True(t, strings.HasPrefix(s.header(), "deliver · Second"), s.header())
+		})
+
+		t.Run("a feature row shows its state and the counts of its stories and its goals", func(t *testing.T) {
+			f := newFake(nil, nil)
+			f.featureList = twoFeatures()
+			s := startApp(t, f, "/repos/a", plannerID)
+
+			require.Equal(t, []string{
+				"ready          stories 0/2    goals 1/3   First  docs/proposals/a.md",
+				"merged         stories 1/1    no goals    Second  user-stories/b.md",
+			}, s.rows())
+		})
+
+		t.Run("the preview of a feature gives its state and its evidence before its file", func(t *testing.T) {
+			f := newFake(nil, nil)
+			f.featureList = twoFeatures()
+			f.files["/repos/a/docs/proposals/a.md"] = "# First\n\n- **G1:** One"
+			s := startApp(t, f, "/repos/a", plannerID)
+
+			require.Equal(t, "First  ready\n0/2 stories merged; 1/3 goals done; G3 has no story\n\n# First\n\n- **G1:** One", s.preview())
 		})
 
 		t.Run("p starts /deliver-feature on the feature in a window of its own, and goes there", func(t *testing.T) {
 			f := newFake(nil, nil)
-			f.featureList = []feature{{path: "user-stories/a.md", title: "First"}, {path: "user-stories/b.md", title: "Second"}}
+			f.featureList = twoFeatures()
 			s := startApp(t, f, "/repos/a", plannerID)
 
 			s.press("p")
 
 			require.Equal(t, []string{
-				"claude window deliver-a in /repos/a: /deliver-feature /repos/a/user-stories/a.md",
+				"claude window deliver-a in /repos/a: /deliver-feature /repos/a/docs/proposals/a.md",
 				"switch /dev/ttys004 to Work:deliver-a",
 			}, f.actions())
 			require.True(t, s.quit)
@@ -86,19 +120,20 @@ func TestPlannerView(t *testing.T) {
 
 		t.Run("b on the stories goes back to the list", func(t *testing.T) {
 			f := newFake(nil, nil)
-			f.featureList = []feature{{path: "user-stories/a.md", title: "First"}, {path: "user-stories/b.md", title: "Second"}}
+			f.featureList = twoFeatures()
 			s := startApp(t, f, "/repos/a", plannerID)
 			s.press("enter")
 
 			s.press("b")
 
-			require.Equal(t, []string{"First  user-stories/a.md", "Second  user-stories/b.md"}, s.rows())
+			require.Len(t, s.rows(), 2)
+			require.True(t, strings.HasSuffix(s.rows()[0], "First  docs/proposals/a.md"), s.rows()[0])
 		})
 
-		t.Run("with no stories file, the planner says where it looked", func(t *testing.T) {
+		t.Run("with no feature, the planner says what it looked for", func(t *testing.T) {
 			s := startApp(t, newFake(nil, nil), "/repos/a", plannerID)
 
-			require.True(t, strings.HasSuffix(s.header(), "no stories file with **Ticket:** lines under .scratches/write-user-story or user-stories"), s.header())
+			require.True(t, strings.HasSuffix(s.header(), "no feature: no proposal with **G1:** goal lines, and no stories file"), s.header())
 		})
 	})
 
@@ -107,6 +142,14 @@ func TestPlannerView(t *testing.T) {
 			s, _ := plannerOn(t, signIn(), nil)
 
 			require.Contains(t, s.rows(), "blocked        US-004  AGE-4     ↑0   Wait for me  [blocked by US-001]")
+		})
+
+		t.Run("with two stories files, a story shows its key, because two stories can have one ID", func(t *testing.T) {
+			p := signIn()
+			p.StoriesFiles = append(p.StoriesFiles, "user-stories/sign-in-later.md")
+			s, _ := plannerOn(t, p, nil)
+
+			require.Contains(t, s.rows(), "blocked        sign-in/US-004  AGE-4     ↑0   Wait for me  [blocked by sign-in/US-001]")
 		})
 
 		t.Run("a story under way shows its deliverables under it, with what each needs", func(t *testing.T) {
@@ -167,6 +210,8 @@ func TestPlannerView(t *testing.T) {
 			require.Contains(t, preview, "US-001  AGE-1  ready  step 1  critical path")
 			require.Contains(t, preview, "waited on by:  US-004 blocked")
 			require.Contains(t, preview, "unblocks:      2 stories in all")
+			require.Contains(t, preview, "goals:         G1")
+			require.Contains(t, preview, "stories file:  user-stories/sign-in.md")
 		})
 
 		t.Run("a story lists its deliverables by wave, with what each depends on and stacks on", func(t *testing.T) {
@@ -217,6 +262,19 @@ func TestPlannerView(t *testing.T) {
 			require.True(t, s.quit)
 		})
 
+		t.Run("a ready story with no ticket gets a window that plans it by its key", func(t *testing.T) {
+			p := signIn()
+			p.Stories[0].Ticket = ""
+			s, f := plannerOn(t, p, nil)
+
+			s.press("n")
+
+			require.Equal(t, []string{
+				"claude window sign-in-us-001-plan in /repos/a: /deliver-story story_id: sign-in/US-001: deliver story US-001 of /repos/a/user-stories/sign-in.md. Read its section, from its ### heading to the next heading, as the story.",
+				"switch /dev/ttys004 to Work:sign-in-us-001-plan",
+			}, f.actions())
+		})
+
 		t.Run("a planned story gets a window that takes its plan through the gate", func(t *testing.T) {
 			s, f := plannerOn(t, signIn(), nil)
 			s.to("US-002")
@@ -236,7 +294,7 @@ func TestPlannerView(t *testing.T) {
 			s.press("n")
 
 			require.Equal(t, []string{"start next in /repos/a gears=false"}, f.actions())
-			require.Len(t, projectCalls(f), 2)
+			require.Len(t, featureCalls(f), 2)
 			require.True(t, strings.HasSuffix(s.header(), "started next"), s.header())
 		})
 
@@ -282,10 +340,10 @@ func TestPlannerView(t *testing.T) {
 	})
 }
 
-func projectCalls(f *fakeRunner) []string {
+func featureCalls(f *fakeRunner) []string {
 	var calls []string
 	for _, c := range f.calls {
-		if strings.HasPrefix(c, "project ") {
+		if strings.HasPrefix(c, "feature ") {
 			calls = append(calls, c)
 		}
 	}

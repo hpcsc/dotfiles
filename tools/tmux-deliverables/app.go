@@ -1,6 +1,11 @@
 package main
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+)
 
 type viewID int
 
@@ -16,13 +21,14 @@ type routed struct {
 	msg tea.Msg
 }
 
-// app shows one view at a time: the board of the stories under way, or the planner of
-// the features of one repo. Tab switches between them.
+// app shows one view at a time, under a bar that names both: the board of the stories
+// under way, or the planner of the features of one repo. Tab switches between them.
 type app struct {
 	board      boardView
 	planner    plannerView
 	hasPlanner bool // false when the popup did not start in a git repo
 	active     viewID
+	width      int
 	// bothStarted turns true at the first switch, which starts the other view.
 	bothStarted bool
 }
@@ -41,9 +47,11 @@ func (a app) Init() tea.Cmd {
 func (a app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		next, _ := a.board.Update(msg)
+		a.width = msg.Width
+		under := tea.WindowSizeMsg{Width: msg.Width, Height: msg.Height - 1}
+		next, _ := a.board.Update(under)
 		a.board = next.(boardView)
-		a.planner, _ = a.planner.Update(msg)
+		a.planner, _ = a.planner.Update(under)
 		return a, nil
 	case routed:
 		return a.to(msg.to, msg.msg)
@@ -83,10 +91,23 @@ func (a app) switchView() (tea.Model, tea.Cmd) {
 }
 
 func (a app) View() string {
+	view := a.board.View()
 	if a.active == plannerID {
-		return a.planner.View()
+		view = a.planner.View()
 	}
-	return a.board.View()
+	return ansi.Truncate(tabBar(a.active), a.width, "…") + "\n" + view
+}
+
+func tabBar(active viewID) string {
+	tabs := []string{"under way", "features"}
+	for i, name := range tabs {
+		if viewID(i) == active {
+			tabs[i] = bold.Render("[" + name + "]")
+		} else {
+			tabs[i] = dimmed.Render(" " + name + " ")
+		}
+	}
+	return strings.Join(tabs, " ") + dimmed.Render("   tab switches")
 }
 
 // route tags each message that a command makes with the view it belongs to. A batch is

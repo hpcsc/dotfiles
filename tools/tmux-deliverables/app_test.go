@@ -71,7 +71,10 @@ func (s *screen) press(keys ...string) {
 	}
 }
 
-func (s *screen) lines() []string { return strings.Split(ansi.Strip(s.m.View()), "\n") }
+// lines are the lines of the view, under the tab bar.
+func (s *screen) lines() []string { return strings.Split(ansi.Strip(s.m.View()), "\n")[1:] }
+
+func (s *screen) tabBar() string { return strings.Split(ansi.Strip(s.m.View()), "\n")[0] }
 
 func (s *screen) header() string { return s.lines()[0] }
 
@@ -122,6 +125,24 @@ func (s *screen) preview() string {
 }
 
 func TestApp(t *testing.T) {
+	t.Run("the tab bar", func(t *testing.T) {
+		t.Run("names both views and marks the one that shows", func(t *testing.T) {
+			s := startApp(t, newFake(nil, nil), "/repos/a", boardID)
+
+			before := s.tabBar()
+			s.press("tab")
+
+			require.Equal(t, "[under way]  features    tab switches", before)
+			require.Equal(t, " under way  [features]   tab switches", s.tabBar())
+		})
+
+		t.Run("leaves the view its own height, so the last line still shows", func(t *testing.T) {
+			s := startApp(t, newFake(nil, nil), "/repos/a", boardID)
+
+			require.LessOrEqual(t, len(strings.Split(s.m.View(), "\n")), 80)
+		})
+	})
+
 	t.Run("switching", func(t *testing.T) {
 		t.Run("tab shows the planner, and reads the features of the repo", func(t *testing.T) {
 			f := newFake(nil, nil)

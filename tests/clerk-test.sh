@@ -1550,6 +1550,57 @@ eq "the breakdowns of a plan stay deliverables of that plan" "story-a" \
    "$(run "$R22" story --no-fetch --breakdowns | jq -r '[.[].story_slug] | join(",")')"
 
 # --------------------------------------------------------------------------------
+printf '\nstory --archived — the plans and breakdowns under tasks/completed/, and the story_id of each\n'
+
+R45=$(new_repo)
+eq "--archived in a repo with nothing under tasks/ exits 0" "0" \
+   "$(run "$R45" story --no-fetch --breakdowns --archived >/dev/null 2>&1; echo $?)"
+eq "and answers an empty list" "[]" "$(run "$R45" story --no-fetch --breakdowns --archived | jq -c .)"
+
+# record <file> <story_id> <total> <done>
+record() {
+  local i=1 body=
+  while [ "$i" -le "$3" ]; do
+    body="$body{\"n\":$i,\"title\":\"t$i\",\"depends_on\":[],\"done\":$([ "$i" -le "$4" ] && echo true || echo false)},"
+    i=$((i + 1))
+  done
+  printf '{"story":"x","story_id":"%s","tasks":[%s]}\n' "$2" "${body%,}" > "$1"
+}
+mkdir -p "$R45/tasks/live/a" "$R45/tasks/completed/old/b"
+printf 'story: Live\nstory_slug: live\nstory_id: stories/US-001\ndeliverables:\n  - id: a\n    branch: live-a\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/live/a/tasks.md\n' \
+  > "$R45/tasks/live/plan.yaml"
+printf '# a\n' > "$R45/tasks/live/a/tasks.md"; record "$R45/tasks/live/a/tasks.json" "" 1 0
+printf 'story: Old\nstory_slug: old\nstory_id: stories/US-002\ndeliverables:\n  - id: b\n    branch: old-b\n    base: main\n    wave: 1\n    depends_on: []\n    tasks: tasks/old/b/tasks.md\n' \
+  > "$R45/tasks/completed/old/plan.yaml"
+printf '# b\n' > "$R45/tasks/completed/old/b/tasks.md"; record "$R45/tasks/completed/old/b/tasks.json" "" 1 1
+printf '# Quick fix\n' > "$R45/tasks/completed/quick-fix.md"; record "$R45/tasks/completed/quick-fix.json" stories/US-003 2 2
+printf '# Faster\n' > "$R45/tasks/faster.md"
+printf '{"story_id":"stories/US-004","tasks":[%s,%s]}\n' \
+  '{"n":1,"title":"t1","depends_on":[],"done":true,"affected_files":["b.go","a.go"]}' \
+  '{"n":2,"title":"t2","depends_on":[],"done":false,"affected_files":["a.go"]}' > "$R45/tasks/faster.json"
+git -C "$R45" add -A && git -C "$R45" commit -qm "Plan and archive"
+
+eq "a plan names the story_id of its story, and clerk story reports it" "stories/US-001" \
+   "$(run "$R45" story --no-fetch | jq -r '.[0].story_id')"
+eq "a breakdown that no plan holds takes the story_id from its task record" "stories/US-004" \
+   "$(run "$R45" story --no-fetch --breakdowns | jq -r '.[] | select(.story_slug == "faster") | .story_id')"
+eq "without --archived, nothing under tasks/completed/ is listed" "faster,live" \
+   "$(run "$R45" story --no-fetch --breakdowns | jq -r '[.[].story_slug] | sort | join(",")')"
+eq "--archived adds the archived plans" "live,old" \
+   "$(run "$R45" story --no-fetch --archived | jq -r '[.[].story_slug] | sort | join(",")')"
+A45=$(run "$R45" story --no-fetch --breakdowns --archived)
+eq "and with --breakdowns, the archived breakdowns too" "faster,live,old,quick-fix" \
+   "$(printf '%s' "$A45" | jq -r '[.[].story_slug] | sort | join(",")')"
+eq "an archived breakdown is named by its file, and reads merged and archived" "quick-fix|stories/US-003|merged|true" \
+   "$(printf '%s' "$A45" | jq -r '.[] | select(.story_slug == "quick-fix") | "\(.deliverables[0].id)|\(.story_id)|\(.deliverables[0].state)|\(.deliverables[0].archived)"')"
+eq "an archived plan reads merged and archived" "stories/US-002|merged|true" \
+   "$(printf '%s' "$A45" | jq -r '.[] | select(.story_slug == "old") | "\(.story_id)|\(.deliverables[0].state)|\(.deliverables[0].archived)"')"
+eq "a live breakdown is not archived" "false" \
+   "$(printf '%s' "$A45" | jq -r '.[] | select(.story_slug == "faster") | .deliverables[0].archived')"
+eq "each deliverable names the files that its tasks change, once each" "a.go,b.go" \
+   "$(printf '%s' "$A45" | jq -r '.[] | select(.story_slug == "faster") | .deliverables[0].affected_files | join(",")')"
+
+# --------------------------------------------------------------------------------
 printf '\nstory archive — the folder of a story, moved to tasks/completed/\n'
 
 # arc_repo <tasks tracked: yes|no>: a story whose one deliverable merged and left no branch,
@@ -3092,6 +3143,6 @@ rm -rf "$MS" "$RM" "$RF"
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null
 git -C "$R21" worktree remove --force "$WT3" 2>/dev/null
 git -C "$R19" worktree remove --force "$WT2" 2>/dev/null
-rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R13" "$R14" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36C" "$R37" "$WT" 2>/dev/null
+rm -rf "$R" "$R2" "$R3" "$R4" "$R5" "$R6" "$R7" "$R8" "$R13" "$R14" "$R16" "$R17" "$R18" "$R19" "$R20" "$R21" "$R22" "$R23" "$R24" "$R25" "$R26" "$R27" "$R28" "$R29" "$R30" "$R31" "$R32" "$R33" "$R34" "$R35" "$R36C" "$R37" "$R45" "$WT" 2>/dev/null
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

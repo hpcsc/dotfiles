@@ -11,6 +11,12 @@ deliverable reads as `deferred` until its work is merged.
 `--breakdowns` also lists each breakdown that no plan holds, as decompose-to-tasks writes
 it: a story with one deliverable, on the branch of the run that bound the breakdown.
 
+`--archived` also lists the plans under tasks/completed/, and with `--breakdowns` the
+breakdowns there too. It is the whole record, so a repo with nothing in it answers `[]`.
+
+Each story carries the `story_id` that its plan or its task record names: the key of the
+story in its stories file, for a story with no ticket.
+
 `clerk story stack create [<plan.yaml>]` opens the deliverables as stacked draft PRs,
 in dependency order; see clerk_stack.py.
 
@@ -74,26 +80,42 @@ def local_branches():
     return [ref.removeprefix("refs/heads/") for ref in git("for-each-ref", "--format=%(refname)", "refs/heads").splitlines()]
 
 
-def find_plans(tasks_home):
-    """Every plan under tasks/ that has not been archived. Archived ones are still plans;
-    they describe work that is over, and listing them would bury the live ones."""
+def find_plans(tasks_home, archived=False):
+    """Every plan under tasks/ that has not been archived, unless asked for those too.
+    Archived ones are still plans; they describe work that is over, and listing them by
+    default would bury the live ones."""
     root = Path(tasks_home) / "tasks"
     found = []
     for path in sorted(root.rglob("*")):
         if path.name not in ("plan.yaml", "plan.yml") or not path.is_file():
             continue
-        if "completed" in path.parts:
+        if not archived and "completed" in path.parts:
             continue
         found.append(str(path))
     return found
 
 
-def breakdowns_without_plan(tasks_home, plans):
+def breakdowns_without_plan(tasks_home, plans, archived=False):
     """Each breakdown with its task record that no plan holds, as decompose-to-tasks writes
     it. A plan holds every file in its folder."""
     held = [Path(p).parent for p in plans]
-    return [b for b in breakdown_paths(tasks_home)
+    return [b for b in breakdown_paths(tasks_home, include_archived=archived)
             if Path(b).with_suffix(".json").is_file() and not any(h in Path(b).parents for h in held)]
+
+
+def in_archive(path, tasks_home):
+    try:
+        parts = Path(path).resolve().relative_to((Path(tasks_home) / "tasks").resolve()).parts
+    except ValueError:
+        return False
+    return "completed" in parts[:-1]
+
+
+def record_of(breakdown):
+    try:
+        return json.loads(Path(breakdown).with_suffix(".json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def runs_by_breakdown(checkout):
@@ -114,12 +136,12 @@ def breakdown_plan(path, tasks_home, runs, branches):
     p = Path(path).resolve()
     if home / "tasks" not in p.parents:
         die(f"{path} is not under {home / 'tasks'}")
-    slug = p.stem if p.parent == home / "tasks" else p.parent.name
+    slug = p.stem if p.parent in (home / "tasks", home / "tasks" / "completed") else p.parent.name
     title = next((line[2:].strip() for line in p.read_text().splitlines() if line.startswith("# ")), slug)
     bound = runs.get(str(p), [])
     branch = next((b for b in bound if b in branches), bound[0] if bound else slug)
     deliverable = {"id": slug, "title": title, "branch": branch, "handle": slug, "tasks": str(p.relative_to(home))}
-    return {"story": title, "story_slug": slug, "deliverables": [deliverable]}
+    return {"story": title, "story_slug": slug, "story_id": record_of(p).get("story_id"), "deliverables": [deliverable]}
 
 
 def load_story(path, tasks_home, runs, branches):
@@ -151,21 +173,19 @@ def task_files_of(deliverable):
 
 
 def task_record_progress(tasks_home, task_files):
-    """(total, done, archived) from the breakdowns' task records, which are the run's own record
-    of what it finished — written in the same commit as the code they stand for. `archived` is
-    true when every record is in tasks/completed/: `clerk land` moves it there at the end of the
-    run, after the audit, which can still rewrite the branch."""
+    """(total, done, archived, affected files) from the breakdowns' task records, which are the
+    run's own record of what it finished — written in the same commit as the code they stand
+    for. `archived` is true when every record is in tasks/completed/: `clerk land` moves it
+    there at the end of the run, after the audit, which can still rewrite the branch."""
     total = done = 0
+    affected = set()
     archived = bool(task_files)
     for rel in task_files:
         side = Path(tasks_home) / (rel[:-3] + ".json" if rel.endswith(".md") else rel + ".json")
         # `clerk land` moves a landed deliverable's breakdown into tasks/completed/.
-        if side.is_file():
-            archived = False
-        else:
-            found = find_archived(side)
-            archived = archived and found is not None
-            side = found or side
+        if not side.is_file():
+            side = find_archived(side) or side
+        archived = archived and side.is_file() and in_archive(side, tasks_home)
         try:
             data = json.loads(side.read_text())
         except (OSError, json.JSONDecodeError):
@@ -173,7 +193,9 @@ def task_record_progress(tasks_home, task_files):
         tasks = data.get("tasks") or []
         total += len(tasks)
         done += sum(1 for t in tasks if t.get("done") is True)
-    return total, done, archived
+        for t in tasks:
+            affected.update(t.get("affected_files") or [])
+    return total, done, archived, sorted(affected)
 
 
 def branch_alias_for(deliverable_id, branches):
@@ -305,7 +327,7 @@ def describe(deliverable, tasks_home, ref, checkout, branches, prefix):
     did = d.get("id") or ""
     branch = d.get("branch") or ""
     task_files = task_files_of(d)
-    total, done, archived = task_record_progress(tasks_home, task_files)
+    total, done, archived, affected = task_record_progress(tasks_home, task_files)
 
     alias = None
     effective = branch
@@ -345,6 +367,7 @@ def describe(deliverable, tasks_home, ref, checkout, branches, prefix):
         "unmerged_commits": unmerged,
         "total": total,
         "done": done,
+        "affected_files": affected,
         "archived": archived,
         "deferred": d.get("status") == "deferred",
     }
@@ -446,16 +469,16 @@ def checkout():
     return r, r.tasks_home or r.repo_root
 
 
-def plans_named(plan_arg, tasks_home, breakdowns=False):
+def plans_named(plan_arg, tasks_home, breakdowns=False, archived=False):
     if plan_arg:
         plan = resolve_tasks_arg(plan_arg, tasks_home)
         if not Path(plan).is_file():
             die(f"plan not found: {plan}")
         return [plan]
-    plans = find_plans(tasks_home)
+    plans = find_plans(tasks_home, archived)
     if breakdowns:
-        plans += breakdowns_without_plan(tasks_home, plans)
-    if not plans:
+        plans += breakdowns_without_plan(tasks_home, plans, archived)
+    if not plans and not archived:
         what = "plan.yaml or breakdown" if breakdowns else "plan.yaml"
         die(f"no {what} under {tasks_home}/tasks outside completed/ — name one, or decompose a story first")
     return plans
@@ -502,6 +525,7 @@ def stories_of(plans, checkout, tasks_home, ref):
             "plan": path,
             "story": doc.get("story") or "",
             "story_slug": doc.get("story_slug") or "",
+            "story_id": doc.get("story_id") or None,
             "ticket": doc.get("ticket") or None,
             "approved": doc.get("approved") or None,
             "default_branch": checkout.default_branch,
@@ -611,18 +635,19 @@ def main(argv):
     ap.add_argument("--table", action="store_true", help="a table for a human instead of JSON")
     ap.add_argument("--no-fetch", action="store_true", help="compare against origin as it was last fetched")
     ap.add_argument("--breakdowns", action="store_true", help="also each breakdown that no plan holds")
+    ap.add_argument("--archived", action="store_true", help="also the plans, and with --breakdowns the breakdowns, under tasks/completed/")
     ap.add_argument("plan", nargs="?", help="a plan.yaml or a breakdown; default: every live plan under tasks/")
     args = ap.parse_args(argv)
     if args.help:
         print(__doc__.strip())
-        print("\nUSAGE\n  clerk story [<plan.yaml> | <breakdown.md>] [--table] [--no-fetch] [--breakdowns]"
+        print("\nUSAGE\n  clerk story [<plan.yaml> | <breakdown.md>] [--table] [--no-fetch] [--breakdowns] [--archived]"
               "\n  clerk story stack [<plan.yaml>] [--json]          print the stack"
               "\n  clerk story stack create [<plan.yaml>] [--json]   open and retarget the PRs"
               "\n  clerk story archive [<plan.yaml>] [--force]       move the story to tasks/completed/")
         return 0
 
     r, tasks_home = checkout()
-    plans = plans_named(args.plan, tasks_home, args.breakdowns)
+    plans = plans_named(args.plan, tasks_home, args.breakdowns, args.archived)
     stories = stories_of(plans, r, tasks_home, compare_ref(r.default_branch, args.no_fetch))
     if args.table:
         print(render_table(stories))

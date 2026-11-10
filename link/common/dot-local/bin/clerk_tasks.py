@@ -221,8 +221,10 @@ def cmd_finish(n, files, tasks_override=None):
                            "proposal, correct it and run clerk mutants --proposals again, with "
                            "--proposals-anywhere for a line that the task did not change). Do not kill a row "
                            "with a test that reads private state, a symbol exported only for the test, the "
-                           "order of calls to a fake, or the text of a log line. When no caller sees a "
-                           "difference, remove the code, or record why no test is worth it with clerk mutants "
+                           "order or the count of calls to a fake, the text of a log line, or the text of an "
+                           "error that the caller also gets with the mutant. When no caller sees a difference, "
+                           "for example when the caller gets an error either way or the same result after one "
+                           "more call, remove the code, or record why no test is worth it with clerk mutants "
                            "accept <key> \"<reason>\"; then run clerk finish again; the paths stay staged"}, 1)
     if refused:
         emit({"task": n, "done": False, **refused, "staged": list(files),

@@ -19,6 +19,7 @@ NO_VERDICT = ("TIMED OUT", "INFRA ERROR", "UNSTABLE")
 PROPOSED = "PROPOSED"
 SAVED = "mutants.json"
 ACCEPTED = "mutants-accepted.jsonl"
+CLOSURES = "mutants-closures.jsonl"
 LIMIT_SECONDS = 600
 GRACE_SECONDS = 30
 TIMED_OUT = 124
@@ -234,15 +235,31 @@ def _echo(out, echo):
 
 
 def rerun(cwd, mutant_id, capture=False, base=None):
+    code, out, _ = rerun_reported(cwd, mutant_id, capture=capture, base=base)
+    return code, out
+
+
+def rerun_reported(cwd, mutant_id, capture=False, base=None):
+    """(exit code, output, the mutant of the JSON report): the mutant is None when this mutants writes no
+    report for a rerun."""
     exe, reason = locate()
     if not exe:
-        return 2, reason
+        return 2, reason, None
+    flags = subprocess.run([exe, "rerun", "--help"], capture_output=True, text=True).stdout
     argv = [exe, "rerun"]
-    # an older mutants has no --base on rerun
-    if base and "--base" in subprocess.run([exe, "rerun", "--help"], capture_output=True, text=True).stdout:
+    # an older mutants has no --base and no --json on rerun
+    if base and "--base" in flags:
         argv += ["--base", base]
-    r = subprocess.run([*argv, mutant_id], cwd=cwd, text=True, capture_output=capture)
-    return r.returncode, (r.stdout + r.stderr) if capture else ""
+    with tempfile.TemporaryDirectory(prefix="clerk-rerun-") as tmp:
+        report = Path(tmp) / "report.json"
+        if "--json" in flags:
+            argv += ["--json", str(report)]
+        r = subprocess.run([*argv, mutant_id], cwd=cwd, text=True, capture_output=capture)
+        try:
+            reported = (json.loads(report.read_text(encoding="utf-8")).get("mutants") or [None])[0]
+        except (OSError, json.JSONDecodeError, AttributeError):
+            reported = None
+    return r.returncode, (r.stdout + r.stderr) if capture else "", reported
 
 
 # --------------------------------------------------------------------------------
@@ -350,7 +367,7 @@ def open_proposals(saved, result):
     return rows, rejections
 
 
-def save(ldir, cwd, base, result, every_operator):
+def save(ldir, cwd, base, result, every_operator, task=None):
     """A run of some operators adds its rows and never counts as a read of the content, so it
     cannot stand in for a run of every operator."""
     if not ldir or not Path(ldir).is_dir():
@@ -391,15 +408,77 @@ def save(ldir, cwd, base, result, every_operator):
         record = {"at": now(), "base": base, "ran": True, "reason": None, "complete": result["complete"],
                   "rows": result["mutants"], "rejected": result["rejected"], "no_tests": result["no_tests"],
                   "caller_gaps": result["caller_gaps"], "killed": [], "files": {}}
+    _log_closures(ldir, closures(ldir, cwd, kept, record, result, task))
     _write(ldir, record)
 
 
-def note_killed(ldir, mutant_id):
+def note_killed(ldir, mutant_id, reported=None, task=None):
+    """reported is the mutant of the JSON report of the rerun, or None from a mutants that writes none."""
     saved = load(ldir)
     if not saved:
         return
+    row = _rows_by_key(saved).get(mutant_id)
+    if row and mutant_id not in (saved.get("killed") or []):
+        reported = reported or {}
+        how = "equivalent" if reported.get("status") == "EQUIVALENT" else "killed"
+        _log_closures(ldir, [_closure(mutant_id, row, how, task, test=reported.get("detail") or "",
+                                      test_file=reported.get("testFile") or None,
+                                      internal_test=bool(reported.get("internalTest")))])
     saved["killed"] = sorted(set(saved.get("killed") or []) | {mutant_id})
     _write(ldir, saved)
+
+
+# --------------------------------------------------------------------------------
+# The history of how each row of the run closed, for a later count of tests, accepts and changes of the code
+# --------------------------------------------------------------------------------
+
+def _rows_by_key(saved):
+    saved = saved or {}
+    rows = {r.get("id"): {"status": r.get("status"), "type": r.get("type"), "file": r.get("file")}
+            for r in saved.get("rows") or []}
+    rows.update({gap_key(g): {"status": "CALLER GAP", "type": None, "file": g.get("file")}
+                 for g in saved.get("caller_gaps") or []})
+    rows.update({g.get("detail"): {"status": "NO TESTS", "type": None, "file": None}
+                 for g in saved.get("no_tests") or []})
+    rows.update({r.get("key"): {"status": "REJECTED", "type": PROPOSED, "file": r.get("file")}
+                 for r in saved.get("rejected") or []})
+    if incomplete_key(saved):
+        rows[incomplete_key(saved)] = {"status": "INCOMPLETE", "type": None, "file": None}
+    return rows
+
+
+def closures(ldir, cwd, kept, record, result, task):
+    before, after = _rows_by_key(kept), _rows_by_key(record)
+    closed = set(kept.get("killed") or []) | set(accepted(ldir))
+    left = [key for key in before if key not in after and key not in closed]
+    kills = {k["id"]: k for k in result.get("kills") or []}
+    kills.update({k["bug"]: k for k in result.get("kills") or [] if k.get("bug")})
+    read_all = bool(result.get("ran") and result.get("complete") and kept.get("base") == record.get("base"))
+    files = sorted({before[key]["file"] for key in left if before[key]["file"]})
+    hashes = content_hashes(cwd, files) if read_all and files else {}
+    entries = []
+    for key in left:
+        row = before[key]
+        if key in kills:
+            kill = kills[key]
+            entries.append(_closure(key, row, "killed", task, test=kill.get("test") or "",
+                                    test_file=kill.get("test_file"), internal_test=kill.get("internal_test")))
+        elif read_all:
+            read = (kept.get("files") or {}).get(row["file"]) if row["file"] else None
+            entries.append(_closure(key, row, "gone", task,
+                                    source_changed=None if read is None else read != hashes.get(row["file"])))
+    return entries
+
+
+def _closure(key, row, how, task, **facts):
+    return {"key": key, "how": how, **row, "at": now(), "task": task, **facts}
+
+
+def _log_closures(ldir, entries):
+    if not ldir or not entries:
+        return
+    with (Path(ldir) / CLOSURES).open("a") as fh:
+        fh.writelines(json.dumps(entry) + "\n" for entry in entries)
 
 
 def gap_key(gap):
@@ -424,6 +503,8 @@ def keys(saved):
 def accept(ldir, key, reason, task=None):
     with (Path(ldir) / ACCEPTED).open("a") as fh:
         fh.write(json.dumps({"key": key, "reason": reason, "at": now(), "task": task}) + "\n")
+    row = _rows_by_key(load(ldir)).get(key) or {"status": None, "type": None, "file": None}
+    _log_closures(ldir, [_closure(key, row, "accepted", task, reason=reason)])
 
 
 def accepted(ldir):

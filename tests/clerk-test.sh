@@ -2918,6 +2918,7 @@ eq "echoed, what mutants writes passes through, and the reason with what to do i
 eq "--id reruns one mutant and passes its verdict on" "10|true|true" \
    "$(stub 10; printf '%s|' "$(mutrc --id 'a.go:F:BRANCH_IF#1')"; printf '%s|%s' "$(argv_has rerun)" "$(argv_has 'a.go:F:BRANCH_IF#1')")"
 eq "a mutants whose rerun has no --base gets none" "false" "$(stub 0; mutrc --id 'a.go:F:BRANCH_IF#1' >/dev/null; argv_has --base)"
+eq "a mutants whose rerun has no --json gets none" "false" "$(stub 0; mutrc --id 'a.go:F:BRANCH_IF#1' >/dev/null; argv_has --json)"
 printf '  --base string\n' > "$MS/rerun-help"
 eq "a mutants whose rerun has --base gets the base of the run, HEAD unless given" "true|true|true" \
    "$(stub 0; mutrc --id 'a.go:F:BRANCH_IF#1' >/dev/null; printf '%s|%s|' "$(argv_has --base)" "$(argv_has HEAD)"; stub 0; mutrc --base main --id 'a.go:F:BRANCH_IF#1' >/dev/null; argv_has main)"
@@ -3053,6 +3054,9 @@ mutf accept 'a.go:F:PROPOSED#77' 'a test cannot reach the gate yet' >/dev/null
 F=$(finf 1 -- a.go); FRC=$?
 eq "with each row killed or accepted, the task finishes, and a row in another file does not hold it" "0|true|clean" \
    "$FRC|$(printf '%s' "$F" | jq -r '[(.done|tostring), .mutants] | join("|")')"
+eq "the history of the open run holds each row of the task that closed, how it closed, and the task" \
+   "the gate lets a stranger through=killed,a.go:F:BRANCH_IF#1=killed,a.go:(*T).F=accepted,a.go:F:PROPOSED#77=accepted|1" \
+   "$(jq -rs '[(map("\(.key)=\(.how)") | join(",")), (map(.task) | unique | map(tostring) | join(","))] | join("|")' "$LF/mutants-closures.jsonl")"
 git -C "$RF" commit -qm "Task 1"
 printf 'package b\n' > "$RF/b.go"
 F=$(BINF="$MS/none" finf 2 -- b.go); FRC=$?
@@ -3137,7 +3141,52 @@ stub 10 "$MS/h.json"; mutf >/dev/null 2>&1
 F=$(finf 8 -- h.go); FRC=$?
 eq "a finish that two gates refuse reports both in one reply, with the next step of each" "1|1|h.go:H:RETURN_EMPTY#1|true|true" \
    "$FRC|$(printf '%s' "$F" | jq -r '[(.lint_findings | length | tostring), .mutants_findings[0].key, (.next_step | contains("fix each finding") | tostring), (.next_step | contains("clerk mutants --id") | tostring)] | join("|")')"
-rm -rf "$MS" "$RM" "$RF"
+
+# Each row that closes goes into the history of the open run, so that a later count can tell a test from an
+# accept and from a change of the code.
+RH=$(new_repo)
+mkdir -p "$RH/tasks"
+printf '### Task 1: One\n' > "$RH/tasks/story.md"
+printf '{"story":"story","tasks_file":"tasks/story.md","tasks":[{"n":1,"title":"One","language":"Go","depends_on":[],"affected_files":["a.go","b.go"]}]}\n' > "$RH/tasks/story.json"
+git -C "$RH" add -A && git -C "$RH" commit -qm "Plan"
+run "$RH" step start story --request "a story" >/dev/null 2>&1
+LH="$RH/.git/clerk/runs/story"
+muth() { (cd "$RH" && CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
+history() { jq -rs "$1" "$LH/mutants-closures.jsonl"; }
+printf 'package a\n\nfunc A() int { return 1 }\n' > "$RH/a.go"
+printf 'package a\n\nfunc B() int { return 2 }\n' > "$RH/b.go"
+cat > "$MS/open.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:A:RETURN_EMPTY#1","file":"a.go","line":3,"status":"LIVED","operator":"RETURN_EMPTY","original":"1","replacement":"0"},
+ {"id":"a.go:A:BRANCH_IF#1","file":"a.go","line":3,"status":"LIVED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}"},
+ {"id":"b.go:B:RETURN_EMPTY#1","file":"b.go","line":3,"status":"LIVED","operator":"RETURN_EMPTY","original":"2","replacement":"0"}],
+ "callerGaps":[]}
+EOF
+cat > "$MS/rerun.json" <<'EOF'
+{"mutants":[{"id":"a.go:A:BRANCH_IF#1","file":"a.go","line":3,"status":"KILLED","operator":"BRANCH_IF","original":"{ return 1 }","replacement":"{}","detail":"--- FAIL: TestA (0.00s)","testFile":"a_test.go"}]}
+EOF
+cat > "$MS/closed.json" <<'EOF'
+{"base":"abc","mutants":[
+ {"id":"a.go:A:RETURN_EMPTY#1","file":"a.go","line":3,"status":"KILLED","operator":"RETURN_EMPTY","original":"1","replacement":"0","detail":"--- FAIL: TestA (0.00s)","testFile":"a_test.go","internalTest":true}],
+ "callerGaps":[]}
+EOF
+stub 10 "$MS/open.json"; muth >/dev/null 2>&1
+printf '  --base string\n  --json string\n' > "$MS/rerun-help"
+stub 0 "$MS/rerun.json"; muth --id 'a.go:A:BRANCH_IF#1' >/dev/null 2>&1
+rm -f "$MS/rerun-help"
+eq "an --id kill goes into the history with the test file from the JSON report of the rerun" \
+   "true|a.go:A:BRANCH_IF#1|killed|LIVED|a_test.go|false|1" \
+   "$(argv_has --json)|$(history '.[0] | [.key, .how, .status, .test_file, (.internal_test|tostring), (.task|tostring)] | join("|")')"
+printf '// later\n' >> "$RH/b.go"
+stub 0 "$MS/closed.json"; muth >/dev/null 2>&1
+eq "a full run puts each kill into the history with its test, and each row that it no longer lists as gone, with whether its file changed" \
+   "a.go:A:RETURN_EMPTY#1=killed:a_test.go:true,b.go:B:RETURN_EMPTY#1=gone:true" \
+   "$(history '.[1:] | map(if .how == "killed" then "\(.key)=killed:\(.test_file):\(.internal_test)" else "\(.key)=\(.how):\(.source_changed)" end) | join(",")')"
+stub 10 "$MS/open.json"; muth >/dev/null 2>&1
+COUNT=$(history 'length')
+stub 124 "$MS/empty.json"; muth >/dev/null 2>&1
+eq "a run that stops at its limit puts no row of the run before it into the history as gone" "$COUNT" "$(history 'length')"
+rm -rf "$MS" "$RM" "$RF" "$RH"
 
 # --------------------------------------------------------------------------------
 git -C "$R22" worktree remove --force "$WT4" 2>/dev/null

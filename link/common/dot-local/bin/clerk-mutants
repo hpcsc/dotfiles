@@ -26,6 +26,10 @@ proposal closes it. `accept` records why no test is worth it for a row. Its key 
 of a mutant, <file>:<function> of a caller gap, the text of a group that no test runs, such
 as "package cmd/x has no test files", or the bug of a rejected proposal.
 
+Each row that closes adds one line to mutants-closures.jsonl of the open run: killed, with the
+test file that killed it, accepted, with the reason, or gone, when a later run that read each
+changed file against the same base no longer lists it, with whether its source file changed.
+
 A run with no proposals and no changed Go, Python or Elixir file outside the tests against
 <ref> runs nothing: after a commit, the work tree against HEAD holds no change of the task.
 
@@ -132,11 +136,11 @@ def main(argv):
         die("not a git repository")
 
     if args.id:
-        code, why = mutants.rerun(root, args.id, base=args.base)
+        code, why, reported = mutants.rerun_reported(root, args.id, base=args.base)
         if why:
             print(f"clerk: mutants: {why}", file=sys.stderr)
         if code == mutants.RERUN_KILLED:
-            mutants.note_killed(r.ledger_dir, args.id)
+            mutants.note_killed(r.ledger_dir, args.id, reported, open_task(r))
         return code
 
     if not args.proposals and gitout("rev-parse", "--verify", "--quiet", f"{args.base}^{{commit}}", cwd=root) \
@@ -154,7 +158,7 @@ def main(argv):
     proposals = str(Path(args.proposals).resolve()) if args.proposals else None
     code, result = mutants.run(root, args.base, proposals=proposals, anywhere=args.proposals_anywhere,
                                operators=args.operators, only=only, echo=not args.json)
-    mutants.save(r.ledger_dir, root, args.base, result, every_operator=not args.operators)
+    mutants.save(r.ledger_dir, root, args.base, result, every_operator=not args.operators, task=open_task(r))
     if args.json:
         print(json.dumps(result, indent=2))
     elif result["tests_fail"]:

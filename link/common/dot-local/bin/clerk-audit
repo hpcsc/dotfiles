@@ -801,7 +801,7 @@ def _tally(lv):
 
 CONFIDENCE = ("confirmed", "plausible")
 # What a lens may say about a finding beyond the fields every report row has.
-LENS_EXTRAS = ("failure_scenario", "suggested_fix", "quality_kind")
+LENS_EXTRAS = ("failure_scenario", "suggested_fix", "quality_kind", "mutant_id")
 
 
 def _finding_row(c, grade):

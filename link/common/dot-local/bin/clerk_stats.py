@@ -72,7 +72,7 @@ def unwrap_report(obj):
 
 def finding_rows(rep):
     return [{"id": f.get("id"), "severity": f.get("severity"), "nature": f.get("nature"),
-             "file": f.get("file"), "line": f.get("line")}
+             "file": f.get("file"), "line": f.get("line"), "mutant_id": f.get("mutant_id")}
             for f in (rep.get("findings") or []) if isinstance(f, dict)]
 
 

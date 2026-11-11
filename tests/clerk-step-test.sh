@@ -325,7 +325,7 @@ jq '.live = {"round": 2, "phase": "report",
                        "proposals": {"accepted": 8, "survived": 4, "rejected": [{"bug": "b", "reason": "old not found"}]},
                        "proposals_seconds": 19},
              "clerk_settled": {"tried": 4, "refuted": 1, "stood": 2, "seconds": 21}}' "$AJR" > "$AJR.new" && /bin/mv -f "$AJR.new" "$AJR"
-REP2=$(mktemp); printf '{"findings":[{"id":"f1","severity":"high","nature":"runtime","file":"a.go","line":3,"claim":"boom","confidence":"high","lens":"semantic:Go"},{"id":"f2","severity":"low","nature":"convention","file":"b.go","claim":"meh","confidence":"low","lens":"guidelines:Go"}],"coverage_gaps":["fixtures and documentation reviewed by nobody"],"summary":"s"}' > "$REP2"
+REP2=$(mktemp); printf '{"findings":[{"id":"f1","severity":"high","nature":"runtime","file":"a.go","line":3,"claim":"boom","confidence":"high","lens":"semantic:Go","mutant_id":"a.go:F:BRANCH_IF#1"},{"id":"f2","severity":"low","nature":"convention","file":"b.go","claim":"meh","confidence":"low","lens":"guidelines:Go"}],"coverage_gaps":["fixtures and documentation reviewed by nobody"],"summary":"s"}' > "$REP2"
 RD2=$(run "$WT" audit round --report "$REP2" --replan 2)
 eq "--replan lets it through, on purpose" "2" "$(printf '%s' "$RD2" | field .round.n)"
 eq "the round keeps what mutants did: its time, rows by status without the proposed ones, groups and caller gaps" \
@@ -337,6 +337,9 @@ eq "the summary lists each finding by severity, with its nature and where it is"
    "$(printf '%s' "$RD2" | jq -r '.summary | contains("findings 2 (1 high, 1 low)") and contains("high    runtime     a.go:3  f1") and contains("(1 repeated)")')"
 eq "and the round keeps those findings, minus the prose, for a later reader" "f1,f2" \
    "$(printf '%s' "$RD2" | jq -r '[.round.findings_list[].id] | join(",")')"
+eq "with the mutant row that each finding names, so a later reader can count the findings that mutants gave" \
+   "a.go:F:BRANCH_IF#1,null" \
+   "$(printf '%s' "$RD2" | jq -r '[.round.findings_list[].mutant_id | tostring] | join(",")')"
 eq "a round says whether it earns another: not when all it upheld were counts" "false" \
    "$(printf '%s' "$RD" | jq -r '.another_round.earned | tostring')"
 eq "and yes when it upheld a high finding, naming it, in the summary too" "true|f1|true" \
@@ -1077,15 +1080,21 @@ eq "a survivor the report leaves out is still reported, at its lens's grade, wit
    "$(report_row f1 '[.severity, .file, .claim, .lens, (.ungraded|tostring), .evidence] | join("|")')"
 eq "and a refuted one is not" "0" \
    "$(run "$RA" audit status | jq -r '[.live.report.findings[] | select(.id=="f2")] | length')"
-to_report() {  # <scope file> <verdicts file> <report file>
+to_report() {  # <scope file> <verdicts file> <report file> [review file]
   run "$RA" audit begin --base main --restart >/dev/null 2>&1
   run "$RA" audit record --phase scope --results "$1" >/dev/null 2>&1
-  run "$RA" audit record --phase review --results "$RA/rev.json" >/dev/null 2>&1
+  run "$RA" audit record --phase review --results "${4:-$RA/rev.json}" >/dev/null 2>&1
   run "$RA" audit record --phase dedupe --results "$RA/dd.json" >/dev/null 2>&1
   run "$RA" audit record --phase refute --results "$2" >/dev/null 2>&1
   run "$RA" audit record --phase report --results "$3" >/dev/null 2>&1
 }
 printf '{"findings":[{"id":"f1","severity":"medium","confidence":"confirmed","note":"bounded to one retry"},{"id":"ghost","severity":"high","confidence":"confirmed"}],"coverage_gaps":["nobody ran the e2e"],"summary":"s"}' > "$RA/rep2.json"
+jq '.[0].findings[0].mutant_id = "a.go:F:BRANCH_IF#1"' "$RA/rev.json" > "$RA/rev-mutant.json"
+printf 'LIVED: a.go:3 BRANCH_IF: { return 1 } -> {}\n' > "$MA/rerun_out"; printf '10' > "$MA/rerun_exit"
+to_report "$RA/scope.json" "$RA/vd.json" "$RA/rep2.json" "$RA/rev-mutant.json"
+rm -f "$MA/rerun_out" "$MA/rerun_exit"
+eq "a finding that names a mutant row keeps the id of the row in the report" "a.go:F:BRANCH_IF#1" \
+   "$(report_row f1 '.mutant_id')"
 to_report "$RA/scope.json" "$RA/vd.json" "$RA/rep2.json"
 eq "a grade lands on the finding clerk holds, and its note joins the evidence" "medium|boom|true|null" \
    "$(report_row f1 '[.severity, .claim, (.evidence | contains("bounded to one retry") and contains("ran it, it broke") | tostring), (.ungraded|tostring)] | join("|")')"

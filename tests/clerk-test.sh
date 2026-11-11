@@ -2800,6 +2800,7 @@ dir=$(dirname "$0")
 if [ "$1" = run ] && [ "$2" = --help ]; then cat "$dir/help"; exit 0; fi
 if [ "$1" = rerun ] && [ "$2" = --help ]; then cat "$dir/rerun-help" 2>/dev/null; exit 0; fi
 printf '%s\n' "$@" > "$dir/argv"
+printf 'GOFLAGS=%s DYNAMO_URL=%s\n' "${GOFLAGS-}" "${DYNAMO_URL-}" > "$dir/env"
 out=""; prev=""
 for a in "$@"; do [ "$prev" = --json ] && out=$a; prev=$a; done
 [ -n "$out" ] && [ -f "$dir/report" ] && cp "$dir/report" "$out"
@@ -2891,6 +2892,25 @@ mut --base main --operators none --proposals p.jsonl --proposals-anywhere >/dev/
 eq "a base, the operators and the proposals pass through, the file as an absolute path" "true|true|true|true" \
    "$(printf '%s|%s|%s|%s' "$(argv_has main)" "$(argv_has --operators=none)" "$(argv_has "$RM/p.jsonl")" "$(argv_has --proposals-anywhere)")"
 eq "--proposals-anywhere alone is a usage error" "2" "$(stub 0; mutrc --proposals-anywhere)"
+
+RV=$(new_repo)
+printf 'package a\n' > "$RV/a.go"
+mkdir -p "$RV/tasks"
+mutv() { (cd "$RV" && env -u GOFLAGS -u DYNAMO_URL CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
+printf '{"mutants_env": {"GOFLAGS": "-tags=integration"}}\n' > "$RV/tasks/clerk.json"
+eq "the tests that mutants runs get the variables of mutants_env in tasks/clerk.json" \
+   "GOFLAGS=-tags=integration DYNAMO_URL=" "$(stub 0 "$MS/empty.json"; mutv >/dev/null 2>&1; cat "$MS/env")"
+printf 'mutants_env={"GOFLAGS": "-tags=local", "DYNAMO_URL": "http://localhost:8001"}\n' > "$RV/tasks/.environment"
+eq "tasks/clerk.json wins a variable that tasks/.environment also sets, and tasks/.environment gives the others" \
+   "GOFLAGS=-tags=integration DYNAMO_URL=http://localhost:8001" "$(stub 0 "$MS/empty.json"; mutv >/dev/null 2>&1; cat "$MS/env")"
+eq "a variable that the caller sets wins over both files" \
+   "GOFLAGS=-tags=mine DYNAMO_URL=http://localhost:8001" \
+   "$(stub 0 "$MS/empty.json"; (cd "$RV" && env -u DYNAMO_URL GOFLAGS=-tags=mine CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants >/dev/null 2>&1); cat "$MS/env")"
+eq "a rerun of one mutant gets the same variables" \
+   "GOFLAGS=-tags=integration DYNAMO_URL=http://localhost:8001" "$(stub 10; mutv --id a.go:F:BRANCH_IF#1 >/dev/null 2>&1; cat "$MS/env")"
+eq "prepare reports the variables that mutants runs with" '{"DYNAMO_URL":"http://localhost:8001","GOFLAGS":"-tags=integration"}' \
+   "$(run "$RV" prepare | jq -cS '.mutants_env')"
+
 RN=$(new_repo)
 mutn() { (cd "$RN" && CLERK_MUTANTS_BIN="$MS/mutants" "$CLERK" mutants "$@"); }
 eq "with no changed source file against the base, it runs no mutant, exits 3, and says to pass a base" "3|false|true" \

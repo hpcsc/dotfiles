@@ -518,6 +518,25 @@ def resolve_go_prefix(root):
     return ""
 
 
+def resolve_mutants_env(root):
+    r = Path(root)
+    cfg = _json_file(r / "tasks" / "clerk.json")
+    team = _variables(cfg.get("mutants_env") if isinstance(cfg, dict) else None)
+    machine = _variables(env_get(r / "tasks" / ".environment", "mutants_env"))
+    return {**machine, **team}
+
+
+def _variables(raw):
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): v for k, v in raw.items() if isinstance(v, str)}
+
+
 def resolve_learnings_path(root):
     """Beside the breakdowns, in the repo the learnings are about. `root` is the main
     checkout even when the caller stands in a worktree, and an ignored tasks/ is never
@@ -742,6 +761,7 @@ def prepare(cwd=None, request=None, repo=None):
         "languages": detect_languages(root),
         "test_commands": resolve_test_commands(root),
         "go_tool_prefix": resolve_go_prefix(root),
+        "mutants_env": resolve_mutants_env(root),
         "learnings_path": learn,
         "learnings_path_source": learn_src,
         "request_source": request_source,

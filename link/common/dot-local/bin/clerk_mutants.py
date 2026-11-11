@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 
 from clerk_audit_panel import MUTATED_FILE_RE, TEST_PATH_RE
-from clerk_repo import now
+from clerk_repo import now, repo_root, resolve_mutants_env
 
 INSTALL = "mise install github:hpcsc/mutants"
 NEEDED_FLAGS = ("--caller-gaps", "--proposals", "--proposals-anywhere")
@@ -146,8 +146,13 @@ def _read(stream, lines, echo):
             sys.stderr.flush()
 
 
+def _env(cwd):
+    root = repo_root(cwd)
+    return {**(resolve_mutants_env(root) if root else {}), **os.environ}
+
+
 def _limited(argv, cwd, echo):
-    proc = subprocess.Popen(argv, cwd=cwd, text=True, errors="replace",
+    proc = subprocess.Popen(argv, cwd=cwd, text=True, errors="replace", env=_env(cwd),
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = [], []
     readers = [threading.Thread(target=_read, args=(proc.stdout, out, False), daemon=True),
@@ -254,7 +259,7 @@ def rerun_reported(cwd, mutant_id, capture=False, base=None):
         report = Path(tmp) / "report.json"
         if "--json" in flags:
             argv += ["--json", str(report)]
-        r = subprocess.run([*argv, mutant_id], cwd=cwd, text=True, capture_output=capture)
+        r = subprocess.run([*argv, mutant_id], cwd=cwd, text=True, capture_output=capture, env=_env(cwd))
         try:
             reported = (json.loads(report.read_text(encoding="utf-8")).get("mutants") or [None])[0]
         except (OSError, json.JSONDecodeError, AttributeError):

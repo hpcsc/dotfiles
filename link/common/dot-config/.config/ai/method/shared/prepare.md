@@ -2,7 +2,7 @@
 
 Every `clerk step` reply carries **`facts`** — the whole of `clerk prepare` for this run, resolved on the call you are reading. Do not run `clerk prepare` yourself: it would return the same object, and the reply in front of you already has it with the run's flags applied.
 
-`facts` holds `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `learnings_path`, `repo_root`, `build_tree`, `in_worktree`, `branch`, `default_branch`, `base`, `tasks_file`, `tasks_home`, `tasks_tracked`, `commit_skill`, `flags` with `flag_sources`, `resume`, and whether the tree is `clean`.
+`facts` holds `languages` (every marker matched, not just the first), `test_commands` and the resolved `test_command`, `go_tool_prefix`, `mutants_env`, `learnings_path`, `repo_root`, `build_tree`, `in_worktree`, `branch`, `default_branch`, `base`, `tasks_file`, `tasks_home`, `tasks_tracked`, `commit_skill`, `flags` with `flag_sources`, `resume`, and whether the tree is `clean`.
 
 Read the values rather than re-deriving them. Three carry precedence rules subtle enough that resolving them by hand goes wrong quietly, which is why a command settles them and reports the answer:
 

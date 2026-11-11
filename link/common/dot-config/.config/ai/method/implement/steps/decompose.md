@@ -18,7 +18,7 @@ It does the codebase exploration and dependency analysis that makes the breakdow
 
 **Carry the learnings forward — the index, not the file.** `clerk learn index --text --match "<terms>"` lists the recorded learnings whose title or apply-when names one of the story's packages, paths or nouns, each as its title, type and apply-when; `clerk learn show "<title>"` returns the body of one. Read the index, pick by apply-when, and pass the picked bodies as `Accumulated project learnings`: "These are durable conventions, recurring review findings and constraints from earlier runs in this repo. Fold them into each task's `patterns_to_follow`, and do not re-propose work they already cover."
 
-Pass the index rather than the whole file, because the file only ever grows and the planner reads all of it. One repo's had reached 225 entries and 40,000 words — sixty-five thousand tokens of history arriving before the story did, on every run. The index is a third of that, and the bodies you actually fetch are a handful.
+Pass the index rather than the whole file, because the file only ever grows and the planner reads all of it.
 
 **An entry that the run proves wrong is `clerk learn drop "<title>"`.** A learning written against code that has since been rewritten still reads as true, and every later run in the repo will act on it — retiring it is as much a part of this step as writing one.
 

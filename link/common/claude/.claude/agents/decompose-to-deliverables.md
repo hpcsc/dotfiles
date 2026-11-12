@@ -98,6 +98,16 @@ Against that weighted count, **12 or fewer is in band**; 13–15 warrants naming
 
 A high raw file count with a low weighted count is normal in a repo carrying a wiring or codegen tax, and is not a re-cut trigger. Call it out in the Step 6 summary so whoever reviews the plan knows the diff is mostly machine-written.
 
+**Count each file at its weight in the table, with no other discount.** A Full file counts 1 and a Low file counts 1. A repo tax is not a discount: when a repo needs many files for each change, the deliverable holds less behavior. Do not take a counting method from an earlier plan. A count that reaches the band only with a discount is above the band, and the deliverable is re-cut.
+
+- Bad: "23 at full weight (7 Full, 16 Low), above the band of 15; 15 with Low at half, as the AGE-1190 plan of this repository counts" — one deliverable kept, and its pull request came out at 45 files (AGE-1191 portal find page).
+- Good: "23 weighted (7 Full, 16 Low), above 15: re-cut by behavior — the link opens the page and takes a submit; a submit searches and records."
+
+**Weigh a deliverable again when its scope changes.** A design change after the plan gate can add work to a deliverable that is planned or already built. Before that work starts, weigh the deliverable again with the new work. Above 15, re-cut it as at the first plan. When the new work is folded into the existing commits with no new count, nobody sees the growth until the pull request opens.
+
+- Bad: a simpler design moved the submit count, the search of two regions and the record-then-dismiss into the portal, and the brief said "fold each change into the commit that added the code" — the deliverable grew from 23 to 41 weighted files (AGE-1191, 2026-11-11).
+- Good: the brief gives the new weighted count of each changed deliverable, and a deliverable above 15 is re-cut before its session starts.
+
 **A known collision surface is a cut criterion, not a footnote.** When unmerged work elsewhere touches files this story also touches, enumerate those files first, then prefer the cut that confines all of them to one deliverable — so exactly one PR pays the careful rebase and the rest are clean. Files in that surface are never weight-None however mechanical they look: a route manifest two branches both edit is where the conflict lands, which is the opposite of unattended. Judge a candidate cut by which files the collision falls in, not by which layer the cut is named after.
 
 ### Assess each deliverable: certainty and blast radius

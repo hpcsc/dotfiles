@@ -83,10 +83,10 @@ tasks:
       - echo ""
       - echo "=== Dry run complete. Use 'task default' to execute ==="
 
-  optional:net-core:
-    desc: Install .NET Core (Ubuntu only)
+  optional:dotnet:
+    desc: Install a .NET SDK with mise - requires common:core
     cmds:
-      - task: ubuntu:net-core
+      - task: common:dotnet
 
   status:
     desc: Show installation progress and status

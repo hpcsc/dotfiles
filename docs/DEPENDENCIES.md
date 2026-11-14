@@ -39,7 +39,7 @@ These can run in parallel after core completes:
 
 ### Optional Scripts
 These are run manually after main installation:
-- `ubuntu-net-core.sh`: Installs .NET Core (Ubuntu only)
+- `common-dotnet.sh`: Adds a .NET SDK to `~/.config/mise/config.local.toml` - **requires mise-global**
 
 ## Platform-Specific Dependencies
 
@@ -58,7 +58,6 @@ These are run manually after main installation:
 - `ubuntu-ripgrep.sh`: No dependencies
 - `ubuntu-keyboard.sh`: No dependencies
 - `ubuntu-wezterm.sh`: No dependencies
-- `ubuntu-net-core.sh`: No dependencies
 
 ### Fedora
 - `fedora-install-required-packages.sh`: No dependencies

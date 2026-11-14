@@ -37,10 +37,10 @@ macos_only_options=(
 )
 
 ubuntu_only_options=(
-  './scripts/ubuntu-net-core.sh'
 )
 
 common_options=(
+  './scripts/common-dotnet.sh'
   'Quit'
 )
 

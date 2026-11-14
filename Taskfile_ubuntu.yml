@@ -21,12 +21,6 @@ tasks:
       - keyboard
       - wezterm
 
-  net-core:
-    desc: Install .NET Core
-    interactive: true
-    cmds:
-      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/ubuntu-net-core.sh"
-
   install-sudo:
     run: once
     interactive: true

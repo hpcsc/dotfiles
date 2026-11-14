@@ -115,6 +115,13 @@ tasks:
       - configure-yazi
       - configure-mermaid
 
+  dotnet:
+    desc: Install a .NET SDK into the machine-local mise config - requires mise-global
+    run: once
+    interactive: true
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-dotnet.sh"
+
   working-folders:
     run: once
     interactive: true

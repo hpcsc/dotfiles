@@ -40,7 +40,6 @@ These can run in parallel after core completes:
 
 ### Optional Scripts
 These are run manually after main installation:
-- `common-istio.sh`: Installs Istio - **requires working-folders** (for `~/Tools/` directory)
 - `ubuntu-net-core.sh`: Installs .NET Core (Ubuntu only)
 
 ## Platform-Specific Dependencies
@@ -85,7 +84,6 @@ default →
 ## Key Notes
 
 1. **Working folders**: Created by `common-working-folders.sh` in base, used by:
-   - `common-istio.sh` (extracts to `~/Tools/`)
    - `macos-imagemagick.sh` (installs to `~/Personal/Tools/`)
    - `macos-settings.sh` (configures finder to use `~/Workspace/`)
 

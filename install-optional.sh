@@ -41,7 +41,6 @@ ubuntu_only_options=(
 )
 
 common_options=(
-  './scripts/common-istio.sh'
   'Quit'
 )
 

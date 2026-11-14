@@ -115,13 +115,6 @@ tasks:
       - configure-yazi
       - configure-mermaid
 
-  istio:
-    desc: Install Istio
-    run: once
-    interactive: true
-    cmds:
-      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-istio.sh"
-
   working-folders:
     run: once
     interactive: true

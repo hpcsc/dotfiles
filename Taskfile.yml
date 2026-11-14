@@ -88,11 +88,6 @@ tasks:
     cmds:
       - task: ubuntu:net-core
 
-  optional:istio:
-    desc: Install Istio - requires working-folders from common:base
-    cmds:
-      - task: common:istio
-
   status:
     desc: Show installation progress and status
     interactive: true

@@ -49,7 +49,6 @@ These are run manually after main installation:
 - `macos-brew-bundle.sh`: Depends on `macos-keep-sudo.sh` (for sudo access)
 - `macos-stow.sh`: Depends on `macos-brew-bundle.sh` (installs stow)
 - `macos-settings.sh`: Depends on stow (reads dotfile configs)
-- `macos-imagemagick.sh`: Depends on `common-working-folders.sh` (for `~/Personal/Tools/`)
 
 ### Ubuntu
 - `ubuntu-install-sudo.sh`: No dependencies
@@ -84,7 +83,6 @@ default →
 ## Key Notes
 
 1. **Working folders**: Created by `common-working-folders.sh` in base, used by:
-   - `macos-imagemagick.sh` (installs to `~/Personal/Tools/`)
    - `macos-settings.sh` (configures finder to use `~/Workspace/`)
 
 2. **Stow**: Required by scripts that need configuration files:

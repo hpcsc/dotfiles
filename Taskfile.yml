@@ -88,11 +88,6 @@ tasks:
     cmds:
       - task: ubuntu:net-core
 
-  optional:krew:
-    desc: Install Krew plugins - requires kubectl from common:devtools
-    cmds:
-      - task: common:krew
-
   optional:istio:
     desc: Install Istio - requires working-folders from common:base
     cmds:

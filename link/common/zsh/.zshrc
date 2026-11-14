@@ -10,7 +10,7 @@ export TERM=xterm-256color
 export KEYTIMEOUT=1  # set zsh vi mode timeout to 0.1s when switching mode
 export WORDCHARS='*?_-[]~&;!#$%^(){}<>'
 
-export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$PATH"
 
 # ====== set terminal title ======================
 

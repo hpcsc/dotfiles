@@ -40,7 +40,6 @@ These can run in parallel after core completes:
 
 ### Optional Scripts
 These are run manually after main installation:
-- `common-krew.sh`: Installs kubectl plugins - **requires kubectl** (from `common-asdf-plugins.sh`)
 - `common-istio.sh`: Installs Istio - **requires working-folders** (for `~/Tools/` directory)
 - `ubuntu-net-core.sh`: Installs .NET Core (Ubuntu only)
 

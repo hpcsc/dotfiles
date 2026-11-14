@@ -76,9 +76,6 @@ export FZF_ALT_C_OPTS="
   --preview-window=bottom
   --preview 'tree -C {}'"
 
-# =================== tmux  ======================
-[[ -f ~/.bin/tmuxinator.zsh ]] && source ~/.bin/tmuxinator.zsh
-
 # ============ custom key bindings  ==============
 # changes hex 0x15 to delete everything to the left of the cursor, rather than the whole line
 bindkey "^U" backward-kill-line

@@ -5,13 +5,12 @@ This document documents implicit dependencies between installation scripts that 
 ## Core Dependency Chain
 
 ```
-common-rust.sh → common-mise.sh → common-stow.sh → common-mise-global.sh
+common-mise.sh → common-stow.sh → common-mise-global.sh
 ```
 
-- `common-rust.sh`: Installs rustup/cargo - **no dependencies**
-- `common-mise.sh`: Installs mise to `~/.local/bin/mise` - **requires rust** (for cargo to install yazi)
+- `common-mise.sh`: Installs mise to `~/.local/bin/mise` - **no dependencies**
 - `common-stow.sh`: Creates symlinks including `~/.config/mise/config.toml` - **requires stow binary** from OS package manager
-- `common-mise-global.sh`: Installs global tools using mise - **requires mise + stow** (both mise binary and config file)
+- `common-mise-global.sh`: Installs global tools using mise - **requires mise + stow** (both mise binary and config file), and **rust** for the `cargo:` tools in `~/.config/mise/config.local.toml`
 
 ## Script Groups
 
@@ -20,13 +19,13 @@ These can run in parallel before core installation:
 - `common-working-folders.sh`: Creates working folders (`~/Workspace`, `~/Personal`, `~/Tools`)
 - `common-prezto.sh`: Installs prezto shell framework
 - `common-fonts.sh`: Installs Fira Code fonts
+- `common-rust.sh`: Installs rustup/cargo
 
 ### Core Scripts (Critical Chain)
 These must run sequentially:
-1. `common-rust.sh`: No dependencies
-2. `common-mise.sh`: Depends on `common-rust.sh` (uses cargo)
-3. `common-stow.sh`: Depends on stow binary (installed by OS)
-4. `common-mise-global.sh`: Depends on `common-mise.sh` and `common-stow.sh`
+1. `common-mise.sh`: No dependencies
+2. `common-stow.sh`: Depends on stow binary (installed by OS)
+3. `common-mise-global.sh`: Depends on `common-mise.sh` and `common-stow.sh`
 
 ### Devtools Scripts (Require Core)
 These can run in parallel after core completes:
@@ -36,7 +35,7 @@ These can run in parallel after core completes:
 
 ### Langtools Scripts (Require Core)
 These can run in parallel after core completes:
-- `common-configure-yazi.sh`: Installs yazi plugins - **requires mise** (uses `mise exec cargo:yazi-cli`)
+- `common-configure-yazi.sh`: Installs yazi plugins - **requires mise** (uses `mise exec yazi`)
 
 ### Optional Scripts
 These are run manually after main installation:
@@ -73,8 +72,8 @@ The Taskfile enforces these dependencies:
 ```
 default →
 ├── macos:base/ubuntu:base/fedora:base
-│   └── common:base (parallel: working-folders, prezto, fonts)
-├── common:core (sequential: rust → mise → stow → mise-global)
+│   └── common:base (parallel: working-folders, prezto, fonts, rust)
+├── common:core (sequential: mise → stow → mise-global)
 ├── common:devtools (parallel: vim, neovim, tmux)
 ├── common:langtools (parallel: configure-yazi, python-tools)
 └── macos:settings/ubuntu:extras/fedora:extras
@@ -93,5 +92,5 @@ default →
 3. **Mise**: Used extensively after core installation:
    - `common-vim.sh` (Go SDK for fzf plugin)
    - `common-neovim.sh` (exec neovim)
-   - `common-configure-yazi.sh` (exec cargo:yazi-cli)
+   - `common-configure-yazi.sh` (exec yazi)
    - `common-mise-global.sh` (install global tools)

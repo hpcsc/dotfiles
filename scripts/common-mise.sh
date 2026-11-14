@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Dependencies: rust (common-rust.sh)
-# This script uses cargo to install tools like yazi
+# Dependencies: none
+# This script installs mise to ~/.local/bin/mise
 
 # Source utility functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

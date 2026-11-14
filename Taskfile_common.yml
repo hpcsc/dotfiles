@@ -84,12 +84,12 @@ tasks:
       - working-folders
       - prezto
       - fonts
+      - rust
 
   core:
-    desc: Critical dependency chain (rust -> mise -> stow -> mise-global)
+    desc: Critical dependency chain (mise -> stow -> mise-global)
     run: once
     cmds:
-      - task: rust
       - task: mise
       - task: stow
       - task: mise-global
@@ -162,7 +162,7 @@ tasks:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-rust.sh"
 
   mise:
-    desc: Install mise - requires rust for cargo
+    desc: Install mise - no dependencies
     run: once
     interactive: true
     cmds:
@@ -176,7 +176,7 @@ tasks:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-stow.sh"
 
   mise-global:
-    desc: Install global tools via mise - requires mise plus stow
+    desc: Install global tools via mise - requires mise plus stow, and rust for the cargo tools in config.local.toml
     run: once
     interactive: true
     cmds:

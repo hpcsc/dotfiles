@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Dependencies: mise (common-mise.sh), stow (common-stow.sh)
+# Dependencies: mise (common-mise.sh), stow (common-stow.sh), rust (common-rust.sh)
 # This script requires ~/.local/bin/mise and ~/.config/mise/config.toml
+# Note: config.local.toml can list cargo: tools, which need cargo on PATH
 # Note: Must run after stow script since this needs ~/.config/mise/config.toml
 
 # Source utility functions

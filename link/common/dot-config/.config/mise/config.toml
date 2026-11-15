@@ -43,7 +43,8 @@ node = "26.10.0"
 
 "pipx:tmuxp" = "1.74.0"
 "github:hpcsc/mutants" = { version = "0.11.0", prerelease = true }
+"github:hpcsc/feature-compose" = "0.1.0"
 
 [settings]
 experimental = true
-minimum_release_age_excludes = ["github:hpcsc/mutants"]
+minimum_release_age_excludes = ["github:hpcsc/mutants", "github:hpcsc/feature-compose"]

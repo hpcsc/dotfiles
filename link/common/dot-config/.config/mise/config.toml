@@ -35,7 +35,7 @@ workmux = "0.1.212"
 "conda:rsync" = "3.5.2"
 "conda:chafa" = "1.18.3"
 "conda:imagemagick" = "7.1.2_31"
-"http:xpanes" = { version = "4.2.0", url = "https://raw.githubusercontent.com/greymd/tmux-xpanes/v{{version}}/bin/xpanes", bin = "xpanes" }
+"http:xpanes" = { version = "4.2.0", url = "https://raw.githubusercontent.com/greymd/tmux-xpanes/v{{ version }}/bin/xpanes", bin = "xpanes" }
 elixir = "1.20.4"
 erlang = "29.1"
 node = "26.10.0"

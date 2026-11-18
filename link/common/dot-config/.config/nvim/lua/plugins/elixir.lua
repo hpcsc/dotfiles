@@ -9,6 +9,18 @@ return {
 		local elixir = require("elixir")
 		local elixirls = require("elixir.elixirls")
 
+		-- the plugin's on_attach calls vim.lsp.codelens.refresh, which Neovim 0.12 deprecates
+		elixirls.on_attach = function(client, bufnr)
+			local command = vim.api.nvim_buf_create_user_command
+			command(bufnr, "ElixirFromPipe", elixirls.from_pipe(client), {})
+			command(bufnr, "ElixirToPipe", elixirls.to_pipe(client), {})
+			command(bufnr, "ElixirRestart", elixirls.restart(client), {})
+			command(bufnr, "ElixirExpandMacro", elixirls.expand_macro(client), { range = true })
+			command(bufnr, "ElixirOutputPanel", function()
+				elixirls.open_output_panel()
+			end, {})
+		end
+
 		elixir.setup({
 			nextls = { enable = false },
 			elixirls = {

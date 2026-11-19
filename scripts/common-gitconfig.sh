@@ -20,7 +20,7 @@ create_gitconfig() {
   else
     cat > "$file" <<EOF
 [core]
-	sshCommand = ssh -i ~/.ssh/${ssh_key}
+	sshCommand = ssh -i ~/.ssh/${ssh_key} -o IdentitiesOnly=yes
 [user]
 	name = David Nguyen
 	email = ${email}

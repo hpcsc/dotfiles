@@ -14,6 +14,8 @@ if [ -d ~/.tmux/plugins/tpm ]; then
   pushd ~/.tmux/plugins/tpm
   git pull -r
   popd
+  echo_yellow "=== installing new tmux plugins using tpm"
+  ~/.tmux/plugins/tpm/bin/install_plugins
   echo_yellow "=== updating tmux plugins using tpm"
   ~/.tmux/plugins/tpm/bin/update_plugins all
 else

@@ -28,12 +28,13 @@ tasks:
           else
             FLAGS='-s'
           fi
+          # two tasks that run script at the same time leave the terminal in raw mode
           if [[ "$(uname -s)" == "Darwin" ]]; then
-            task ${FLAGS} default-macos
+            task ${FLAGS} --concurrency 1 default-macos
           elif grep -q 'Ubuntu' /etc/os-release 2>/dev/null; then
-            task ${FLAGS} default-ubuntu
+            task ${FLAGS} --concurrency 1 default-ubuntu
           elif grep -q 'Fedora' /etc/os-release 2>/dev/null; then
-            task ${FLAGS} default-fedora
+            task ${FLAGS} --concurrency 1 default-fedora
           else
             echo "Unsupported operating system"
             exit 1

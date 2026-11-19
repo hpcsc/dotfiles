@@ -39,7 +39,7 @@ workmux = "0.1.212"
 elixir = "1.20.4"
 erlang = "29.1"
 node = "26.10.0"
-"npm:@mermaid-js/mermaid-cli" = "12.0.0"
+"npm:@mermaid-js/mermaid-cli" = { version = "12.0.0", trust_policy_excludes = ["chromium-bidi@157.0.8090-0"] }
 
 "pipx:tmuxp" = "1.74.0"
 "github:hpcsc/mutants" = { version = "0.11.0", prerelease = true }

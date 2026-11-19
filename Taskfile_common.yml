@@ -85,6 +85,7 @@ tasks:
       - prezto
       - fonts
       - rust
+      - gitconfig
 
   core:
     desc: Critical dependency chain (mise -> stow -> mise-global)
@@ -194,6 +195,12 @@ tasks:
     run: once
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-fnox.sh"
+
+  gitconfig:
+    desc: Create ~/.gitconfig-personal, and ~/.gitconfig-work with a placeholder email - no dependencies
+    run: once
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-gitconfig.sh"
 
   configure-yazi:
     desc: Install yazi plugins - requires mise

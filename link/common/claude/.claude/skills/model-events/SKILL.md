@@ -1,6 +1,6 @@
 ---
 name: model-events
-description: "Perform event modeling from domain requirements or an existing codebase. Discovers business processes, identifies domain events in chronological timeline order, iterates with user feedback at every stage, and writes the approved model in the emod DSL (.emod), with a Markdown document and a Draw.io diagram."
+description: "Perform event modeling from domain requirements or an existing codebase. Discovers business processes, identifies domain events in chronological timeline order, iterates with user feedback at every stage, and writes the approved model in the emod DSL (.emod), with a Markdown document and an SVG diagram."
 user-invocable: true
 ---
 
@@ -425,7 +425,7 @@ Compile the approved process models into three files:
 |------|-------|
 | `docs/event-model-[feature-name].emod` | The model in the emod DSL: contexts, aggregates, slices, triggers, commands, events, rules, views, automations, translations and specs |
 | `docs/event-model-[feature-name].md` | The document: capabilities, storyboards, processes, field sources, view data lineage, patterns, components and implementation slices |
-| `docs/event-model-[feature-name].drawio` | The diagram, drawn from the `.emod` file |
+| `docs/event-model-[feature-name].svg` | The diagram, drawn from the `.emod` file |
 
 Use the same names in all three files.
 
@@ -437,7 +437,7 @@ Use the same names in all three files.
 ## Overview
 [Brief description of the system and what it does]
 
-Model: `event-model-[feature-name].emod`. Diagram: `event-model-[feature-name].drawio`.
+Model: `event-model-[feature-name].emod`. Diagram: `event-model-[feature-name].svg`.
 
 ## Actors
 | Actor | Type | Description |
@@ -511,26 +511,26 @@ Then run the commands in "Check the Model" of `emod.md`:
 - `emod validate` and `emod lint` must exit 0. Fix each finding in the model.
 - If a fix needs a new rule, element or name, ask the user, as in Phase 5. If the user keeps the element, report the finding and the reason in the Final Presentation.
 
-### Generate Draw.io Diagram
+### Generate the Diagram
 
 Draw the diagram from the model:
 
 ```bash
-emod diagram docs/event-model-[feature-name].emod --format drawio --specs \
-  -o docs/event-model-[feature-name].drawio
+emod diagram docs/event-model-[feature-name].emod --format svg --specs \
+  -o docs/event-model-[feature-name].svg
 ```
 
 If `emod` is not on the PATH, or is older than the HCL grammar (see `emod.md`), do these steps:
 1. Tell the user that the `.emod` file is not checked.
 2. Read `~/.config/ai/guidelines/event-modeling/diagram-templates.md` for the exact XML templates and styles.
-3. Draw the diagram by hand, following the layout guidelines:
+3. Draw the diagram by hand as a draw.io file, following the layout guidelines:
    - Swimlanes: UI/Triggers (top), Commands/Views (middle), Events (bottom)
    - Timeline flows left-to-right chronologically
    - Use correct element styles (orange events, blue commands, green views, white triggers)
    - Reactors shown as gear icons with purple curved arrows from events
    - External systems shown as gray dashed boxes
 
-Save to: `docs/event-model-[feature-name].drawio`
+Save to: `docs/event-model-[feature-name].drawio`. In the document, change the diagram file name in the Overview to this file.
 
 ### Save the Document
 

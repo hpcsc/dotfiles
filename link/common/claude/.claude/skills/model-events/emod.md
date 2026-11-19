@@ -450,8 +450,8 @@ emod slices arrange docs/event-model-[feature-name].emod
 emod fmt docs/event-model-[feature-name].emod
 emod validate docs/event-model-[feature-name].emod
 emod lint docs/event-model-[feature-name].emod
-emod diagram docs/event-model-[feature-name].emod --format drawio --specs \
-  -o docs/event-model-[feature-name].drawio
+emod diagram docs/event-model-[feature-name].emod --format svg --specs \
+  -o docs/event-model-[feature-name].svg
 ```
 
 `validate` and `lint` must exit 0. `emod slices arrange` reports the references that

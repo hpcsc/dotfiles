@@ -13,7 +13,7 @@ from pathlib import Path
 from clerk_lib import gitout
 from clerk_repo import Repo, run_records_dir
 
-VACUITY = re.compile(r"no files changed|no tests to run|no test files|0 passed|0 tests|skip running tests|no tests ran", re.I)
+VACUITY = re.compile(r"no files changed|no tests to run|no test files|\b0 passed|\b0 tests|skip running tests|no tests ran", re.I)
 _NOT_VACUOUS = re.compile(r"no test files|^ok\s.*no tests to run", re.I)
 _OK_LINE = re.compile(r"^ok\s")
 _NO_TESTS = re.compile(r"no test files|no tests to run", re.I)

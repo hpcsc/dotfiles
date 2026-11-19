@@ -510,6 +510,12 @@ eq "a green receipt whose output shows nothing ran is vacuous" "block" \
    "$(run "$R7" verify | jq -r '.findings[] | select(.check=="unproven-suite") | .severity')"
 rm -f "$R7/out.txt"
 
+printf '====== 10 passed in 1.2s ======\n120 tests, 0 failures\n' > "$R7/out.txt"
+run "$R7" receipt --command "task test" --passed --output-file "$R7/out.txt" >/dev/null
+eq "a green receipt whose test count ends in 0 is not vacuous" "0" \
+   "$(run "$R7" verify | jq -r '[.findings[] | select(.check=="unproven-suite")] | length')"
+rm -f "$R7/out.txt"
+
 # A package that built and ran with none of its tests matching — every test in it behind
 # a build tag this suite did not ask for. That is a fact about one package, and one of
 # them beside a wall of `ok` lines used to block the whole receipt.

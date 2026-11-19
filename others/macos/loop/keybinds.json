@@ -1,0 +1,75 @@
+{
+  "actions" : [
+    {
+      "cycle" : [
+        {
+          "direction" : "LeftHalf",
+          "keybind" : [
+
+          ]
+        },
+        {
+          "direction" : "LeftThird",
+          "keybind" : [
+
+          ]
+        },
+        {
+          "direction" : "LeftTwoThirds",
+          "keybind" : [
+
+          ]
+        }
+      ],
+      "direction" : "Cycle",
+      "keybind" : [
+        123
+      ],
+      "name" : "Left Cycle"
+    },
+    {
+      "cycle" : [
+        {
+          "direction" : "RightHalf",
+          "keybind" : [
+
+          ]
+        },
+        {
+          "direction" : "RightThird",
+          "keybind" : [
+
+          ]
+        },
+        {
+          "direction" : "RightTwoThirds",
+          "keybind" : [
+
+          ]
+        }
+      ],
+      "direction" : "Cycle",
+      "keybind" : [
+        124
+      ],
+      "name" : "Right Cycle"
+    },
+    {
+      "direction" : "Maximize",
+      "keybind" : [
+        126
+      ]
+    },
+    {
+      "direction" : "NextScreen",
+      "keybind" : [
+        125
+      ]
+    }
+  ],
+  "triggerKey" : [
+    55,
+    59
+  ],
+  "version" : "1.4.2"
+}

@@ -64,3 +64,39 @@ task common:test          # everything, including the generated-file checks
 ## Setup a new machine
 
 To setup a new machine using this dotfiles repo, follow instructions at [Wiki](https://github.com/hpcsc/dotfiles/wiki)
+
+## Manual macOS settings
+
+The install does not change the Mail and Calendar settings. macOS keeps the settings of these apps in their sandbox containers, and a terminal can write there only when it has Full Disk Access. Set them by hand after the install.
+
+### Mail
+
+In Mail > Settings > Composing, set **Check spelling** to **Never**.
+
+The Mail settings window has no control for the other settings. To set them:
+
+1. In System Settings > Privacy & Security > Full Disk Access, turn on your terminal app.
+2. Quit the terminal app and open it again.
+3. Quit Mail.
+4. Run these commands:
+
+```sh
+# Do not show an animation when you reply or send
+defaults write com.apple.mail DisableReplyAnimations -bool true
+defaults write com.apple.mail DisableSendAnimations -bool true
+
+# Copy an address as foo@example.com, not as Foo Bar <foo@example.com>
+defaults write com.apple.mail AddressesIncludeNameOnPasteboard -bool false
+
+# Show attachments as icons, not as previews in the message
+defaults write com.apple.mail DisableInlineAttachmentViewing -bool true
+```
+
+After the commands, you can turn off Full Disk Access for the terminal app again.
+
+### Calendar
+
+In Calendar > Settings > General, set:
+
+- **Start week on** to **Monday**
+- **Show** to **24** hours at a time

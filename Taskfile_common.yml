@@ -107,6 +107,7 @@ tasks:
       - workmux-form
       - tmux-deliverables
       - claude-code
+      - claude-settings
 
   langtools:
     desc: Language-specific tools (parallel after common:core)
@@ -224,6 +225,14 @@ tasks:
       - core
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-claude-code.sh"
+
+  claude-settings:
+    desc: Merge the shared Claude Code settings into ~/.claude/settings.json - requires jq from mise
+    run: once
+    deps:
+      - core
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/common-claude-settings.sh"
 
   workmux-form:
     desc: Build the workmux-new-form TUI helper to ~/.local/bin - requires go (mise)

@@ -89,3 +89,8 @@ confirm_no() {
      return 0
   fi
 }
+
+# install scripts must not rely on .zshrc-Darwin for this PATH: a new machine runs them before stow links it
+if [[ -x /opt/homebrew/bin/brew ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv bash)"
+fi

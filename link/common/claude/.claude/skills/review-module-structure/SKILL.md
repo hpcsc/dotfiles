@@ -149,6 +149,8 @@ BALANCE    = (STRENGTH XOR DISTANCE) OR NOT VOLATILITY
 | **Low strength** | Low cohesion — *defect* | Loose coupling — **healthy** |
 | **High strength** | High cohesion — **healthy** | Tight coupling — *defect* |
 
+Both axes are ladders and the rule needs two levels, so somewhere on each is a cut. **Strength is high at Model and above**: Contract is the level this model tells you to climb toward, so it is the only weak one — count Model as low and a package of types that share a domain model reads as low cohesion throughout, which is the opposite of what it is. **Distance is high at same-module and above**: crossing a package boundary is where coordinating a change starts to cost. Both cuts are choices, so argue with a cut rather than around it.
+
 Strength and distance must balance each other: one high, one low. Both high (tight coupling) means every change cascades across an expensive boundary. Both low (low cohesion) means components that share nothing are sharing a home, paying attention costs for a relationship that isn't there — this is the split signal, and disconnected sub-clusters in the 1.3 graph plus 1.6 co-change data are how you confirm it.
 
 **An unbalanced coupling in a low-volatility area is not a finding.** It will not cost anyone anything. Say it's unbalanced-but-stable if it's worth noting, and move on.

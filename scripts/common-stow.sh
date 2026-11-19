@@ -44,6 +44,9 @@ function backup() {
 # git restore to revert the import
 # this is a hack for stow to overwrite file in target if exist
 function stow_packages() {
+  # When ~/.claude does not exist, stow links the whole folder into the repo, and Claude Code then writes its sessions, history and caches into the repo
+  mkdir -p ~/.claude
+
   for i in "${common_packages[@]}"; do
     stow -vv --dir=./link/common --target="$HOME" --adopt $i || echo_red "Failed to stow $i"
     git restore ./link/common/$i

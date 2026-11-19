@@ -224,7 +224,7 @@ tasks:
     dir: ./tools/workmux-new-form
     cmds:
       - mkdir -p "$HOME/.local/bin"
-      - go build -o "$HOME/.local/bin/workmux-new-form" .
+      - ~/.local/bin/mise exec go -- go build -o "$HOME/.local/bin/workmux-new-form" .
 
   tmux-deliverables:
     desc: Build the tmux-deliverables TUI to ~/.local/bin - requires go (mise)
@@ -232,4 +232,4 @@ tasks:
     dir: ./tools/tmux-deliverables
     cmds:
       - mkdir -p "$HOME/.local/bin"
-      - go build -o "$HOME/.local/bin/tmux-deliverables" .
+      - ~/.local/bin/mise exec go -- go build -o "$HOME/.local/bin/tmux-deliverables" .

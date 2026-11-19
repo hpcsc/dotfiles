@@ -90,7 +90,11 @@ confirm_no() {
   fi
 }
 
-# install scripts must not rely on .zshrc-Darwin for this PATH: a new machine runs them before stow links it
+# install scripts must not rely on the shell config for this PATH: a new machine runs them before stow links it
 if [[ -x /opt/homebrew/bin/brew ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv bash)"
+fi
+
+if [[ -d "$HOME/.local/share/mise/shims" ]]; then
+  export PATH="$HOME/.local/share/mise/shims:$PATH"
 fi

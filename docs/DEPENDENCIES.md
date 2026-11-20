@@ -46,6 +46,7 @@ These are run manually after main installation:
 ### macOS
 - `macos-keep-sudo.sh`: No dependencies
 - `macos-brew-bundle.sh`: Depends on `macos-keep-sudo.sh` (for sudo access)
+- `macos-docker.sh`: Depends on `macos-brew-bundle.sh` (installs docker and docker-compose)
 - `macos-stow.sh`: Depends on `macos-brew-bundle.sh` (installs stow)
 - `macos-settings.sh`: Depends on stow (reads dotfile configs)
 

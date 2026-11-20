@@ -5,11 +5,12 @@ vars:
 
 tasks:
   base:
-    desc: macOS base setup (keep-sudo -> brew-bundle -> stow-macos)
+    desc: macOS base setup (keep-sudo -> brew-bundle -> docker -> stow-macos)
     run: once
     cmds:
       - task: keep-sudo
       - task: brew-bundle
+      - task: docker
       - task: stow-macos
 
   settings:
@@ -32,6 +33,13 @@ tasks:
     interactive: true
     cmds:
       - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/macos-brew-bundle.sh"
+
+  docker:
+    run: once
+    deps:
+      - brew-bundle
+    cmds:
+      - "{{.SCRIPT_DIR}}/_run_with_logging.sh {{.SCRIPT_DIR}}/macos-docker.sh"
 
   stow-macos:
     run: once

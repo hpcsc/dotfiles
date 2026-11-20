@@ -30,7 +30,7 @@ helm = "4.3.0"
 direnv = "2.37.1"
 uv = "0.12.22"
 "github:natecraddock/zf"= { version = "0.10.2", bin = "zf" }
-workmux = "0.1.212"
+workmux = "0.1.283"
 "conda:tree" = "2.3.2"
 "conda:rsync" = "3.5.2"
 "conda:chafa" = "1.18.3"
